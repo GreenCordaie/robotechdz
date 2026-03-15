@@ -1,0 +1,23 @@
+services:
+  app:
+    build: .
+    ports:
+      - "1556:3000"
+    environment:
+      - DATABASE_URL=postgres://user:password@db:5432/flexbox
+    depends_on:
+      - db
+
+  db:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_USER=user
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=flexbox
+    ports:
+      - "5435:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
