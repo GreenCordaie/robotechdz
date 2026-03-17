@@ -25,19 +25,21 @@ export const AdminSidebar = () => {
     const pathname = usePathname();
     const router = useRouter();
     const clearAuth = useAuthStore((state) => state.clearAuth);
-    const { shopName, dashboardLogoUrl, fetchSettings } = useSettingsStore();
+    const { shopName, dashboardLogoUrl, isB2bEnabled, fetchSettings } = useSettingsStore();
 
     const [openTickets, setOpenTickets] = React.useState(0);
     const [pendingOrders, setPendingOrders] = React.useState(0);
 
     const refreshCounts = React.useCallback(async () => {
         try {
-            const [tickets, orders] = await Promise.all([
+            const [tickets, ordersRes] = await Promise.all([
                 getSupportCounts(),
-                getPendingOrdersCount()
+                getPendingOrdersCount({})
             ]);
             setOpenTickets(tickets.open || 0);
-            setPendingOrders(orders.count || 0);
+            if ('count' in ordersRes) {
+                setPendingOrders(ordersRes.count || 0);
+            }
         } catch (error) {
             console.error("Error refreshing sidebar counts:", error);
         }
@@ -60,7 +62,7 @@ export const AdminSidebar = () => {
             <div className="p-6 flex items-center gap-3">
                 <div className="size-10 rounded-lg bg-[#ec5b13] flex items-center justify-center text-white shadow-lg shadow-[#ec5b13]/20 overflow-hidden relative">
                     {dashboardLogoUrl ? (
-                        <Image src={dashboardLogoUrl} alt="Logo" className="object-contain p-1" fill />
+                        <Image src={dashboardLogoUrl} alt="Logo" className="object-contain p-1" fill sizes="40px" priority />
                     ) : (
                         <span className="material-symbols-outlined text-[24px]">package_2</span>
                     )}
@@ -91,6 +93,7 @@ export const AdminSidebar = () => {
 
                     { name: "Clients & Crédits", icon: "person", href: "/admin/clients" },
                     { name: "Fournisseurs", icon: "group", href: "/admin/fournisseurs" },
+                    ...(isB2bEnabled ? [{ name: "B2B & Revendeurs", icon: "corporate_fare", href: "/admin/b2b" }] : []),
                     { name: "Tickets Support", icon: "support_agent", href: "/admin/support", badge: openTickets },
                     { name: "Paramètres", icon: "settings", href: "/admin/settings", fill: true },
                 ].map((item) => {
@@ -131,6 +134,7 @@ export const AdminSidebar = () => {
                             className="object-cover"
                             src="https://lh3.googleusercontent.com/aida-public/AB6AXuCZzSogzgSYWL4sV8cYS-i9sYM5fwva6Q0n4I55293IQmD03umRiums_O9xTBdasBU1_angHiWiAckgyWwn6UB9MBLipWMhFehIUd_Qc0NUCfkXrUB7xtX-66jetAhnxQNxVTRztumuzjGfV4latkz0g53wc7eiJUn89bYwLuPezAenuEtVe-t4k1298Xg1AQqPP6l314oAlSj3m3UMutiTNXAv4ywmJUO7cWO3xprkiMgliBjEdbhP9gqPQREeem3Jv00wZuEZHdbM"
                             fill
+                            sizes="32px"
                         />
                     </div>
                     <div className="min-w-0 flex-1">

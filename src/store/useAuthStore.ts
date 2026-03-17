@@ -4,7 +4,7 @@ import { persist, createJSONStorage } from "zustand/middleware";
 interface User {
     id: number;
     email: string;
-    role: "ADMIN" | "CAISSIER" | "TRAITEUR";
+    role: "ADMIN" | "CAISSIER" | "TRAITEUR" | "RESELLER";
     nom: string;
     pinCode: string;
 }

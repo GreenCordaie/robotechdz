@@ -66,7 +66,7 @@ export default function PlayerIdModal({
                                 {/* Product Thumbnail */}
                                 <div className="w-20 h-20 mb-4 bg-slate-50 border border-slate-100 rounded-2xl shadow-sm flex items-center justify-center overflow-hidden relative">
                                     {productImage ? (
-                                        <Image alt={productName} className="object-contain p-2" src={productImage} fill />
+                                        <Image alt={productName} className="object-contain p-2" src={productImage} fill sizes="100px" />
                                     ) : (
                                         <div className="w-full h-full bg-slate-200 flex items-center justify-center">
                                             <span className="material-symbols-rounded text-slate-400 text-3xl">package</span>

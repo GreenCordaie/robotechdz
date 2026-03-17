@@ -3,23 +3,26 @@
 import React, { useState, useEffect } from "react";
 import { ResellerSidebar } from "@/components/reseller/ResellerSidebar";
 import { usePathname } from "next/navigation";
-import { getShopSettingsAction } from "@/app/admin/settings/actions";
+import { getPublicSettingsAction } from "@/app/admin/settings/actions";
 import { Spinner } from "@heroui/react";
-import { ShieldAlert, Store } from "lucide-react";
+import { ShieldAlert, Store, Hammer } from "lucide-react";
 
 export default function ResellerLayout({ children }: { children: React.ReactNode }) {
     const pathname = usePathname();
     const isLoginPage = pathname === "/reseller/login";
     const [isEnabled, setIsEnabled] = useState<boolean | null>(null);
+    const [isMaintenance, setIsMaintenance] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
         const checkB2b = async () => {
-            const res = await getShopSettingsAction();
+            const res = await getPublicSettingsAction();
             if (res.success && res.data) {
                 setIsEnabled(res.data.isB2bEnabled);
+                setIsMaintenance(res.data.isMaintenanceMode);
             } else {
                 setIsEnabled(false);
+                setIsMaintenance(false);
             }
             setIsLoading(false);
         };
@@ -33,6 +36,25 @@ export default function ResellerLayout({ children }: { children: React.ReactNode
             <div className="min-h-screen bg-[#0a0a0a] flex flex-col items-center justify-center gap-6">
                 <Spinner color="warning" size="lg" />
                 <p className="text-slate-500 font-bold uppercase tracking-[0.3em] animate-pulse text-sm">Sécurisation du portail B2B...</p>
+            </div>
+        );
+    }
+
+    if (isMaintenance) {
+        return (
+            <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center p-6">
+                <div className="max-w-md w-full text-center space-y-8 animate-in fade-in zoom-in duration-500">
+                    <div className="size-24 rounded-[40px] bg-[#ec5b13]/10 border border-[#ec5b13]/20 flex items-center justify-center mx-auto shadow-2xl relative overflow-hidden group">
+                        <div className="absolute inset-0 bg-[#ec5b13]/5 group-hover:opacity-100 opacity-0 transition-opacity"></div>
+                        <Hammer className="size-12 text-[#ec5b13] relative z-10" />
+                    </div>
+                    <div className="space-y-4">
+                        <h1 className="text-3xl font-black text-white tracking-tight uppercase">Maintenance en cours</h1>
+                        <p className="text-slate-500 font-medium leading-relaxed">
+                            Nous effectuons des mises à jour pour améliorer votre expérience. Le portail reviendra dans quelques instants.
+                        </p>
+                    </div>
+                </div>
             </div>
         );
     }

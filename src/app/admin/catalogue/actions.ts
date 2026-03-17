@@ -6,6 +6,7 @@ import { categories, products, productVariants, productVariantSuppliers, digital
 import { revalidatePath } from "next/cache";
 import { withAuth } from "@/lib/security";
 import { z } from "zod";
+import { encrypt } from "@/lib/encryption";
 
 export const getPaginatedProducts = withAuth(
     {
@@ -370,7 +371,7 @@ export const bulkInsertCodes = withAuth(
             if (data.type === "STANDARD") {
                 if (data.codes.length === 0) return { success: true, count: 0 };
                 await db.insert(digitalCodes).values(
-                    data.codes.map(code => ({ variantId, code: code.trim(), status: "DISPONIBLE" as const }))
+                    data.codes.map(code => ({ variantId, code: encrypt(code.trim()), status: "DISPONIBLE" as const }))
                 );
                 return { success: true, count: data.codes.length };
             } else {
@@ -380,7 +381,7 @@ export const bulkInsertCodes = withAuth(
                         const fullCode = `${accountData.email} | ${accountData.password}`;
                         const [dc] = await tx.insert(digitalCodes).values({
                             variantId,
-                            code: fullCode,
+                            code: encrypt(fullCode),
                             status: "DISPONIBLE" as const,
                             isDebitCompleted: false
                         }).returning();
@@ -389,7 +390,7 @@ export const bulkInsertCodes = withAuth(
                             digitalCodeId: dc.id,
                             slotNumber: index + 1,
                             profileName: s.name || `Profil ${index + 1}`,
-                            code: s.code || null,
+                            code: s.code ? encrypt(s.code) : null,
                             status: "DISPONIBLE" as const
                         }));
 

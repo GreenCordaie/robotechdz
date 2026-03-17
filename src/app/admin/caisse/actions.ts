@@ -2,12 +2,15 @@
 
 import { db } from "@/db";
 import { orders, digitalCodes, digitalCodeSlots, orderItems, suppliers, supplierTransactions, productVariantSuppliers, clients, clientPayments, shopSettings } from "@/db/schema";
-import { eq, sql, desc, exists, and, inArray } from "drizzle-orm";
+import { eq, sql, desc, exists, and, inArray, count, gte } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { sendTelegramNotification } from "@/lib/telegram";
 import { triggerOrderDelivery } from "@/lib/delivery";
 import { withAuth } from "@/lib/security";
 import { z } from "zod";
+import { decrypt } from "@/lib/encryption";
+import { checkStockAndAlert } from "@/lib/stock-alerts";
+import { allocateOrderStock } from "@/lib/orders";
 
 export const findOrderByNumber = withAuth(
     {
@@ -45,13 +48,13 @@ export const findOrderByNumber = withAuth(
         const mappedItems = (result as any).items.map((item: any) => {
             return {
                 ...item,
-                fullCodes: (item.codes || []).map((c: any) => ({ id: c.id, code: c.code })),
+                fullCodes: (item.codes || []).map((c: any) => ({ id: c.id, code: decrypt(c.code) })),
                 fullSlots: (item.slots || []).map((s: any) => ({
                     id: s.id,
-                    code: s.code,
+                    code: decrypt(s.code),
                     slotNumber: s.slotNumber,
                     profileName: s.profileName,
-                    parentCode: s.digitalCode.code
+                    parentCode: decrypt(s.digitalCode.code)
                 }))
             };
         });
@@ -79,7 +82,7 @@ export const getPendingOrders = withAuth(
             ...order,
             items: (order.items || []).map((item: any) => ({
                 ...item,
-                codes: (item.codes || []).map((c: any) => c.code)
+                codes: (item.codes || []).map((c: any) => decrypt(c.code))
             }))
         }));
     }
@@ -105,7 +108,7 @@ export const payOrder = withAuth(
         const userId = user.id; // Fixed: Use ID from session, not argument
 
         try {
-            const txResult = await db.transaction(async (tx) => {
+            const result = await db.transaction(async (tx) => {
                 const order = await tx.query.orders.findFirst({
                     where: (table, { eq }) => eq(table.id, id)
                 });
@@ -152,158 +155,32 @@ export const payOrder = withAuth(
                     });
                 }
 
-                const items = await tx.query.orderItems.findMany({
-                    where: (table, { eq }) => eq(table.orderId, id),
+                // 3. Centralized Allocation
+                await allocateOrderStock(tx, id, {
+                    userId,
+                    itemSuppliers: options.itemSuppliers
+                });
+
+                // 4. Fetch Enriched Order for Frontend Return
+                return await tx.query.orders.findFirst({
+                    where: eq(orders.id, id),
                     with: {
-                        variant: {
+                        items: {
                             with: {
-                                product: true
+                                codes: true,
+                                slots: { with: { digitalCode: true } },
+                                variant: { with: { product: true } }
                             }
                         }
                     }
                 });
-
-                let hasManualDelivery = false;
-                for (const item of items) {
-                    let currentItemSlots: any[] = [];
-                    if (item.variant?.product?.isManualDelivery === false) {
-                        if (item.variant.isSharing) {
-                            const availableSlots = await tx.query.digitalCodeSlots.findMany({
-                                where: (dcs, { and, eq, exists }) => and(
-                                    eq(dcs.status, "DISPONIBLE"),
-                                    exists(
-                                        tx.select().from(digitalCodes)
-                                            .where(and(
-                                                eq(digitalCodes.id, dcs.digitalCodeId),
-                                                eq(digitalCodes.variantId, item.variantId),
-                                                eq(digitalCodes.status, "DISPONIBLE")
-                                            ))
-                                    )
-                                ),
-                                with: { digitalCode: true },
-                                limit: item.quantity,
-                                orderBy: (dcs, { asc }) => [asc(dcs.digitalCodeId), asc(dcs.slotNumber)]
-                            });
-
-                            if (availableSlots.length < item.quantity) {
-                                throw new Error(`Stock insuffisant`);
-                            }
-
-                            currentItemSlots = availableSlots;
-                            const slotIds = availableSlots.map(s => s.id);
-                            await tx.update(digitalCodeSlots)
-                                .set({ status: "VENDU", orderItemId: item.id })
-                                .where(inArray(digitalCodeSlots.id, slotIds));
-
-                            const parentCodeIds = Array.from(new Set(availableSlots.map(s => s.digitalCodeId)));
-                            for (const pid of parentCodeIds) {
-                                const remainingSlots = await tx.query.digitalCodeSlots.findMany({
-                                    where: (dcs, { and, eq }) => and(eq(dcs.digitalCodeId, pid), eq(dcs.status, "DISPONIBLE"))
-                                });
-                                if (remainingSlots.length === 0) {
-                                    await tx.update(digitalCodes).set({ status: "VENDU" }).where(eq(digitalCodes.id, pid));
-                                }
-                            }
-                        } else {
-                            const availableCodes = await tx.query.digitalCodes.findMany({
-                                where: (dc, { and, eq }) => and(
-                                    eq(dc.variantId, item.variantId),
-                                    eq(dc.status, "DISPONIBLE")
-                                ),
-                                limit: item.quantity
-                            });
-
-                            if (availableCodes.length < item.quantity) {
-                                throw new Error(`Stock insuffisant`);
-                            }
-
-                            const codeIds = availableCodes.map(c => c.id);
-                            await tx.update(digitalCodes)
-                                .set({ status: "VENDU", orderItemId: item.id })
-                                .where(inArray(digitalCodes.id, codeIds));
-                        }
-                    } else {
-                        hasManualDelivery = true;
-                    }
-
-                    // Handle supplier reconciliation
-                    let supplierId = (options?.itemSuppliers as any)?.[item.id];
-                    let purchasePrice: string | null = null;
-                    let currency: string = "USD";
-
-                    if (!supplierId) {
-                        const variantSuppliers = await tx.query.productVariantSuppliers.findFirst({
-                            where: (pvs, { eq }) => eq(pvs.variantId, item.variantId)
-                        });
-                        if (variantSuppliers) {
-                            supplierId = variantSuppliers.supplierId;
-                            purchasePrice = variantSuppliers.purchasePrice;
-                            currency = variantSuppliers.currency;
-                        }
-                    } else {
-                        const link = await tx.query.productVariantSuppliers.findFirst({
-                            where: (pvs, { and, eq }) => and(eq(pvs.variantId, item.variantId), eq(pvs.supplierId, supplierId))
-                        });
-                        if (link) {
-                            purchasePrice = link.purchasePrice;
-                            currency = link.currency;
-                        }
-                    }
-
-                    if (supplierId && purchasePrice) {
-                        const priceNum = parseFloat(purchasePrice);
-                        const qty = item.quantity;
-                        const supplier = await tx.query.suppliers.findFirst({
-                            where: (s, { eq }) => eq(s.id, supplierId)
-                        });
-
-                        if (supplier) {
-                            const EXCHANGE_RATE = 245;
-                            let amountToDebit = item.variant?.isSharing ? 0 : priceNum * qty;
-
-                            if (item.variant?.isSharing) {
-                                const uniqueParentIds = Array.from(new Set(currentItemSlots.map(s => s.digitalCodeId)));
-                                for (const pid of uniqueParentIds) {
-                                    const parent = await tx.query.digitalCodes.findFirst({ where: eq(digitalCodes.id, pid) });
-                                    if (parent && !parent.isDebitCompleted) {
-                                        amountToDebit += priceNum;
-                                        await tx.update(digitalCodes).set({ isDebitCompleted: true }).where(eq(digitalCodes.id, pid));
-                                    }
-                                }
-                            }
-
-                            if (amountToDebit > 0) {
-                                let cost = amountToDebit;
-                                if (supplier.currency !== currency) {
-                                    if (supplier.currency === 'DZD' && currency === 'USD') cost *= EXCHANGE_RATE;
-                                    else if (supplier.currency === 'USD' && currency === 'DZD') cost /= EXCHANGE_RATE;
-                                }
-
-                                await tx.update(suppliers).set({ balance: sql`${suppliers.balance} - ${cost}` }).where(eq(suppliers.id, supplierId));
-                                await tx.insert(supplierTransactions).values({
-                                    supplierId,
-                                    type: "ACHAT_STOCK",
-                                    amount: cost.toFixed(2),
-                                    currency: supplier.currency!,
-                                    reason: `Vente Caisse : ${item.name}`
-                                });
-                            }
-                            await tx.update(orderItems).set({ supplierId }).where(eq(orderItems.id, item.id));
-                        }
-                    }
-                }
-
-                if (!hasManualDelivery && status === "PAYE") {
-                    await tx.update(orders).set({ status: "TERMINE", isDelivered: true }).where(eq(orders.id, id));
-                }
-
-                return { hasManualDelivery };
             });
 
             revalidatePath("/admin/caisse");
+            revalidatePath("/admin/traitement");
             await triggerOrderDelivery(id);
 
-            return { success: true };
+            return { success: true, order: result };
         } catch (error) {
             return { success: false, error: (error as Error).message };
         }
@@ -325,29 +202,42 @@ export const updateOrderStatus = withAuth(
 export const getPaidOrders = withAuth(
     { roles: ["ADMIN", "CAISSIER"] },
     async () => {
-        const results = await db.query.orders.findMany({
-            where: (orders, { and, eq, inArray }) => and(
-                inArray(orders.status, ["PAYE", "LIVRE", "PARTIEL", "NON_PAYE"]),
-                eq(orders.isDelivered, false)
-            ),
-            with: {
-                items: {
-                    with: {
-                        codes: true,
-                        slots: { with: { digitalCode: true } }
+        try {
+            const results = await db.query.orders.findMany({
+                where: (orders, { and, eq, inArray }) => and(
+                    inArray(orders.status, ["PAYE", "LIVRE", "PARTIEL", "NON_PAYE"]),
+                    eq(orders.isDelivered, false)
+                ),
+                with: {
+                    items: {
+                        with: {
+                            codes: true,
+                            slots: { with: { digitalCode: true } }
+                        }
                     }
                 }
-            }
-        });
+            });
 
-        return (results as any[]).map(res => ({
-            ...res,
-            items: (res.items || []).map((item: any) => {
-                const standardCodes = (item.codes || []).map((c: any) => c.code);
-                const slotCodes = (item.slots || []).map((s: any) => `${s.digitalCode.code} | Profil ${s.slotNumber}`);
-                return { ...item, codes: [...standardCodes, ...slotCodes] };
-            })
-        }));
+            return (results as any[]).map(res => ({
+                ...res,
+                items: (res.items || []).map((item: any) => {
+                    const standardCodes = (item.codes || []).map((c: any) => {
+                        try { return decrypt(c.code); } catch { return "Error"; }
+                    });
+                    const slotCodes = (item.slots || []).map((s: any) => {
+                        try {
+                            return `${decrypt(s.digitalCode.code)} | Profil ${s.slotNumber}`;
+                        } catch {
+                            return "Error | Profil Error";
+                        }
+                    });
+                    return { ...item, codes: [...standardCodes, ...slotCodes] };
+                })
+            }));
+        } catch (error) {
+            console.error("getPaidOrders failed:", error);
+            return { success: false, error: "Failed to fetch paid orders" };
+        }
     }
 );
 
@@ -384,7 +274,29 @@ export const processOrder = withAuth(
 
             await triggerOrderDelivery(id);
             revalidatePath("/admin/caisse");
-            return { success: true };
+
+            const enrichedOrder = await db.query.orders.findFirst({
+                where: eq(orders.id, id),
+                with: {
+                    items: {
+                        with: {
+                            digitalCodes: true
+                        }
+                    },
+                    client: true
+                }
+            });
+
+            if (!enrichedOrder) throw new Error("Erreur de récupération de la commande validée");
+
+            const order = enrichedOrder as any;
+            return {
+                ...order,
+                items: order.items.map((item: any) => ({
+                    ...item,
+                    codes: item.digitalCodes.map((dc: any) => dc.code)
+                }))
+            };
         } catch (error) {
             return { error: (error as Error).message };
         }
@@ -394,33 +306,46 @@ export const processOrder = withAuth(
 export const getTodayOrders = withAuth(
     { roles: ["ADMIN", "CAISSIER"] },
     async () => {
-        const startOfDay = new Date();
-        startOfDay.setHours(0, 0, 0, 0);
+        try {
+            const startOfDay = new Date();
+            startOfDay.setHours(0, 0, 0, 0);
 
-        const results = await db.query.orders.findMany({
-            where: (orders, { gte }) => gte(orders.createdAt, startOfDay),
-            with: {
-                items: {
-                    with: {
-                        codes: true,
-                        slots: { with: { digitalCode: true } }
-                    }
+            const results = await db.query.orders.findMany({
+                where: (orders, { gte }) => gte(orders.createdAt, startOfDay),
+                with: {
+                    items: {
+                        with: {
+                            codes: true,
+                            slots: { with: { digitalCode: true } }
+                        }
+                    },
+                    client: true
                 },
-                client: true
-            },
-            orderBy: (orders, { desc }) => [desc(orders.createdAt)]
-        });
+                orderBy: (orders, { desc }) => [desc(orders.createdAt)]
+            });
 
-        return (results as any[]).map(res => ({
-            ...res,
-            nomComplet: res.client?.nomComplet || "Anonyme",
-            telephone: res.client?.telephone || res.customerPhone,
-            items: (res.items || []).map((item: any) => {
-                const standardCodes = (item.codes || []).map((c: any) => c.code);
-                const slotCodes = (item.slots || []).map((s: any) => `${s.digitalCode.code} | Profil ${s.slotNumber}`);
-                return { ...item, codes: [...standardCodes, ...slotCodes] };
-            })
-        }));
+            return (results as any[]).map(res => ({
+                ...res,
+                nomComplet: res.client?.nomComplet || "Anonyme",
+                telephone: res.client?.telephone || res.customerPhone,
+                items: (res.items || []).map((item: any) => {
+                    const standardCodes = (item.codes || []).map((c: any) => {
+                        try { return decrypt(c.code); } catch { return "Error"; }
+                    });
+                    const slotCodes = (item.slots || []).map((s: any) => {
+                        try {
+                            return `${decrypt(s.digitalCode.code)} | Profil ${s.slotNumber}`;
+                        } catch {
+                            return "Error | Profil Error";
+                        }
+                    });
+                    return { ...item, codes: [...standardCodes, ...slotCodes] };
+                })
+            }));
+        } catch (error) {
+            console.error("getTodayOrders failed:", error);
+            return { success: false, error: "Failed to fetch today orders" };
+        }
     }
 );
 
@@ -440,28 +365,41 @@ export const markOrderAsTermine = withAuth(
 export const getFinishedOrders = withAuth(
     { roles: ["ADMIN", "CAISSIER", "TRAITEUR"] },
     async () => {
-        const results = await db.query.orders.findMany({
-            where: (orders, { eq }) => eq(orders.status, "TERMINE"),
-            with: {
-                items: {
-                    with: {
-                        codes: true,
-                        slots: { with: { digitalCode: true } }
+        try {
+            const results = await db.query.orders.findMany({
+                where: (orders, { eq }) => eq(orders.status, "TERMINE"),
+                with: {
+                    items: {
+                        with: {
+                            codes: true,
+                            slots: { with: { digitalCode: true } }
+                        }
                     }
-                }
-            },
-            limit: 20,
-            orderBy: (orders, { desc }) => [desc(orders.createdAt)]
-        });
+                },
+                limit: 20,
+                orderBy: (orders, { desc }) => [desc(orders.createdAt)]
+            });
 
-        return (results as any[]).map(res => ({
-            ...res,
-            items: (res.items || []).map((item: any) => {
-                const standardCodes = (item.codes || []).map((c: any) => c.code);
-                const slotCodes = (item.slots || []).map((s: any) => `${s.digitalCode.code} | Profil ${s.slotNumber}`);
-                return { ...item, codes: [...standardCodes, ...slotCodes] };
-            })
-        }));
+            return (results as any[]).map(res => ({
+                ...res,
+                items: (res.items || []).map((item: any) => {
+                    const standardCodes = (item.codes || []).map((c: any) => {
+                        try { return decrypt(c.code); } catch { return "Error"; }
+                    });
+                    const slotCodes = (item.slots || []).map((s: any) => {
+                        try {
+                            return `${decrypt(s.digitalCode.code)} | Profil ${s.slotNumber}`;
+                        } catch {
+                            return "Error | Profil Error";
+                        }
+                    });
+                    return { ...item, codes: [...standardCodes, ...slotCodes] };
+                })
+            }));
+        } catch (error) {
+            console.error("getFinishedOrders failed:", error);
+            return { success: false, error: "Failed to fetch finished orders" };
+        }
     }
 );
 
@@ -594,7 +532,7 @@ export const refundFullOrder = withAuth(
 
                 if (!order) throw new Error("Commande introuvable");
 
-                for (const item of order.items) {
+                for (const item of (order as any).items) {
                     const status = returnToStock ? "DISPONIBLE" : "DEFECTUEUX";
                     await tx.update(digitalCodes).set({ status, orderItemId: null }).where(eq(digitalCodes.orderItemId, item.id));
                     await tx.update(digitalCodeSlots).set({ status, orderItemId: null }).where(eq(digitalCodeSlots.orderItemId, item.id));
@@ -649,5 +587,22 @@ export const cancelOrderAction = withAuth(
         } catch (error) {
             return { success: false, error: (error as Error).message };
         }
+    }
+);
+
+export const getPendingOrdersCount = withAuth(
+    { roles: ["ADMIN", "CAISSIER"] },
+    async () => {
+        const startOfDay = new Date();
+        startOfDay.setHours(0, 0, 0, 0);
+
+        const result = await db.select({ count: count() })
+            .from(orders)
+            .where(and(
+                eq(orders.status, "EN_ATTENTE"),
+                gte(orders.createdAt, startOfDay)
+            ));
+
+        return { count: result[0]?.count || 0 };
     }
 );

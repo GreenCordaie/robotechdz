@@ -152,7 +152,7 @@ export const AddMemberModal = ({ isOpen, onOpenChange }: AddMemberModalProps) =>
                                     <div className="relative group cursor-pointer" onClick={() => fileInputRef.current?.click()}>
                                         <div className="size-24 rounded-full overflow-hidden border-2 border-[#262626] bg-[#0a0a0a] flex items-center justify-center relative">
                                             {previewUrl ? (
-                                                <Image src={previewUrl} className="object-cover" alt="Avatar" fill />
+                                                <Image src={previewUrl} className="object-cover" alt="Avatar" fill sizes="80px" />
                                             ) : (
                                                 <Camera className="w-10 h-10 text-slate-700 group-hover:text-[#ec5b13] transition-colors" />
                                             )}

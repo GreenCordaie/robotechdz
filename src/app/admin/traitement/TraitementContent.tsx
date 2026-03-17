@@ -25,7 +25,7 @@ export default function TraitementContent() {
     const loadOrders = useCallback(async () => {
         setIsLoading(true);
         try {
-            const res: any = view === "pending" ? await getPaidOrders() : await getFinishedOrders();
+            const res: any = view === "pending" ? await getPaidOrders({}) : await getFinishedOrders({});
             if (res && res.success === false) {
                 toast.error("Erreur de sécurité : " + res.error);
                 setOrders([]);
@@ -43,7 +43,8 @@ export default function TraitementContent() {
     useEffect(() => {
         loadOrders();
         const interval = setInterval(async () => {
-            const data = view === "pending" ? await getPaidOrders() : await getFinishedOrders();
+            const res: any = view === "pending" ? await getPaidOrders({}) : await getFinishedOrders({});
+            const data = Array.isArray(res) ? res : [];
             setOrders(data);
 
             // Auto-Print Logic for Webhook-delivered orders
@@ -98,12 +99,12 @@ export default function TraitementContent() {
                 name: item.name,
                 codes: Array.from({ length: item.quantity }, (_, i) => codes[`${item.id}-${i}`])
             }));
-            const res: any = await processOrder(selectedOrder.id, itemsWithCodes);
+            const res: any = await processOrder({ id: selectedOrder.id, codesData: itemsWithCodes });
             if (res && !res.error) {
                 // Flatten codes for the detail view / receipt
                 const flattened = {
                     ...res,
-                    items: (res.items as any[]).map(item => ({
+                    items: res.items.map((item: any) => ({
                         ...item,
                         codes: item.codes
                     }))
@@ -112,9 +113,11 @@ export default function TraitementContent() {
                 loadOrders();
                 setSelectedOrder(null);
                 setCodes({});
-                if (selectedOrder.deliveryMethod === "TICKET") {
-                    setTimeout(() => window.print(), 300);
-                }
+
+                // Trigger auto-print
+                setTimeout(() => {
+                    window.print();
+                }, 1000);
             }
         } catch (error) {
             console.error("Process failed:", error);
@@ -142,7 +145,7 @@ export default function TraitementContent() {
         if (!confirm("Êtes-vous sûr de vouloir annuler/rembourser cette commande ? Cette action est irréversible et libérera les codes digitaux associés.")) return;
 
         try {
-            const res = await cancelOrderAction(orderId);
+            const res = await cancelOrderAction({ orderId });
             if (res.success) {
                 toast.success("Commande annulée avec succès");
                 setIsDetailModalOpen(false);

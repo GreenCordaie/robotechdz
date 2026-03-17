@@ -1,7 +1,7 @@
 "use server";
 
 import { db } from "@/db";
-import { orders, orderItems, products, digitalCodes } from "@/db/schema";
+import { orders, orderItems, products, digitalCodes, shopSettings } from "@/db/schema";
 import { eq, sql, and, gte, lte, desc, count, isNull } from "drizzle-orm";
 import { withAuth } from "@/lib/security";
 import { z } from "zod";
@@ -29,21 +29,19 @@ export const getDashboardStats = withAuth(
         }
 
         try {
-            // Turnover: Sum of total_amount for paid/delivered orders
-            const turnoverResult = await db.execute(sql`
-                SELECT SUM(CAST(total_amount AS DECIMAL)) as total 
-                FROM orders 
-                WHERE status IN ('PAYE', 'TERMINE', 'LIVRE', 'PARTIEL') 
-                AND created_at >= ${startDate}
-            `);
+            const turnoverResult = await db.select({ total: sql<string>`sum(total_amount)` })
+                .from(orders)
+                .where(and(
+                    sql`status IN ('PAYE', 'TERMINE', 'LIVRE', 'PARTIEL')`,
+                    gte(orders.createdAt, startDate)
+                ));
 
-            // Profit: Turnover minus cost (Simplified for now)
-            const profitResult = await db.execute(sql`
-                SELECT SUM(CAST(total_amount AS DECIMAL) * 0.15) as profit 
-                FROM orders 
-                WHERE status IN ('PAYE', 'TERMINE', 'LIVRE', 'PARTIEL') 
-                AND created_at >= ${startDate}
-            `);
+            const profitResult = await db.select({ profit: sql<string>`sum(total_amount * 0.15)` })
+                .from(orders)
+                .where(and(
+                    sql`status IN ('PAYE', 'TERMINE', 'LIVRE', 'PARTIEL')`,
+                    gte(orders.createdAt, startDate)
+                ));
 
             const ordersCount = await db.select({ count: count() })
                 .from(orders)
@@ -69,6 +67,29 @@ export const getDashboardStats = withAuth(
                 .from(orders)
                 .where(eq(orders.status, "EN_ATTENTE"));
 
+            const settings = await db.query.shopSettings.findFirst();
+
+            // Fetch revenue data for the last 7 days
+            const weekAgo = new Date();
+            weekAgo.setDate(weekAgo.getDate() - 7);
+            weekAgo.setHours(0, 0, 0, 0);
+
+            const dailyRevenueBuffer = await db.execute(sql`
+                SELECT 
+                    TO_CHAR(created_at, 'Dy') as day_name,
+                    SUM(CAST(total_amount AS NUMERIC)) as total_daily,
+                    MIN(created_at) as sort_date
+                FROM orders
+                WHERE created_at >= ${weekAgo} AND status IN ('PAYE', 'TERMINE', 'LIVRE', 'PARTIEL')
+                GROUP BY TO_CHAR(created_at, 'Dy')
+                ORDER BY sort_date ASC
+            `);
+
+            const revenueData = (dailyRevenueBuffer as any[]).map((row: any) => ({
+                name: row.day_name,
+                total: parseFloat(row.total_daily || "0")
+            }));
+
             return {
                 totalTurnover: Number(turnoverResult[0]?.total || 0),
                 turnoverChange: 12,
@@ -80,14 +101,15 @@ export const getDashboardStats = withAuth(
                 latestOrders: latestOrders,
                 stockAlerts: Number((lowStockAlerts[0] as any)?.count || 0),
                 openTicketsCount: 0,
-                revenueData: [
-                    { name: 'Lun', total: 4000 },
-                    { name: 'Mar', total: 3000 },
-                    { name: 'Mer', total: 5000 },
-                    { name: 'Jeu', total: 2780 },
-                    { name: 'Ven', total: 1890 },
-                    { name: 'Sam', total: 2390 },
-                    { name: 'Dim', total: 3490 },
+                isMaintenanceMode: !!settings?.isMaintenanceMode,
+                revenueData: revenueData.length > 0 ? revenueData : [
+                    { name: 'Lun', total: 0 },
+                    { name: 'Mar', total: 0 },
+                    { name: 'Mer', total: 0 },
+                    { name: 'Jeu', total: 0 },
+                    { name: 'Ven', total: 0 },
+                    { name: 'Sam', total: 0 },
+                    { name: 'Dim', total: 0 },
                 ],
                 notifications: []
             };

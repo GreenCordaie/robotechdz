@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { Eye, EyeOff, Package } from "lucide-react";
+import { Eye, EyeOff, Package, ShieldCheck } from "lucide-react";
 import { useAuthStore } from "@/store/useAuthStore";
 import { useRouter } from "next/navigation";
 import { loginAction } from "./actions";
@@ -9,9 +9,14 @@ import { loginAction } from "./actions";
 export default function LoginPage() {
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
+    const [websiteUrl, setWebsiteUrl] = useState(""); // Honeypot
     const [showPassword, setShowPassword] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+
+    const [mfaRequired, setMfaRequired] = useState(false);
+    const [tempUserId, setTempUserId] = useState<number | null>(null);
+    const [mfaCode, setMfaCode] = useState("");
 
     const setUser = useAuthStore((state) => state.setUser);
     const router = useRouter();
@@ -24,11 +29,16 @@ export default function LoginPage() {
         const formData = new FormData();
         formData.append("email", email);
         formData.append("password", password);
+        formData.append("website_url", websiteUrl);
 
         try {
             const result = await loginAction(formData);
             if (!result.success) {
                 setError(result.error || "Identifiants invalides");
+                setIsLoading(false);
+            } else if (result.mfaRequired) {
+                setMfaRequired(true);
+                setTempUserId(result.tempUserId!);
                 setIsLoading(false);
             } else {
                 if (result.user) {
@@ -38,6 +48,28 @@ export default function LoginPage() {
             }
         } catch (err: any) {
             setError("Une erreur est survenue");
+            setIsLoading(false);
+        }
+    };
+
+    const handleMfaSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!tempUserId) return;
+        setIsLoading(true);
+        setError(null);
+
+        try {
+            const { verifyMfaAction } = await import("./actions");
+            const result = await verifyMfaAction(tempUserId, mfaCode);
+            if (result.success) {
+                if (result.user) setUser(result.user);
+                router.push("/admin");
+            } else {
+                setError(result.error || "Code invalide");
+                setIsLoading(false);
+            }
+        } catch (err) {
+            setError("Erreur de validation");
             setIsLoading(false);
         }
     };
@@ -65,72 +97,129 @@ export default function LoginPage() {
                     {/* END: Header Section */}
 
                     {/* BEGIN: LoginForm */}
-                    <form onSubmit={handleSubmit} className="space-y-5">
-                        {/* Email Field */}
-                        <div className="flex flex-col">
-                            <label className="text-sm font-medium text-slate-400 mb-2 ml-1" htmlFor="email">Adresse Email</label>
-                            <input
-                                className="w-full bg-[#0a0a0a] border-[#262626] rounded-xl p-4 text-white focus:border-[#ec5b13] focus:ring-2 focus:ring-[#ec5b13]/10 transition-all placeholder:text-slate-600 outline-none"
-                                id="email"
-                                name="email"
-                                placeholder="admin@flexbox.dz"
-                                required
-                                type="email"
-                                value={email}
-                                onChange={(e) => setEmail(e.target.value)}
-                            />
-                        </div>
-
-                        {/* Password Field */}
-                        <div className="flex flex-col relative">
-                            <label className="text-sm font-medium text-slate-400 mb-2 ml-1" htmlFor="password">Mot de passe</label>
-                            <div className="relative">
+                    {!mfaRequired ? (
+                        <form onSubmit={handleSubmit} className="space-y-5">
+                            {/* Honeypot Field (Visualy hidden) */}
+                            <div className="absolute opacity-0 -z-50 pointer-events-none h-0 w-0 overflow-hidden">
                                 <input
-                                    className="w-full bg-[#0a0a0a] border-[#262626] rounded-xl p-4 text-white focus:border-[#ec5b13] focus:ring-2 focus:ring-[#ec5b13]/10 transition-all placeholder:text-slate-600 pr-12 outline-none"
-                                    id="password"
-                                    name="password"
-                                    placeholder="••••••••"
+                                    type="text"
+                                    name="website_url"
+                                    tabIndex={-1}
+                                    autoComplete="off"
+                                    value={websiteUrl}
+                                    onChange={(e) => setWebsiteUrl(e.target.value)}
+                                />
+                            </div>
+
+                            {/* Email Field */}
+                            <div className="flex flex-col">
+                                <label className="text-sm font-medium text-slate-400 mb-2 ml-1" htmlFor="email">Adresse Email</label>
+                                <input
+                                    className="w-full bg-[#0a0a0a] border-[#262626] rounded-xl p-4 text-white focus:border-[#ec5b13] focus:ring-2 focus:ring-[#ec5b13]/10 transition-all placeholder:text-slate-600 outline-none"
+                                    id="email"
+                                    name="email"
+                                    placeholder="admin@flexbox.dz"
                                     required
-                                    type={showPassword ? "text" : "password"}
-                                    value={password}
-                                    onChange={(e) => setPassword(e.target.value)}
+                                    type="email"
+                                    value={email}
+                                    onChange={(e) => setEmail(e.target.value)}
                                 />
-                                {/* Password Visibility Toggle */}
-                                <button
-                                    className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors p-1"
-                                    type="button"
-                                    onClick={() => setShowPassword(!showPassword)}
-                                >
-                                    {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
-                                </button>
                             </div>
-                        </div>
 
-                        {/* Options Section */}
-                        <div className="flex items-center justify-between mt-2 px-1">
-                            <div className="flex items-center">
+                            {/* Password Field */}
+                            <div className="flex flex-col relative">
+                                <label className="text-sm font-medium text-slate-400 mb-2 ml-1" htmlFor="password">Mot de passe</label>
+                                <div className="relative">
+                                    <input
+                                        className="w-full bg-[#0a0a0a] border-[#262626] rounded-xl p-4 text-white focus:border-[#ec5b13] focus:ring-2 focus:ring-[#ec5b13]/10 transition-all placeholder:text-slate-600 pr-12 outline-none"
+                                        id="password"
+                                        name="password"
+                                        placeholder="••••••••"
+                                        required
+                                        type={showPassword ? "text" : "password"}
+                                        value={password}
+                                        onChange={(e) => setPassword(e.target.value)}
+                                    />
+                                    {/* Password Visibility Toggle */}
+                                    <button
+                                        className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors p-1"
+                                        type="button"
+                                        onClick={() => setShowPassword(!showPassword)}
+                                    >
+                                        {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Options Section */}
+                            <div className="flex items-center justify-between mt-2 px-1">
+                                <div className="flex items-center">
+                                    <input
+                                        className="h-4 w-4 rounded border-[#262626] bg-[#0a0a0a] text-[#ec5b13] focus:ring-[#ec5b13] focus:ring-offset-0 transition-all cursor-pointer"
+                                        id="remember-me"
+                                        name="remember-me"
+                                        type="checkbox"
+                                    />
+                                    <label className="ml-2 block text-sm text-slate-400 cursor-pointer hover:text-slate-300 transition-colors" htmlFor="remember-me">Se souvenir de moi</label>
+                                </div>
+                                <div className="text-sm font-semibold">
+                                    <a className="text-[#ec5b13] hover:text-[#ff742d] transition-colors" href="#">Mot de passe oublié ?</a>
+                                </div>
+                            </div>
+
+                            {error && <p className="text-red-500 text-xs text-center font-bold">{error}</p>}
+
+                            {/* Submit Button */}
+                            <button
+                                className={`w-full flex justify-center py-4 px-4 border border-transparent rounded-xl shadow-lg text-base font-bold text-white bg-[#ec5b13] hover:bg-[#ff742d] active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-[#161616] focus:ring-[#ec5b13] transition-all duration-200 mt-4 disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100 ${isLoading ? "animate-pulse" : ""}`}
+                                type="submit"
+                                disabled={isLoading}
+                            >
+                                {isLoading ? "Connexion en cours..." : "Se Connecter"}
+                            </button>
+                        </form>
+                    ) : (
+                        <form onSubmit={handleMfaSubmit} className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
+                            <div className="text-center space-y-2">
+                                <div className="size-12 bg-emerald-500/10 rounded-full flex items-center justify-center mx-auto mb-4 border border-emerald-500/20">
+                                    <ShieldCheck className="text-emerald-500 size-6" />
+                                </div>
+                                <h2 className="text-lg font-bold text-white uppercase tracking-widest">Vérification 2FA</h2>
+                                <p className="text-xs text-slate-400">Entrez le code généré par votre application d&apos;authentification.</p>
+                            </div>
+
+                            <div className="flex flex-col">
                                 <input
-                                    className="h-4 w-4 rounded border-[#262626] bg-[#0a0a0a] text-[#ec5b13] focus:ring-[#ec5b13] focus:ring-offset-0 transition-all cursor-pointer"
-                                    id="remember-me"
-                                    name="remember-me"
-                                    type="checkbox"
+                                    className="w-full bg-[#0a0a0a] border-[#262626] rounded-xl p-4 text-center font-mono text-2xl tracking-[0.5em] text-[#ec5b13] focus:border-[#ec5b13] focus:ring-2 focus:ring-[#ec5b13]/10 transition-all outline-none"
+                                    type="text"
+                                    maxLength={6}
+                                    placeholder="000000"
+                                    required
+                                    autoFocus
+                                    value={mfaCode}
+                                    onChange={(e) => setMfaCode(e.target.value)}
                                 />
-                                <label className="ml-2 block text-sm text-slate-400 cursor-pointer hover:text-slate-300 transition-colors" htmlFor="remember-me">Se souvenir de moi</label>
                             </div>
-                            <div className="text-sm font-semibold">
-                                <a className="text-[#ec5b13] hover:text-[#ff742d] transition-colors" href="#">Mot de passe oublié ?</a>
-                            </div>
-                        </div>
 
-                        {/* Submit Button */}
-                        <button
-                            className={`w-full flex justify-center py-4 px-4 border border-transparent rounded-xl shadow-lg text-base font-bold text-white bg-[#ec5b13] hover:bg-[#ff742d] active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-[#161616] focus:ring-[#ec5b13] transition-all duration-200 mt-4 disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100 ${isLoading ? "animate-pulse" : ""}`}
-                            type="submit"
-                            disabled={isLoading}
-                        >
-                            {isLoading ? "Connexion en cours..." : "Se Connecter"}
-                        </button>
-                    </form>
+                            {error && <p className="text-red-500 text-xs text-center font-bold">{error}</p>}
+
+                            <button
+                                className={`w-full flex justify-center py-4 px-4 border border-transparent rounded-xl shadow-lg text-base font-bold text-white bg-[#ec5b13] hover:bg-[#ff742d] active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-[#161616] focus:ring-[#ec5b13] transition-all duration-200 disabled:opacity-50 ${isLoading ? "animate-pulse" : ""}`}
+                                type="submit"
+                                disabled={isLoading || mfaCode.length !== 6}
+                            >
+                                {isLoading ? "Vérification..." : "Vérifier le code"}
+                            </button>
+
+                            <button
+                                type="button"
+                                onClick={() => setMfaRequired(false)}
+                                className="w-full text-[10px] text-slate-500 hover:text-slate-300 font-bold uppercase tracking-widest transition-colors"
+                            >
+                                Retour à la connexion
+                            </button>
+                        </form>
+                    )}
                     {/* END: LoginForm */}
                 </div>
                 {/* END: Central Card */}

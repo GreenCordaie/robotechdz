@@ -59,6 +59,7 @@ interface DashboardContentProps {
         openTicketsCount: number;
         revenueData: { name: string; total: number }[];
         notifications: any[];
+        isMaintenanceMode: boolean;
     };
 }
 
@@ -87,7 +88,7 @@ export default function DashboardContent({ stats }: DashboardContentProps) {
     const handleCancelOrder = async (orderId: number) => {
         if (!confirm("Êtes-vous sûr de vouloir annuler/rembourser cette commande ? Cette action est irréversible.")) return;
         try {
-            const res = await cancelOrderAction(orderId);
+            const res = await cancelOrderAction({ orderId });
             if (res.success) {
                 toast.success("Commande annulée");
                 setIsDetailModalOpen(false);
@@ -106,6 +107,29 @@ export default function DashboardContent({ stats }: DashboardContentProps) {
     );
     return (
         <div className="flex-1 space-y-8 bg-[#0a0a0a] min-h-full">
+
+            {stats.isMaintenanceMode && (
+                <div className="bg-red-500/20 border-2 border-red-500 p-4 rounded-2xl flex items-center justify-between animate-pulse shadow-lg shadow-red-500/10">
+                    <div className="flex items-center gap-4">
+                        <div className="size-12 rounded-xl bg-red-500 flex items-center justify-center text-white">
+                            <AlertTriangle className="w-6 h-6" />
+                        </div>
+                        <div>
+                            <h3 className="text-lg font-bold text-red-100 uppercase tracking-tighter">Mode Maintenance Actif</h3>
+                            <p className="text-sm text-red-200/70 font-medium">Tous les accès non-administrateurs sont bloqués. Le système est en sécurité mode.</p>
+                        </div>
+                    </div>
+                    <Button
+                        as={Link}
+                        href="/admin/settings"
+                        variant="flat"
+                        color="danger"
+                        className="font-bold uppercase tracking-widest text-[10px]"
+                    >
+                        Accéder aux réglages
+                    </Button>
+                </div>
+            )}
 
             {/* Header matches Stitch structure */}
             <header className="flex items-center justify-between">
@@ -239,7 +263,7 @@ export default function DashboardContent({ stats }: DashboardContentProps) {
                     <div>
                         <h3 className="text-lg font-bold text-white tracking-tight">Évolution des Ventes</h3>
                         <div className="flex items-center gap-2 mt-1">
-                            <span className="text-3xl font-black text-white tracking-tighter">{formatCurrency(840000, 'DZD')}</span>
+                            <span className="text-3xl font-black text-white tracking-tighter">{formatCurrency(stats.totalTurnover, 'DZD')}</span>
                             <span className="text-green-500 font-bold text-sm flex items-center gap-1">
                                 <TrendingUp className="w-4 h-4" /> +8.4%
                             </span>

@@ -45,7 +45,7 @@ export const ManageCategoriesModal = ({ isOpen, onClose, categories, onEdit }: M
 
         setIsDeleting(id);
         try {
-            const res = await deleteCategoryAction(id);
+            const res = await deleteCategoryAction({ id });
             if (res.success) {
                 toast.success("Catégorie supprimée");
             } else {
@@ -102,7 +102,7 @@ export const ManageCategoriesModal = ({ isOpen, onClose, categories, onEdit }: M
                                                 <div className="flex justify-center">
                                                     {cat.imageUrl ? (
                                                         <div className="size-10 rounded-lg overflow-hidden border border-white/5 relative">
-                                                            <Image src={cat.imageUrl} alt={cat.name} className="object-cover" fill />
+                                                            <Image src={cat.imageUrl} alt={cat.name} className="object-cover" fill sizes="40px" />
                                                         </div>
                                                     ) : (
                                                         <div className="size-10 rounded-lg bg-[#262626] flex items-center justify-center border border-white/5">

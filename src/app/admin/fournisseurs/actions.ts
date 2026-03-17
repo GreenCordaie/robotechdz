@@ -4,7 +4,7 @@ import { db } from "@/db";
 import { suppliers, supplierTransactions } from "@/db/schema";
 import { eq, desc, sql, and } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { withAuth } from "@/lib/security";
+import { withAuth, logSecurityAction } from "@/lib/security";
 import { z } from "zod";
 
 export const getSuppliersAction = withAuth(
@@ -81,5 +81,77 @@ export const deleteSupplierAction = withAuth(
         await db.delete(suppliers).where(eq(suppliers.id, id));
         revalidatePath("/admin/fournisseurs");
         return { success: true };
+    }
+);
+
+export const archiveSupplierAction = withAuth(
+    {
+        roles: ["ADMIN"],
+        schema: z.object({ id: z.number() })
+    },
+    async ({ id }) => {
+        await db.update(suppliers).set({ status: "INACTIVE" }).where(eq(suppliers.id, id));
+        revalidatePath("/admin/fournisseurs");
+        return { success: true };
+    }
+);
+
+export const rechargeSupplier = rechargeSupplierAction;
+
+export const adjustSupplierAction = withAuth(
+    {
+        roles: ["ADMIN"],
+        schema: z.object({
+            id: z.number(),
+            data: z.object({
+                name: z.string().optional(),
+                forcedBalance: z.string().optional(),
+                reason: z.string().min(1)
+            })
+        })
+    },
+    async ({ id, data }, user) => {
+        try {
+            await db.transaction(async (tx) => {
+                const supplier = await tx.query.suppliers.findFirst({ where: eq(suppliers.id, id) });
+                if (!supplier) throw new Error("Fournisseur introuvable");
+
+                const updatePayload: any = {};
+                if (data.name) updatePayload.name = data.name;
+
+                if (data.forcedBalance !== undefined) {
+                    const oldBalance = supplier.balance;
+                    updatePayload.balance = data.forcedBalance;
+
+                    // Log this adjustment specifically
+                    await tx.insert(supplierTransactions).values({
+                        supplierId: id,
+                        type: "AJUSTEMENT",
+                        amount: (parseFloat(data.forcedBalance) - parseFloat(oldBalance || "0")).toString(),
+                        currency: supplier.currency || "USD",
+                        reason: `Correction manuelle : ${data.reason}`
+                    });
+
+                    // Log to central Audit Log
+                    await logSecurityAction({
+                        userId: user.id,
+                        action: "SUPPLIER_BALANCE_ADJUST",
+                        entityType: "SUPPLIER",
+                        entityId: id.toString(),
+                        oldData: { balance: oldBalance },
+                        newData: { balance: data.forcedBalance, reason: data.reason }
+                    });
+                }
+
+                if (Object.keys(updatePayload).length > 0) {
+                    await tx.update(suppliers).set(updatePayload).where(eq(suppliers.id, id));
+                }
+            });
+
+            revalidatePath("/admin/fournisseurs");
+            return { success: true };
+        } catch (error) {
+            return { success: false, error: (error as Error).message };
+        }
     }
 );

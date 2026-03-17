@@ -1,12 +1,15 @@
 "use server";
 
 import { db } from "@/db";
-import { shopSettings, users, resellers, resellerWallets, resellerTransactions } from "@/db/schema";
+import { shopSettings, users, resellers, resellerWallets, resellerTransactions, auditLogs } from "@/db/schema";
 import { eq, desc, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { withAuth } from "@/lib/security";
+import { withAuth, logSecurityAction } from "@/lib/security";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
+import crypto from "crypto";
+import { generateSecret, generateURI, verify } from "otplib";
+import { encrypt, decrypt } from "@/lib/encryption";
 
 // Helper to get settings (internal)
 async function getSettingsInternal() {
@@ -27,6 +30,22 @@ export const getShopSettingsAction = withAuth(
         return { success: true, data: settings };
     }
 );
+
+export async function getPublicSettingsAction() {
+    try {
+        const settings = await db.query.shopSettings.findFirst();
+        return {
+            success: true,
+            data: {
+                isB2bEnabled: !!settings?.isB2bEnabled,
+                isMaintenanceMode: !!settings?.isMaintenanceMode,
+                shopName: settings?.shopName || "FLEXBOX DIRECT"
+            }
+        };
+    } catch (error) {
+        return { success: false, error: "Failed to fetch public settings" };
+    }
+}
 
 export const saveShopSettingsAction = withAuth(
     {
@@ -56,11 +75,24 @@ export const saveShopSettingsAction = withAuth(
             isB2bEnabled: z.boolean().optional(),
             defaultResellerDiscount: z.string().optional(),
             minResellerRecharge: z.string().optional(),
+            isMaintenanceMode: z.boolean().optional(),
+            allowedIps: z.string().nullable().optional(),
         })
     },
-    async (data) => {
+    async (data, user) => {
         const settings = await getSettingsInternal();
+        const oldData = { ...settings };
         await db.update(shopSettings).set(data).where(eq(shopSettings.id, settings.id));
+
+        await logSecurityAction({
+            userId: user.id,
+            action: "UPDATE_SETTINGS",
+            entityType: "SHOP_SETTINGS",
+            entityId: settings.id.toString(),
+            oldData,
+            newData: data
+        });
+
         revalidatePath("/admin/settings");
         return { success: true };
     }
@@ -78,7 +110,7 @@ export const addUserAction = withAuth(
             avatarUrl: z.string().nullable().optional()
         })
     },
-    async (data) => {
+    async (data, admin) => {
         const existing = await db.query.users.findFirst({ where: eq(users.email, data.email) });
         if (existing) return { success: false, error: "Email déjà utilisé" };
 
@@ -86,13 +118,21 @@ export const addUserAction = withAuth(
         const pinValue = data.pinCode || "0000";
         const pinHash = await bcrypt.hash(pinValue, 10);
 
-        await db.insert(users).values({
+        const [newUser] = await db.insert(users).values({
             nom: data.nom,
             email: data.email,
             passwordHash,
             role: data.role,
             pinCode: pinHash,
             avatarUrl: data.avatarUrl
+        }).returning();
+
+        await logSecurityAction({
+            userId: admin.id,
+            action: "CREATE_USER",
+            entityType: "USER",
+            entityId: newUser.id.toString(),
+            newData: { nom: data.nom, email: data.email, role: data.role }
         });
 
         revalidatePath("/admin/settings");
@@ -126,7 +166,8 @@ export const updateUserAction = withAuth(
             })
         })
     },
-    async ({ id, data }) => {
+    async ({ id, data }, admin) => {
+        const [oldUser] = await db.select().from(users).where(eq(users.id, id)).limit(1);
         const updateValues: any = { ...data };
         if (data.password) {
             updateValues.passwordHash = await bcrypt.hash(data.password, 10);
@@ -137,6 +178,16 @@ export const updateUserAction = withAuth(
         }
 
         await db.update(users).set(updateValues).where(eq(users.id, id));
+
+        await logSecurityAction({
+            userId: admin.id,
+            action: "UPDATE_USER",
+            entityType: "USER",
+            entityId: id.toString(),
+            oldData: oldUser ? { nom: oldUser.nom, email: oldUser.email, role: oldUser.role } : null,
+            newData: { nom: data.nom, email: data.email, role: data.role }
+        });
+
         revalidatePath("/admin/settings");
         return { success: true };
     }
@@ -149,7 +200,18 @@ export const deleteUserAction = withAuth(
     },
     async ({ id }, currentUser) => {
         if (id === currentUser.id) return { success: false, error: "Auto-suppression interdite" };
+        const [targetUser] = await db.select().from(users).where(eq(users.id, id)).limit(1);
+
         await db.delete(users).where(eq(users.id, id));
+
+        await logSecurityAction({
+            userId: currentUser.id,
+            action: "DELETE_USER",
+            entityType: "USER",
+            entityId: id.toString(),
+            oldData: targetUser ? { nom: targetUser.nom, email: targetUser.email, role: targetUser.role } : null
+        });
+
         revalidatePath("/admin/settings");
         return { success: true };
     }
@@ -252,4 +314,127 @@ export const setTelegramWebhookAction = withAuth(
 export const testWhatsAppAction = withAuth(
     { roles: ["ADMIN"], schema: z.object({ token: z.string(), phoneId: z.string() }) },
     async () => ({ success: true })
+);
+
+export const getAuditLogsAction = withAuth(
+    { roles: ["ADMIN"] },
+    async () => {
+        try {
+            const logs = await db.query.auditLogs.findMany({
+                orderBy: [desc(auditLogs.createdAt)],
+                limit: 100,
+                with: {
+                    user: true
+                }
+            });
+            return { success: true, data: logs };
+        } catch (error) {
+            console.error("Audit Log Fetch Error:", error);
+            return { success: false, error: "Erreur lors de la lecture des logs d'audit. Vérifiez la base de données." };
+        }
+    }
+);
+
+export const generateBackupCodesAction = withAuth(
+    { roles: ["ADMIN"] },
+    async (_, user) => {
+        const codes = Array.from({ length: 10 }, () =>
+            crypto.randomBytes(4).toString("hex").toUpperCase()
+        );
+
+        await db.update(users)
+            .set({ mfaBackupCodes: encrypt(JSON.stringify(codes)) })
+            .where(eq(users.id, user.id));
+
+        await logSecurityAction({
+            userId: user.id,
+            action: "GENERATE_BACKUP_CODES",
+            entityType: "USER",
+            entityId: user.id.toString()
+        });
+
+        return { success: true, data: codes };
+    }
+);
+
+export const generateMfaSecretAction = withAuth(
+    { roles: ["ADMIN"] },
+    async (_, user) => {
+        const secret = generateSecret();
+        const otpauth = generateURI({
+            secret,
+            label: user.email,
+            issuer: "FLEXBOX DIRECT"
+        });
+        return { success: true, data: { secret, otpauth } };
+    }
+);
+
+export const enableMfaAction = withAuth(
+    {
+        roles: ["ADMIN"],
+        schema: z.object({
+            secret: z.string(),
+            code: z.string().length(6)
+        })
+    },
+    async ({ secret, code }, user) => {
+        const isValid = verify({ token: code, secret });
+        if (!isValid) return { success: false, error: "Code invalide" };
+
+        await db.update(users)
+            .set({ twoFactorSecret: encrypt(secret) })
+            .where(eq(users.id, user.id));
+
+        await logSecurityAction({
+            userId: user.id,
+            action: "ENABLE_MFA",
+            entityType: "USER",
+            entityId: user.id.toString()
+        });
+
+        return { success: true };
+    }
+);
+
+export const disableMfaAction = withAuth(
+    { roles: ["ADMIN"] },
+    async (_, user) => {
+        await db.update(users)
+            .set({ twoFactorSecret: null })
+            .where(eq(users.id, user.id));
+
+        await logSecurityAction({
+            userId: user.id,
+            action: "DISABLE_MFA",
+            entityType: "USER",
+            entityId: user.id.toString()
+        });
+
+        return { success: true };
+    }
+);
+export const exportAuditLogsAction = withAuth(
+    { roles: ["ADMIN"] },
+    async (_, user) => {
+        try {
+            const logs = await db.query.auditLogs.findMany({
+                orderBy: [desc(auditLogs.createdAt)],
+                with: {
+                    user: true
+                }
+            });
+
+            await logSecurityAction({
+                userId: user.id,
+                action: "EXPORT_AUDIT_LOGS",
+                entityType: "SECURITY",
+            });
+
+            return { success: true, data: logs };
+        } catch (error) {
+            console.error("Audit Log Export Error:", error);
+            return { success: false, error: "Erreur lors de l'exportation des logs" };
+        }
+    }
 );

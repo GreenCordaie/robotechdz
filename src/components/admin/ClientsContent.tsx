@@ -96,7 +96,7 @@ export default function ClientsContent({ initialStats, initialClients }: Clients
 
     // Polling or refresh logic
     const refreshData = React.useCallback(async () => {
-        const indebted = await getIndebtedClients();
+        const indebted = await getIndebtedClients({});
         if (Array.isArray(indebted)) {
             setClients(indebted);
         } else {

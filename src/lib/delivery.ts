@@ -1,5 +1,6 @@
 import { sendWhatsAppMessage } from "@/lib/whatsapp";
 import { db } from "@/db";
+import { decrypt } from "@/lib/encryption";
 
 export async function triggerOrderDelivery(orderId: number) {
     const order = await db.query.orders.findFirst({
@@ -29,12 +30,12 @@ export async function triggerOrderDelivery(orderId: number) {
 
     let messageBody = `🎉 Merci pour votre achat !\nVoici votre commande ${order.orderNumber} :\n\n`;
 
-    order.items.forEach(item => {
-        const standardCodes = (item.codes || []).map(c => c.code);
-        const slotCodes = (item.slots || []).map(s => {
-            const [email, pass] = s.digitalCode.code.split(' | ');
+    (order as any).items.forEach((item: any) => {
+        const standardCodes = (item.codes || []).map((c: any) => decrypt(c.code));
+        const slotCodes = (item.slots || []).map((s: any) => {
+            const [email, pass] = decrypt(s.digitalCode.code).split(' | ');
             const base = `Compte: ${email} | Pass: ${pass} | Profil: ${s.profileName || `Profil ${s.slotNumber}`}`;
-            return s.code ? `${base} | PIN: ${s.code}` : base;
+            return s.code ? `${base} | PIN: ${decrypt(s.code)}` : base;
         });
         const allCodes = [...standardCodes, ...slotCodes];
 

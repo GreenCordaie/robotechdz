@@ -150,7 +150,7 @@ export const EditMemberModal = ({ isOpen, onOpenChange, member, onSuccess }: Edi
                                     <div className="relative group cursor-pointer" onClick={() => fileInputRef.current?.click()}>
                                         <div className="size-24 rounded-full overflow-hidden border-2 border-[#262626] bg-[#0a0a0a] flex items-center justify-center relative">
                                             {previewUrl ? (
-                                                <Image src={previewUrl} className="object-cover" alt="Avatar" fill />
+                                                <Image src={previewUrl} className="object-cover" alt="Avatar" fill sizes="40px" />
                                             ) : (
                                                 <div className="bg-zinc-800 w-full h-full flex items-center justify-center text-2xl font-bold text-slate-500">
                                                     {fullName.substring(0, 2).toUpperCase()}

@@ -164,6 +164,9 @@ export const users = pgTable("users", {
     pinCode: text("pin_code").notNull(),
     role: userRoleEnum("role").default("CAISSIER").notNull(),
     avatarUrl: text("avatar_url"),
+    twoFactorSecret: text("two_factor_secret"),
+    mfaBackupCodes: text("mfa_backup_codes"), // Store as encrypted JSON array
+    lastActiveAt: timestamp("last_active_at", { mode: 'date' }).defaultNow(),
     createdAt: timestamp("created_at", { mode: 'date' }).defaultNow(),
 });
 
@@ -193,6 +196,8 @@ export const shopSettings = pgTable("shop_settings", {
     isB2bEnabled: boolean("is_b2b_enabled").default(false).notNull(),
     defaultResellerDiscount: numeric("default_reseller_discount", { precision: 5, scale: 2 }).default("5.00"),
     minResellerRecharge: numeric("min_reseller_recharge", { precision: 12, scale: 2 }).default("1000.00"),
+    isMaintenanceMode: boolean("is_maintenance_mode").default(false).notNull(),
+    allowedIps: text("allowed_ips"),
 });
 
 export const resellers = pgTable("resellers", {
@@ -249,6 +254,25 @@ export const productVariantSuppliers = pgTable("product_variant_suppliers", {
     return {
         variantIdIdx: index("pvs_variant_id_idx").on(table.variantId),
         supplierIdIdx: index("pvs_supplier_id_idx").on(table.supplierId),
+    };
+});
+
+export const auditLogs = pgTable("audit_logs", {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id").references(() => users.id, { onDelete: "set null" }),
+    action: text("action").notNull(), // ex: 'UPDATE_PRICE', 'LOGIN_SUCCESS', 'WALLET_RECHARGE'
+    entityType: text("entity_type"), // ex: 'PRODUCT', 'RESELLER', 'USER'
+    entityId: text("entity_id"),
+    oldData: jsonb("old_data"),
+    newData: jsonb("new_data"),
+    ipAddress: text("ip_address"),
+    userAgent: text("user_agent"),
+    createdAt: timestamp("created_at", { mode: 'date' }).defaultNow().notNull(),
+}, (table) => {
+    return {
+        userIdIdx: index("al_user_id_idx").on(table.userId),
+        actionIdx: index("al_action_idx").on(table.action),
+        createdAtIdx: index("al_created_at_idx").on(table.createdAt),
     };
 });
 
@@ -411,5 +435,12 @@ export const ordersRelationsB2b = relations(orders, ({ one }) => ({
     reseller: one(resellers, {
         fields: [orders.resellerId],
         references: [resellers.id],
+    }),
+}));
+
+export const auditLogsRelations = relations(auditLogs, ({ one }) => ({
+    user: one(users, {
+        fields: [auditLogs.userId],
+        references: [users.id],
     }),
 }));

@@ -75,8 +75,8 @@ export const AddCategoryModal = ({ isOpen, onClose, categoryToEdit }: AddCategor
             }
 
             const res = categoryToEdit
-                ? await updateCategoryAction(categoryToEdit.id, name, imageUrl)
-                : await createCategoryAction(name, imageUrl);
+                ? await updateCategoryAction({ id: categoryToEdit.id, name, imageUrl })
+                : await createCategoryAction({ name, imageUrl });
 
             if (res.success) {
                 toast.success(categoryToEdit ? "Catégorie modifiée avec succès" : "Catégorie créée avec succès");
@@ -145,7 +145,7 @@ export const AddCategoryModal = ({ isOpen, onClose, categoryToEdit }: AddCategor
                                     className="aspect-video border-2 border-dashed border-[#262626] bg-[#0a0a0a] rounded-xl flex flex-col items-center justify-center gap-2 cursor-pointer hover:border-[#ec5b13]/50 transition-all group overflow-hidden relative"
                                 >
                                     {previewUrl ? (
-                                        <Image src={previewUrl} className="object-cover" alt="Preview" fill />
+                                        <Image src={previewUrl} className="object-cover" alt="Preview" fill sizes="(max-width: 768px) 100vw, 400px" />
                                     ) : (
                                         <>
                                             <span className="material-symbols-outlined text-slate-500 text-3xl group-hover:scale-110 transition-transform">add_photo_alternate</span>

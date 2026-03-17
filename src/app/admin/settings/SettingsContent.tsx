@@ -14,18 +14,30 @@ import {
     Loader2,
     Palette,
     Store,
-    Wallet,
     Percent,
     AlertTriangle,
     Coins,
-    Building2
+    Building2,
+    Users,
+    Lock,
+    Smartphone,
+    History,
+    Globe,
+    Power,
+    ShieldAlert,
+    Download,
+    FileJson,
+    FileSpreadsheet,
+    Copy,
+    RefreshCw
 } from "lucide-react";
-import Image from "next/image";
-
-
-import { useDisclosure, Spinner } from "@heroui/react";
+import NextImage from "next/image";
+import { QRCodeSVG } from "qrcode.react";
+import { useDisclosure, Spinner, Button } from "@heroui/react";
+import Link from "next/link";
 import { toast } from "react-hot-toast";
 import { AddMemberModal } from "@/components/admin/modals/AddMemberModal";
+import { EditMemberModal } from "@/components/admin/modals/EditMemberModal";
 import {
     getShopSettingsAction,
     saveShopSettingsAction,
@@ -34,17 +46,19 @@ import {
     testTelegramBotAction,
     setTelegramWebhookAction,
     testWhatsAppAction,
-    getResellersAction,
-    deleteResellerAction
+    getAuditLogsAction,
+    generateMfaSecretAction,
+    enableMfaAction,
+    disableMfaAction,
+    generateBackupCodesAction,
+    exportAuditLogsAction
 } from "@/app/admin/settings/actions";
-import { EditMemberModal } from "@/components/admin/modals/EditMemberModal";
-import { AddResellerModal } from "@/components/admin/modals/AddResellerModal";
 import { uploadImage } from "@/app/admin/actions/upload";
 import { useSettingsStore } from "@/store/useSettingsStore";
 import { formatCurrency } from "@/lib/formatters";
 
 export default function SettingsContent() {
-    const [activeTab, setActiveTab] = useState<"general" | "team" | "api" | "b2b" | "appearance" | "receipt">("general");
+    const [activeTab, setActiveTab] = useState<"general" | "team" | "api" | "b2b" | "appearance" | "receipt" | "security">("general");
     const { isOpen, onOpen, onOpenChange } = useDisclosure();
     const updateGlobalSettings = useSettingsStore((state) => state.updateSettings);
 
@@ -69,8 +83,6 @@ export default function SettingsContent() {
     const [isB2bEnabled, setIsB2bEnabled] = useState(false);
     const [defaultResellerDiscount, setDefaultResellerDiscount] = useState("5.00");
     const [minResellerRecharge, setMinResellerRecharge] = useState("1000.00");
-    const [resellersList, setResellersList] = useState<any[]>([]);
-    const [isResellersLoading, setIsResellersLoading] = useState(false);
 
     // Team states
     const [team, setTeam] = useState<any[]>([]);
@@ -88,7 +100,6 @@ export default function SettingsContent() {
     const [isTestingBot, setIsTestingBot] = useState(false);
 
     // B2B Modal state
-    const { isOpen: isB2bModalOpen, onOpen: onB2bModalOpen, onOpenChange: onB2bModalOpenChange } = useDisclosure();
     const [isUploadingLogo, setIsUploadingLogo] = useState(false);
     const [isUploadingDashboardLogo, setIsUploadingDashboardLogo] = useState(false);
     const [isUploadingFavicon, setIsUploadingFavicon] = useState(false);
@@ -102,6 +113,22 @@ export default function SettingsContent() {
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
+
+    const [isMaintenanceMode, setIsMaintenanceMode] = useState(false);
+    const [allowedIps, setAllowedIps] = useState("");
+
+    // MFA States
+    const [mfaSecret, setMfaSecret] = useState<string | null>(null);
+    const [mfaQrCode, setMfaQrCode] = useState<string | null>(null);
+    const [mfaInputCode, setMfaInputCode] = useState("");
+    const [isMfaEnabling, setIsMfaEnabling] = useState(false);
+    const [backupCodes, setBackupCodes] = useState<string[] | null>(null);
+    const [isGeneratingCodes, setIsGeneratingCodes] = useState(false);
+
+    // Audit Log States
+    const [auditLogs, setAuditLogs] = useState<any[]>([]);
+    const [isAuditLoading, setIsAuditLoading] = useState(false);
+    const [isExporting, setIsExporting] = useState(false);
 
     useEffect(() => {
         fetchInitialData();
@@ -163,6 +190,8 @@ export default function SettingsContent() {
                 setIsB2bEnabled(s.isB2bEnabled ?? false);
                 setDefaultResellerDiscount(s.defaultResellerDiscount || "5.00");
                 setMinResellerRecharge(s.minResellerRecharge || "1000.00");
+                setIsMaintenanceMode(s.isMaintenanceMode ?? false);
+                setAllowedIps(s.allowedIps || "");
             }
 
             if (teamRes.success) {
@@ -177,40 +206,6 @@ export default function SettingsContent() {
         }
     };
 
-    const fetchResellers = async () => {
-        setIsResellersLoading(true);
-        try {
-            const res: any = await getResellersAction({});
-            if (res.success) {
-                setResellersList(res.data || []);
-            }
-        } catch (err) {
-            toast.error("Échec du chargement des revendeurs");
-        } finally {
-            setIsResellersLoading(false);
-        }
-    };
-
-    useEffect(() => {
-        if (activeTab === "b2b") {
-            fetchResellers();
-        }
-    }, [activeTab]);
-
-    const handleDeleteReseller = async (id: number, name: string) => {
-        if (!window.confirm(`Supprimer le partenaire ${name} ? Cela supprimera aussi son compte utilisateur.`)) return;
-        try {
-            const res: any = await deleteResellerAction({ id });
-            if (res.success) {
-                setResellersList(resellersList.filter(r => r.id !== id));
-                toast.success("Partenaire supprimé");
-            } else {
-                toast.error(res.error || "Erreur de suppression");
-            }
-        } catch (err) {
-            toast.error("Erreur de connexion");
-        }
-    };
 
     const handleSave = async () => {
         setIsSaving(true);
@@ -241,6 +236,8 @@ export default function SettingsContent() {
                 isB2bEnabled,
                 defaultResellerDiscount,
                 minResellerRecharge,
+                isMaintenanceMode,
+                allowedIps,
             });
 
             if (!res.success) {
@@ -491,7 +488,7 @@ export default function SettingsContent() {
                                                     <Loader2 className="animate-spin text-white size-8" />
                                                 </div>
                                             )}
-                                            <Image
+                                            <NextImage
                                                 className="object-cover opacity-80 group-hover:opacity-100 transition-opacity"
                                                 alt="Shop Logo"
                                                 src={logoUrl || "https://lh3.googleusercontent.com/aida-public/AB6AXuAc0N62EzEzZzBI60NaoTtEF00tJ4ruXHAprleWW2Ek0c_HJiYCXwfN8trT6eQnjQrV5nE_-fyuuJosSJb_iytbtbNGp-K0Wd6vX-CPo20bhzT8S_St7llE3bP8PuJTX3ksNDuaag3oCbGIG_lZUwYPpyNcDhS-ZZsyPgxdx6s6c1GGpOhrqGqPdgtDJu-cj6Xz_MqFfmz6rBVYDmiePw407Len9Q5yGIf3OUX-df_CRLX9jEKC9xgO2mOWd1gftB6LcGqkoR0lqGU5"}
@@ -617,7 +614,7 @@ export default function SettingsContent() {
                                             <div className="flex items-center gap-4">
                                                 <div className={`w-14 h-14 rounded-full flex items-center justify-center font-bold text-xl border overflow-hidden ${member.role === 'ADMIN' ? 'bg-[#ec5b13]/20 text-[#ec5b13] border-[#ec5b13]/30' : 'bg-zinc-800 text-slate-400 border-[#262626]'}`}>
                                                     {member.avatarUrl ? (
-                                                        <Image src={member.avatarUrl} className="object-cover" alt={member.nom} fill />
+                                                        <NextImage src={member.avatarUrl} className="object-cover" alt={member.nom} fill />
 
 
                                                     ) : (
@@ -1122,7 +1119,7 @@ export default function SettingsContent() {
                                             <div className="text-center mb-4 text-black">
                                                 {showLogo && (
                                                     <div className="mb-4 flex justify-center grayscale contrast-[200%]">
-                                                        <Image src={logoUrl || "https://lh3.googleusercontent.com/aida-public/AB6AXuAc0N62EzEzZzBI60NaoTtEF00tJ4ruXHAprleWW2Ek0c_HJiYCXwfN8trT6eQnjQrV5nE_-fyuuJosSJb_iytbtbNGp-K0Wd6vX-CPo20bhzT8S_St7llE3bP8PuJTX3ksNDuaag3oCbGIG_lZUwYPpyNcDhS-ZZsyPgxdx6s6c1GGpOhrqGqPdgtDJu-cj6Xz_MqFfmz6rBVYDmiePw407Len9Q5yGIf3OUX-df_CRLX9jEKC9xgO2mOWd1gftB6LcGqkoR0lqGU5"} alt="Logo" width={100} height={48} className="h-12 w-auto grayscale contrast-[200%]" />
+                                                        <NextImage src={logoUrl || "https://lh3.googleusercontent.com/aida-public/AB6AXuAc0N62EzEzZzBI60NaoTtEF00tJ4ruXHAprleWW2Ek0c_HJiYCXwfN8trT6eQnjQrV5nE_-fyuuJosSJb_iytbtbNGp-K0Wd6vX-CPo20bhzT8S_St7llE3bP8PuJTX3ksNDuaag3oCbGIG_lZUwYPpyNcDhS-ZZsyPgxdx6s6c1GGpOhrqGqPdgtDJu-cj6Xz_MqFfmz6rBVYDmiePw407Len9Q5yGIf3OUX-df_CRLX9jEKC9xgO2mOWd1gftB6LcGqkoR0lqGU5"} alt="Logo" width={100} height={48} className="h-12 w-auto grayscale contrast-[200%]" />
                                                     </div>
                                                 )}
                                                 <p className="text-lg font-bold mb-1 uppercase">{shopName}</p>
@@ -1270,7 +1267,7 @@ export default function SettingsContent() {
                                             <Loader2 className="animate-spin text-[#ec5b13] size-8 mb-3" />
                                         ) : dashboardLogoUrl ? (
                                             <div className="mb-3 h-12 flex items-center justify-center w-full">
-                                                <Image src={dashboardLogoUrl} className="object-contain" alt="Dashboard Logo" width={120} height={48} />
+                                                <NextImage src={dashboardLogoUrl} className="object-contain" alt="Dashboard Logo" width={120} height={48} />
                                             </div>
                                         ) : (
                                             <span className="material-symbols-outlined text-3xl text-slate-500 group-hover:text-[#ec5b13] mb-3">upload_file</span>
@@ -1288,7 +1285,7 @@ export default function SettingsContent() {
                                             <Loader2 className="animate-spin text-[#ec5b13] size-8 mb-3" />
                                         ) : logoUrl ? (
                                             <div className="mb-3 h-12 flex items-center justify-center w-full">
-                                                <Image src={logoUrl} className="object-contain" alt="Terminal Logo" width={120} height={48} />
+                                                <NextImage src={logoUrl} className="object-contain" alt="Terminal Logo" width={120} height={48} />
                                             </div>
                                         ) : (
                                             <span className="material-symbols-outlined text-3xl text-slate-500 group-hover:text-[#ec5b13] mb-3">upload_file</span>
@@ -1313,7 +1310,7 @@ export default function SettingsContent() {
                                             <Loader2 className="animate-spin text-[#ec5b13] size-8 mb-3" />
                                         ) : faviconUrl ? (
                                             <div className="mb-3 size-10 flex items-center justify-center">
-                                                <Image src={faviconUrl} className="object-contain" alt="Favicon" width={40} height={40} />
+                                                <NextImage src={faviconUrl} className="object-contain" alt="Favicon" width={40} height={40} />
                                             </div>
                                         ) : (
                                             <span className="material-symbols-outlined text-3xl text-slate-500 group-hover:text-[#ec5b13] mb-3">branding_watermark</span>
@@ -1468,74 +1465,37 @@ export default function SettingsContent() {
                                 <section className="space-y-6">
                                     <div className="flex items-center justify-between">
                                         <div>
-                                            <h3 className="text-lg font-bold">Liste des Partenaires</h3>
-                                            <p className="text-sm text-slate-400 mt-1">Gérez vos revendeurs actifs et leurs soldes.</p>
+                                            <h3 className="text-lg font-bold">Gestion des Partenaires</h3>
+                                            <p className="text-sm text-slate-400 mt-1">Gérez vos revendeurs, leurs soldes et leurs accès dans le module dédié.</p>
                                         </div>
-                                        <button
-                                            onClick={onB2bModalOpen}
-                                            className="bg-white/5 hover:bg-white/10 border border-white/10 px-6 py-3 rounded-xl font-bold text-sm transition-all flex items-center gap-2"
+                                        <Link
+                                            href="/admin/b2b"
+                                            className="bg-[#ec5b13] hover:bg-orange-600 text-white px-6 py-3 rounded-xl font-bold text-sm shadow-lg shadow-orange-950/20 transition-all flex items-center gap-2"
                                         >
-                                            <Plus className="size-4" />
-                                            Nouveau Partenaire
-                                        </button>
+                                            <Building2 className="size-4" />
+                                            Accéder à la Gestion B2B
+                                        </Link>
                                     </div>
 
-                                    {isResellersLoading ? (
-                                        <div className="py-20 flex flex-col items-center justify-center gap-4">
-                                            <Spinner color="warning" />
-                                            <p className="text-slate-500 animate-pulse">Chargement des revendeurs...</p>
+                                    <div className="bg-[#1a1614] border border-[#2d2622] rounded-3xl p-8 flex flex-col items-center justify-center gap-6 text-center">
+                                        <div className="size-20 rounded-2xl bg-[#0a0a0a] border border-[#2d2622] flex items-center justify-center">
+                                            <Users className="size-10 text-[#ec5b13]" />
                                         </div>
-                                    ) : resellersList.length === 0 ? (
-                                        <div className="py-20 border-2 border-dashed border-[#2d2622] rounded-3xl flex flex-col items-center justify-center gap-4">
-                                            <Building2 className="size-16 text-slate-700" />
-                                            <p className="text-slate-500 font-medium">Aucun revendeur enregistré pour le moment.</p>
+                                        <div className="space-y-2">
+                                            <h4 className="text-xl font-bold text-white">Module Partenaires Déporté</h4>
+                                            <p className="text-slate-400 max-w-md mx-auto text-sm leading-relaxed">
+                                                La gestion des revendeurs a été déplacée vers une page dédiée pour offrir une interface plus complète et performante.
+                                            </p>
                                         </div>
-                                    ) : (
-                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                                            {resellersList.map((reseller) => (
-                                                <div key={reseller.id} className="bg-[#1a1614] border border-[#2d2622] rounded-2xl p-6 space-y-6 hover:border-[#ec5b13]/30 transition-all group">
-                                                    <div className="flex items-start justify-between">
-                                                        <div className="flex items-center gap-4">
-                                                            <div className="size-12 rounded-xl bg-[#ec5b13]/10 flex items-center justify-center text-[#ec5b13] font-bold text-xl border border-[#ec5b13]/20">
-                                                                {reseller.companyName.substring(0, 1).toUpperCase()}
-                                                            </div>
-                                                            <div>
-                                                                <h4 className="font-bold text-white text-lg leading-tight">{reseller.companyName}</h4>
-                                                                <p className="text-xs text-slate-400 font-medium">{reseller.user?.email}</p>
-                                                            </div>
-                                                        </div>
-                                                        <div className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${reseller.status === 'ACTIVE' ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' : 'bg-red-500/10 text-red-500'}`}>
-                                                            {reseller.status}
-                                                        </div>
-                                                    </div>
-
-                                                    <div className="grid grid-cols-2 gap-4">
-                                                        <div className="bg-[#0f0d0c] p-3 rounded-xl border border-[#2d2622]">
-                                                            <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest mb-1">Solde</p>
-                                                            <p className="text-lg font-black text-white">{formatCurrency(Number(reseller.wallet?.balance || 0), 'DZD')}</p>
-                                                        </div>
-                                                        <div className="bg-[#0f0d0c] p-3 rounded-xl border border-[#2d2622]">
-                                                            <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest mb-1">Remise</p>
-                                                            <p className="text-lg font-black text-[#ec5b13]">{reseller.customDiscount || defaultResellerDiscount}%</p>
-                                                        </div>
-                                                    </div>
-
-                                                    <div className="pt-4 border-t border-[#2d2622] flex items-center justify-between">
-                                                        <div className="flex items-center gap-2">
-                                                            <Wallet className="size-4 text-slate-500" />
-                                                            <span className="text-xs text-slate-400 font-bold">B2B ID #{reseller.id}</span>
-                                                        </div>
-                                                        <button
-                                                            onClick={() => handleDeleteReseller(reseller.id, reseller.companyName)}
-                                                            className="p-2 text-slate-600 hover:text-red-500 transition-colors"
-                                                        >
-                                                            <Trash2 className="size-5" />
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
+                                        <Button
+                                            as={Link}
+                                            href="/admin/b2b"
+                                            variant="bordered"
+                                            className="border-[#2d2622] text-slate-300 font-bold px-10 rounded-xl hover:bg-white/5"
+                                        >
+                                            Ouvrir la liste des partenaires
+                                        </Button>
+                                    </div>
                                 </section>
                             )}
                         </div>
@@ -1555,11 +1515,6 @@ export default function SettingsContent() {
                 onSuccess={fetchInitialData}
             />
 
-            <AddResellerModal
-                isOpen={isB2bModalOpen}
-                onOpenChange={onB2bModalOpenChange}
-                onSuccess={fetchResellers}
-            />
         </div>
     );
 }

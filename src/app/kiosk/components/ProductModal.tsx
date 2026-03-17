@@ -110,6 +110,7 @@ export default function ProductModal({ isOpen, onClose, product }: ProductModalP
                                             className="object-contain p-3"
                                             src={product.imageUrl}
                                             fill
+                                            sizes="128px"
                                         />
                                     ) : (
                                         <div className="w-full h-full bg-slate-200 flex items-center justify-center">

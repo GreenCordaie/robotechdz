@@ -5,7 +5,23 @@ import { decrypt } from "@/lib/auth";
 export async function middleware(request: NextRequest) {
     const path = request.nextUrl.pathname;
 
-    // Login page is public but should redirect if already logged in (Admin or Reseller)
+    const response = NextResponse.next();
+
+    // 1. Security Headers
+    const securityHeaders = {
+        'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com https://r2cdn.perplexity.ai; img-src 'self' data: https:; connect-src 'self' https:;",
+        'Strict-Transport-Security': 'max-age=31536000; includeSubDomains; preload',
+        'X-Frame-Options': 'DENY',
+        'X-Content-Type-Options': 'nosniff',
+        'Referrer-Policy': 'strict-origin-when-cross-origin',
+        'Permissions-Policy': 'camera=(), microphone=(), geolocation=()'
+    };
+
+    Object.entries(securityHeaders).forEach(([key, value]) => {
+        response.headers.set(key, value);
+    });
+
+    // Login page logic (already implemented but kept for flow)
     if (path === "/admin/login" || path === "/reseller/login") {
         const session = request.cookies.get("session")?.value;
         if (session) {
@@ -18,57 +34,46 @@ export async function middleware(request: NextRequest) {
                 if (path === "/reseller/login" && role === "RESELLER") {
                     return NextResponse.redirect(new URL("/reseller/dashboard", request.url));
                 }
-            } catch (e) {
-                // Invalid session
-            }
+            } catch (e) { }
         }
-        return NextResponse.next();
+        return response;
     }
 
-    // Protect all /admin routes
-    if (path.startsWith("/admin")) {
+    // Admin & Reseller protection
+    if (path.startsWith("/admin") || path.startsWith("/reseller")) {
         const session = request.cookies.get("session")?.value;
-        if (!session) return NextResponse.redirect(new URL("/admin/login", request.url));
+        if (!session) {
+            const loginPath = path.startsWith("/admin") ? "/admin/login" : "/reseller/login";
+            return NextResponse.redirect(new URL(loginPath, request.url));
+        }
 
         try {
             const parsed = await decrypt(session);
             const userRole = parsed.userRole;
 
-            if (userRole === "RESELLER") {
+            if (path.startsWith("/admin") && userRole === "RESELLER") {
                 return NextResponse.redirect(new URL("/reseller/dashboard", request.url));
             }
-
-            // RBAC: Restricted routes for CAISSIER and TRAITEUR
-            const restrictedRoutes = ["/admin/fournisseurs", "/admin/dashboard"];
-            const isRestrictedPath = restrictedRoutes.some(r => path.startsWith(r));
-
-            if (isRestrictedPath && userRole !== "ADMIN") {
-                return NextResponse.redirect(new URL("/admin/catalogue", request.url));
-            }
-        } catch (err) {
-            return NextResponse.redirect(new URL("/admin/login", request.url));
-        }
-    }
-
-    // Protect all /reseller routes
-    if (path.startsWith("/reseller")) {
-        const session = request.cookies.get("session")?.value;
-        if (!session) return NextResponse.redirect(new URL("/reseller/login", request.url));
-
-        try {
-            const parsed = await decrypt(session);
-            const userRole = parsed.userRole;
-
-            if (userRole !== "RESELLER") {
-                // Not a reseller, send to admin if they are staff, or logout
+            if (path.startsWith("/reseller") && userRole !== "RESELLER") {
                 return NextResponse.redirect(new URL("/admin", request.url));
             }
+
+            // RBAC for admin
+            if (path.startsWith("/admin")) {
+                const restrictedRoutes = ["/admin/fournisseurs", "/admin/dashboard", "/admin/settings"];
+                const isRestrictedPath = restrictedRoutes.some(r => path.startsWith(r));
+
+                if (isRestrictedPath && userRole !== "ADMIN") {
+                    return NextResponse.redirect(new URL("/admin/catalogue", request.url));
+                }
+            }
         } catch (err) {
-            return NextResponse.redirect(new URL("/reseller/login", request.url));
+            const loginPath = path.startsWith("/admin") ? "/admin/login" : "/reseller/login";
+            return NextResponse.redirect(new URL(loginPath, request.url));
         }
     }
 
-    return NextResponse.next();
+    return response;
 }
 
 export const config = {

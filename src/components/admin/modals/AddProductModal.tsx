@@ -175,7 +175,7 @@ export const AddProductModal = ({ isOpen, onClose, categories, suppliers, produc
             };
 
             const res = productToEdit
-                ? await updateProductAction(productToEdit.id, productData)
+                ? await updateProductAction({ id: productToEdit.id, formData: productData })
                 : await createProductAction(productData);
 
             if (res.success) {
@@ -336,7 +336,7 @@ export const AddProductModal = ({ isOpen, onClose, categories, suppliers, produc
                                                 className="flex-1 min-h-[260px] border-2 border-dashed border-[#262626] bg-[#0a0a0a] rounded-xl flex flex-col items-center justify-center gap-4 cursor-pointer hover:border-[#ec5b13]/50 transition-all group p-6 relative overflow-hidden"
                                             >
                                                 {previewUrl ? (
-                                                    <Image src={previewUrl} className="object-cover" alt="Preview" fill />
+                                                    <Image src={previewUrl} className="object-cover" alt="Preview" fill sizes="(max-width: 768px) 100vw, 400px" />
                                                 ) : (
                                                     <>
                                                         <div className="size-16 rounded-full bg-white/5 flex items-center justify-center group-hover:scale-110 transition-transform">

@@ -125,7 +125,7 @@ export default function OrderDetailModal({
                         <ModalBody className="space-y-4 max-h-[65vh] overflow-y-auto py-4">
                             {/* Items List */}
                             <div className="space-y-3">
-                                {order.items.map((item) => (
+                                {(order.items || []).map((item) => (
                                     <section key={item.id} className="bg-white/5 border border-white/5 rounded-lg p-4">
                                         <div className="flex justify-between items-start mb-4">
                                             <div className="flex items-center gap-3">

@@ -65,10 +65,13 @@ export const SupplierSettingsModal = ({
         setIsSaving(true);
         setError(null);
         try {
-            const res = await adjustSupplierAction(supplier.id, {
-                name,
-                forcedBalance: forcedBalance || undefined,
-                reason: reason || "Mise à jour des informations générales"
+            const res = await adjustSupplierAction({
+                id: supplier.id,
+                data: {
+                    name,
+                    forcedBalance: forcedBalance || undefined,
+                    reason: reason || "Mise à jour des informations générales"
+                }
             });
 
             if (res.success) {
@@ -92,12 +95,12 @@ export const SupplierSettingsModal = ({
         setIsDeleting(true);
         setError(null);
         try {
-            const res = await deleteSupplierAction(supplier.id);
+            const res = await deleteSupplierAction({ id: supplier.id });
             if (res.success) {
                 onClose();
                 window.location.reload();
             } else {
-                setError(res.error || "Erreur lors de la suppression");
+                setError((res as any).error || "Erreur lors de la suppression");
             }
         } catch (err) {
             setError("Erreur de connexion");
@@ -114,12 +117,12 @@ export const SupplierSettingsModal = ({
         setIsArchiving(true);
         setError(null);
         try {
-            const res = await archiveSupplierAction(supplier.id);
+            const res = await archiveSupplierAction({ id: supplier.id });
             if (res.success) {
                 onClose();
                 window.location.reload();
             } else {
-                setError(res.error || "Erreur lors de l'archivage");
+                setError((res as any).error || "Erreur lors de l'archivage");
             }
         } catch (err) {
             setError("Erreur de connexion");
@@ -175,6 +178,8 @@ export const SupplierSettingsModal = ({
                             {/* Section 1 - Basic Configuration */}
                             <div className="space-y-4">
                                 <Input
+                                    id="supplierNameInput"
+                                    name="supplierNameInput"
                                     label="Nom du Fournisseur"
                                     labelPlacement="outside"
                                     placeholder="Nom..."
@@ -202,6 +207,8 @@ export const SupplierSettingsModal = ({
                                 </div>
                                 <div className="space-y-4 pt-2">
                                     <Input
+                                        id="forcedBalance"
+                                        name="forcedBalance"
                                         label={`Nouveau solde (Forçage en ${supplier.currency})`}
                                         placeholder={String(supplier.balance)}
                                         type="number"
@@ -214,6 +221,8 @@ export const SupplierSettingsModal = ({
                                         onValueChange={setForcedBalance}
                                     />
                                     <Input
+                                        id="adjustmentReason"
+                                        name="adjustmentReason"
                                         label="Motif de la modification"
                                         placeholder="Ex: Frais de réseau imprévus..."
                                         variant="bordered"

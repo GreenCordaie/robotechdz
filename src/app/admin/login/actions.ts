@@ -6,40 +6,153 @@ import { eq } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { createSession, deleteSession, getSession } from "@/lib/auth";
 import { redirect } from "next/navigation";
-import { revalidatePath } from "next/cache";
+import { logSecurityAction } from "@/lib/security";
+import { verify } from "otplib";
+import { encrypt, decrypt } from "@/lib/encryption";
+import { checkRateLimit, recordFailure, resetRateLimit } from "@/lib/rate-limit";
 
 export async function loginAction(formData: FormData) {
     const email = formData.get("email") as string;
     const password = formData.get("password") as string;
+    const honeypot = formData.get("website_url") as string;
+
+    // 1. Honeypot check
+    if (honeypot) {
+        await logSecurityAction({
+            userId: null,
+            action: "AUTH_BOT_DETECTED",
+            entityType: "AUTH",
+            newData: { email, source: "Honeypot" }
+        });
+        return { success: false, error: "Connexion refusée" };
+    }
 
     if (!email || !password) {
         return { success: false, error: "Veuillez remplir tous les champs" };
     }
 
     try {
-        const user = await db.select().from(users).where(eq(users.email, email)).limit(1);
+        // 0. Rate Limit Check
+        const limit = checkRateLimit(email);
+        if (limit.isBlocked) {
+            return { success: false, error: `Trop de tentatives. Réessayez dans ${Math.ceil((limit.blockedUntil! - Date.now()) / 60000)} minutes.` };
+        }
 
-        if (user.length === 0) {
+        const userList = await db.select().from(users).where(eq(users.email, email)).limit(1);
+
+        if (userList.length === 0) {
+            recordFailure(email);
+            await logSecurityAction({
+                userId: null,
+                action: "AUTH_FAILED_USER_NOT_FOUND",
+                entityType: "AUTH",
+                newData: { email }
+            });
             return { success: false, error: "Identifiants invalides" };
         }
 
-        const isPasswordValid = await bcrypt.compare(password, user[0].passwordHash);
+        const user = userList[0];
+
+        const isPasswordValid = await bcrypt.compare(password, user.passwordHash);
 
         if (!isPasswordValid) {
+            recordFailure(email);
+            await logSecurityAction({
+                userId: user.id,
+                action: "AUTH_FAILED_WRONG_PASSWORD",
+                entityType: "AUTH",
+                newData: { email }
+            });
             return { success: false, error: "Identifiants invalides" };
         }
 
-        const { id, role } = user[0];
+        // Reset on success (before 2FA as 2FA is another step)
+        resetRateLimit(email);
+
+        // 2FA CHECK
+        if (user.twoFactorSecret) {
+            return {
+                success: true,
+                mfaRequired: true,
+                tempUserId: user.id
+            };
+        }
+
+        const { id, role, nom, pinCode } = user;
         await createSession({ id, role });
+
+        // Audit Success
+        await logSecurityAction({
+            userId: id,
+            action: "AUTH_SUCCESS",
+            entityType: "AUTH",
+        });
 
         // Artificial delay to thwart brute-force bots
         await new Promise(resolve => setTimeout(resolve, 500));
 
         // Success
-        return { success: true, user: { id, role } };
+        return {
+            success: true,
+            user: { id, role, email, nom, pinCode }
+        };
     } catch (error) {
         console.error("Login error:", error);
         return { success: false, error: "Une erreur est survenue" };
+    }
+}
+
+export async function verifyMfaAction(userId: number, code: string) {
+    try {
+        const userList = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+        if (userList.length === 0) return { success: false, error: "Utilisateur introuvable" };
+
+        const user = userList[0];
+        if (!user.twoFactorSecret) return { success: false, error: "2FA non configuré" };
+
+        let isValid: any = verify({ token: code, secret: decrypt(user.twoFactorSecret) });
+        let isBackupCode = false;
+
+        if (!isValid && user.mfaBackupCodes) {
+            const backupCodes: string[] = JSON.parse(decrypt(user.mfaBackupCodes));
+            const codeIndex = backupCodes.indexOf(code.toUpperCase());
+
+            if (codeIndex !== -1) {
+                isValid = true;
+                isBackupCode = true;
+                // Remove used backup code
+                backupCodes.splice(codeIndex, 1);
+                await db.update(users)
+                    .set({ mfaBackupCodes: backupCodes.length === 0 ? null : encrypt(JSON.stringify(backupCodes)) })
+                    .where(eq(users.id, user.id));
+            }
+        }
+
+        if (!isValid) {
+            await logSecurityAction({
+                userId: user.id,
+                action: "AUTH_MFA_FAILED",
+                entityType: "AUTH",
+                newData: { code }
+            });
+            return { success: false, error: "Code invalide" };
+        }
+
+        const { id, role, email, nom, pinCode } = user;
+        await createSession({ id, role });
+
+        await logSecurityAction({
+            userId: id,
+            action: isBackupCode ? "AUTH_MFA_BACKUP_SUCCESS" : "AUTH_MFA_SUCCESS",
+            entityType: "AUTH",
+        });
+
+        return {
+            success: true,
+            user: { id, role, email, nom, pinCode }
+        };
+    } catch (error) {
+        return { success: false, error: "Erreur technique" };
     }
 }
 

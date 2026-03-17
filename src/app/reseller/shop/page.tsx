@@ -228,6 +228,7 @@ export default function ResellerShop() {
                                             src={product.imageUrl}
                                             alt={product.name}
                                             fill
+                                            sizes="(max-width: 768px) 100vw, 300px"
                                             className="object-cover group-hover:scale-110 transition-transform duration-700 opacity-80"
                                         />
                                     ) : (
@@ -315,7 +316,7 @@ export default function ResellerShop() {
                                             <div className="flex items-center gap-4">
                                                 <div className="size-12 rounded-xl bg-[#0a0a0a] flex items-center justify-center border border-white/5 relative overflow-hidden">
                                                     {item.imageUrl ? (
-                                                        <Image src={item.imageUrl} alt={item.name} fill className="object-cover opacity-60" />
+                                                        <Image src={item.imageUrl} alt={item.name} fill sizes="100px" className="object-cover opacity-60" />
                                                     ) : (
                                                         <Gamepad2 className="text-slate-700" size={24} />
                                                     )}

@@ -1,8 +1,10 @@
 import { getSession } from "./auth";
 import { db } from "@/db";
-import { users } from "@/db/schema";
+import { users, auditLogs, shopSettings } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
+import { headers } from "next/headers";
+import { sendTelegramNotification } from "./telegram";
 
 export class UnauthorizedError extends Error {
     constructor(message = "Accès non autorisé") {
@@ -26,12 +28,52 @@ export async function getAuthenticatedUser() {
         nom: users.nom,
         email: users.email,
         role: users.role,
+        lastActiveAt: users.lastActiveAt,
     })
         .from(users)
         .where(eq(users.id, session.userId))
         .limit(1);
 
-    return user || null;
+    if (!user) return null;
+
+    // Inactivity Check (2 hours)
+    const TWO_HOURS_MS = 2 * 60 * 60 * 1000;
+    if (user.lastActiveAt && (Date.now() - new Date(user.lastActiveAt).getTime() > TWO_HOURS_MS)) {
+        return null; // Force unauthorized
+    }
+
+    return user;
+}
+
+/**
+ * Logs a security or administrative action to the audit_logs table.
+ */
+export async function logSecurityAction(params: {
+    userId: number | null;
+    action: string;
+    entityType?: string;
+    entityId?: string;
+    oldData?: any;
+    newData?: any;
+}) {
+    const headerList = headers();
+    const ipAddress = headerList.get("x-forwarded-for") || "unknown";
+    const userAgent = headerList.get("user-agent") || "unknown";
+
+    try {
+        await db.insert(auditLogs).values({
+            userId: params.userId,
+            action: params.action,
+            entityType: params.entityType,
+            entityId: params.entityId,
+            oldData: params.oldData,
+            newData: params.newData,
+            ipAddress,
+            userAgent,
+        });
+    } catch (error) {
+        console.error("Critical: Failed to save audit log:", error);
+    }
 }
 
 export type UserContext = { id: number; nom: string; email: string; role: string };
@@ -59,12 +101,66 @@ export function withAuth<T extends z.ZodType, R>(
                 throw new UnauthorizedError("Session expirée ou invalide");
             }
 
-            // 2. Authorization Check (RBAC)
+            // 2. Maintenance Mode Check
+            // Allow ADMIN to bypass maintenance mode
+            const settings = await db.query.shopSettings.findFirst();
+            if (user.role !== "ADMIN") {
+                if (settings?.isMaintenanceMode) {
+                    // Send alert for maintenance block
+                    await sendTelegramNotification(
+                        `🚨 ACCÈS BLOQUÉ: L'utilisateur ${user.nom} (${user.role}) a tenté d'accéder au système alors que le MODE MAINTENANCE est activé.`,
+                        ['ADMIN']
+                    ).catch(() => { });
+
+                    throw new UnauthorizedError("Système en maintenance. Toutes les opérations sont suspendues.");
+                }
+            }
+
+            // 3. IP Whitelisting (ADMIN only)
+            if (user.role === "ADMIN" && settings?.allowedIps) {
+                const headerList = headers();
+                const ipAddress = headerList.get("x-forwarded-for")?.split(',')[0] || "unknown";
+                const allowedIpsList = settings.allowedIps.split(',').map(ip => ip.trim());
+
+                if (allowedIpsList.length > 0 && !allowedIpsList.includes(ipAddress)) {
+                    // Log attempt
+                    await logSecurityAction({
+                        userId: user.id,
+                        action: "IP_WHITELIST_BLOCKED",
+                        entityType: "SECURITY",
+                        newData: { attemptedIp: ipAddress, allowedIps: settings.allowedIps }
+                    });
+
+                    // Telegram Alert
+                    await sendTelegramNotification(
+                        `🛑 ACCÈS IP BLOQUÉ: Tentative d'accès ADMIN depuis une IP non autorisée (${ipAddress}).`,
+                        ['ADMIN']
+                    ).catch(() => { });
+
+                    throw new UnauthorizedError("Accès restreint : Votre adresse IP n'est pas autorisée.");
+                }
+            }
+
+            // 4. Authorization Check (RBAC)
             if (config.roles && !config.roles.includes(user.role as any)) {
+                // Log unauthorized access attempts for security review
+                await logSecurityAction({
+                    userId: user.id,
+                    action: "UNAUTHORIZED_ACCESS_ATTEMPT",
+                    entityType: "SERVER_ACTION",
+                    newData: { actionName: action.name || "anonymous", attemptedRoles: config.roles }
+                });
+
+                // Escalate to Telegram for unauthorized attempts
+                await sendTelegramNotification(
+                    `⚠️ ALERTE SÉCURITÉ: Tentative d'accès non autorisé par ${user.nom} (${user.role}) à l'action ${action.name || "système"}.`,
+                    ['ADMIN']
+                ).catch(() => { });
+
                 throw new UnauthorizedError("Permissions insuffisantes");
             }
 
-            // 3. Input Validation (Zod)
+            // 4. Input Validation (Zod)
             let validatedInput = input;
             if (config.schema) {
                 const result = config.schema.safeParse(input);
@@ -74,7 +170,16 @@ export function withAuth<T extends z.ZodType, R>(
                 validatedInput = result.data;
             }
 
-            // 4. Execute Action
+            // 5. Update Activity Timestamp
+            try {
+                await db.update(users)
+                    .set({ lastActiveAt: new Date() })
+                    .where(eq(users.id, user.id));
+            } catch (e) {
+                console.error("Activity Update Error:", e);
+            }
+
+            // 6. Execute Action
             return await action(validatedInput, user as UserContext);
 
         } catch (error: any) {

@@ -86,7 +86,12 @@ export const RechargeBalanceModal = ({
                 amountToSubmit = (parseFloat(amount) * rate).toFixed(2);
             }
 
-            const res = await rechargeSupplier(supplierId, amountToSubmit, String(rate), baseCurrency);
+            const res = await rechargeSupplier({
+                supplierId,
+                amount: amountToSubmit,
+                currency: baseCurrency,
+                note: `Recharge via ${paymentMethod}`
+            });
             if (res.success) {
                 toast.success(`Solde rechargé (${amountToSubmit} ${baseCurrency})`);
                 onClose();
@@ -179,11 +184,13 @@ export const RechargeBalanceModal = ({
                                 {/* Section 2: Recharge Form */}
                                 <div className="space-y-6">
                                     <div>
-                                        <label className="block text-slate-400 text-xs font-semibold uppercase tracking-widest mb-3 px-1">
+                                        <label htmlFor="rechargeAmount" className="block text-slate-400 text-xs font-semibold uppercase tracking-widest mb-3 px-1">
                                             Montant de la recharge ({baseCurrency === 'DZD' ? 'DZD' : currency})
                                         </label>
                                         <div className="relative group">
                                             <input
+                                                id="rechargeAmount"
+                                                name="rechargeAmount"
                                                 className="w-full bg-[#0a0a0a] border border-[#262626] focus:border-[#ec5b13] focus:ring-1 focus:ring-[#ec5b13] rounded-xl py-5 px-6 text-3xl font-bold text-white text-center transition-all placeholder:text-slate-700 outline-none"
                                                 placeholder="0.00"
                                                 type="number"
@@ -208,11 +215,13 @@ export const RechargeBalanceModal = ({
                                     </div>
 
                                     <div>
-                                        <label className="block text-slate-400 text-xs font-semibold uppercase tracking-widest mb-3 px-1">
+                                        <label htmlFor="paymentMethod" className="block text-slate-400 text-xs font-semibold uppercase tracking-widest mb-3 px-1">
                                             Méthode de paiement
                                         </label>
                                         <div className="relative">
                                             <select
+                                                id="paymentMethod"
+                                                name="paymentMethod"
                                                 className="w-full appearance-none bg-[#0a0a0a] border border-[#262626] focus:border-[#ec5b13] focus:ring-1 focus:ring-[#ec5b13] rounded-xl py-3.5 px-4 text-slate-100 text-sm transition-all cursor-pointer outline-none"
                                                 value={paymentMethod}
                                                 onChange={(e) => setPaymentMethod(e.target.value)}

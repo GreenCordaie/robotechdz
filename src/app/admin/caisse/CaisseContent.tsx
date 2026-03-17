@@ -75,7 +75,12 @@ export default function CaisseContent() {
             setAllClients(Array.isArray(res) ? res : []);
         };
         loadClients();
-        const interval = setInterval(loadOrders, 3000);
+        const interval = setInterval(async () => {
+            const res: any = await getTodayOrders({});
+            if (res && res.success !== false) {
+                setAllTodayOrders(Array.isArray(res) ? res : []);
+            }
+        }, 3000);
         return () => clearInterval(interval);
     }, []);
 
@@ -130,7 +135,7 @@ export default function CaisseContent() {
 
                 // Prepare and trigger Print ONLY if delivery method is TICKET
                 if (res.order.deliveryMethod === "TICKET") {
-                    const hasManual = res.order.items.some((it: any) => it.variant?.product?.isManualDelivery);
+                    const hasManual = res.order.items?.some((it: any) => it.variant?.product?.isManualDelivery);
 
                     // If it has manual delivery, we might want to skip automatic printing of codes 
                     // since they aren't generated yet. For now, we skip if the user specifically asked for "normal" manual flow.
@@ -138,7 +143,7 @@ export default function CaisseContent() {
                         setPrintData({
                             orderNumber: res.order.orderNumber,
                             date: res.order.createdAt,
-                            items: res.order.items.map((it: any) => ({
+                            items: (res.order.items || []).map((it: any) => ({
                                 name: it.name,
                                 quantity: it.quantity,
                                 price: it.price,
@@ -295,7 +300,7 @@ export default function CaisseContent() {
                                         >
                                             <td className={`px-6 py-4 font-bold ${isActive ? 'text-[#ec5b13]' : ''}`}>
                                                 <div className="flex items-center gap-2">
-                                                    <span>#{o.orderNumber}</span>
+                                                    <span>{o.orderNumber.startsWith('#') ? o.orderNumber : `#${o.orderNumber}`}</span>
                                                     {o.deliveryMethod === "WHATSAPP" && (
                                                         <Tooltip content={`WhatsApp: +213 ${o.customerPhone}`} color="success">
                                                             <div className="bg-[#25D366]/10 p-1 rounded-md">
@@ -345,7 +350,7 @@ export default function CaisseContent() {
                         <div className="flex items-center justify-between mb-8 shrink-0">
                             <div>
                                 <div className="flex items-center gap-3">
-                                    <h3 className="text-xl font-bold">Commande #{currentOrder.orderNumber}</h3>
+                                    <h3 className="text-xl font-bold">Commande {currentOrder.orderNumber.startsWith('#') ? currentOrder.orderNumber : `#${currentOrder.orderNumber}`}</h3>
                                     {currentOrder.deliveryMethod === "WHATSAPP" && (
                                         <div className="flex items-center gap-1.5 px-2.5 py-1 bg-[#25D366]/10 text-[#25D366] rounded-lg border border-[#25D366]/20">
                                             <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">

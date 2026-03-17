@@ -60,6 +60,7 @@ export const LockScreen = () => {
                                 alt="Admin"
                                 className="object-cover opacity-80"
                                 fill
+                                sizes="64px"
                             />
                         </div>
                         <div className="absolute -bottom-1 -right-1 bg-[#ec5b13] p-1.5 rounded-full shadow-lg">

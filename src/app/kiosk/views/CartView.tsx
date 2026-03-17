@@ -121,9 +121,10 @@ export default function CartView() {
                                 {item.imageUrl ? (
                                     <Image
                                         src={item.imageUrl}
-                                        alt={item.productName}
-                                        className="object-contain p-4"
+                                        alt={item.name}
                                         fill
+                                        sizes="80px"
+                                        className="object-cover group-hover:scale-110 transition-transform duration-500 opacity-60"
                                     />
                                 ) : (
                                     <svg className="w-16 h-16 text-black/20" fill="currentColor" viewBox="0 0 24 24">

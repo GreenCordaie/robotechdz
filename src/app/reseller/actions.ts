@@ -14,6 +14,7 @@ import { eq, desc, and, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { withAuth } from "@/lib/security";
 import { z } from "zod";
+import { allocateOrderStock } from "@/lib/orders";
 
 export const getCurrentResellerAction = withAuth(
     { roles: ["RESELLER"] },
@@ -110,7 +111,7 @@ export const checkoutResellerAction = withAuth(
             });
 
             const wallet = reseller.wallet;
-            if (!wallet || parseFloat(wallet.balance) < totalAmount) {
+            if (!wallet || parseFloat(wallet.balance || "0") < totalAmount) {
                 return { success: false, error: "Solde insuffisant" };
             }
 
@@ -128,7 +129,8 @@ export const checkoutResellerAction = withAuth(
                     deliveryMethod: "TICKET",
                 }).returning();
 
-                for (const item of (newOrder as any).items) {
+                // 2. Insert Items Correctly
+                for (const item of enrichedCart) {
                     await tx.insert(orderItems).values({
                         orderId: newOrder.id,
                         variantId: item.id,
@@ -138,6 +140,12 @@ export const checkoutResellerAction = withAuth(
                     });
                 }
 
+                // 3. Centralized Allocation (Stock & Supplier Debit)
+                await allocateOrderStock(tx, newOrder.id, {
+                    userId: user.id
+                });
+
+                // 4. Wallet Update
                 await tx.update(resellerWallets)
                     .set({
                         balance: (parseFloat(wallet.balance!) - totalAmount).toString(),
