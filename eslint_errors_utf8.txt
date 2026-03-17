@@ -1,0 +1,31 @@
+﻿
+C:\Users\PC\Desktop\100-pc-IA\src\app\layout.tsx
+  22:17  warning  Custom fonts not added in `pages/_document.js` will only load for a single page. This is discouraged. See: https://nextjs.org/docs/messages/no-page-custom-font  @next/next/no-page-custom-font
+
+C:\Users\PC\Desktop\100-pc-IA\src\components\admin\CatalogueContent.tsx
+  143:8  warning  React Hook useEffect has missing dependencies: 'initialSearch' and 'updateParams'. Either include them or remove the dependency array  react-hooks/exhaustive-deps
+
+C:\Users\PC\Desktop\100-pc-IA\src\components\admin\DashboardContent.tsx
+  103:110  error  `'` can be escaped with `&apos;`, `&lsquo;`, `&#39;`, `&rsquo;`  react/no-unescaped-entities
+  109:87   error  `'` can be escaped with `&apos;`, `&lsquo;`, `&#39;`, `&rsquo;`  react/no-unescaped-entities
+
+C:\Users\PC\Desktop\100-pc-IA\src\components\admin\modals\AddCategoryModal.tsx
+  147:41  warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+C:\Users\PC\Desktop\100-pc-IA\src\components\admin\modals\AddMemberModal.tsx
+  139:97   error    `'` can be escaped with `&apos;`, `&lsquo;`, `&#39;`, `&rsquo;`                                                                                                                                                                                                 react/no-unescaped-entities
+  154:49   warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+  238:101  error    `'` can be escaped with `&apos;`, `&lsquo;`, `&#39;`, `&rsquo;`                                                                                                                                                                                                 react/no-unescaped-entities
+
+C:\Users\PC\Desktop\100-pc-IA\src\components\admin\modals\AddProductModal.tsx
+  328:53   warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+  335:122  error    `'` can be escaped with `&apos;`, `&lsquo;`, `&#39;`, `&rsquo;`                                                                                                                                                                                                 react/no-unescaped-entities
+  336:118  error    `'` can be escaped with `&apos;`, `&lsquo;`, `&#39;`, `&rsquo;`                                                                                                                                                                                                 react/no-unescaped-entities
+  342:113  error    `'` can be escaped with `&apos;`, `&lsquo;`, `&#39;`, `&rsquo;`                                                                                                                                                                                                 react/no-unescaped-entities
+  427:148  error    `'` can be escaped with `&apos;`, `&lsquo;`, `&#39;`, `&rsquo;`                                                                                                                                                                                                 react/no-unescaped-entities
+
+C:\Users\PC\Desktop\100-pc-IA\src\components\admin\modals\ManageCategoriesModal.tsx
+  104:61  warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+Ô£û 14 problems (8 errors, 6 warnings)
+

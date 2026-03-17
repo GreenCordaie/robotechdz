@@ -1,12 +1,14 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { Spinner } from "@heroui/react";
 import { toast } from "react-hot-toast";
-import { getPaidOrders, getFinishedOrders, processOrder, markOrderAsTermine } from "../caisse/actions";
+import { getPaidOrders, getFinishedOrders, processOrder, markOrderAsTermine, cancelOrderAction } from "../caisse/actions";
 import { ThermalReceipt } from "@/components/admin/receipt/ThermalReceipt";
 import OrderDetailModal from "@/components/admin/modals/OrderDetailModal";
 import { Eye } from "lucide-react";
+import Image from "next/image";
+import { formatCurrency } from "@/lib/formatters";
 
 export default function TraitementContent() {
     const [view, setView] = useState<"pending" | "finished">("pending");
@@ -20,17 +22,23 @@ export default function TraitementContent() {
     const [orderForDetail, setOrderForDetail] = useState<any | null>(null);
     const processedIds = React.useRef<Set<number>>(new Set());
 
-    const loadOrders = async () => {
+    const loadOrders = useCallback(async () => {
         setIsLoading(true);
         try {
-            const data = view === "pending" ? await getPaidOrders() : await getFinishedOrders();
-            setOrders(data);
+            const res: any = view === "pending" ? await getPaidOrders() : await getFinishedOrders();
+            if (res && res.success === false) {
+                toast.error("Erreur de sécurité : " + res.error);
+                setOrders([]);
+            } else {
+                setOrders(Array.isArray(res) ? res : []);
+            }
         } catch (error) {
             console.error("Load failed:", error);
+            setOrders([]);
         } finally {
             setIsLoading(false);
         }
-    };
+    }, [view]);
 
     useEffect(() => {
         loadOrders();
@@ -50,20 +58,19 @@ export default function TraitementContent() {
             }
         }, 3000);
         return () => clearInterval(interval);
-    }, [view]);
+    }, [view, loadOrders]);
 
     // Separate Effect for Auto-Print trigger
     useEffect(() => {
         if (orderForDetail && orderForDetail.status === "LIVRE") {
             const printTimer = setTimeout(async () => {
-                console.log("Triggering window.print() for", orderForDetail.orderNumber);
                 window.print();
-                await markOrderAsTermine(orderForDetail.id);
+                await markOrderAsTermine({ id: orderForDetail.id });
                 loadOrders();
             }, 800); // Increased delay for rendering safety
             return () => clearTimeout(printTimer);
         }
-    }, [orderForDetail]);
+    }, [orderForDetail, loadOrders]);
 
     const handleCodeChange = (itemId: string, index: number, value: string) => {
         setCodes(prev => ({
@@ -98,19 +105,54 @@ export default function TraitementContent() {
                     ...res,
                     items: (res.items as any[]).map(item => ({
                         ...item,
-                        codes: (item.codes as any[]).map((c: any) => c.code)
+                        codes: item.codes
                     }))
                 };
                 setOrderForDetail(flattened);
                 loadOrders();
                 setSelectedOrder(null);
                 setCodes({});
-                setTimeout(() => window.print(), 300);
+                if (selectedOrder.deliveryMethod === "TICKET") {
+                    setTimeout(() => window.print(), 300);
+                }
             }
         } catch (error) {
             console.error("Process failed:", error);
         } finally {
             setIsProcessing(false);
+        }
+    };
+
+    // Auto-populate codes from order items if they already have them (pre-assigned)
+    useEffect(() => {
+        if (selectedOrder) {
+            const initialCodes: Record<string, string> = {};
+            selectedOrder.items.forEach((item: any) => {
+                if (item.codes && item.codes.length > 0) {
+                    item.codes.forEach((code: string, i: number) => {
+                        initialCodes[`${item.id}-${i}`] = code;
+                    });
+                }
+            });
+            setCodes(prev => ({ ...prev, ...initialCodes }));
+        }
+    }, [selectedOrder]);
+
+    const handleCancelOrder = async (orderId: number) => {
+        if (!confirm("Êtes-vous sûr de vouloir annuler/rembourser cette commande ? Cette action est irréversible et libérera les codes digitaux associés.")) return;
+
+        try {
+            const res = await cancelOrderAction(orderId);
+            if (res.success) {
+                toast.success("Commande annulée avec succès");
+                setIsDetailModalOpen(false);
+                loadOrders();
+            } else {
+                toast.error("Erreur: " + (res as any).error);
+            }
+        } catch (error) {
+            console.error("Cancel failed:", error);
+            toast.error("Erreur technique lors de l'annulation");
         }
     };
 
@@ -122,7 +164,7 @@ export default function TraitementContent() {
         const diffMs = new Date().getTime() - new Date(date).getTime();
         const diffMins = Math.floor(diffMs / 60000);
         if (diffMins < 60) return `${diffMins} min`;
-        return `${Math.floor(diffMins / 60)}h ${diffMins % 60}m`;
+        return `${Math.floor(diffMins / 60)}h ${diffMins % 60} m`;
     };
 
     const getStatusBadge = (status: string) => {
@@ -131,6 +173,14 @@ export default function TraitementContent() {
             case "PARTIEL": return <span className="bg-amber-500/20 text-amber-400 text-[10px] font-bold uppercase px-2 py-0.5 rounded shrink-0">Partiel</span>;
             case "NON_PAYE": return <span className="bg-red-500/20 text-red-500 text-[10px] font-bold uppercase px-2 py-0.5 rounded shrink-0">Dette</span>;
             case "TERMINE": return <span className="bg-blue-500/20 text-blue-400 text-[10px] font-bold uppercase px-2 py-0.5 rounded shrink-0">Livré</span>;
+            default: return null;
+        }
+    };
+
+    const getSourceBadge = (source: string) => {
+        switch (source) {
+            case "B2B_WEB": return <span className="bg-[#ec5b13]/20 text-[#ec5b13] text-[9px] font-black uppercase px-2 py-0.5 rounded border border-[#ec5b13]/30">PARTENAIRE</span>;
+            case "API": return <span className="bg-purple-500/20 text-purple-400 text-[9px] font-black uppercase px-2 py-0.5 rounded border border-purple-500/30">API</span>;
             default: return null;
         }
     };
@@ -146,10 +196,10 @@ export default function TraitementContent() {
     return (
         <div className="flex h-[calc(100vh-64px)] w-full overflow-hidden bg-[#1a0f0a] mx-[-32px] my-[-32px] font-sans antialiased">
             <style jsx global>{`
-                .custom-scrollbar::-webkit-scrollbar { width: 6px; }
-                .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-                .custom-scrollbar::-webkit-scrollbar-thumb { background: #4b2e24; border-radius: 10px; }
-            `}</style>
+    .custom - scrollbar:: -webkit - scrollbar { width: 6px; }
+                .custom - scrollbar:: -webkit - scrollbar - track { background: transparent; }
+                .custom - scrollbar:: -webkit - scrollbar - thumb { background: #4b2e24; border - radius: 10px; }
+`}</style>
 
             <main className="flex-1 flex flex-col min-w-0 bg-[#1a0f0a]/95">
                 {/* Header */}
@@ -158,7 +208,7 @@ export default function TraitementContent() {
                         <div className="size-10 bg-[#ec5b13]/10 rounded-xl flex items-center justify-center text-[#ec5b13]">
                             <span className="material-symbols-outlined font-light">history_edu</span>
                         </div>
-                        <h2 className="text-xl font-bold tracking-tight">Traitement des Commandes</h2>
+                        <h2 className="text-xl font-bold tracking-tight">Traitement des Commandes (File d&apos;attente)</h2>
                     </div>
                     <div className="flex items-center gap-4">
                         <div className="relative w-64">
@@ -193,7 +243,7 @@ export default function TraitementContent() {
                     {/* Left Column: Queue */}
                     <section className="w-96 flex flex-col border-r border-[#ec5b13]/5 shrink-0">
                         <div className="p-6 shrink-0">
-                            <h3 className="text-lg font-bold mb-1">File d'attente</h3>
+                            <h3 className="text-lg font-bold mb-1">File d&apos;attente</h3>
                             <p className="text-sm text-slate-500 uppercase tracking-widest text-[10px] font-bold">
                                 {view === "pending" ? "Payé - À Traiter" : "Traitement Terminé"}
                             </p>
@@ -209,20 +259,30 @@ export default function TraitementContent() {
                                     onClick={() => setSelectedOrder(order)}
                                     className={`p-4 rounded-2xl border transition-all cursor-pointer group ${selectedOrder?.id === order.id
                                         ? "bg-[#ec5b13]/10 border-[#ec5b13]/30 ring-1 ring-[#ec5b13]/20"
-                                        : "bg-[#2a1b15]/40 border-white/5 hover:border-[#ec5b13]/20"}`}
+                                        : "bg-[#2a1b15]/40 border-white/5 hover:border-[#ec5b13]/20"
+                                        }`}
                                 >
                                     <div className="flex justify-between items-start mb-2 gap-2">
                                         <span className={`font-bold truncate ${selectedOrder?.id === order.id ? "text-[#ec5b13]" : "text-slate-300 group-hover:text-[#ec5b13]"}`}>
                                             #{order.orderNumber}
                                         </span>
-                                        {getStatusBadge(order.status)}
+                                        <div className="flex items-center gap-2">
+                                            {getSourceBadge(order.source)}
+                                            {getStatusBadge(order.status)}
+                                        </div>
                                     </div>
                                     <div className="space-y-1">
                                         <p className="text-sm text-slate-400">Il y a {getTimeAgo(order.createdAt)}</p>
                                         <div className="flex justify-between items-center">
                                             <p className="text-xs text-slate-500">
-                                                {order.items.reduce((acc: number, item: any) => acc + item.quantity, 0)} articles • {Number(order.totalAmount).toLocaleString()} DZD
+                                                {order.items.reduce((acc: number, item: any) => acc + item.quantity, 0)} articles • {formatCurrency(order.totalAmount, 'DZD')}
                                             </p>
+                                            {order.items.some((it: any) => it.codes?.some((c: string) => c.includes('| Profil'))) && (
+                                                <span className="flex items-center gap-1 text-[9px] font-black text-secondary uppercase bg-secondary/10 px-1.5 py-0.5 rounded-md">
+                                                    <span className="material-symbols-outlined text-[11px]">group</span>
+                                                    Partagé
+                                                </span>
+                                            )}
                                             {order.status === "TERMINE" && (
                                                 <button
                                                     onClick={(e) => {
@@ -277,25 +337,36 @@ export default function TraitementContent() {
                                                     </div>
                                                     <div>
                                                         <h5 className="font-bold text-lg">{item.name}</h5>
-                                                        <p className="text-slate-500 text-sm">Quantité: <span className="text-white font-medium">{item.quantity}</span></p>
+                                                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-0.5">
+                                                            <p className="text-slate-500 text-sm">Quantité: <span className="text-white font-medium">{item.quantity}</span></p>
+                                                            {item.customData && (
+                                                                <span className="text-[10px] text-[#ec5b13] font-black uppercase tracking-widest border-l border-white/10 pl-3">ID: {item.customData}</span>
+                                                            )}
+                                                            {item.playerNickname && (
+                                                                <span className="text-[10px] text-emerald-500 font-black uppercase tracking-widest border-l border-white/10 pl-3">PSEUDO: {item.playerNickname}</span>
+                                                            )}
+                                                        </div>
                                                     </div>
                                                 </div>
-                                                <p className="text-xl font-bold whitespace-nowrap text-[#ec5b13]">{Number(item.price).toLocaleString()} DZD</p>
+                                                <p className="text-xl font-bold whitespace-nowrap text-[#ec5b13]">{formatCurrency(item.price, 'DZD')}</p>
                                             </div>
                                             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pl-18">
-                                                {Array.from({ length: item.quantity }).map((_, i) => (
-                                                    <div key={i} className="relative">
-                                                        <div className="absolute inset-y-0 left-0 w-1 bg-[#ec5b13]/40 rounded-full"></div>
-                                                        <input
-                                                            className="w-full bg-[#2a1b15] border-white/5 rounded-xl px-4 py-3 text-sm focus:ring-1 focus:ring-[#ec5b13] focus:border-[#ec5b13] outline-none text-white placeholder:text-slate-600 transition-all"
-                                                            placeholder={`Entrez le code #${i + 1} pour ${item.name}...`}
-                                                            type="text"
-                                                            value={codes[`${item.id}-${i}`] || ""}
-                                                            onChange={(e) => handleCodeChange(item.id, i, e.target.value)}
-                                                            disabled={view === "finished"}
-                                                        />
-                                                    </div>
-                                                ))}
+                                                {Array.from({ length: item.quantity }).map((_, i) => {
+                                                    const isPreassigned = item.codes && item.codes[i];
+                                                    return (
+                                                        <div key={i} className="relative">
+                                                            <div className={`absolute inset-y-0 left-0 w-1 ${isPreassigned ? 'bg-emerald-500' : 'bg-[#ec5b13]/40'} rounded-full`}></div>
+                                                            <input
+                                                                className={`w-full bg-[#2a1b15] border-white/5 rounded-xl px-4 py-3 text-sm focus:ring-1 focus:ring-[#ec5b13] focus:border-[#ec5b13] outline-none text-white placeholder:text-slate-600 transition-all ${isPreassigned ? 'opacity-60 cursor-not-allowed border-emerald-500/30' : ''}`}
+                                                                placeholder={isPreassigned ? "Code automatique assigné" : `Entrez le code #${i + 1} pour ${item.name}...`}
+                                                                type="text"
+                                                                value={codes[`${item.id}-${i}`] || ""}
+                                                                onChange={(e) => handleCodeChange(item.id, i, e.target.value)}
+                                                                disabled={view === "finished" || isPreassigned}
+                                                            />
+                                                        </div>
+                                                    );
+                                                })}
                                             </div>
                                         </div>
                                     ))}
@@ -307,7 +378,7 @@ export default function TraitementContent() {
                                         </div>
                                         <div className="pt-3 border-t border-white/5 flex justify-between items-center text-white">
                                             <span className="font-bold text-lg">Total à valider</span>
-                                            <span className="text-2xl font-black">{Number(selectedOrder.totalAmount).toLocaleString()} DZD</span>
+                                            <span className="text-2xl font-black">{formatCurrency(selectedOrder.totalAmount, 'DZD')}</span>
                                         </div>
                                     </div>
                                 </div>
@@ -336,7 +407,7 @@ export default function TraitementContent() {
                                     <span className="material-symbols-outlined text-8xl text-[#ec5b13]/20 group-hover:scale-110 transition-all duration-700">order_approve</span>
                                 </div>
                                 <h3 className="text-3xl font-bold text-slate-600 uppercase tracking-widest italic mb-4">Poste de Travail</h3>
-                                <p className="text-slate-700 text-sm max-w-[250px] leading-relaxed">Veuillez sélectionner une commande dans la file d'attente</p>
+                                <p className="text-slate-400 font-medium">Veuillez sélectionner une commande dans la file d&apos;attente</p>
                             </div>
                         )}
                     </section>
@@ -351,6 +422,8 @@ export default function TraitementContent() {
                         date={selectedOrder?.createdAt || orderForDetail?.createdAt}
                         items={(selectedOrder || orderForDetail)?.items.map((item: any) => ({
                             ...item,
+                            customData: item.customData,
+                            playerNickname: item.playerNickname,
                             codes: selectedOrder
                                 ? Array.from({ length: item.quantity }, (_, i) => codes[`${item.id}-${i}`]).filter(Boolean)
                                 : item.codes
@@ -364,6 +437,7 @@ export default function TraitementContent() {
                 isOpen={isDetailModalOpen}
                 onClose={() => setIsDetailModalOpen(false)}
                 order={orderForDetail}
+                onRefund={() => handleCancelOrder(orderForDetail.id)}
                 onReprint={() => {
                     setTimeout(() => window.print(), 200);
                 }}

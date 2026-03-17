@@ -4,6 +4,8 @@ import React, { useState, useMemo } from "react";
 import { useKioskStore } from "@/store/useKioskStore";
 import { useSettingsStore } from "@/store/useSettingsStore";
 import ProductModal from "../components/ProductModal";
+import NextImage from "next/image";
+import { formatCurrency } from "@/lib/formatters";
 
 interface CatalogueViewProps {
     products: any[];
@@ -48,7 +50,7 @@ export default function CatalogueView({ products, categories }: CatalogueViewPro
                 <div className="flex-shrink-0">
                     {dashboardLogoUrl ? (
                         <div className="h-20 flex items-center">
-                            <img src={dashboardLogoUrl} alt={shopName} className="h-full w-auto object-contain" />
+                            <NextImage src={dashboardLogoUrl} alt={shopName} width={200} height={80} className="h-full w-auto object-contain" />
                         </div>
                     ) : (
                         <div className="text-4xl font-black tracking-tighter text-[#ec5b13]">
@@ -61,12 +63,12 @@ export default function CatalogueView({ products, categories }: CatalogueViewPro
                 <div className="flex-grow max-w-2xl px-8">
                     <div className="relative group">
                         <div className="absolute inset-y-0 left-6 flex items-center pointer-events-none">
-                            <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <svg className="w-8 h-8 text-black/40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path d="21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5"></path>
                             </svg>
                         </div>
                         <input
-                            className="w-full h-20 pl-16 pr-8 text-2xl bg-white border-none rounded-full shadow-sm focus:ring-4 focus:ring-[#ec5b13]/20 transition-all placeholder:text-gray-300 outline-none"
+                            className="w-full h-20 pl-16 pr-8 text-2xl bg-white border-none rounded-full shadow-sm focus:ring-4 focus:ring-[#ec5b13]/20 transition-all placeholder:text-black/30 text-black font-bold outline-none"
                             placeholder="Rechercher un produit..."
                             type="text"
                             value={searchTerm}
@@ -81,11 +83,11 @@ export default function CatalogueView({ products, categories }: CatalogueViewPro
                         onClick={() => setStep("CART")}
                         className="relative bg-white h-20 px-10 rounded-full shadow-sm flex items-center justify-center gap-4 active:scale-95 transition-transform border border-gray-50 touch-target"
                     >
-                        <svg className="w-10 h-10 text-slate-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path>
+                        <svg className="w-10 h-10 text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5"></path>
                         </svg>
-                        <span className="text-2xl font-bold text-slate-700">Panier</span>
-                        <div className="absolute -top-2 -right-2 bg-[#ec5b13] text-white text-lg font-bold w-10 h-10 rounded-full flex items-center justify-center border-4 border-[#F9FAFB] shadow-md">
+                        <span className="text-2xl font-black text-black">Panier</span>
+                        <div className="absolute -top-2 -right-2 bg-[#ec5b13] text-white text-lg font-black w-10 h-10 rounded-full flex items-center justify-center border-4 border-[#F9FAFB] shadow-md">
                             {cart.length}
                         </div>
                     </button>
@@ -100,7 +102,7 @@ export default function CatalogueView({ products, categories }: CatalogueViewPro
                     {/* Active Category */}
                     <button
                         onClick={() => setSelectedCategoryId(null)}
-                        className={`px-12 h-20 text-2xl font-bold rounded-full flex items-center justify-center transition-colors touch-target ${selectedCategoryId === null ? 'bg-black text-white' : 'bg-white border border-gray-200 text-black active:bg-gray-100'}`}
+                        className={`px-12 h-20 text-2xl font-black rounded-full flex items-center justify-center transition-colors touch-target ${selectedCategoryId === null ? 'bg-black text-white' : 'bg-white border-2 border-slate-200 text-black active:bg-gray-100'}`}
                     >
                         Tous
                     </button>
@@ -109,7 +111,7 @@ export default function CatalogueView({ products, categories }: CatalogueViewPro
                         <button
                             key={cat.id}
                             onClick={() => setSelectedCategoryId(cat.id)}
-                            className={`px-12 h-20 text-2xl font-semibold rounded-full flex items-center justify-center transition-colors touch-target ${selectedCategoryId === cat.id ? 'bg-black text-white' : 'bg-white border border-gray-200 text-black active:bg-gray-100'}`}
+                            className={`px-12 h-20 text-2xl font-black rounded-full flex items-center justify-center transition-colors touch-target ${selectedCategoryId === cat.id ? 'bg-black text-white' : 'bg-white border-2 border-slate-200 text-black active:bg-gray-100'}`}
                         >
                             {cat.name}
                         </button>
@@ -127,16 +129,20 @@ export default function CatalogueView({ products, categories }: CatalogueViewPro
                                 className="bg-white rounded-[32px] overflow-hidden shadow-sm hover:shadow-md transition-shadow flex flex-col active:scale-[0.98] transition-transform cursor-pointer group"
                             >
                                 <div className="h-64 bg-[#F3F4F6] flex items-center justify-center p-12">
-                                    <img
-                                        alt={product.name}
-                                        className="w-full h-full object-contain filter drop-shadow-lg group-hover:scale-105 transition-transform duration-500"
-                                        src={product.imageUrl}
-                                    />
+                                    {product.imageUrl && (
+                                        <NextImage
+                                            alt={product.name}
+                                            width={200}
+                                            height={200}
+                                            className="w-full h-full object-contain filter drop-shadow-lg group-hover:scale-105 transition-transform duration-500"
+                                            src={product.imageUrl}
+                                        />
+                                    )}
                                 </div>
                                 <div className="p-8 flex flex-col gap-2">
-                                    <h3 className="text-2xl font-bold text-slate-800 leading-tight">{product.name}</h3>
-                                    <p className="text-[#ec5b13] text-xl font-bold mt-1">
-                                        À partir de {Math.min(...product.variants.map((v: any) => Number(v.salePriceDzd))).toLocaleString()} DZD
+                                    <h3 className="text-2xl font-black text-black leading-tight uppercase tracking-tight">{product.name}</h3>
+                                    <p className="text-[#ec5b13] text-xl font-black mt-1">
+                                        À partir de {formatCurrency(Math.min(...product.variants.map((v: any) => Number(v.salePriceDzd))), 'DZD')}
                                     </p>
                                 </div>
                             </div>
@@ -149,7 +155,7 @@ export default function CatalogueView({ products, categories }: CatalogueViewPro
 
             {/* BEGIN: Footer Message */}
             <footer className="h-16 bg-white border-t border-gray-100 flex items-center justify-center px-10 shrink-0">
-                <p className="text-gray-400 font-medium text-lg">Touchez un produit pour voir les options disponibles</p>
+                <p className="text-black/50 font-bold text-lg">Touchez un produit pour voir les options disponibles</p>
             </footer>
             {/* END: Footer Message */}
 

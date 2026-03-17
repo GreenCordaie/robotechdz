@@ -11,6 +11,7 @@ import {
 
 import { rechargeSupplier } from "@/app/admin/fournisseurs/actions";
 import { toast } from "react-hot-toast";
+import { formatCurrency } from "@/lib/formatters";
 
 interface RechargeBalanceModalProps {
     isOpen: boolean;
@@ -19,6 +20,7 @@ interface RechargeBalanceModalProps {
     supplierName: string;
     currentBalance: string | number;
     exchangeRate: string | number;
+    baseCurrency: 'USD' | 'DZD';
 }
 
 export const RechargeBalanceModal = ({
@@ -27,29 +29,38 @@ export const RechargeBalanceModal = ({
     supplierId,
     supplierName,
     currentBalance,
-    exchangeRate
+    exchangeRate,
+    baseCurrency
 }: RechargeBalanceModalProps) => {
     const [amount, setAmount] = useState<string>("");
-    const [currency, setCurrency] = useState<'USD' | 'DZD'>('USD');
+    const [currency, setCurrency] = useState<'USD' | 'DZD'>(baseCurrency || 'USD');
     const [paymentMethod, setPaymentMethod] = useState<string>("usdt");
     const [estimatedOther, setEstimatedOther] = useState<number>(0);
-    const [projectedUsd, setProjectedUsd] = useState<number>(0);
+    const [projectedNewBalance, setProjectedNewBalance] = useState<number>(0);
     const [isSaving, setIsSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
-    const rate = parseFloat(String(exchangeRate)) || 225;
-    const currentUsd = parseFloat(String(currentBalance)) || 0;
+    const rate = parseFloat(String(exchangeRate)) || 245;
+    const currentBalanceNum = parseFloat(String(currentBalance)) || 0;
 
     useEffect(() => {
         const val = parseFloat(amount) || 0;
+
+        if (baseCurrency === 'DZD') {
+            setEstimatedOther(0);
+            setProjectedNewBalance(currentBalanceNum + val);
+            return;
+        }
+
         if (currency === 'USD') {
             setEstimatedOther(val * rate);
-            setProjectedUsd(currentUsd + val);
+            setProjectedNewBalance(currentBalanceNum + val);
         } else {
             setEstimatedOther(val / rate);
-            setProjectedUsd(currentUsd + (val / rate));
+            // Recharging a USD supplier with DZD
+            setProjectedNewBalance(currentBalanceNum + (val / rate));
         }
-    }, [amount, currency, rate, currentUsd]);
+    }, [amount, currency, rate, currentBalanceNum, baseCurrency]);
 
     const handleRecharge = async () => {
         if (!amount || parseFloat(amount) <= 0) {
@@ -63,13 +74,23 @@ export const RechargeBalanceModal = ({
         setError(null);
 
         try {
-            const res = await rechargeSupplier(supplierId, amount, String(rate), currency);
+            // If the supplier is USD and we recharge in DZD, we should probably pass the converted USD amount to the action 
+            // OR let the action handle it. My action currently does balance + amount directly.
+            // So if I recharge a USD supplier with 10,000 DZD, it adds 10,000 to the USD balance... NOT GOOD.
+            // FIXED: I should always recharge in the SUPPLIER'S currency.
+
+            let amountToSubmit = amount;
+            if (baseCurrency === 'USD' && currency === 'DZD') {
+                amountToSubmit = (parseFloat(amount) / rate).toFixed(2);
+            } else if (baseCurrency === 'DZD' && currency === 'USD') {
+                amountToSubmit = (parseFloat(amount) * rate).toFixed(2);
+            }
+
+            const res = await rechargeSupplier(supplierId, amountToSubmit, String(rate), baseCurrency);
             if (res.success) {
-                toast.success(`Solde rechargé (${amount} ${currency})`);
+                toast.success(`Solde rechargé (${amountToSubmit} ${baseCurrency})`);
                 onClose();
                 setAmount("");
-                // Optional: window.location.reload() or a local state update if needed
-                // But usually we want reactive UI
                 window.location.reload();
             } else {
                 const msg = res.error || "Une erreur est survenue";
@@ -131,31 +152,35 @@ export const RechargeBalanceModal = ({
                                     <p className="text-slate-400 text-sm font-medium mb-1">Solde actuel</p>
                                     <div className="flex items-center justify-center gap-2">
                                         <span className="material-symbols-outlined text-[#ec5b13] text-xl">account_balance_wallet</span>
-                                        <h3 className="text-white text-3xl font-bold tracking-tight">{currentUsd.toLocaleString(undefined, { minimumFractionDigits: 2 })} $</h3>
+                                        <h3 className="text-white text-3xl font-bold tracking-tight">
+                                            {formatCurrency(currentBalance, baseCurrency)}
+                                        </h3>
                                     </div>
                                 </div>
 
                                 {/* Currency Toggle */}
-                                <div className="flex bg-[#0a0a0a] border border-[#262626] rounded-xl p-1 mb-6">
-                                    <button
-                                        onClick={() => setCurrency('USD')}
-                                        className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${currency === 'USD' ? 'bg-[#ec5b13] text-white' : 'text-slate-500 hover:text-slate-300'}`}
-                                    >
-                                        USD ($)
-                                    </button>
-                                    <button
-                                        onClick={() => setCurrency('DZD')}
-                                        className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${currency === 'DZD' ? 'bg-[#ec5b13] text-white' : 'text-slate-500 hover:text-slate-300'}`}
-                                    >
-                                        DZD (DA)
-                                    </button>
-                                </div>
+                                {baseCurrency !== 'DZD' && (
+                                    <div className="flex bg-[#0a0a0a] border border-[#262626] rounded-xl p-1 mb-6">
+                                        <button
+                                            onClick={() => setCurrency('USD')}
+                                            className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${currency === 'USD' ? 'bg-[#ec5b13] text-white' : 'text-slate-500 hover:text-slate-300'}`}
+                                        >
+                                            USD
+                                        </button>
+                                        <button
+                                            onClick={() => setCurrency('DZD')}
+                                            className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${currency === 'DZD' ? 'bg-[#ec5b13] text-white' : 'text-slate-500 hover:text-slate-300'}`}
+                                        >
+                                            DZD
+                                        </button>
+                                    </div>
+                                )}
 
                                 {/* Section 2: Recharge Form */}
                                 <div className="space-y-6">
                                     <div>
                                         <label className="block text-slate-400 text-xs font-semibold uppercase tracking-widest mb-3 px-1">
-                                            Montant de la recharge ({currency})
+                                            Montant de la recharge ({baseCurrency === 'DZD' ? 'DZD' : currency})
                                         </label>
                                         <div className="relative group">
                                             <input
@@ -167,14 +192,18 @@ export const RechargeBalanceModal = ({
                                                 onChange={(e) => setAmount(e.target.value)}
                                             />
                                             <div className="absolute right-4 top-1/2 -translate-y-1/2 bg-[#262626] px-3 py-1 rounded-lg">
-                                                <span className="text-slate-100 text-sm font-bold">{currency}</span>
+                                                <span className="text-slate-100 text-sm font-bold">{baseCurrency === 'DZD' ? 'DZD' : currency}</span>
                                             </div>
                                         </div>
                                         <div className="mt-3 flex justify-between items-center px-1">
-                                            <p className="text-slate-500 text-xs italic">
-                                                Équivalent : ~ {estimatedOther.toLocaleString(undefined, { maximumFractionDigits: 2 })} {currency === 'USD' ? 'DZD' : 'USD'}
-                                            </p>
-                                            <p className="text-[#ec5b13]/60 text-xs font-medium">Taux: {rate}</p>
+                                            {baseCurrency !== 'DZD' && (
+                                                <>
+                                                    <p className="text-slate-500 text-xs italic">
+                                                        Équivalent : ~ {formatCurrency(estimatedOther, currency === 'USD' ? 'DZD' : 'USD')}
+                                                    </p>
+                                                    <p className="text-[#ec5b13]/60 text-xs font-medium">Taux: {formatCurrency(rate, 'DZD')}</p>
+                                                </>
+                                            )}
                                         </div>
                                     </div>
 
@@ -202,7 +231,9 @@ export const RechargeBalanceModal = ({
                                 {/* Section 3: Projected Balance */}
                                 <div className="mt-10 pt-6 border-t border-[#262626]/50 flex items-center justify-between">
                                     <span className="text-slate-400 text-sm">Nouveau solde estimé :</span>
-                                    <span className="text-[#ec5b13] text-xl font-bold">{projectedUsd.toLocaleString(undefined, { minimumFractionDigits: 2 })} $</span>
+                                    <span className="text-[#ec5b13] text-xl font-bold">
+                                        {formatCurrency(projectedNewBalance, baseCurrency)}
+                                    </span>
                                 </div>
                             </div>
                         </ModalBody>

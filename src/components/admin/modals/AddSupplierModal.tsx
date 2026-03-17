@@ -12,6 +12,7 @@ import {
 
 import { addSupplierAction } from "@/app/admin/fournisseurs/actions";
 import { toast } from "react-hot-toast";
+import { formatCurrency } from "@/lib/formatters";
 
 interface AddSupplierModalProps {
     isOpen: boolean;
@@ -21,8 +22,7 @@ interface AddSupplierModalProps {
 export const AddSupplierModal = ({ isOpen, onClose }: AddSupplierModalProps) => {
     const [name, setName] = useState("");
     const [initialBalance, setInitialBalance] = useState("0.00");
-    const [currency, setCurrency] = useState<'USD' | 'DZD'>('USD');
-    const [defaultRate, setDefaultRate] = useState("225");
+    const [currency, setCurrency] = useState<'USD' | 'DZD'>('DZD');
     const [isSaving, setIsSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
@@ -40,7 +40,6 @@ export const AddSupplierModal = ({ isOpen, onClose }: AddSupplierModalProps) => 
             const res = await addSupplierAction({
                 name,
                 balance: initialBalance,
-                exchangeRate: defaultRate,
                 currency
             });
 
@@ -49,8 +48,7 @@ export const AddSupplierModal = ({ isOpen, onClose }: AddSupplierModalProps) => 
                 onClose();
                 setName("");
                 setInitialBalance("0.00");
-                setDefaultRate("225");
-                setCurrency('USD');
+                setCurrency('DZD');
                 window.location.reload();
             } else {
                 const msg = res.error || "Une erreur est survenue";
@@ -114,55 +112,35 @@ export const AddSupplierModal = ({ isOpen, onClose }: AddSupplierModalProps) => 
                                             onClick={() => setCurrency('USD')}
                                             className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${currency === 'USD' ? 'bg-[#ec5b13] text-white' : 'text-slate-500 hover:text-slate-300'}`}
                                         >
-                                            USD ($)
+                                            USD
                                         </button>
                                         <button
                                             type="button"
                                             onClick={() => setCurrency('DZD')}
                                             className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${currency === 'DZD' ? 'bg-[#ec5b13] text-white' : 'text-slate-500 hover:text-slate-300'}`}
                                         >
-                                            DZD (DA)
+                                            DZD
                                         </button>
                                     </div>
                                 </div>
 
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <div className="space-y-2">
-                                        <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                                            Solde Initial ({currency})
-                                        </label>
-                                        <div className="relative group">
-                                            <input
-                                                className="w-full bg-black/30 border border-[#3d261c] rounded-xl h-12 px-4 text-white focus:ring-2 focus:ring-[#ec5b13]/50 focus:border-[#ec5b13] transition-all outline-none"
-                                                placeholder="0.00"
-                                                type="number"
-                                                step="0.01"
-                                                value={initialBalance}
-                                                onChange={(e) => setInitialBalance(e.target.value)}
-                                            />
-                                            <span className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 font-bold text-sm">
-                                                {currency === 'USD' ? '$' : 'DA'}
-                                            </span>
-                                        </div>
+                                <div className="space-y-2">
+                                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                                        Solde Initial ({currency})
+                                    </label>
+                                    <div className="relative group">
+                                        <input
+                                            className="w-full bg-black/30 border border-[#3d261c] rounded-xl h-12 px-4 text-white focus:ring-2 focus:ring-[#ec5b13]/50 focus:border-[#ec5b13] transition-all outline-none"
+                                            placeholder="0.00"
+                                            type="number"
+                                            step="0.01"
+                                            value={initialBalance}
+                                            onChange={(e) => setInitialBalance(e.target.value)}
+                                        />
+                                        <span className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 font-bold text-sm">
+                                            {currency}
+                                        </span>
                                     </div>
-                                    {currency === 'USD' ? (
-                                        <div className="space-y-2">
-                                            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Taux de Change (1 USD = X DZD)</label>
-                                            <div className="relative group">
-                                                <input
-                                                    className="w-full bg-black/30 border border-[#3d261c] rounded-xl h-12 px-4 text-white focus:ring-2 focus:ring-[#ec5b13]/50 focus:border-[#ec5b13] transition-all outline-none"
-                                                    placeholder="225"
-                                                    type="number"
-                                                    step="0.01"
-                                                    value={defaultRate}
-                                                    onChange={(e) => setDefaultRate(e.target.value)}
-                                                />
-                                                <span className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 font-bold text-sm">DZD</span>
-                                            </div>
-                                        </div>
-                                    ) : (
-                                        <div className="h-[68px] hidden md:block"></div>
-                                    )}
                                 </div>
 
                                 <div className="flex gap-4 pt-4">

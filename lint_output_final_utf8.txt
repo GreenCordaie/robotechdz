@@ -1,0 +1,49 @@
+﻿
+> 100-pc-ia@0.1.0 lint
+> next lint
+
+node.exe : 
+Au caractère Ligne:1 : 1
++ & "C:\Program Files\nodejs/node.exe" 
+"C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (:St  
+  ring) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+./src/app/layout.tsx
+22:17  Warning: Custom fonts not added in 
+`pages/_document.js` will only load for a single 
+page. This is discouraged. See: https://nextjs.org
+/docs/messages/no-page-custom-font  
+@next/next/no-page-custom-font
+
+./src/components/admin/CatalogueContent.tsx
+154:8  Warning: React Hook useEffect has missing 
+dependencies: 'initialSearch' and 'updateParams'. 
+Either include them or remove the dependency 
+array.  react-hooks/exhaustive-deps
+
+./src/components/admin/modals/EditMemberModal.tsx
+239:101  Error: `'` can be escaped with `&apos;`, 
+`&lsquo;`, `&#39;`, `&rsquo;`.  
+react/no-unescaped-entities
+
+./src/components/admin/modals/MassImportModal.tsx
+128:102  Error: `"` can be escaped with `&quot;`, 
+`&ldquo;`, `&#34;`, `&rdquo;`.  
+react/no-unescaped-entities
+128:113  Error: `"` can be escaped with `&quot;`, 
+`&ldquo;`, `&#34;`, `&rdquo;`.  
+react/no-unescaped-entities
+128:190  Error: `"` can be escaped with `&quot;`, 
+`&ldquo;`, `&#34;`, `&rdquo;`.  
+react/no-unescaped-entities
+128:205  Error: `"` can be escaped with `&quot;`, 
+`&ldquo;`, `&#34;`, `&rdquo;`.  
+react/no-unescaped-entities
+
+info  - Need to disable some ESLint rules? Learn 
+more here: https://nextjs.org/docs/basic-features/
+eslint#disabling-rules

@@ -3,12 +3,14 @@
 import React, { useState, useEffect } from "react";
 import { Spinner, Button, Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, Tooltip } from "@heroui/react";
 import { useOrderStore } from "@/store/useOrderStore";
-import { payOrder, getTodayOrders } from "./actions";
+import { payOrder, getTodayOrders, cancelOrderAction, replaceOrderItemCode, refundOrderItem, refundFullOrder } from "./actions";
 import { useAuthStore } from "@/store/useAuthStore";
 import { toast } from "react-hot-toast";
 import OrderDetailModal from "@/components/admin/modals/OrderDetailModal";
 import { Eye, User as UserIcon, Plus } from "lucide-react";
 import { getAllClients, createClient } from "../clients/actions";
+import { formatCurrency } from "@/lib/formatters";
+import { ThermalReceipt } from "@/components/admin/receipt/ThermalReceipt";
 
 export default function CaisseContent() {
     const {
@@ -33,14 +35,34 @@ export default function CaisseContent() {
     const [newClientName, setNewClientName] = useState("");
     const [newClientPhone, setNewClientPhone] = useState("");
     const [itemSuppliers, setItemSuppliers] = useState<Record<number, number>>({});
+    const [printData, setPrintData] = useState<any>(null);
+
+    const handlePrint = () => {
+        setTimeout(() => {
+            window.print();
+            setPrintData(null);
+        }, 500);
+    };
+
+    useEffect(() => {
+        if (printData) {
+            handlePrint();
+        }
+    }, [printData]);
 
     const loadOrders = async () => {
         setIsLoading(true);
         try {
-            const data = await getTodayOrders();
-            setAllTodayOrders(data);
+            const res: any = await getTodayOrders({});
+            if (res && res.success === false) {
+                toast.error("Erreur de sécurité : " + res.error);
+                setAllTodayOrders([]);
+            } else {
+                setAllTodayOrders(Array.isArray(res) ? res : []);
+            }
         } catch (error) {
             console.error("Orders load failed:", error);
+            setAllTodayOrders([]);
         } finally {
             setIsLoading(false);
         }
@@ -49,11 +71,11 @@ export default function CaisseContent() {
     useEffect(() => {
         loadOrders();
         const loadClients = async () => {
-            const clients = await getAllClients();
-            setAllClients(clients);
+            const res: any = await getAllClients({});
+            setAllClients(Array.isArray(res) ? res : []);
         };
         loadClients();
-        const interval = setInterval(loadOrders, 5000);
+        const interval = setInterval(loadOrders, 3000);
         return () => clearInterval(interval);
     }, []);
 
@@ -67,9 +89,9 @@ export default function CaisseContent() {
             const initialSuppliers: Record<number, number> = {};
             (currentOrder.items as any[]).forEach(item => {
                 if (item.variant?.variantSuppliers?.length > 0) {
-                    // Sort by purchasePriceUsd ascending (cheapest first)
+                    // Sort by cost (simplified: assumes same currency for current cheapest logic if both USD or both DZD)
                     const cheapest = [...item.variant.variantSuppliers].sort((a, b) =>
-                        parseFloat(a.purchasePriceUsd) - parseFloat(b.purchasePriceUsd)
+                        parseFloat(a.purchasePrice) - parseFloat(b.purchasePrice)
                     )[0];
                     initialSuppliers[item.id] = cheapest.supplierId;
                 }
@@ -92,16 +114,46 @@ export default function CaisseContent() {
 
         setIsUpdating(true);
         try {
-            const res = await payOrder(currentOrder.id, user.id, {
-                remise,
-                montantPaye: effectiveRecu,
-                clientId: finalClientId || undefined,
-                itemSuppliers
+            const res: any = await payOrder({
+                id: currentOrder.id,
+                options: {
+                    remise,
+                    montantPaye: effectiveRecu,
+                    clientId: finalClientId || undefined,
+                    itemSuppliers
+                }
             });
-            if (res.success) {
+            if (res.success && res.order) {
                 toast.success(`Commande #${currentOrder.orderNumber} encaissée avec succès !`, {
                     style: { background: '#052e16', color: '#4ade80', border: '1px solid #14532d' }
                 });
+
+                // Prepare and trigger Print ONLY if delivery method is TICKET
+                if (res.order.deliveryMethod === "TICKET") {
+                    const hasManual = res.order.items.some((it: any) => it.variant?.product?.isManualDelivery);
+
+                    // If it has manual delivery, we might want to skip automatic printing of codes 
+                    // since they aren't generated yet. For now, we skip if the user specifically asked for "normal" manual flow.
+                    if (!hasManual) {
+                        setPrintData({
+                            orderNumber: res.order.orderNumber,
+                            date: res.order.createdAt,
+                            items: res.order.items.map((it: any) => ({
+                                name: it.name,
+                                quantity: it.quantity,
+                                price: it.price,
+                                codes: it.codes,
+                                customData: it.customData,
+                                playerNickname: it.playerNickname
+                            })),
+                            totalAmount: res.order.totalAmount,
+                            paymentMethod: effectiveRecu >= (Number(res.order.totalAmount) - Number(res.order.remise)) ? "Espèces" : "Crédit / Partiel"
+                        });
+                    } else {
+                        toast.success("Commande à livraison manuelle (Impression différée)");
+                    }
+                }
+
                 setCurrentOrder(null);
                 loadOrders();
             } else {
@@ -117,12 +169,36 @@ export default function CaisseContent() {
     };
 
 
-    const filteredOrders = allTodayOrders.filter(o => {
-        const matchesSearch = o.orderNumber.toLowerCase().includes(searchQuery.toLowerCase());
-        if (!matchesSearch) return false;
-        if (filterStatus === "Toutes") return true;
-        return o.status === statusMap[filterStatus];
-    });
+    const statusMap: Record<string, string> = {
+        "Toutes": "ALL",
+        "En attente": "EN_ATTENTE",
+        "Payées": "PAYE",
+        "Livrées": "TERMINE",
+        "Partiel": "PARTIEL",
+        "Dettes": "NON_PAYE",
+        "Remboursés": "REMBOURSE"
+    };
+
+    const handleCancelOrder = async (orderId: number) => {
+        if (!confirm("Êtes-vous sûr de vouloir annuler/rembourser cette commande ? Cette action est irréversible et libérera les codes digitaux associés.")) return;
+
+        setIsUpdating(true);
+        try {
+            const res = await cancelOrderAction({ orderId });
+            if (res.success) {
+                toast.success("Commande annulée avec succès");
+                setIsDetailModalOpen(false);
+                loadOrders();
+            } else {
+                toast.error("Erreur: " + res.error);
+            }
+        } catch (error) {
+            console.error("Cancel failed:", error);
+            toast.error("Erreur technique lors de l'annulation");
+        } finally {
+            setIsUpdating(false);
+        }
+    };
 
     const getStatusConfig = (status: string) => {
         switch (status) {
@@ -136,19 +212,19 @@ export default function CaisseContent() {
                 return { label: "Partiel", classes: "bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400 border-orange-200 dark:border-orange-800" };
             case "NON_PAYE":
                 return { label: "Dette", classes: "bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400 border-red-200 dark:border-red-800" };
+            case "REMBOURSE":
+                return { label: "Remboursé", classes: "bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400 border-purple-200 dark:border-purple-800" };
             default:
                 return { label: status, classes: "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 border-slate-200 dark:border-slate-700" };
         }
     };
 
-    const statusMap: Record<string, string> = {
-        "Toutes": "ALL",
-        "En attente": "EN_ATTENTE",
-        "Payées": "PAYE",
-        "Livrées": "TERMINE",
-        "Partiel": "PARTIEL",
-        "Dettes": "NON_PAYE"
-    };
+    const filteredOrders = allTodayOrders.filter(o => {
+        const matchesSearch = o.orderNumber.toLowerCase().includes(searchQuery.toLowerCase());
+        if (!matchesSearch) return false;
+        if (filterStatus === "Toutes") return true;
+        return o.status === statusMap[filterStatus];
+    });
 
     return (
         <main className="flex flex-1 min-w-0 overflow-hidden h-[calc(100vh-64px)] mx-[-32px] my-[-32px] bg-background-light dark:bg-background-dark font-sans antialiased">
@@ -162,14 +238,14 @@ export default function CaisseContent() {
             <section className="flex-[0.6] min-w-0 flex flex-col bg-background-light dark:bg-[#221610] border-r border-[#ec5b13]/10">
                 {/* Header / Filters */}
                 <header className="p-6 space-y-6">
-                    <div className="flex items-center justify-between">
-                        <h2 className="text-2xl font-bold tracking-tight">Commandes du jour</h2>
-                        <div className="flex gap-2 p-1 bg-slate-200 dark:bg-[#ec5b13]/5 rounded-xl overflow-x-auto no-scrollbar">
-                            {["Toutes", "En attente", "Payées", "Partiel", "Dettes", "Livrées"].map((s) => (
+                    <div className="flex items-center justify-between gap-4">
+                        <h2 className="text-lg font-bold tracking-tight shrink-0 text-[#ec5b13]">Commandes du jour</h2>
+                        <div className="flex flex-nowrap gap-1 p-1 bg-slate-200 dark:bg-[#ec5b13]/5 rounded-xl transition-all overflow-x-auto scrollbar-hide">
+                            {["Toutes", "En attente", "Payées", "Partiel", "Dettes", "Livrées", "Remboursés"].map((s) => (
                                 <button
                                     key={s}
                                     onClick={() => setFilterStatus(s)}
-                                    className={`px-4 py-1.5 text-sm font-semibold rounded-lg transition-all ${filterStatus === s
+                                    className={`px-2 py-1 text-[10px] font-black uppercase tracking-tighter rounded-lg transition-all whitespace-nowrap ${filterStatus === s
                                         ? "bg-white dark:bg-[#ec5b13] text-[#ec5b13] dark:text-white shadow-sm"
                                         : "text-slate-500 hover:text-[#ec5b13]"
                                         }`}
@@ -193,7 +269,7 @@ export default function CaisseContent() {
 
                 {/* Table */}
                 <div className="flex-1 overflow-y-auto custom-scrollbar px-6 pb-6">
-                    <div className="bg-white dark:bg-[#ec5b13]/5 rounded-2xl border border-slate-200 dark:border-[#ec5b13]/10 overflow-hidden shadow-sm">
+                    <div className="bg-white dark:bg-[#ec5b13]/5 rounded-2xl border border-slate-200 dark:border-[#ec5b13]/10 overflow-x-auto shadow-sm">
                         <table className="w-full text-left border-collapse">
                             <thead>
                                 <tr className="border-b border-slate-100 dark:border-[#ec5b13]/10 bg-slate-50 dark:bg-[#ec5b13]/10">
@@ -234,7 +310,7 @@ export default function CaisseContent() {
                                             <td className="px-6 py-4 text-sm text-slate-500 dark:text-slate-400">
                                                 {new Date(o.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                             </td>
-                                            <td className="px-6 py-4 font-semibold whitespace-nowrap">{Number(o.totalAmount).toLocaleString()} DZD</td>
+                                            <td className="px-6 py-4 font-semibold whitespace-nowrap">{formatCurrency(o.totalAmount, 'DZD')}</td>
                                             <td className="px-6 py-4">
                                                 <span className={`inline-flex items-center px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide border shrink-0 ${config.classes}`}>
                                                     {config.label}
@@ -308,10 +384,16 @@ export default function CaisseContent() {
                                                         ID/LIEN: {item.customData}
                                                     </p>
                                                 )}
-                                                <p className="text-[10px] text-slate-500 font-bold">Qty: {item.quantity} • {Number(item.price).toLocaleString()} DZD</p>
+                                                {item.playerNickname && (
+                                                    <p className="text-[10px] text-emerald-500 font-black uppercase tracking-widest mt-0.5 flex items-center gap-1">
+                                                        <span className="material-symbols-outlined !text-[12px]">person</span>
+                                                        PSEUDO: {item.playerNickname}
+                                                    </p>
+                                                )}
+                                                <p className="text-[10px] text-slate-500 font-bold">Qty: {item.quantity} • {formatCurrency(item.price, 'DZD')}</p>
                                             </div>
                                             <div className="text-right shrink-0">
-                                                <p className="font-black text-white">{(Number(item.price) * item.quantity).toLocaleString()}</p>
+                                                <p className="font-black text-white">{formatCurrency(Number(item.price) * item.quantity, 'DZD')}</p>
                                             </div>
                                         </div>
 
@@ -326,7 +408,7 @@ export default function CaisseContent() {
                                                 >
                                                     {linkedSuppliers.map((ls: any) => (
                                                         <option key={ls.supplier.id} value={ls.supplier.id} className="bg-[#1a1614]">
-                                                            {ls.supplier.name} (${ls.purchasePriceUsd})
+                                                            {ls.supplier.name} ({formatCurrency(ls.purchasePrice, ls.currency)})
                                                         </option>
                                                     ))}
                                                 </select>
@@ -341,7 +423,7 @@ export default function CaisseContent() {
                         <div className="border-t border-slate-200 dark:border-[#ec5b13]/20 pt-6 space-y-4 shrink-0">
                             <div className="flex justify-between items-center text-sm font-medium">
                                 <span className="text-slate-500">Sous-total</span>
-                                <span className="whitespace-nowrap">{Number(currentOrder.totalAmount).toLocaleString()} DZD</span>
+                                <span className="whitespace-nowrap">{formatCurrency(currentOrder.totalAmount, 'DZD')}</span>
                             </div>
 
                             {/* Remise & Client Block */}
@@ -422,7 +504,7 @@ export default function CaisseContent() {
                                 <span className="text-sm font-bold uppercase tracking-widest text-slate-500 pb-2">Reste à payer</span>
                                 <div className="text-right">
                                     <span className={`text-4xl font-black tracking-tight whitespace-nowrap ${(Number(currentOrder.totalAmount) - remise - (montantRecu === "" ? (Number(currentOrder.totalAmount) - remise) : Number(montantRecu))) > 0 ? 'text-red-500' : 'text-[#ec5b13]'}`}>
-                                        {Math.max(0, Number(currentOrder.totalAmount) - remise - (montantRecu === "" ? (Number(currentOrder.totalAmount) - remise) : Number(montantRecu))).toLocaleString()}
+                                        {formatCurrency(Math.max(0, Number(currentOrder.totalAmount) - remise - (montantRecu === "" ? (Number(currentOrder.totalAmount) - remise) : Number(montantRecu))), 'DZD')}
                                     </span>
                                     <span className="text-xl font-bold ml-1 opacity-50">DZD</span>
                                 </div>
@@ -459,6 +541,48 @@ export default function CaisseContent() {
                 isOpen={isDetailModalOpen}
                 onClose={() => setIsDetailModalOpen(false)}
                 order={orderForDetail}
+                onRefund={async (id) => {
+                    const res = await refundFullOrder({ id, returnToStock: false });
+                    if (res.success) {
+                        setIsDetailModalOpen(false);
+                        loadOrders();
+                    }
+                }}
+                onReplaceCode={async (orderItemId, codeId, type, reason) => {
+                    const res = await replaceOrderItemCode({
+                        orderItemId,
+                        oldCodeId: type === 'standard' ? codeId : undefined,
+                        oldSlotId: type === 'slot' ? codeId : undefined,
+                        reason
+                    });
+                    if (res.success) loadOrders();
+                }}
+                onRefundItem={async (orderItemId, returnToStock) => {
+                    const res = await refundOrderItem({ orderItemId, returnToStock });
+                    if (res.success) loadOrders();
+                }}
+                onReprint={() => {
+                    if (!orderForDetail) return;
+                    const enrichedItems = orderForDetail.items.map((it: any) => {
+                        const standard = (it.fullCodes || []).map((c: any) => c.code);
+                        const slots = (it.fullSlots || []).map((s: any) => `${s.parentCode} | Profil ${s.slotNumber}`);
+                        return {
+                            name: it.name,
+                            quantity: it.quantity,
+                            price: it.price,
+                            codes: [...standard, ...slots],
+                            customData: it.customData,
+                            playerNickname: it.playerNickname
+                        };
+                    });
+                    setPrintData({
+                        orderNumber: orderForDetail.orderNumber,
+                        date: orderForDetail.createdAt,
+                        items: enrichedItems,
+                        totalAmount: orderForDetail.totalAmount,
+                        paymentMethod: orderForDetail.paymentMethod || "Espèces"
+                    });
+                }}
             />
 
             {/* Auto New Client Modal */}
@@ -472,11 +596,12 @@ export default function CaisseContent() {
                         const innerSave = async () => {
                             if (!newClientName) return;
                             try {
-                                const newC = await createClient({ nomComplet: newClientName, telephone: newClientPhone });
-                                if (newC) {
+                                const res: any = await createClient({ nom: newClientName, telephone: newClientPhone });
+                                if (res.success && res.client) {
+                                    const newC = res.client;
                                     // Refresh list
-                                    const clients = await getAllClients();
-                                    setAllClients(clients);
+                                    const clientsRes: any = await getAllClients({});
+                                    setAllClients(Array.isArray(clientsRes) ? clientsRes : []);
                                     setSelectedClientId(newC.id);
 
                                     // AUTO VALIDATE TRANSACTION
@@ -485,8 +610,11 @@ export default function CaisseContent() {
                                     setIsCreatingClient(false);
                                     setNewClientName("");
                                     setNewClientPhone("");
+                                } else {
+                                    toast.error(res.error || "Erreur création client");
                                 }
                             } catch (e) { toast.error("Erreur création client"); }
+
                         };
 
                         return (
@@ -532,6 +660,13 @@ export default function CaisseContent() {
                     }}
                 </ModalContent>
             </Modal>
+
+            {/* Hidden Print Container */}
+            {printData && (
+                <div className="fixed inset-0 z-[-50] opacity-0 pointer-events-none print:z-[9999] print:opacity-100 print:pointer-events-auto">
+                    <ThermalReceipt {...printData} />
+                </div>
+            )}
         </main>
     );
 }

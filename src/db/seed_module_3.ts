@@ -43,14 +43,12 @@ async function seed() {
     const psn10 = await db.insert(productVariants).values({
         productId: psn.id,
         name: "10 USD",
-        purchasePriceUsd: "9.50",
         salePriceDzd: "2400.00"
     }).returning().then(res => res[0]);
 
     const psn20 = await db.insert(productVariants).values({
         productId: psn.id,
         name: "20 USD",
-        purchasePriceUsd: "19.00",
         salePriceDzd: "4600.00"
     }).returning().then(res => res[0]);
 
@@ -65,7 +63,6 @@ async function seed() {
     const xbox1 = await db.insert(productVariants).values({
         productId: xbox.id,
         name: "1 Mois Ultimate",
-        purchasePriceUsd: "12.00",
         salePriceDzd: "3200.00"
     }).returning().then(res => res[0]);
 
@@ -80,16 +77,15 @@ async function seed() {
     const netflixBasic = await db.insert(productVariants).values({
         productId: netflix.id,
         name: "Standard 1 Mois",
-        purchasePriceUsd: "8.00",
         salePriceDzd: "1900.00"
     }).returning().then(res => res[0]);
 
     // 4. Link to suppliers
     await db.insert(productVariantSuppliers).values([
-        { variantId: psn10.id, supplierId: supplier1.id, purchasePriceUsd: "9.50" },
-        { variantId: psn20.id, supplierId: supplier1.id, purchasePriceUsd: "19.00" },
-        { variantId: xbox1.id, supplierId: supplier2.id, purchasePriceUsd: "12.00" },
-        { variantId: netflixBasic.id, supplierId: supplier1.id, purchasePriceUsd: "8.00" },
+        { variantId: psn10.id, supplierId: supplier1.id, purchasePrice: "9.50", currency: "USD" },
+        { variantId: psn20.id, supplierId: supplier1.id, purchasePrice: "19.00", currency: "USD" },
+        { variantId: xbox1.id, supplierId: supplier2.id, purchasePrice: "12.00", currency: "USD" },
+        { variantId: netflixBasic.id, supplierId: supplier1.id, purchasePrice: "8.00", currency: "USD" },
     ]);
 
     console.log("✅ Seeding completed!");

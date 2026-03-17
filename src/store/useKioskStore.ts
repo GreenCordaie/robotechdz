@@ -11,6 +11,7 @@ interface CartItem {
     quantity: number;
     imageUrl?: string;
     customData?: string;
+    playerNickname?: string;
 }
 
 interface KioskState {
@@ -21,8 +22,8 @@ interface KioskState {
     // Actions
     setStep: (step: KioskStep) => void;
     addToCart: (item: CartItem) => void;
-    updateQuantity: (variantId: number, delta: number, customData?: string) => void;
-    removeFromCart: (variantId: number, customData?: string) => void;
+    updateQuantity: (variantId: number, delta: number, customData?: string, playerNickname?: string) => void;
+    removeFromCart: (variantId: number, customData?: string, playerNickname?: string) => void;
     clearCart: () => void;
     getTotalAmount: () => number;
     setLastOrderNumber: (num: string | null) => void;
@@ -39,11 +40,11 @@ export const useKioskStore = create<KioskState>((set, get) => ({
     setStep: (step: KioskStep) => set({ step }),
 
     addToCart: (item: CartItem) => set((state) => {
-        const existing = state.cart.find(i => i.variantId === item.variantId && i.customData === item.customData);
+        const existing = state.cart.find(i => i.variantId === item.variantId && i.customData === item.customData && i.playerNickname === item.playerNickname);
         if (existing) {
             return {
                 cart: state.cart.map(i =>
-                    (i.variantId === item.variantId && i.customData === item.customData)
+                    (i.variantId === item.variantId && i.customData === item.customData && i.playerNickname === item.playerNickname)
                         ? { ...i, quantity: i.quantity + item.quantity }
                         : i
                 )
@@ -52,16 +53,16 @@ export const useKioskStore = create<KioskState>((set, get) => ({
         return { cart: [...state.cart, item] };
     }),
 
-    updateQuantity: (variantId: number, delta: number, customData?: string) => set((state) => ({
+    updateQuantity: (variantId: number, delta: number, customData?: string, playerNickname?: string) => set((state) => ({
         cart: state.cart.map(i =>
-            (i.variantId === variantId && i.customData === customData)
+            (i.variantId === variantId && i.customData === customData && i.playerNickname === playerNickname)
                 ? { ...i, quantity: Math.max(1, i.quantity + delta) }
                 : i
         )
     })),
 
-    removeFromCart: (variantId: number, customData?: string) => set((state) => ({
-        cart: state.cart.filter(i => !(i.variantId === variantId && i.customData === customData))
+    removeFromCart: (variantId: number, customData?: string, playerNickname?: string) => set((state) => ({
+        cart: state.cart.filter(i => !(i.variantId === variantId && i.customData === customData && i.playerNickname === playerNickname))
     })),
 
     clearCart: () => set({ cart: [] }),

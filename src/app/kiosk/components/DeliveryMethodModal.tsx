@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, Button } from "@heroui/react";
+import { Printer, ChevronRight } from "lucide-react";
 
 interface DeliveryMethodModalProps {
     isOpen: boolean;
@@ -55,12 +56,12 @@ export default function DeliveryMethodModal({ isOpen, onClose, onConfirm, isSubm
                             <button
                                 onClick={() => setMethod("TICKET")}
                                 className={`flex flex-col items-center justify-center p-8 border-2 rounded-3xl transition-all duration-200 hover:shadow-lg active:scale-[0.98] group ${method === "TICKET"
-                                        ? "border-[#25D366] bg-[#25D366]/5 ring-2 ring-[#25D366]/20"
-                                        : "border-slate-200 bg-white"
+                                    ? "border-[#25D366] bg-[#25D366]/5 ring-2 ring-[#25D366]/20"
+                                    : "border-slate-200 bg-white"
                                     }`}
                             >
                                 <div className="bg-slate-50 w-20 h-20 rounded-2xl flex items-center justify-center mb-4 group-hover:bg-slate-100">
-                                    <span className="material-symbols-rounded text-slate-600 text-5xl">receipt_long</span>
+                                    <Printer className="w-12 h-12 text-slate-700" />
                                 </div>
                                 <span className="text-2xl font-bold text-slate-900 mb-2">Ticket Imprimé</span>
                                 <span className="text-slate-500 text-center leading-tight">Rapide et anonyme à la caisse.</span>
@@ -70,8 +71,8 @@ export default function DeliveryMethodModal({ isOpen, onClose, onConfirm, isSubm
                             <button
                                 onClick={() => setMethod("WHATSAPP")}
                                 className={`flex flex-col items-center justify-center p-8 border-2 rounded-3xl transition-all duration-200 hover:shadow-lg active:scale-[0.98] group ${method === "WHATSAPP"
-                                        ? "border-[#25D366] bg-[#25D366]/5 ring-2 ring-[#25D366]/20"
-                                        : "border-slate-200 bg-white"
+                                    ? "border-[#25D366] bg-[#25D366]/5 ring-2 ring-[#25D366]/20"
+                                    : "border-slate-200 bg-white"
                                     }`}
                             >
                                 <div className="bg-white w-20 h-20 rounded-2xl flex items-center justify-center mb-4 shadow-sm">
@@ -117,7 +118,7 @@ export default function DeliveryMethodModal({ isOpen, onClose, onConfirm, isSubm
                                 className="w-full h-20 bg-[#25D366] text-white rounded-full text-2xl font-bold shadow-lg shadow-[#25D366]/30 hover:bg-[#22c35e] active:scale-[0.98] transition-all flex items-center justify-center space-x-3 disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 <span>{isSubmitting ? "Création en cours..." : method === "WHATSAPP" ? "Confirmer mon numéro" : "Confirmer la commande"}</span>
-                                {!isSubmitting && <span className="material-symbols-rounded text-3xl">chevron_right</span>}
+                                {!isSubmitting && <ChevronRight className="w-6 h-6 ml-2" />}
                             </button>
                         </div>
 

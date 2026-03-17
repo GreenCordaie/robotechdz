@@ -29,11 +29,14 @@ export async function loginAction(formData: FormData) {
             return { success: false, error: "Identifiants invalides" };
         }
 
-        const { passwordHash, ...safeUser } = user[0];
-        await createSession(safeUser);
+        const { id, role } = user[0];
+        await createSession({ id, role });
+
+        // Artificial delay to thwart brute-force bots
+        await new Promise(resolve => setTimeout(resolve, 500));
 
         // Success
-        return { success: true, user: safeUser };
+        return { success: true, user: { id, role } };
     } catch (error) {
         console.error("Login error:", error);
         return { success: false, error: "Une erreur est survenue" };
@@ -54,7 +57,7 @@ export async function verifyPinAction(pin: string) {
 
         if (user.length === 0) return { success: false, error: "Utilisateur introuvable" };
 
-        const isValid = user[0].pinCode === pin;
+        const isValid = await bcrypt.compare(pin, user[0].pinCode);
 
         return { success: isValid };
     } catch (error) {

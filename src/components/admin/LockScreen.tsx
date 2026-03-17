@@ -5,6 +5,7 @@ import { Lock, Delete, ArrowRight, User as UserIcon } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuthStore } from "@/store/useAuthStore";
 import { verifyPinAction } from "@/app/admin/login/actions";
+import Image from "next/image";
 
 export const LockScreen = () => {
     const [pin, setPin] = useState("");
@@ -53,11 +54,12 @@ export const LockScreen = () => {
                 {/* Header Profile */}
                 <div className="flex flex-col items-center mb-12">
                     <div className="w-24 h-24 rounded-full bg-[#161616] border border-[#262626] flex items-center justify-center mb-4 relative">
-                        <div className="w-20 h-20 rounded-full overflow-hidden bg-gradient-to-tr from-[#ec5b13]/20 to-transparent flex items-center justify-center">
-                            <img
+                        <div className="w-20 h-20 rounded-full overflow-hidden bg-gradient-to-tr from-[#ec5b13]/20 to-transparent flex items-center justify-center relative">
+                            <Image
                                 src="https://lh3.googleusercontent.com/aida-public/AB6AXuCZzSogzgSYWL4sV8cYS-i9sYM5fwva6Q0n4I55293IQmD03umRiums_O9xTBdasBU1_angHiWiAckgyWwn6UB9MBLipWMhFehIUd_Qc0NUCfkXrUB7xtX-66jetAhnxQNxVTRztumuzjGfV4latkz0g53wc7eiJUn89bYwLuPezAenuEtVe-t4k1298Xg1AQqPP6l314oAlSj3m3UMutiTNXAv4ywmJUO7cWO3xprkiMgliBjEdbhP9gqPQREeem3Jv00wZuEZHdbM"
                                 alt="Admin"
-                                className="w-full h-full object-cover opacity-80"
+                                className="object-cover opacity-80"
+                                fill
                             />
                         </div>
                         <div className="absolute -bottom-1 -right-1 bg-[#ec5b13] p-1.5 rounded-full shadow-lg">

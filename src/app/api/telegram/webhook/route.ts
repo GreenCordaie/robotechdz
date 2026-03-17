@@ -6,7 +6,6 @@ import { sendTelegramNotification } from "@/lib/telegram";
 import { sendWhatsAppMessage } from "@/lib/whatsapp";
 
 export async function POST(req: NextRequest) {
-    console.log("--- TELEGRAM WEBHOOK RECEIVED ---");
     try {
         const body = await req.json();
         // console.log("Full Webhook Body:", JSON.stringify(body, null, 2));
@@ -16,13 +15,11 @@ export async function POST(req: NextRequest) {
         const receivedToken = req.headers.get("x-telegram-bot-api-secret-token");
 
         if (receivedToken !== expectedToken) {
-            console.log("Unauthorized webhook attempt! Secret token mismatch.");
             return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
         }
 
         // 1. Basic structure validation
         if (!body.message || !body.message.reply_to_message) {
-            console.log("Skipping: Not a reply message.");
             return NextResponse.json({ ok: true });
         }
 
@@ -30,17 +27,13 @@ export async function POST(req: NextRequest) {
         const currentMessage = body.message.text || "";
         const parentMessage = replyTo.text || "";
 
-        console.log("Current Message (Codes?):", currentMessage);
-
         // 2. Extract Order Number from parent message (e.g., #C123)
         const orderMatch = parentMessage.match(/#(C\d+)/i);
         if (!orderMatch) {
-            console.log("Error: Could not find order number (#C...) in parent message.");
             return NextResponse.json({ ok: true });
         }
 
         const orderNumber = orderMatch[0].toUpperCase();
-        console.log("Extracted Order Number:", orderNumber);
 
         // 3. Find Order in DB
         const order = await db.query.orders.findFirst({
@@ -51,7 +44,6 @@ export async function POST(req: NextRequest) {
         });
 
         if (!order) {
-            console.log(`Error: Order ${orderNumber} not found in database.`);
             return NextResponse.json({ ok: true });
         }
 
@@ -76,10 +68,7 @@ export async function POST(req: NextRequest) {
         // Filter out order number if present
         const codesFound = potentialCodes.filter(c => !c.toUpperCase().includes(orderNumber));
 
-        console.log("Extracted Codes:", codesFound);
-
         if (codesFound.length === 0) {
-            console.log("Error: No codes identified in message.");
             return NextResponse.json({ ok: true });
         }
 
@@ -92,8 +81,6 @@ export async function POST(req: NextRequest) {
                 for (const item of order.items) {
                     const needed = item.quantity;
                     const forThisItem = codesFound.slice(codeIndex, codeIndex + needed);
-
-                    console.log(`Mapping to ${item.name}: found ${forThisItem.length}/${needed}`);
 
                     for (const code of forThisItem) {
                         await tx.insert(digitalCodes).values({
@@ -112,7 +99,6 @@ export async function POST(req: NextRequest) {
                     await tx.update(orders)
                         .set({ status: "LIVRE" })
                         .where(eq(orders.id, order.id));
-                    console.log(`Success: ${insertedCount} codes inserted for ${orderNumber}.`);
                 } else {
                     throw new Error("No codes mapped");
                 }

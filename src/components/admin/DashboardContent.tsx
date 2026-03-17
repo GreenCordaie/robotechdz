@@ -12,7 +12,11 @@ import {
     TableBody,
     TableRow,
     TableCell,
-    Chip
+    Chip,
+    Dropdown,
+    DropdownTrigger,
+    DropdownMenu,
+    DropdownItem
 } from "@heroui/react";
 import {
     LayoutDashboard,
@@ -24,32 +28,76 @@ import {
     TrendingUp,
     AlertTriangle,
     Bell,
-    Search
+    Search,
+    MessageSquare
 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import toast from "react-hot-toast";
+import { formatCurrency } from "@/lib/formatters";
+import {
+    AreaChart,
+    Area,
+    XAxis,
+    YAxis,
+    CartesianGrid,
+    Tooltip,
+    ResponsiveContainer
+} from 'recharts';
 
 interface DashboardContentProps {
     stats: {
         totalTurnover: number;
-        pendingOrdersCount: number;
+        turnoverChange: number;
         totalProfit: number;
+        profitChange: number;
+        ordersToday: number;
+        ordersChange: number;
+        pendingOrdersCount: number;
         latestOrders: any[];
         stockAlerts: number;
+        openTicketsCount: number;
+        revenueData: { name: string; total: number }[];
+        notifications: any[];
     };
 }
 
 import OrderDetailModal from "./modals/OrderDetailModal";
+import { cancelOrderAction } from "@/app/admin/caisse/actions";
 
 export default function DashboardContent({ stats }: DashboardContentProps) {
+    const router = useRouter();
     const [selectedOrder, setSelectedOrder] = React.useState<any>(null);
     const [isDetailModalOpen, setIsDetailModalOpen] = React.useState(false);
     const [searchTerm, setSearchTerm] = React.useState("");
     const [chartPeriod, setChartPeriod] = React.useState<"7" | "30">("7");
 
+    React.useEffect(() => {
+        const interval = setInterval(() => {
+            router.refresh();
+        }, 3000);
+        return () => clearInterval(interval);
+    }, [router]);
+
     const handleViewOrder = (order: any) => {
         setSelectedOrder(order);
         setIsDetailModalOpen(true);
+    };
+
+    const handleCancelOrder = async (orderId: number) => {
+        if (!confirm("Êtes-vous sûr de vouloir annuler/rembourser cette commande ? Cette action est irréversible.")) return;
+        try {
+            const res = await cancelOrderAction(orderId);
+            if (res.success) {
+                toast.success("Commande annulée");
+                setIsDetailModalOpen(false);
+                window.location.reload(); // Quick refresh for dashboard stats
+            } else {
+                toast.error("Erreur: " + (res as any).error);
+            }
+        } catch (error) {
+            toast.error("Erreur technique");
+        }
     };
 
     const filteredOrders = stats.latestOrders.filter(order =>
@@ -77,13 +125,46 @@ export default function DashboardContent({ stats }: DashboardContentProps) {
                             onValueChange={setSearchTerm}
                         />
                     </div>
-                    <Button
-                        isIconOnly
-                        className="size-10 rounded-xl bg-[#161616] border border-[#262626] flex items-center justify-center hover:bg-[#262626] transition-colors"
-                        onClick={() => toast.success("Aucune nouvelle notification")}
-                    >
-                        <Bell className="w-5 h-5 text-slate-400" />
-                    </Button>
+                    <Dropdown placement="bottom-end">
+                        <DropdownTrigger>
+                            <Button
+                                isIconOnly
+                                className="size-10 rounded-xl bg-[#161616] border border-[#262626] flex items-center justify-center hover:bg-[#262626] transition-colors relative"
+                            >
+                                <Bell className="w-5 h-5 text-slate-400" />
+                                {stats.notifications.length > 0 && (
+                                    <span className="absolute top-2 right-2 w-2 h-2 bg-[#ec5b13] rounded-full ring-2 ring-[#161616]" />
+                                )}
+                            </Button>
+                        </DropdownTrigger>
+                        <DropdownMenu
+                            aria-label="Notifications systeme"
+                            className="w-80 p-2"
+                            emptyContent="Aucune notification"
+                        >
+                            {stats.notifications.map((notif: any) => (
+                                <DropdownItem
+                                    key={notif.id}
+                                    description={notif.message}
+                                    startContent={
+                                        <div className={`p-1.5 rounded-lg ${notif.type === 'danger' ? 'bg-red-500/10 text-red-500' :
+                                            notif.type === 'warning' ? 'bg-orange-500/10 text-orange-500' :
+                                                'bg-blue-500/10 text-blue-500'
+                                            }`}>
+                                            <AlertTriangle className="w-3.5 h-3.5" />
+                                        </div>
+                                    }
+                                    classNames={{
+                                        base: "py-3 border-b border-white/5 last:border-0",
+                                        title: "font-bold text-xs uppercase tracking-wider",
+                                        description: "text-[10px] text-slate-400 leading-relaxed mt-0.5"
+                                    }}
+                                >
+                                    {notif.title}
+                                </DropdownItem>
+                            ))}
+                        </DropdownMenu>
+                    </Dropdown>
                     <Button
                         isIconOnly
                         className="size-10 rounded-xl bg-[#161616] border border-[#262626] flex items-center justify-center hover:bg-[#262626] transition-colors"
@@ -100,50 +181,56 @@ export default function DashboardContent({ stats }: DashboardContentProps) {
                 {/* Turnover */}
                 <div className="bg-[#161616] border border-[#262626] p-6 rounded-xl shadow-sm hover:border-primary/20 transition-colors">
                     <div className="flex justify-between items-start mb-4">
-                        <span className="text-slate-400 text-xs font-bold uppercase tracking-wider">Chiffre d'Affaires</span>
-                        <span className="px-2 py-0.5 bg-green-500/10 text-green-500 text-[10px] font-bold rounded-lg">+12%</span>
+                        <span className="text-slate-400 text-xs font-bold uppercase tracking-wider">Chiffre d&apos;Affaires</span>
+                        <span className={`px-2 py-0.5 ${stats.turnoverChange >= 0 ? "bg-green-500/10 text-green-500" : "bg-red-500/10 text-red-500"} text-[10px] font-bold rounded-lg`}>
+                            {stats.turnoverChange >= 0 ? "+" : ""}{stats.turnoverChange.toFixed(0)}%
+                        </span>
                     </div>
                     <div className="text-[28px] font-black leading-none text-white tracking-tighter">
-                        {stats.totalTurnover.toLocaleString()} <span className="text-sm font-bold text-slate-500">DZD</span>
+                        {formatCurrency(stats.totalTurnover, 'DZD')}
                     </div>
-                    <p className="text-[11px] text-slate-500 mt-2 font-medium">Aujourd'hui</p>
+                    <p className="text-[11px] text-slate-500 mt-2 font-medium">Ventes aujourd&apos;hui</p>
                 </div>
 
                 {/* Profit */}
                 <div className="bg-[#161616] border border-[#262626] p-6 rounded-xl shadow-sm hover:border-primary/20 transition-colors">
                     <div className="flex justify-between items-start mb-4">
                         <span className="text-slate-400 text-xs font-bold uppercase tracking-wider">Bénéfice Net</span>
-                        <span className="px-2 py-0.5 bg-primary/10 text-primary text-[10px] font-bold rounded-lg">+5%</span>
+                        <span className={`px-2 py-0.5 ${stats.profitChange >= 0 ? "bg-primary/10 text-primary" : "bg-red-500/10 text-red-500"} text-[10px] font-bold rounded-lg`}>
+                            {stats.profitChange >= 0 ? "+" : ""}{stats.profitChange.toFixed(0)}%
+                        </span>
                     </div>
                     <div className="text-[28px] font-black leading-none text-white tracking-tighter">
-                        {stats.totalProfit.toLocaleString()} <span className="text-sm font-bold text-slate-500">DZD</span>
+                        {formatCurrency(stats.totalProfit, 'DZD')}
                     </div>
-                    <p className="text-[11px] text-slate-500 mt-2 font-medium">Estimé ce mois</p>
+                    <p className="text-[11px] text-slate-500 mt-2 font-medium">Aujourd&apos;hui vs Hier</p>
                 </div>
 
-                {/* Pending */}
+                {/* Orders */}
                 <div className="bg-[#161616] border border-[#262626] p-6 rounded-xl shadow-sm hover:border-primary/20 transition-colors">
                     <div className="flex justify-between items-start mb-4">
-                        <span className="text-slate-400 text-xs font-bold uppercase tracking-wider">Commandes en attente</span>
-                        <span className="px-2 py-0.5 bg-red-500/10 text-red-500 text-[10px] font-bold rounded-lg">Alerte</span>
+                        <span className="text-slate-400 text-xs font-bold uppercase tracking-wider">Commandes</span>
+                        <span className={`px-2 py-0.5 ${stats.ordersChange >= 0 ? "bg-blue-500/10 text-blue-500" : "bg-red-500/10 text-red-500"} text-[10px] font-bold rounded-lg`}>
+                            {stats.ordersChange >= 0 ? "+" : ""}{stats.ordersChange.toFixed(0)}%
+                        </span>
                     </div>
                     <div className="text-[28px] font-black leading-none text-white tracking-tighter">
-                        {stats.pendingOrdersCount}
+                        {stats.ordersToday}
                     </div>
-                    <p className="text-[11px] text-slate-500 mt-2 font-medium">Nécessite action</p>
+                    <p className="text-[11px] text-slate-500 mt-2 font-medium">{stats.pendingOrdersCount} en attente</p>
                 </div>
 
-                {/* Supplier Alerts */}
-                <div className="bg-[#161616] border border-[#262626] p-6 rounded-xl shadow-sm hover:border-primary/20 transition-colors">
+                {/* Support Tickets */}
+                <Link href="/admin/support" className="bg-[#161616] border border-[#262626] p-6 rounded-xl shadow-sm hover:border-primary/20 transition-colors group">
                     <div className="flex justify-between items-start mb-4">
-                        <span className="text-slate-400 text-xs font-bold uppercase tracking-wider">Alertes Stock</span>
-                        <AlertTriangle className={stats.stockAlerts > 0 ? "text-red-500 w-4 h-4" : "text-amber-500 w-4 h-4"} />
+                        <span className="text-slate-400 text-xs font-bold uppercase tracking-wider">Tickets Support</span>
+                        <MessageSquare className={`${stats.openTicketsCount > 0 ? "text-red-500" : "text-emerald-500"} w-4 h-4 transition-colors`} />
                     </div>
-                    <div className={`text-[28px] font-black leading-none tracking-tighter ${stats.stockAlerts > 0 ? "text-red-500" : "text-white"}`}>
-                        {stats.stockAlerts} <span className="text-sm font-bold opacity-70">En rupture</span>
+                    <div className={`text-[28px] font-black leading-none tracking-tighter ${stats.openTicketsCount > 0 ? "text-red-500" : "text-emerald-500"} transition-colors`}>
+                        {stats.openTicketsCount} <span className="text-sm font-bold opacity-70 uppercase">{stats.openTicketsCount === 1 ? 'Actif' : 'Actifs'}</span>
                     </div>
-                    <p className="text-[11px] text-slate-500 mt-2 font-medium">Attention requise</p>
-                </div>
+                    <p className="text-[11px] text-slate-500 mt-2 font-medium group-hover:text-primary transition-colors">Gérer l&apos;assistance client</p>
+                </Link>
             </div>
 
             {/* Main Chart Section - 100% Visual Fidelity with SVG and #161616 */}
@@ -152,7 +239,7 @@ export default function DashboardContent({ stats }: DashboardContentProps) {
                     <div>
                         <h3 className="text-lg font-bold text-white tracking-tight">Évolution des Ventes</h3>
                         <div className="flex items-center gap-2 mt-1">
-                            <span className="text-3xl font-black text-white tracking-tighter">840,000 DZD</span>
+                            <span className="text-3xl font-black text-white tracking-tighter">{formatCurrency(840000, 'DZD')}</span>
                             <span className="text-green-500 font-bold text-sm flex items-center gap-1">
                                 <TrendingUp className="w-4 h-4" /> +8.4%
                             </span>
@@ -173,27 +260,54 @@ export default function DashboardContent({ stats }: DashboardContentProps) {
                         </button>
                     </div>
                 </div>
-                <div className="h-64 w-full relative">
-                    <svg className="w-full h-full overflow-visible" preserveAspectRatio="none" viewBox="0 0 1000 200">
-                        <defs>
-                            <linearGradient id="chartGradient" x1="0" x2="0" y1="0" y2="1">
-                                <stop offset="0%" stopColor="#FF8000" stopOpacity="0.3"></stop>
-                                <stop offset="100%" stopColor="#FF8000" stopOpacity="0"></stop>
-                            </linearGradient>
-                        </defs>
-                        <line className="stroke-[#262626]" strokeDasharray="4" strokeWidth="1" x1="0" x2="1000" y1="0" y2="0"></line>
-                        <line className="stroke-[#262626]" strokeDasharray="4" strokeWidth="1" x1="0" x2="1000" y1="50" y2="50"></line>
-                        <line className="stroke-[#262626]" strokeDasharray="4" strokeWidth="1" x1="0" x2="1000" y1="100" y2="100"></line>
-                        <line className="stroke-[#262626]" strokeDasharray="4" strokeWidth="1" x1="0" x2="1000" y1="150" y2="150"></line>
-                        <path d="M 0 150 Q 83 140 166 60 Q 249 100 332 40 Q 415 120 498 70 Q 581 160 664 120 Q 747 30 830 90 Q 913 140 1000 110 V 200 H 0 Z" fill="url(#chartGradient)"></path>
-                        <path d="M 0 150 Q 83 140 166 60 Q 249 100 332 40 Q 415 120 498 70 Q 581 160 664 120 Q 747 30 830 90 Q 913 140 1000 110" fill="none" stroke="#FF8000" strokeLinecap="round" strokeWidth="3"></path>
-                        <circle cx="747" cy="30" fill="#FF8000" r="5" stroke="#161616" strokeWidth="2"></circle>
-                    </svg>
-                    <div className="flex justify-between mt-6 px-2">
-                        {["LUN", "MAR", "MER", "JEU", "VEN", "SAM", "DIM"].map((day) => (
-                            <span key={day} className="text-[10px] font-bold text-slate-500 tracking-widest uppercase">{day}</span>
-                        ))}
-                    </div>
+                <div className="h-72 w-full relative">
+                    <ResponsiveContainer width="100%" height="100%">
+                        <AreaChart
+                            data={stats.revenueData}
+                            margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
+                        >
+                            <defs>
+                                <linearGradient id="colorTotal" x1="0" y1="0" x2="0" y2="1">
+                                    <stop offset="5%" stopColor="#ec5b13" stopOpacity={0.3} />
+                                    <stop offset="95%" stopColor="#ec5b13" stopOpacity={0} />
+                                </linearGradient>
+                            </defs>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#262626" vertical={false} />
+                            <XAxis
+                                dataKey="name"
+                                stroke="#64748b"
+                                fontSize={10}
+                                tickLine={false}
+                                axisLine={false}
+                                dy={10}
+                            />
+                            <YAxis
+                                stroke="#64748b"
+                                fontSize={10}
+                                tickLine={false}
+                                axisLine={false}
+                                tickFormatter={(value) => `${value}`}
+                                hide
+                            />
+                            <Tooltip
+                                contentStyle={{
+                                    backgroundColor: '#161616',
+                                    border: '1px solid #262626',
+                                    borderRadius: '8px',
+                                    fontSize: '12px'
+                                }}
+                                itemStyle={{ color: '#ec5b13', fontWeight: 'bold' }}
+                            />
+                            <Area
+                                type="monotone"
+                                dataKey="total"
+                                stroke="#ec5b13"
+                                strokeWidth={3}
+                                fillOpacity={1}
+                                fill="url(#colorTotal)"
+                            />
+                        </AreaChart>
+                    </ResponsiveContainer>
                 </div>
             </div>
 
@@ -231,7 +345,7 @@ export default function DashboardContent({ stats }: DashboardContentProps) {
                                             {new Date(order.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                         </td>
                                         <td className="px-6 py-4 text-right font-black text-sm whitespace-nowrap text-white">
-                                            {Number(order.totalAmount).toLocaleString()} <span className="text-[10px] opacity-50">DZD</span>
+                                            {formatCurrency(order.totalAmount, 'DZD')}
                                         </td>
                                         <td className="px-6 py-4">
                                             <Chip

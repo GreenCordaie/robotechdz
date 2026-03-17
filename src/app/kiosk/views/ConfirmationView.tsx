@@ -35,10 +35,10 @@ export default function ConfirmationView() {
 
                 {/* BEGIN: FeedbackText */}
                 <section data-purpose="status-messages">
-                    <h1 className="text-6xl font-extrabold text-slate-900 tracking-tight leading-tight">
-                        Commande validée avec succès !
+                    <h1 className="text-6xl font-black text-black tracking-tight leading-tight uppercase">
+                        Commande validée !
                     </h1>
-                    <p className="text-3xl text-slate-500 mt-6 max-w-2xl mx-auto">
+                    <p className="text-3xl text-black font-bold mt-6 max-w-2xl mx-auto opacity-70">
                         Veuillez vous présenter à la caisse avec ce numéro :
                     </p>
                 </section>
@@ -46,8 +46,8 @@ export default function ConfirmationView() {
 
                 {/* BEGIN: OrderNumberBlock */}
                 {/* Giant order number container for high visibility */}
-                <div className="bg-white border-4 border-[#ec5b13] rounded-[48px] py-10 px-24 shadow-2xl mt-12 mb-16" data-purpose="order-id-display">
-                    <span className="text-[10rem] font-black text-slate-900 tracking-[0.1em] leading-none uppercase">
+                <div className="bg-white border-8 border-black rounded-[48px] py-10 px-24 shadow-2xl mt-12 mb-16" data-purpose="order-id-display">
+                    <span className="text-[10rem] font-black text-black tracking-[0.1em] leading-none uppercase">
                         {lastOrderNumber || "#---"}
                     </span>
                 </div>
@@ -57,13 +57,13 @@ export default function ConfirmationView() {
                 <div className="flex flex-col items-center gap-6" data-purpose="navigation-actions">
                     {/* High visibility CTA button for kiosk interaction */}
                     <button
-                        className="bg-[#ec5b13] hover:bg-[#d44e11] active:scale-95 transition-all text-white text-3xl font-bold rounded-full px-16 py-8 shadow-xl shadow-orange-500/30"
+                        className="bg-black hover:bg-slate-900 active:scale-95 transition-all text-white text-3xl font-black rounded-full px-16 py-8 shadow-xl uppercase tracking-wider"
                         onClick={resetKiosk}
                     >
-                        Terminer et Retour à l'accueil
+                        Terminer mon achat
                     </button>
                     {/* Subtle automatic countdown message or hint */}
-                    <p className="text-slate-400 text-xl font-medium">
+                    <p className="text-black/40 text-xl font-black uppercase tracking-widest">
                         Retour automatique dans <span id="countdown">{secondsLeft}</span>s
                     </p>
                 </div>

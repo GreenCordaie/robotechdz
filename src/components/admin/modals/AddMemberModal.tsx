@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { uploadImage } from "@/app/admin/actions/upload";
 import toast from "react-hot-toast";
+import Image from "next/image";
 
 interface AddMemberModalProps {
     isOpen: boolean;
@@ -83,7 +84,7 @@ export const AddMemberModal = ({ isOpen, onOpenChange }: AddMemberModalProps) =>
         if (result.success) {
             setIsLoading(false);
             onOpenChange(false);
-            toast.success(`${fullName} ajouté à l'équipe`);
+            toast.success(`${fullName} ajouté à l&apos;équipe`);
             // Reset form
             setFullName("");
             setEmail("");
@@ -136,7 +137,7 @@ export const AddMemberModal = ({ isOpen, onOpenChange }: AddMemberModalProps) =>
                 {(onClose) => (
                     <>
                         <ModalHeader className="flex flex-col gap-1">
-                            <h2 className="text-xl font-bold text-slate-100">Nouveau Membre de l'Équipe</h2>
+                            <h2 className="text-xl font-bold text-slate-100">Nouveau Membre de l&apos;Équipe</h2>
                             <p className="text-sm text-slate-400 font-normal">Créez un accès sécurisé pour votre collaborateur.</p>
                             {error && (
                                 <div className="mt-4 p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-red-500 text-sm font-medium">
@@ -149,9 +150,9 @@ export const AddMemberModal = ({ isOpen, onOpenChange }: AddMemberModalProps) =>
                                 {/* Avatar Section */}
                                 <div className="flex flex-col items-center gap-4 mb-2">
                                     <div className="relative group cursor-pointer" onClick={() => fileInputRef.current?.click()}>
-                                        <div className="size-24 rounded-full overflow-hidden border-2 border-[#262626] bg-[#0a0a0a] flex items-center justify-center">
+                                        <div className="size-24 rounded-full overflow-hidden border-2 border-[#262626] bg-[#0a0a0a] flex items-center justify-center relative">
                                             {previewUrl ? (
-                                                <img src={previewUrl} className="w-full h-full object-cover" alt="Avatar" />
+                                                <Image src={previewUrl} className="object-cover" alt="Avatar" fill />
                                             ) : (
                                                 <Camera className="w-10 h-10 text-slate-700 group-hover:text-[#ec5b13] transition-colors" />
                                             )}
@@ -235,7 +236,7 @@ export const AddMemberModal = ({ isOpen, onOpenChange }: AddMemberModalProps) =>
 
                                 {/* Role Selection Section */}
                                 <div>
-                                    <h3 className="text-sm font-medium text-slate-400 mb-3">Niveau d'accès</h3>
+                                    <h3 className="text-sm font-medium text-slate-400 mb-3">Niveau d&apos;accès</h3>
                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                         {/* Role: Cashier */}
                                         <button

@@ -1,10 +1,14 @@
-import { pgTable, serial, text, timestamp, numeric, integer, boolean, jsonb, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, timestamp, numeric, integer, boolean, jsonb, pgEnum, index, uuid } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 
-export const orderStatusEnum = pgEnum("order_status", ["EN_ATTENTE", "PAYE", "LIVRE", "TERMINE", "ANNULE", "PARTIEL", "NON_PAYE"]);
-export const userRoleEnum = pgEnum("user_role", ["ADMIN", "CAISSIER", "TRAITEUR"]);
-export const actionTypeEnum = pgEnum("action_type", ["ACOMPTE", "REMBOURSEMENT"]);
+export const orderStatusEnum = pgEnum("order_status", ["EN_ATTENTE", "PAYE", "LIVRE", "TERMINE", "ANNULE", "PARTIEL", "NON_PAYE", "REMBOURSE"]);
+export const userRoleEnum = pgEnum("user_role", ["ADMIN", "CAISSIER", "TRAITEUR", "RESELLER"]);
+export const actionTypeEnum = pgEnum("action_type", ["ACOMPTE", "REMBOURSEMENT", "RETOUR"]);
 export const deliveryMethodEnum = pgEnum("delivery_method", ["TICKET", "WHATSAPP"]);
+export const supplierTransactionTypeEnum = pgEnum("supplier_transaction_type", ["RECHARGE", "AJUSTEMENT", "ACHAT_STOCK", "DEBIT"]);
+export const digitalCodeStatusEnum = pgEnum("digital_code_status", ["DISPONIBLE", "VENDU", "UTILISE", "DEFECTUEUX"]);
+export const digitalCodeSlotStatusEnum = pgEnum("digital_code_slot_status", ["DISPONIBLE", "VENDU", "DEFECTUEUX"]);
+export const orderSourceEnum = pgEnum("order_source", ["KIOSK", "B2B_WEB", "API"]);
 
 export const categories = pgTable("categories", {
     id: serial("id").primaryKey(),
@@ -20,49 +24,58 @@ export const products = pgTable("products", {
     description: text("description"),
     imageUrl: text("image_url"),
     requiresPlayerId: boolean("requires_player_id").default(false).notNull(),
+    isManualDelivery: boolean("is_manual_delivery").default(true).notNull(),
+    status: text("status").default("ACTIVE").notNull(), // 'ACTIVE' or 'ARCHIVED'
+}, (table) => {
+    return {
+        categoryIdIdx: index("products_category_id_idx").on(table.categoryId),
+        nameIdx: index("products_name_idx").on(table.name),
+    };
 });
 
 export const productVariants = pgTable("product_variants", {
     id: serial("id").primaryKey(),
     productId: integer("product_id").references(() => products.id, { onDelete: "cascade" }),
     name: text("name").notNull(), // ex: '1 Mois', '3 Mois'
-    purchasePriceUsd: numeric("purchase_price_usd", { precision: 10, scale: 2 }).notNull(),
     salePriceDzd: numeric("sale_price_dzd", { precision: 10, scale: 2 }).notNull(),
     stockStatus: boolean("stock_status").default(true),
+    isSharing: boolean("is_sharing").default(false).notNull(),
+    totalSlots: integer("total_slots").default(1).notNull(),
+}, (table) => {
+    return {
+        productIdIdx: index("product_id_idx").on(table.productId),
+    };
 });
 
 export const suppliers = pgTable("suppliers", {
     id: serial("id").primaryKey(),
     name: text("name").notNull(),
-    balanceDzd: numeric("balance_dzd", { precision: 12, scale: 2 }).default("0"),
-    balanceUsd: numeric("balance_usd", { precision: 12, scale: 2 }).default("0"),
-    exchangeRate: numeric("exchange_rate", { precision: 10, scale: 2 }).default("0"),
-    baseCurrency: text("base_currency").default("USD"), // 'USD' or 'DZD'
+    balance: numeric("balance", { precision: 12, scale: 2 }).default("0"),
+    currency: text("currency").default("DZD"), // 'USD' or 'DZD'
+    status: text("status").default("ACTIVE").notNull(), // 'ACTIVE' or 'INACTIVE'
 });
-
-export const supplierTransactionTypeEnum = pgEnum("supplier_transaction_type", ["RECHARGE", "AJUSTEMENT", "ACHAT_STOCK"]);
 
 export const supplierTransactions = pgTable("supplier_transactions", {
     id: serial("id").primaryKey(),
-    supplierId: integer("supplier_id").references(() => suppliers.id, { onDelete: "cascade" }),
-    type: supplierTransactionTypeEnum("type").default("RECHARGE").notNull(),
-    amountUsd: numeric("amount_usd", { precision: 12, scale: 2 }).notNull(),
-    exchangeRate: numeric("exchange_rate", { precision: 10, scale: 2 }).notNull(),
-    amountDzd: numeric("amount_dzd", { precision: 12, scale: 2 }).notNull(),
-    salePriceDzd: numeric("sale_price_dzd", { precision: 12, scale: 2 }), // Price sold to customer
+    supplierId: integer("supplier_id").references(() => suppliers.id, { onDelete: "cascade" }).notNull(),
+    type: text("type").notNull(), // 'RECHARGE' or 'DEBIT' (simplified as per request)
+    amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
+    currency: text("currency").notNull(), // 'DZD' or 'USD'
     reason: text("reason"),
-    status: text("status").default("COMPLETED"), // COMPLETED, PENDING
-    createdAt: timestamp("created_at").defaultNow(),
+    createdAt: timestamp("created_at", { mode: 'date' }).defaultNow().notNull(),
+}, (table) => {
+    return {
+        supplierIdIdx: index("st_supplier_id_idx").on(table.supplierId),
+        createdAtIdx: index("st_created_at_idx").on(table.createdAt),
+    };
 });
-
-export const digitalCodeStatusEnum = pgEnum("digital_code_status", ["DISPONIBLE", "VENDU", "UTILISE"]);
 
 export const clients = pgTable("clients", {
     id: serial("id").primaryKey(),
     nomComplet: text("nom_complet").notNull(),
     telephone: text("telephone"),
     totalDetteDzd: numeric("total_dette_dzd", { precision: 12, scale: 2 }).default("0"),
-    createdAt: timestamp("created_at").defaultNow(),
+    createdAt: timestamp("created_at", { mode: 'date' }).defaultNow(),
 });
 
 export const orders = pgTable("orders", {
@@ -75,10 +88,18 @@ export const orders = pgTable("orders", {
     resteAPayer: numeric("reste_a_payer", { precision: 12, scale: 2 }).default("0"),
     clientId: integer("client_id").references(() => clients.id, { onDelete: "set null" }),
     userId: integer("user_id").references(() => users.id, { onDelete: "set null" }),
+    resellerId: integer("reseller_id").references(() => resellers.id, { onDelete: "set null" }),
+    source: orderSourceEnum("source").default("KIOSK").notNull(),
     deliveryMethod: deliveryMethodEnum("delivery_method").default("TICKET").notNull(),
     customerPhone: text("customer_phone"),
     isDelivered: boolean("is_delivered").default(false),
-    createdAt: timestamp("created_at").defaultNow(),
+    createdAt: timestamp("created_at", { mode: 'date' }).defaultNow(),
+}, (table) => {
+    return {
+        createdAtIdx: index("orders_created_at_idx").on(table.createdAt),
+        statusIdx: index("orders_status_idx").on(table.status),
+        clientIdIdx: index("orders_client_id_idx").on(table.clientId),
+    };
 });
 
 export const orderItems = pgTable("order_items", {
@@ -90,6 +111,7 @@ export const orderItems = pgTable("order_items", {
     quantity: integer("quantity").notNull(),
     supplierId: integer("supplier_id").references(() => suppliers.id, { onDelete: "set null" }),
     customData: text("custom_data"),
+    playerNickname: text("player_nickname"),
 });
 
 export const digitalCodes = pgTable("digital_codes", {
@@ -97,8 +119,32 @@ export const digitalCodes = pgTable("digital_codes", {
     variantId: integer("variant_id").references(() => productVariants.id, { onDelete: "cascade" }).notNull(),
     code: text("code").notNull(),
     status: digitalCodeStatusEnum("status").default("DISPONIBLE").notNull(),
+    isDebitCompleted: boolean("is_debit_completed").default(false).notNull(),
     orderItemId: integer("order_item_id").references(() => orderItems.id, { onDelete: "set null" }),
-    createdAt: timestamp("created_at").defaultNow(),
+    createdAt: timestamp("created_at", { mode: 'date' }).defaultNow(),
+}, (table) => {
+    return {
+        variantIdIdx: index("dc_variant_id_idx").on(table.variantId),
+        statusIdx: index("dc_status_idx").on(table.status),
+        orderItemIdIdx: index("dc_order_item_id_idx").on(table.orderItemId),
+    };
+});
+
+export const digitalCodeSlots = pgTable("digital_code_slots", {
+    id: serial("id").primaryKey(),
+    digitalCodeId: integer("digital_code_id").references(() => digitalCodes.id, { onDelete: "cascade" }).notNull(),
+    slotNumber: integer("slot_number").notNull(),
+    profileName: text("profile_name"), // Custom label for this profile slot
+    code: text("code"), // Specific PIN/Code for this slot
+    status: digitalCodeSlotStatusEnum("status").default("DISPONIBLE").notNull(),
+    orderItemId: integer("order_item_id").references(() => orderItems.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { mode: 'date' }).defaultNow(),
+}, (table) => {
+    return {
+        digitalCodeIdIdx: index("dcs_digital_code_id_idx").on(table.digitalCodeId),
+        statusIdx: index("dcs_status_idx").on(table.status),
+        orderItemIdIdx: index("dcs_order_item_id_idx").on(table.orderItemId),
+    };
 });
 
 export const clientPayments = pgTable("client_payments", {
@@ -106,8 +152,8 @@ export const clientPayments = pgTable("client_payments", {
     clientId: integer("client_id").references(() => clients.id, { onDelete: "cascade" }).notNull(),
     orderId: integer("order_id").references(() => orders.id, { onDelete: "set null" }),
     montantDzd: numeric("montant_dzd", { precision: 12, scale: 2 }).notNull(),
-    typeAction: actionTypeEnum("type_action").notNull(), // ACOMPTE, REMBOURSEMENT
-    createdAt: timestamp("created_at").defaultNow(),
+    typeAction: actionTypeEnum("type_action").notNull(), // ACOMPTE, REMBOURSEMENT, RETOUR
+    createdAt: timestamp("created_at", { mode: 'date' }).defaultNow(),
 });
 
 export const users = pgTable("users", {
@@ -118,7 +164,7 @@ export const users = pgTable("users", {
     pinCode: text("pin_code").notNull(),
     role: userRoleEnum("role").default("CAISSIER").notNull(),
     avatarUrl: text("avatar_url"),
-    createdAt: timestamp("created_at").defaultNow(),
+    createdAt: timestamp("created_at", { mode: 'date' }).defaultNow(),
 });
 
 export const shopSettings = pgTable("shop_settings", {
@@ -138,16 +184,72 @@ export const shopSettings = pgTable("shop_settings", {
     faviconUrl: text("favicon_url"),
     telegramBotToken: text("telegram_bot_token"),
     telegramChatId: text("telegram_chat_id"),
+    telegramChatIdAdmin: text("telegram_chat_id_admin"),
+    telegramChatIdCaisse: text("telegram_chat_id_caisse"),
+    telegramChatIdTraiteur: text("telegram_chat_id_traiteur"),
     webhookUrl: text("webhook_url"),
     whatsappToken: text("whatsapp_token"),
     whatsappPhoneId: text("whatsapp_phone_id"),
+    isB2bEnabled: boolean("is_b2b_enabled").default(false).notNull(),
+    defaultResellerDiscount: numeric("default_reseller_discount", { precision: 5, scale: 2 }).default("5.00"),
+    minResellerRecharge: numeric("min_reseller_recharge", { precision: 12, scale: 2 }).default("1000.00"),
+});
+
+export const resellers = pgTable("resellers", {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    companyName: text("company_name").notNull(),
+    contactPhone: text("contact_phone"),
+    customDiscount: numeric("custom_discount", { precision: 5, scale: 2 }), // Override global discount
+    status: text("status").default("ACTIVE").notNull(), // 'ACTIVE', 'SUSPENDED'
+    createdAt: timestamp("created_at", { mode: 'date' }).defaultNow(),
+});
+
+export const resellerWallets = pgTable("reseller_wallets", {
+    id: serial("id").primaryKey(),
+    resellerId: integer("reseller_id").references(() => resellers.id, { onDelete: "cascade" }).notNull(),
+    balance: numeric("balance", { precision: 12, scale: 2 }).default("0"),
+    totalSpent: numeric("total_spent", { precision: 12, scale: 2 }).default("0"),
+    updatedAt: timestamp("updated_at", { mode: 'date' }).defaultNow(),
+});
+
+export const resellerTransactions = pgTable("reseller_transactions", {
+    id: serial("id").primaryKey(),
+    walletId: integer("wallet_id").references(() => resellerWallets.id, { onDelete: "cascade" }).notNull(),
+    type: text("type").notNull(), // 'RECHARGE', 'PURCHASE', 'REFUND'
+    amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
+    orderId: integer("order_id").references(() => orders.id, { onDelete: "set null" }),
+    description: text("description"),
+    createdAt: timestamp("created_at", { mode: 'date' }).defaultNow(),
+});
+
+export const supportTickets = pgTable("support_tickets", {
+    id: serial("id").primaryKey(),
+    orderId: integer("order_id").references(() => orders.id, { onDelete: "cascade" }).notNull(),
+    subject: text("subject").notNull(),
+    message: text("message").notNull(),
+    customerPhone: text("customer_phone"),
+    status: text("status").default("OUVERT").notNull(), // 'OUVERT', 'TRAITE', 'FERME'
+    createdAt: timestamp("created_at", { mode: 'date' }).defaultNow(),
+    updatedAt: timestamp("updated_at", { mode: 'date' }).defaultNow(),
+}, (table) => {
+    return {
+        orderIdIdx: index("st_order_id_idx").on(table.orderId),
+        statusIdx: index("st_status_idx").on(table.status),
+    };
 });
 
 export const productVariantSuppliers = pgTable("product_variant_suppliers", {
     id: serial("id").primaryKey(),
     variantId: integer("variant_id").references(() => productVariants.id, { onDelete: "cascade" }).notNull(),
     supplierId: integer("supplier_id").references(() => suppliers.id, { onDelete: "cascade" }).notNull(),
-    purchasePriceUsd: numeric("purchase_price_usd", { precision: 10, scale: 2 }).notNull(),
+    purchasePrice: numeric("purchase_price", { precision: 10, scale: 2 }).notNull(),
+    currency: text("currency").default("USD").notNull(), // 'USD' or 'DZD'
+}, (table) => {
+    return {
+        variantIdIdx: index("pvs_variant_id_idx").on(table.variantId),
+        supplierIdIdx: index("pvs_supplier_id_idx").on(table.supplierId),
+    };
 });
 
 // Relations
@@ -172,6 +274,19 @@ export const productVariantsRelations = relations(productVariants, ({ one, many 
     digitalCodes: many(digitalCodes),
 }));
 
+export const digitalCodesRelations = relations(digitalCodes, ({ one, many }) => ({
+    variant: one(productVariants, {
+        fields: [digitalCodes.variantId],
+        references: [productVariants.id],
+    }),
+    orderItem: one(orderItems, {
+        fields: [digitalCodes.orderItemId],
+        references: [orderItems.id],
+    }),
+    slots: many(digitalCodeSlots),
+}));
+
+
 export const usersRelations = relations(users, ({ many }) => ({
     orders: many(orders),
 }));
@@ -187,6 +302,14 @@ export const ordersRelations = relations(orders, ({ one, many }) => ({
     }),
     items: many(orderItems),
     payments: many(clientPayments),
+    tickets: many(supportTickets),
+}));
+
+export const supportTicketsRelations = relations(supportTickets, ({ one }) => ({
+    order: one(orders, {
+        fields: [supportTickets.orderId],
+        references: [orders.id],
+    }),
 }));
 
 export const orderItemsRelations = relations(orderItems, ({ one, many }) => ({
@@ -199,15 +322,17 @@ export const orderItemsRelations = relations(orderItems, ({ one, many }) => ({
         references: [productVariants.id],
     }),
     codes: many(digitalCodes),
+    slots: many(digitalCodeSlots),
 }));
 
-export const digitalCodesRelations = relations(digitalCodes, ({ one }) => ({
-    variant: one(productVariants, {
-        fields: [digitalCodes.variantId],
-        references: [productVariants.id],
+
+export const digitalCodeSlotsRelations = relations(digitalCodeSlots, ({ one }) => ({
+    digitalCode: one(digitalCodes, {
+        fields: [digitalCodeSlots.digitalCodeId],
+        references: [digitalCodes.id],
     }),
     orderItem: one(orderItems, {
-        fields: [digitalCodes.orderItemId],
+        fields: [digitalCodeSlots.orderItemId],
         references: [orderItems.id],
     }),
 }));
@@ -248,5 +373,43 @@ export const productVariantSuppliersRelations = relations(productVariantSupplier
     supplier: one(suppliers, {
         fields: [productVariantSuppliers.supplierId],
         references: [suppliers.id],
+    }),
+}));
+
+export const resellersRelations = relations(resellers, ({ one, many }) => ({
+    user: one(users, {
+        fields: [resellers.userId],
+        references: [users.id],
+    }),
+    wallet: one(resellerWallets, {
+        fields: [resellers.id],
+        references: [resellerWallets.resellerId],
+    }),
+    orders: many(orders),
+}));
+
+export const resellerWalletsRelations = relations(resellerWallets, ({ one, many }) => ({
+    reseller: one(resellers, {
+        fields: [resellerWallets.resellerId],
+        references: [resellers.id],
+    }),
+    transactions: many(resellerTransactions),
+}));
+
+export const resellerTransactionsRelations = relations(resellerTransactions, ({ one }) => ({
+    wallet: one(resellerWallets, {
+        fields: [resellerTransactions.walletId],
+        references: [resellerWallets.id],
+    }),
+    order: one(orders, {
+        fields: [resellerTransactions.orderId],
+        references: [orders.id],
+    }),
+}));
+
+export const ordersRelationsB2b = relations(orders, ({ one }) => ({
+    reseller: one(resellers, {
+        fields: [orders.resellerId],
+        references: [resellers.id],
     }),
 }));

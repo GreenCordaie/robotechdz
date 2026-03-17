@@ -1,12 +1,15 @@
 "use client";
 
 import React from "react";
+import { formatCurrency } from "@/lib/formatters";
 
 interface ReceiptItem {
     name: string;
     quantity: number;
     price: string | number;
     codes?: string[];
+    customData?: string;
+    playerNickname?: string;
 }
 
 interface ThermalReceiptProps {
@@ -122,9 +125,15 @@ export const ThermalReceipt = ({
                         <article key={idx} className="text-xs">
                             <div className="flex justify-between items-start mb-2">
                                 <span className="pr-2 text-left">{item.quantity}x {item.name}</span>
-                                <span className="whitespace-nowrap font-bold">{Number(item.price).toLocaleString()} DZD</span>
+                                <span className="whitespace-nowrap font-bold">{formatCurrency(item.price, 'DZD')}</span>
                             </div>
                             <div className="space-y-1">
+                                {(item.customData || item.playerNickname) && (
+                                    <div className="flex flex-col gap-0.5 px-2 py-1 bg-slate-50 border border-slate-100 rounded text-[9px] font-bold text-black uppercase mb-1">
+                                        {item.customData && <div className="flex justify-between"><span>ID/LIEN:</span> <span>{item.customData}</span></div>}
+                                        {item.playerNickname && <div className="flex justify-between"><span>PSEUDO:</span> <span>{item.playerNickname}</span></div>}
+                                    </div>
+                                )}
                                 {item.codes?.map((code: string, cIdx: number) => (
                                     <div key={cIdx} className="activation-box p-2 text-center rounded text-[10px] uppercase">
                                         {code}
@@ -140,7 +149,7 @@ export const ThermalReceipt = ({
                 <section className="w-full text-sm space-y-1" data-purpose="receipt-summary">
                     <div className="flex justify-between font-bold text-base thermal-text-bold">
                         <span>TOTAL PAYÉ :</span>
-                        <span className="whitespace-nowrap">{Number(totalAmount).toLocaleString()} DZD</span>
+                        <span className="whitespace-nowrap">{formatCurrency(totalAmount, 'DZD')}</span>
                     </div>
                     <div className="flex justify-between text-xs pt-1">
                         <span>Méthode :</span>

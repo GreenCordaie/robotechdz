@@ -1,0 +1,4 @@
+C:\Users\PC\Desktop\100-pc-IA\src\components\admin\DashboardContent.tsx:103:110: `'` can be escaped with `&apos;`, `&lsquo;`, `&#39;`, `&rsquo;`. [Error/react/no-unescaped-entities]
+C:\Users\PC\Desktop\100-pc-IA\src\components\admin\DashboardContent.tsx:109:87: `'` can be escaped with `&apos;`, `&lsquo;`, `&#39;`, `&rsquo;`. [Error/react/no-unescaped-entities]
+
+2 problems

@@ -30,10 +30,40 @@ import {
     ShoppingCart,
     Wallet
 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { getIndebtedClients, recordPayment, getClientHistory, createClient } from "@/app/admin/clients/actions";
+
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
 import { toast } from "react-hot-toast";
+import { formatCurrency } from "@/lib/formatters";
+
+interface ClientOrder {
+    id: number;
+    orderNumber: string;
+    totalAmount: string;
+    resteAPayer: string | null;
+    status: string;
+    isDelivered: boolean | null;
+    createdAt: Date | null;
+}
+
+interface ClientPayment {
+    id: number;
+    montantDzd: string;
+    createdAt: Date | null;
+    typeAction: string;
+}
+
+
+interface Client {
+    id: number;
+    nomComplet: string;
+    telephone: string | null;
+    totalDetteDzd: string | null;
+    orders?: ClientOrder[];
+}
+
 
 interface ClientsContentProps {
     initialStats: {
@@ -41,49 +71,76 @@ interface ClientsContentProps {
         recoveredThisMonth: number;
         indebtedCount: number;
     };
-    initialClients: any[];
+    initialClients: Client[];
 }
 
 export default function ClientsContent({ initialStats, initialClients }: ClientsContentProps) {
+    const router = useRouter();
     const [stats, setStats] = React.useState(initialStats);
-    const [clients, setClients] = React.useState(initialClients);
+    const [clients, setClients] = React.useState<Client[]>(initialClients);
     const [search, setSearch] = React.useState("");
-    const [selectedClient, setSelectedClient] = React.useState<any>(null);
-    const [history, setHistory] = React.useState<{ payments: any[], orders: any[] }>({ payments: [], orders: [] });
+    const [selectedClient, setSelectedClient] = React.useState<Client | null>(null);
+    const [history, setHistory] = React.useState<{ payments: ClientPayment[], orders: ClientOrder[] }>({ payments: [], orders: [] });
+
     const [repaymentAmount, setRepaymentAmount] = React.useState("");
     const [isSubmitting, setIsSubmitting] = React.useState(false);
+
+    // New Client Modal State
+    const [newName, setNewName] = React.useState("");
+    const [newTel, setNewTel] = React.useState("");
+    const [isCreatingNew, setIsCreatingNew] = React.useState(false);
+
 
     const { isOpen, onOpen, onClose } = useDisclosure();
     const { isOpen: isNewOpen, onOpen: onNewOpen, onClose: onNewClose } = useDisclosure();
 
     // Polling or refresh logic
-    const refreshData = async () => {
-        const indebted = await getIndebtedClients(search);
-        setClients(indebted);
-    };
+    const refreshData = React.useCallback(async () => {
+        const indebted = await getIndebtedClients();
+        if (Array.isArray(indebted)) {
+            setClients(indebted);
+        } else {
+            toast.error("Erreur lors de la récupération des clients");
+        }
+    }, [search]);
+
 
     React.useEffect(() => {
         const timeout = setTimeout(() => refreshData(), 300);
         return () => clearTimeout(timeout);
-    }, [search]);
+    }, [refreshData]);
 
-    const handleViewClient = async (client: any) => {
+
+    const handleViewClient = async (client: Client) => {
         setSelectedClient(client);
-        const data = await getClientHistory(client.id);
-        setHistory(data);
+        const data = await getClientHistory({ clientId: client.id });
+        const typedData = data as { payments: any[], orders: any[] };
+        setHistory({
+            payments: typedData.payments.map(p => ({ ...p, createdAt: new Date(p.createdAt) })),
+            orders: typedData.orders.map(o => ({ ...o, createdAt: new Date(o.createdAt) }))
+        });
         onOpen();
     };
 
+
     const handleSettle = async () => {
-        if (!repaymentAmount || Number(repaymentAmount) <= 0) return;
+        if (!selectedClient || !repaymentAmount || Number(repaymentAmount) <= 0) return;
         setIsSubmitting(true);
         try {
-            await recordPayment(selectedClient.id, Number(repaymentAmount));
-            toast.success("Paiement enregistré avec succès");
-            setRepaymentAmount("");
-            onClose();
-            // Full refresh
-            window.location.reload();
+            const res = await recordPayment({
+                clientId: selectedClient.id,
+                amount: repaymentAmount,
+                typeAction: "ACOMPTE" // Default for manual settle
+            });
+            if (res.success) {
+                toast.success("Paiement enregistré avec succès");
+                setRepaymentAmount("");
+                onClose();
+                router.refresh();
+            } else {
+                toast.error(res.error || "Erreur lors de l'enregistrement");
+            }
+
         } catch (error) {
             toast.error("Erreur lors de l'enregistrement");
         } finally {
@@ -97,7 +154,8 @@ export default function ClientsContent({ initialStats, initialClients }: Clients
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div className="flex flex-col gap-1">
                     <h1 className="text-white text-3xl font-bold tracking-tight">Clients & Crédits</h1>
-                    <p className="text-slate-400 text-base">Suivi des paiements partiels et de l'argent en attente.</p>
+                    <p className="text-slate-400 text-base">Suivi des paiements partiels et de l&apos;argent en attente.</p>
+
                 </div>
                 <Button
                     onPress={onNewOpen}
@@ -113,7 +171,7 @@ export default function ClientsContent({ initialStats, initialClients }: Clients
                 <div className="bg-[#161616] border border-[#262626] rounded-2xl p-6 flex flex-col gap-2">
                     <p className="text-slate-400 text-sm font-medium">Total des créances (Dehors)</p>
                     <div className="flex items-baseline gap-2">
-                        <span className="text-red-500 text-3xl font-black">{stats.totalDebt.toLocaleString()} DZD</span>
+                        <span className="text-red-500 text-3xl font-black">{formatCurrency(stats.totalDebt, 'DZD')}</span>
                     </div>
                     <div className="mt-2 flex items-center gap-1 text-red-400 text-xs">
                         <TrendingUp className="w-3 h-3" />
@@ -124,7 +182,7 @@ export default function ClientsContent({ initialStats, initialClients }: Clients
                 <div className="bg-[#161616] border border-[#262626] rounded-2xl p-6 flex flex-col gap-2">
                     <p className="text-slate-400 text-sm font-medium">Paiements récupérés ce mois</p>
                     <div className="flex items-baseline gap-2">
-                        <span className="text-emerald-500 text-3xl font-black">{stats.recoveredThisMonth.toLocaleString()} DZD</span>
+                        <span className="text-emerald-500 text-3xl font-black">{formatCurrency(stats.recoveredThisMonth, 'DZD')}</span>
                     </div>
                     <div className="mt-2 flex items-center gap-1 text-emerald-400 text-xs">
                         <CheckCircle className="w-3 h-3" />
@@ -147,7 +205,8 @@ export default function ClientsContent({ initialStats, initialClients }: Clients
             {/* Main Table Section */}
             <div className="bg-[#161616] border border-[#262626] rounded-2xl overflow-hidden shadow-2xl">
                 <div className="p-6 border-b border-[#262626] flex justify-between items-center">
-                    <h3 className="font-bold text-lg text-white">Liste des clients endetté</h3>
+                    <h3 className="font-bold text-lg text-white">Liste des clients endettés</h3>
+
                     <div className="relative w-64">
                         <Input
                             placeholder="Rechercher un client..."
@@ -192,7 +251,7 @@ export default function ClientsContent({ initialStats, initialClients }: Clients
                                             {lastOrder ? `#${lastOrder.orderNumber}` : "---"}
                                         </td>
                                         <td className="px-6 py-4 text-red-500 font-bold text-center">
-                                            {Number(client.totalDetteDzd).toLocaleString()} DZD
+                                            {formatCurrency(client.totalDetteDzd || 0, 'DZD')}
                                         </td>
                                         <td className="px-6 py-4 text-center">
                                             <Chip
@@ -284,13 +343,13 @@ export default function ClientsContent({ initialStats, initialClients }: Clients
                                                     <div>
                                                         <p className="text-white text-sm font-medium">Achat Commande #{order.orderNumber}</p>
                                                         <p className="text-slate-500 text-xs">
-                                                            {format(new Date(order.createdAt), "dd MMMM yyyy", { locale: fr })}
+                                                            {order.createdAt ? format(new Date(order.createdAt), "dd MMMM yyyy", { locale: fr }) : "---"}
                                                         </p>
                                                     </div>
                                                 </div>
                                                 <div className="text-right">
-                                                    <span className="text-red-500 font-bold block">-{Number(order.totalAmount).toLocaleString()} DZD</span>
-                                                    <span className="text-slate-500 text-[10px] uppercase font-bold italic">Reste: {Number(order.resteAPayer).toLocaleString()} DZD</span>
+                                                    <span className="text-red-500 font-bold block">-{formatCurrency(order.totalAmount, 'DZD')}</span>
+                                                    <span className="text-slate-500 text-[10px] uppercase font-bold italic">Reste: {formatCurrency(order.resteAPayer || 0, 'DZD')}</span>
                                                 </div>
                                             </div>
                                         ))}
@@ -305,11 +364,12 @@ export default function ClientsContent({ initialStats, initialClients }: Clients
                                                     <div>
                                                         <p className="text-white text-sm font-medium">Règlement de dette</p>
                                                         <p className="text-slate-500 text-xs">
-                                                            {format(new Date(payment.createdAt), "dd MMMM yyyy", { locale: fr })}
+                                                            {payment.createdAt ? format(new Date(payment.createdAt), "dd MMMM yyyy", { locale: fr }) : "---"}
                                                         </p>
+
                                                     </div>
                                                 </div>
-                                                <span className="text-emerald-500 font-bold">+{Number(payment.montantDzd).toLocaleString()} DZD</span>
+                                                <span className="text-emerald-500 font-bold">+{formatCurrency(payment.montantDzd, 'DZD')}</span>
                                             </div>
                                         ))}
                                     </div>
@@ -318,7 +378,7 @@ export default function ClientsContent({ initialStats, initialClients }: Clients
                             <ModalFooter className="flex justify-between items-center">
                                 <span className="text-slate-400 font-medium">Dette actuelle</span>
                                 <span className="text-2xl font-black text-red-500">
-                                    {Number(selectedClient?.totalDetteDzd || 0).toLocaleString()} DZD
+                                    {formatCurrency(selectedClient?.totalDetteDzd || 0, 'DZD')}
                                 </span>
                             </ModalFooter>
                         </>
@@ -334,18 +394,20 @@ export default function ClientsContent({ initialStats, initialClients }: Clients
             >
                 <ModalContent>
                     {(onClose) => {
-                        const [name, setName] = React.useState("");
-                        const [tel, setTel] = React.useState("");
-                        const [loading, setLoading] = React.useState(false);
-
                         const handleSave = async () => {
-                            if (!name) return;
-                            setLoading(true);
-                            await createClient({ nomComplet: name, telephone: tel });
-                            toast.success("Client créé");
-                            setLoading(false);
-                            onClose();
-                            refreshData();
+                            if (!newName) return;
+                            setIsCreatingNew(true);
+                            const res = await createClient({ nom: newName, telephone: newTel });
+                            if ('success' in res && res.success) {
+                                toast.success("Client créé");
+                                onClose();
+                                refreshData();
+                                setNewName("");
+                                setNewTel("");
+                            } else {
+                                toast.error((res as any).error || "Erreur création client");
+                            }
+                            setIsCreatingNew(false);
                         };
 
                         return (
@@ -355,22 +417,22 @@ export default function ClientsContent({ initialStats, initialClients }: Clients
                                     <Input
                                         label="Nom Complet"
                                         placeholder="Ex: Karim Revendeur"
-                                        value={name}
-                                        onValueChange={setName}
+                                        value={newName}
+                                        onValueChange={setNewName}
                                         classNames={{ inputWrapper: "bg-[#0a0a0a]" }}
                                     />
                                     <Input
                                         label="Téléphone"
                                         placeholder="06..."
-                                        value={tel}
-                                        onValueChange={setTel}
+                                        value={newTel}
+                                        onValueChange={setNewTel}
                                         classNames={{ inputWrapper: "bg-[#0a0a0a]" }}
                                     />
                                 </ModalBody>
                                 <ModalFooter>
                                     <Button variant="flat" onPress={onClose} className="text-slate-400">Annuler</Button>
                                     <Button
-                                        isLoading={loading}
+                                        isLoading={isCreatingNew}
                                         className="bg-[#ec5b13] text-white font-bold"
                                         onPress={handleSave}
                                     >
@@ -378,7 +440,8 @@ export default function ClientsContent({ initialStats, initialClients }: Clients
                                     </Button>
                                 </ModalFooter>
                             </>
-                        )
+                        );
+
                     }}
                 </ModalContent>
             </Modal>

@@ -57,7 +57,7 @@ export default function AdminLayout({
 
     return (
         <div className="flex bg-black text-white min-h-screen dark">
-            {isAuthenticated && <LockScreen />}
+            {/* {isAuthenticated && <LockScreen />} */}
             <AdminSidebar />
             <main className="flex-1 h-screen overflow-y-auto scrollbar-hide bg-background-dark text-slate-100">
                 <div className="p-8 max-w-7xl mx-auto min-h-full">

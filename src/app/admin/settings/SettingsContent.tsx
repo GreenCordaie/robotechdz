@@ -12,8 +12,17 @@ import {
     Trash2,
     Save,
     Loader2,
-    Palette
+    Palette,
+    Store,
+    Wallet,
+    Percent,
+    AlertTriangle,
+    Coins,
+    Building2
 } from "lucide-react";
+import Image from "next/image";
+
+
 import { useDisclosure, Spinner } from "@heroui/react";
 import { toast } from "react-hot-toast";
 import { AddMemberModal } from "@/components/admin/modals/AddMemberModal";
@@ -23,15 +32,23 @@ import {
     getUsersAction,
     deleteUserAction,
     testTelegramBotAction,
-    setTelegramWebhookAction
+    setTelegramWebhookAction,
+    testWhatsAppAction,
+    getResellersAction,
+    deleteResellerAction
 } from "@/app/admin/settings/actions";
+import { EditMemberModal } from "@/components/admin/modals/EditMemberModal";
+import { AddResellerModal } from "@/components/admin/modals/AddResellerModal";
 import { uploadImage } from "@/app/admin/actions/upload";
 import { useSettingsStore } from "@/store/useSettingsStore";
+import { formatCurrency } from "@/lib/formatters";
 
 export default function SettingsContent() {
-    const [activeTab, setActiveTab] = useState<"general" | "team" | "api" | "appearance" | "receipt">("general");
+    const [activeTab, setActiveTab] = useState<"general" | "team" | "api" | "b2b" | "appearance" | "receipt">("general");
     const { isOpen, onOpen, onOpenChange } = useDisclosure();
     const updateGlobalSettings = useSettingsStore((state) => state.updateSettings);
+
+    const [b2bSubTab, setB2bSubTab] = useState<"config" | "manage">("config");
 
     // Settings states
     const [shopName, setShopName] = useState("");
@@ -44,7 +61,16 @@ export default function SettingsContent() {
     const [showDateTime, setShowDateTime] = useState(true);
     const [showLogo, setShowLogo] = useState(false);
     const [accentColor, setAccentColor] = useState("#ec5b13");
+    const [dashboardLogoUrl, setDashboardLogoUrl] = useState("");
+    const [faviconUrl, setFaviconUrl] = useState("");
     const [logoUrl, setLogoUrl] = useState("https://lh3.googleusercontent.com/aida-public/AB6AXuAc0N62EzEzZzBI60NaoTtEF00tJ4ruXHAprleWW2Ek0c_HJiYCXwfN8trT6eQnjQrV5nE_-fyuuJosSJb_iytbtbNGp-K0Wd6vX-CPo20bhzT8S_St7llE3bP8PuJTX3ksNDuaag3oCbGIG_lZUwYPpyNcDhS-ZZsyPgxdx6s6c1GGpOhrqGqPdgtDJu-cj6Xz_MqFfmz6rBVYDmiePw407Len9Q5yGIf3OUX-df_CRLX9jEKC9xgO2mOWd1gftB6LcGqkoR0lqGU5");
+
+    // B2B states
+    const [isB2bEnabled, setIsB2bEnabled] = useState(false);
+    const [defaultResellerDiscount, setDefaultResellerDiscount] = useState("5.00");
+    const [minResellerRecharge, setMinResellerRecharge] = useState("1000.00");
+    const [resellersList, setResellersList] = useState<any[]>([]);
+    const [isResellersLoading, setIsResellersLoading] = useState(false);
 
     // Team states
     const [team, setTeam] = useState<any[]>([]);
@@ -52,11 +78,17 @@ export default function SettingsContent() {
     const logoInputRef = React.useRef<HTMLInputElement>(null);
     const dashboardLogoInputRef = React.useRef<HTMLInputElement>(null);
     const faviconInputRef = React.useRef<HTMLInputElement>(null);
-    const [dashboardLogoUrl, setDashboardLogoUrl] = useState("");
-    const [faviconUrl, setFaviconUrl] = useState("");
+    const [selectedMember, setSelectedMember] = useState<any>(null);
+    const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [telegramBotToken, setTelegramBotToken] = useState("");
     const [telegramChatId, setTelegramChatId] = useState("");
+    const [telegramChatIdAdmin, setTelegramChatIdAdmin] = useState("");
+    const [telegramChatIdCaisse, setTelegramChatIdCaisse] = useState("");
+    const [telegramChatIdTraiteur, setTelegramChatIdTraiteur] = useState("");
     const [isTestingBot, setIsTestingBot] = useState(false);
+
+    // B2B Modal state
+    const { isOpen: isB2bModalOpen, onOpen: onB2bModalOpen, onOpenChange: onB2bModalOpenChange } = useDisclosure();
     const [isUploadingLogo, setIsUploadingLogo] = useState(false);
     const [isUploadingDashboardLogo, setIsUploadingDashboardLogo] = useState(false);
     const [isUploadingFavicon, setIsUploadingFavicon] = useState(false);
@@ -64,6 +96,7 @@ export default function SettingsContent() {
     const [webhookUrl, setWebhookUrl] = useState("");
     const [whatsappToken, setWhatsappToken] = useState("");
     const [whatsappPhoneId, setWhatsappPhoneId] = useState("");
+    const [isTestingWhatsApp, setIsTestingWhatsApp] = useState(false);
 
     // Global loading/saving states
     const [isLoading, setIsLoading] = useState(true);
@@ -83,7 +116,7 @@ export default function SettingsContent() {
         setIsActivatingWebhook(true);
         try {
             const appUrl = webhookUrl || window.location.origin;
-            const res = await setTelegramWebhookAction(telegramBotToken, appUrl);
+            const res: any = await setTelegramWebhookAction({ token: telegramBotToken, url: appUrl });
             if (res.success) {
                 toast.success("Webhook Telegram activé avec succès !");
             } else {
@@ -99,9 +132,9 @@ export default function SettingsContent() {
     const fetchInitialData = async () => {
         setIsLoading(true);
         try {
-            const [settingsRes, teamRes] = await Promise.all([
-                getShopSettingsAction(),
-                getUsersAction()
+            const [settingsRes, teamRes]: [any, any] = await Promise.all([
+                getShopSettingsAction({}), // Added {}
+                getUsersAction({}) // Added {}
             ]);
 
             if (settingsRes.success && settingsRes.data) {
@@ -121,9 +154,15 @@ export default function SettingsContent() {
                 if (s.faviconUrl) setFaviconUrl(s.faviconUrl);
                 if (s.telegramBotToken) setTelegramBotToken(s.telegramBotToken);
                 if (s.telegramChatId) setTelegramChatId(s.telegramChatId);
+                if (s.telegramChatIdAdmin) setTelegramChatIdAdmin(s.telegramChatIdAdmin);
+                if (s.telegramChatIdCaisse) setTelegramChatIdCaisse(s.telegramChatIdCaisse);
+                if (s.telegramChatIdTraiteur) setTelegramChatIdTraiteur(s.telegramChatIdTraiteur);
                 if (s.webhookUrl) setWebhookUrl(s.webhookUrl);
                 if (s.whatsappToken) setWhatsappToken(s.whatsappToken);
                 if (s.whatsappPhoneId) setWhatsappPhoneId(s.whatsappPhoneId);
+                setIsB2bEnabled(s.isB2bEnabled ?? false);
+                setDefaultResellerDiscount(s.defaultResellerDiscount || "5.00");
+                setMinResellerRecharge(s.minResellerRecharge || "1000.00");
             }
 
             if (teamRes.success) {
@@ -138,11 +177,46 @@ export default function SettingsContent() {
         }
     };
 
+    const fetchResellers = async () => {
+        setIsResellersLoading(true);
+        try {
+            const res: any = await getResellersAction({});
+            if (res.success) {
+                setResellersList(res.data || []);
+            }
+        } catch (err) {
+            toast.error("Échec du chargement des revendeurs");
+        } finally {
+            setIsResellersLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        if (activeTab === "b2b") {
+            fetchResellers();
+        }
+    }, [activeTab]);
+
+    const handleDeleteReseller = async (id: number, name: string) => {
+        if (!window.confirm(`Supprimer le partenaire ${name} ? Cela supprimera aussi son compte utilisateur.`)) return;
+        try {
+            const res: any = await deleteResellerAction({ id });
+            if (res.success) {
+                setResellersList(resellersList.filter(r => r.id !== id));
+                toast.success("Partenaire supprimé");
+            } else {
+                toast.error(res.error || "Erreur de suppression");
+            }
+        } catch (err) {
+            toast.error("Erreur de connexion");
+        }
+    };
+
     const handleSave = async () => {
         setIsSaving(true);
         setError(null);
         try {
-            const res = await saveShopSettingsAction({
+            const res: any = await saveShopSettingsAction({
                 shopName,
                 shopTel,
                 shopAddress,
@@ -158,9 +232,15 @@ export default function SettingsContent() {
                 faviconUrl,
                 telegramBotToken,
                 telegramChatId,
+                telegramChatIdAdmin,
+                telegramChatIdCaisse,
+                telegramChatIdTraiteur,
                 webhookUrl,
                 whatsappToken,
                 whatsappPhoneId,
+                isB2bEnabled,
+                defaultResellerDiscount,
+                minResellerRecharge,
             });
 
             if (!res.success) {
@@ -188,7 +268,7 @@ export default function SettingsContent() {
 
         setIsTestingBot(true);
         try {
-            const res = await testTelegramBotAction(telegramBotToken, telegramChatId);
+            const res: any = await testTelegramBotAction({ token: telegramBotToken, chatId: telegramChatId });
             if (res.success) {
                 toast.success("Message de test envoyé à Telegram !");
             } else {
@@ -199,6 +279,32 @@ export default function SettingsContent() {
         } finally {
             setIsTestingBot(false);
         }
+    };
+
+    const handleWhatsAppTest = async () => {
+        if (!whatsappToken || !whatsappPhoneId) {
+            toast.error("Veuillez saisir un Token et un Phone ID");
+            return;
+        }
+
+        setIsTestingWhatsApp(true);
+        try {
+            const res: any = await testWhatsAppAction({ token: whatsappToken, phoneId: whatsappPhoneId });
+            if (res.success) {
+                toast.success("Message de test envoyé à WhatsApp !");
+            } else {
+                toast.error(res.error || "Erreur lors du test WhatsApp");
+            }
+        } catch (err) {
+            toast.error("Erreur de connexion");
+        } finally {
+            setIsTestingWhatsApp(false);
+        }
+    };
+
+    const handleEditOpen = (member: any) => {
+        setSelectedMember(member);
+        setIsEditModalOpen(true);
     };
 
     const handleLogoFileChange = async (e: React.ChangeEvent<HTMLInputElement>, target: 'logo' | 'dashboard' | 'favicon') => {
@@ -240,12 +346,12 @@ export default function SettingsContent() {
     const handleDeleteUser = async (id: number, name: string) => {
         if (!window.confirm(`Supprimer ${name} de l'équipe ?`)) return;
         try {
-            const res = await deleteUserAction(id);
+            const res: any = await deleteUserAction({ id });
             if (res.success) {
                 setTeam(team.filter(u => u.id !== id));
                 toast.success(`${name} supprimé avec succès`);
             } else {
-                toast.error(res.error || "Erreur lors de la suppression");
+                toast.error((res as any).error || "Erreur lors de la suppression");
             }
         } catch (err) {
             console.error(err);
@@ -347,6 +453,16 @@ export default function SettingsContent() {
                                 {activeTab === "receipt" && <span className="absolute bottom-0 left-0 w-full h-0.5 bg-[#ec5b13] rounded-full"></span>}
                             </button>
                             <button
+                                onClick={() => setActiveTab("b2b")}
+                                className={`pb-4 border-b-2 text-sm transition-all relative whitespace-nowrap ${activeTab === "b2b" ? "text-[#ec5b13] font-bold" : "text-slate-500 hover:text-slate-200 font-medium"}`}
+                            >
+                                <span className="flex items-center gap-2">
+                                    <Store className="size-4" />
+                                    B2B & Revendeurs
+                                </span>
+                                {activeTab === "b2b" && <span className="absolute bottom-0 left-0 w-full h-0.5 bg-[#ec5b13] rounded-full"></span>}
+                            </button>
+                            <button
                                 onClick={() => setActiveTab("appearance")}
                                 className={`pb-4 border-b-2 text-sm transition-all relative whitespace-nowrap ${activeTab === "appearance" ? "text-[#ec5b13] font-bold" : "text-slate-500 hover:text-slate-200 font-medium"}`}
                             >
@@ -375,11 +491,14 @@ export default function SettingsContent() {
                                                     <Loader2 className="animate-spin text-white size-8" />
                                                 </div>
                                             )}
-                                            <img
-                                                className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity"
+                                            <Image
+                                                className="object-cover opacity-80 group-hover:opacity-100 transition-opacity"
                                                 alt="Shop Logo"
                                                 src={logoUrl || "https://lh3.googleusercontent.com/aida-public/AB6AXuAc0N62EzEzZzBI60NaoTtEF00tJ4ruXHAprleWW2Ek0c_HJiYCXwfN8trT6eQnjQrV5nE_-fyuuJosSJb_iytbtbNGp-K0Wd6vX-CPo20bhzT8S_St7llE3bP8PuJTX3ksNDuaag3oCbGIG_lZUwYPpyNcDhS-ZZsyPgxdx6s6c1GGpOhrqGqPdgtDJu-cj6Xz_MqFfmz6rBVYDmiePw407Len9Q5yGIf3OUX-df_CRLX9jEKC9xgO2mOWd1gftB6LcGqkoR0lqGU5"}
+                                                fill
                                             />
+
+
                                         </div>
                                         <div className="absolute inset-0 flex items-center justify-center bg-black/40 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
                                             <span className="material-symbols-outlined text-white text-3xl">photo_camera</span>
@@ -435,7 +554,8 @@ export default function SettingsContent() {
                                         />
                                     </div>
                                     <div className="space-y-2">
-                                        <label className="text-sm font-medium text-slate-400">Numéro d'identification fiscal / EIN</label>
+                                        <label className="text-sm font-medium text-slate-400">Numéro d&apos;identification fiscal / EIN</label>
+
                                         <input
                                             className="w-full bg-[#1a1614] border border-[#2d2622] rounded-xl px-4 py-3 focus:ring-1 focus:ring-[#ec5b13] focus:border-transparent transition-all outline-none text-slate-100"
                                             placeholder="XX-XXXXXXX"
@@ -482,12 +602,14 @@ export default function SettingsContent() {
                                 {isTeamsLoading ? (
                                     <div className="col-span-2 py-20 flex flex-col items-center justify-center space-y-4">
                                         <Loader2 className="animate-spin text-[#ec5b13] size-12" />
-                                        <p className="text-slate-500 font-medium">Chargement de l'équipe...</p>
+                                        <p className="text-slate-500 font-medium">Chargement de l&apos;équipe...</p>
+
                                     </div>
                                 ) : team.length === 0 ? (
                                     <div className="col-span-2 py-20 flex flex-col items-center justify-center space-y-4 border-2 border-dashed border-[#2d2622] rounded-3xl">
                                         <User className="text-slate-700 size-16" />
-                                        <p className="text-slate-500 font-medium">Aucun membre dans l'équipe pour le moment.</p>
+                                        <p className="text-slate-500 font-medium">Aucun membre dans l&apos;équipe pour le moment.</p>
+
                                     </div>
                                 ) : team.map((member) => (
                                     <section key={member.id} className={`bg-[#161616] border border-[#262626] rounded-2xl p-6 flex flex-col justify-between hover:border-[#ec5b13]/30 transition-colors group`}>
@@ -495,7 +617,9 @@ export default function SettingsContent() {
                                             <div className="flex items-center gap-4">
                                                 <div className={`w-14 h-14 rounded-full flex items-center justify-center font-bold text-xl border overflow-hidden ${member.role === 'ADMIN' ? 'bg-[#ec5b13]/20 text-[#ec5b13] border-[#ec5b13]/30' : 'bg-zinc-800 text-slate-400 border-[#262626]'}`}>
                                                     {member.avatarUrl ? (
-                                                        <img src={member.avatarUrl} className="w-full h-full object-cover" alt={member.nom} />
+                                                        <Image src={member.avatarUrl} className="object-cover" alt={member.nom} fill />
+
+
                                                     ) : (
                                                         member.nom.substring(0, 2).toUpperCase()
                                                     )}
@@ -528,7 +652,10 @@ export default function SettingsContent() {
                                             </div>
                                         </div>
                                         <div className="pt-6 border-t border-[#262626] flex items-center gap-3">
-                                            <button className="flex-grow py-3 text-sm font-bold text-slate-300 hover:text-white transition-colors flex items-center justify-center gap-2 bg-white/5 rounded-xl hover:bg-white/10">
+                                            <button
+                                                onClick={() => handleEditOpen(member)}
+                                                className="flex-grow py-3 text-sm font-bold text-slate-300 hover:text-white transition-colors flex items-center justify-center gap-2 bg-white/5 rounded-xl hover:bg-white/10"
+                                            >
                                                 <UserCog className="w-4 h-4" />
                                                 Modifier
                                             </button>
@@ -553,7 +680,8 @@ export default function SettingsContent() {
                                 <div className="flex items-center justify-between">
                                     <div>
                                         <h3 className="text-lg font-bold">API & Bot Python</h3>
-                                        <p className="text-sm text-slate-400 mt-1">Gérez vos accès API et l'état de vos connecteurs automatisés.</p>
+                                        <p className="text-sm text-slate-400 mt-1">Gérez vos accès API et l&apos;état de vos connecteurs automatisés.</p>
+
                                     </div>
                                     <div className="flex items-center gap-2 bg-[#10b981]/10 text-[#10b981] px-4 py-1.5 rounded-full border border-[#10b981]/20">
                                         <span className="relative flex h-2 w-2">
@@ -570,7 +698,8 @@ export default function SettingsContent() {
                                         <div className="size-10 rounded-full bg-blue-500/20 flex items-center justify-center">
                                             <span className="material-symbols-outlined text-blue-400">info</span>
                                         </div>
-                                        <h4 className="text-lg font-bold text-white">Comment configurer l'automatisation Telegram ?</h4>
+                                        <h4 className="text-lg font-bold text-white">Comment configurer l&apos;automatisation Telegram ?</h4>
+
                                     </div>
 
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -593,7 +722,8 @@ export default function SettingsContent() {
                                             <div className="space-y-1">
                                                 <p className="text-sm font-bold text-slate-200">Créer le Groupe</p>
                                                 <p className="text-xs text-slate-400 leading-relaxed">
-                                                    Créez un nouveau groupe Telegram (ex: "FLEXBOX Commandes") et ajoutez votre nouveau bot en tant que membre.
+                                                    Créez un nouveau groupe Telegram (ex: &quot;FLEXBOX Commandes&quot;) et ajoutez votre nouveau bot en tant que membre.
+
                                                 </p>
                                             </div>
                                         </div>
@@ -605,7 +735,8 @@ export default function SettingsContent() {
                                             <div className="space-y-1">
                                                 <p className="text-sm font-bold text-slate-200">Obtenir le Chat ID</p>
                                                 <p className="text-xs text-slate-400 leading-relaxed">
-                                                    Ajoutez temporairement le bot <span className="text-blue-400">@RawDataBot</span> (ou <span className="text-blue-400">@getidsbot</span>) dans votre groupe. Il vous donnera l'ID.
+                                                    Ajoutez temporairement le bot <span className="text-blue-400">@RawDataBot</span> (ou <span className="text-blue-400">@getidsbot</span>) dans votre groupe. Il vous donnera l&apos;ID.
+
                                                 </p>
                                             </div>
                                         </div>
@@ -655,14 +786,6 @@ export default function SettingsContent() {
                                                     onChange={(e) => setTelegramChatId(e.target.value)}
                                                 />
                                                 <button
-                                                    onClick={handleTestBot}
-                                                    disabled={isTestingBot}
-                                                    className="px-4 bg-[#1e293b] hover:bg-[#334155] border border-[#334155] rounded-xl text-blue-400 transition-all disabled:opacity-50 flex items-center gap-2 font-bold text-xs shrink-0"
-                                                >
-                                                    {isTestingBot ? <Loader2 className="animate-spin size-4" /> : <span className="material-symbols-outlined text-lg">send</span>}
-                                                    {isTestingBot ? "Test..." : "Tester"}
-                                                </button>
-                                                <button
                                                     onClick={handleActivateWebhook}
                                                     disabled={isActivatingWebhook}
                                                     className="px-4 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 rounded-xl text-emerald-400 transition-all disabled:opacity-50 flex items-center gap-2 font-bold text-xs shrink-0"
@@ -674,9 +797,52 @@ export default function SettingsContent() {
                                         </div>
                                     </div>
 
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                        <div className="space-y-3">
+                                            <label className="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                                                <span className="material-symbols-outlined text-sm">shield_person</span>
+                                                ADMIN Chat ID
+                                            </label>
+                                            <input
+                                                className="w-full bg-[#0f0d0c] border border-[#2d2622] rounded-xl px-4 py-3 font-mono text-sm text-slate-200 outline-none focus:ring-1 focus:ring-[#ec5b13]/50"
+                                                type="text"
+                                                placeholder="-100..."
+                                                value={telegramChatIdAdmin}
+                                                onChange={(e) => setTelegramChatIdAdmin(e.target.value)}
+                                            />
+                                        </div>
+                                        <div className="space-y-3">
+                                            <label className="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                                                <span className="material-symbols-outlined text-sm">point_of_sale</span>
+                                                CAISSE Chat ID
+                                            </label>
+                                            <input
+                                                className="w-full bg-[#0f0d0c] border border-[#2d2622] rounded-xl px-4 py-3 font-mono text-sm text-slate-200 outline-none focus:ring-1 focus:ring-emerald-500/50"
+                                                type="text"
+                                                placeholder="-100..."
+                                                value={telegramChatIdCaisse}
+                                                onChange={(e) => setTelegramChatIdCaisse(e.target.value)}
+                                            />
+                                        </div>
+                                        <div className="space-y-3">
+                                            <label className="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                                                <span className="material-symbols-outlined text-sm">conveyor_belt</span>
+                                                TRAITEUR Chat ID
+                                            </label>
+                                            <input
+                                                className="w-full bg-[#0f0d0c] border border-[#2d2622] rounded-xl px-4 py-3 font-mono text-sm text-slate-200 outline-none focus:ring-1 focus:ring-blue-500/50"
+                                                type="text"
+                                                placeholder="-100..."
+                                                value={telegramChatIdTraiteur}
+                                                onChange={(e) => setTelegramChatIdTraiteur(e.target.value)}
+                                            />
+                                        </div>
+                                    </div>
+
                                     <div className="p-4 rounded-xl bg-blue-500/5 border border-dashed border-blue-500/20">
                                         <p className="text-[11px] text-slate-400 font-medium leading-relaxed italic">
-                                            Le Chat ID doit commencer par un signe moins (-) s'il s'agit d'un groupe ou d'un supergroupe (ex: -1001234567890).
+                                            Le Chat ID doit commencer par un signe moins (-) s&apos;il s&apos;agit d&apos;un groupe ou d&apos;un supergroupe (ex: -1001234567890).
+
                                         </p>
                                     </div>
 
@@ -694,7 +860,8 @@ export default function SettingsContent() {
                                                 onChange={(e) => setWebhookUrl(e.target.value)}
                                             />
                                             <p className="text-[10px] text-slate-500 italic">
-                                                En local, utilisez <b>Ngrok</b> pour obtenir une URL HTTPS vers votre port 1556. Telegram refuse l'HTTP simple.
+                                                En local, utilisez <b>Ngrok</b> pour obtenir une URL HTTPS vers votre port 1556. Telegram refuse l&apos;HTTP simple.
+
                                             </p>
                                         </div>
                                     </div>
@@ -705,7 +872,8 @@ export default function SettingsContent() {
                                     <div className="flex items-center justify-between">
                                         <div>
                                             <h3 className="text-lg font-bold">WhatsApp Business API (Meta)</h3>
-                                            <p className="text-sm text-slate-400 mt-1">Configurez l'envoi automatique des codes par WhatsApp.</p>
+                                            <p className="text-sm text-slate-400 mt-1">Configurez l&apos;envoi automatique des codes par WhatsApp.</p>
+
                                         </div>
                                         <div className="flex items-center gap-2 bg-[#25D366]/10 text-[#25D366] px-4 py-1.5 rounded-full border border-[#25D366]/20">
                                             <span className="relative flex h-2 w-2">
@@ -722,7 +890,8 @@ export default function SettingsContent() {
                                             <div className="size-10 rounded-full bg-[#25D366]/20 flex items-center justify-center">
                                                 <span className="material-symbols-outlined text-[#25D366] text-xl">help</span>
                                             </div>
-                                            <h4 className="text-lg font-bold text-white">Comment configurer l'API WhatsApp ?</h4>
+                                            <h4 className="text-lg font-bold text-white">Comment configurer l&apos;API WhatsApp ?</h4>
+
                                         </div>
 
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -733,7 +902,8 @@ export default function SettingsContent() {
                                                 <div className="space-y-1">
                                                     <p className="text-sm font-bold text-slate-200">Application Meta</p>
                                                     <p className="text-xs text-slate-400 leading-relaxed">
-                                                        Allez sur <span className="text-[#25D366]">developers.facebook.com</span> et créez une application "Entreprise".
+                                                        Allez sur <span className="text-[#25D366]">developers.facebook.com</span> et créez une application &quot;Entreprise&quot;.
+
                                                     </p>
                                                 </div>
                                             </div>
@@ -745,7 +915,8 @@ export default function SettingsContent() {
                                                 <div className="space-y-1">
                                                     <p className="text-sm font-bold text-slate-200">Produit WhatsApp</p>
                                                     <p className="text-xs text-slate-400 leading-relaxed">
-                                                        Ajoutez le produit "WhatsApp" et associez votre numéro de téléphone professionnel.
+                                                        Ajoutez le produit &quot;WhatsApp&quot; et associez votre numéro de téléphone professionnel.
+
                                                     </p>
                                                 </div>
                                             </div>
@@ -757,7 +928,8 @@ export default function SettingsContent() {
                                                 <div className="space-y-1">
                                                     <p className="text-sm font-bold text-slate-200">Phone Number ID</p>
                                                     <p className="text-xs text-slate-400 leading-relaxed">
-                                                        Copiez l'<b>Identifiant du numéro de téléphone</b> (Phone Number ID) depuis le tableau de bord.
+                                                        Copiez l&apos;<b>Identifiant du numéro de téléphone</b> (Phone Number ID) depuis le tableau de bord.
+
                                                     </p>
                                                 </div>
                                             </div>
@@ -769,7 +941,7 @@ export default function SettingsContent() {
                                                 <div className="space-y-1">
                                                     <p className="text-sm font-bold text-slate-200">Token Permanent</p>
                                                     <p className="text-xs text-slate-400 leading-relaxed">
-                                                        Générez un <b>Token d'accès permanent</b> via les paramètres d'entreprise (Système users).
+                                                        Générez un <b>Token d&apos;accès permanent</b> via les paramètres d&apos;entreprise (Système users).
                                                     </p>
                                                 </div>
                                             </div>
@@ -781,13 +953,13 @@ export default function SettingsContent() {
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                                             <div className="space-y-3">
                                                 <label className="text-sm font-medium text-slate-400 uppercase tracking-wider flex items-center gap-2">
-                                                    <span className="material-symbols-outlined text-sm text-[#25D366]">lock</span>
-                                                    Token API Meta (WhatsApp)
+                                                    <span className="material-symbols-outlined text-sm text-[#25D366]">key</span>
+                                                    Token Permanent WhatsApp
                                                 </label>
                                                 <input
                                                     className="w-full bg-[#0f0d0c] border border-[#2d2622] rounded-xl px-4 py-3 font-mono text-sm text-slate-200 outline-none focus:ring-1 focus:ring-[#25D366]/50"
                                                     type="password"
-                                                    placeholder="EAAG2..."
+                                                    placeholder="EAAl..."
                                                     value={whatsappToken}
                                                     onChange={(e) => setWhatsappToken(e.target.value)}
                                                 />
@@ -795,16 +967,26 @@ export default function SettingsContent() {
 
                                             <div className="space-y-3">
                                                 <label className="text-sm font-medium text-slate-400 uppercase tracking-wider flex items-center gap-2">
-                                                    <span className="material-symbols-outlined text-sm text-[#25D366]">router</span>
+                                                    <span className="material-symbols-outlined text-sm text-[#25D366]">phone_iphone</span>
                                                     Phone Number ID
                                                 </label>
-                                                <input
-                                                    className="w-full bg-[#0f0d0c] border border-[#2d2622] rounded-xl px-4 py-3 font-mono text-sm text-slate-200 outline-none focus:ring-1 focus:ring-[#25D366]/50"
-                                                    type="text"
-                                                    placeholder="1234567890..."
-                                                    value={whatsappPhoneId}
-                                                    onChange={(e) => setWhatsappPhoneId(e.target.value)}
-                                                />
+                                                <div className="flex gap-3">
+                                                    <input
+                                                        className="flex-1 bg-[#0f0d0c] border border-[#2d2622] rounded-xl px-4 py-3 font-mono text-sm text-slate-200 outline-none focus:ring-1 focus:ring-[#25D366]/50"
+                                                        type="text"
+                                                        placeholder="1029384756..."
+                                                        value={whatsappPhoneId}
+                                                        onChange={(e) => setWhatsappPhoneId(e.target.value)}
+                                                    />
+                                                    <button
+                                                        onClick={handleWhatsAppTest}
+                                                        disabled={isTestingWhatsApp}
+                                                        className="px-6 bg-[#25D366]/10 hover:bg-[#25D366]/20 border border-[#25D366]/20 rounded-xl text-[#25D366] transition-all disabled:opacity-50 flex items-center gap-2 font-bold text-xs shrink-0"
+                                                    >
+                                                        {isTestingWhatsApp ? <Loader2 className="animate-spin size-4" /> : <span className="material-symbols-outlined text-lg">send</span>}
+                                                        {isTestingWhatsApp ? "Test..." : "Tester"}
+                                                    </button>
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
@@ -831,7 +1013,7 @@ export default function SettingsContent() {
                                     <div className="bg-[#161616] p-8 rounded-2xl border border-[#2d2622] shadow-xl">
                                         <h2 className="text-lg font-bold mb-6 flex items-center gap-2">
                                             <span className="material-symbols-outlined text-[#ec5b13]">print</span>
-                                            Paramètres d'Impression (Ticket Thermique)
+                                            Paramètres d&apos;Impression (Ticket Thermique)
                                         </h2>
                                         <form className="space-y-6" onSubmit={(e) => e.preventDefault()}>
                                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -877,7 +1059,7 @@ export default function SettingsContent() {
                                                 <div className="flex items-center justify-between p-4 bg-black/50 rounded-xl border border-[#262626]/50">
                                                     <div>
                                                         <p className="font-bold text-sm">Afficher le nom du caissier</p>
-                                                        <p className="text-xs text-slate-500">Ajoute le nom de l'utilisateur actif sur le ticket</p>
+                                                        <p className="text-xs text-slate-500">Ajoute le nom de l&apos;utilisateur actif sur le ticket</p>
                                                     </div>
                                                     <label className="custom-switch">
                                                         <input
@@ -890,7 +1072,7 @@ export default function SettingsContent() {
                                                 </div>
                                                 <div className="flex items-center justify-between p-4 bg-black/50 rounded-xl border border-[#262626]/50">
                                                     <div>
-                                                        <p className="font-bold text-sm">Date et Heure d'impression</p>
+                                                        <p className="font-bold text-sm">Date et Heure d&apos;impression</p>
                                                         <p className="text-xs text-slate-500">Obligatoire pour la conformité fiscale</p>
                                                     </div>
                                                     <label className="custom-switch">
@@ -940,7 +1122,7 @@ export default function SettingsContent() {
                                             <div className="text-center mb-4 text-black">
                                                 {showLogo && (
                                                     <div className="mb-4 flex justify-center grayscale contrast-[200%]">
-                                                        <img src={logoUrl || "https://lh3.googleusercontent.com/aida-public/AB6AXuAc0N62EzEzZzBI60NaoTtEF00tJ4ruXHAprleWW2Ek0c_HJiYCXwfN8trT6eQnjQrV5nE_-fyuuJosSJb_iytbtbNGp-K0Wd6vX-CPo20bhzT8S_St7llE3bP8PuJTX3ksNDuaag3oCbGIG_lZUwYPpyNcDhS-ZZsyPgxdx6s6c1GGpOhrqGqPdgtDJu-cj6Xz_MqFfmz6rBVYDmiePw407Len9Q5yGIf3OUX-df_CRLX9jEKC9xgO2mOWd1gftB6LcGqkoR0lqGU5"} alt="Logo" className="h-12 w-auto" />
+                                                        <Image src={logoUrl || "https://lh3.googleusercontent.com/aida-public/AB6AXuAc0N62EzEzZzBI60NaoTtEF00tJ4ruXHAprleWW2Ek0c_HJiYCXwfN8trT6eQnjQrV5nE_-fyuuJosSJb_iytbtbNGp-K0Wd6vX-CPo20bhzT8S_St7llE3bP8PuJTX3ksNDuaag3oCbGIG_lZUwYPpyNcDhS-ZZsyPgxdx6s6c1GGpOhrqGqPdgtDJu-cj6Xz_MqFfmz6rBVYDmiePw407Len9Q5yGIf3OUX-df_CRLX9jEKC9xgO2mOWd1gftB6LcGqkoR0lqGU5"} alt="Logo" width={100} height={48} className="h-12 w-auto grayscale contrast-[200%]" />
                                                     </div>
                                                 )}
                                                 <p className="text-lg font-bold mb-1 uppercase">{shopName}</p>
@@ -973,7 +1155,7 @@ export default function SettingsContent() {
                                                 <div>
                                                     <div className="flex justify-between font-bold">
                                                         <span>1x Netflix 1 Mois</span>
-                                                        <span className="whitespace-nowrap font-black">1 500 DZD</span>
+                                                        <span className="whitespace-nowrap font-black">{formatCurrency(1500, 'DZD')}</span>
                                                     </div>
                                                     <div className="text-[11px] mt-0.5 bg-gray-100 p-1.5 rounded-md font-bold">
                                                         [CODE]: A1B2-C3D4-E5F6
@@ -982,7 +1164,7 @@ export default function SettingsContent() {
                                                 <div>
                                                     <div className="flex justify-between font-bold">
                                                         <span>3x PSN 20$</span>
-                                                        <span className="whitespace-nowrap font-black">13 500 DZD</span>
+                                                        <span className="whitespace-nowrap font-black">{formatCurrency(13500, 'DZD')}</span>
                                                     </div>
                                                     <div className="text-[11px] mt-0.5 space-y-0.5 bg-gray-100 p-1.5 rounded-md font-bold">
                                                         <p>[CODE 1/3]: P8X2-L9M3-QW12</p>
@@ -994,7 +1176,7 @@ export default function SettingsContent() {
 
                                             <div className="border-t border-dashed border-black pt-4 mb-6 text-center text-black">
                                                 <p className="text-[10px] uppercase tracking-[0.2em] font-bold">Total à payer</p>
-                                                <p className="text-2xl font-black mt-1">15 000 DZD</p>
+                                                <p className="text-2xl font-black mt-1">{formatCurrency(15000, 'DZD')}</p>
                                             </div>
 
                                             <div className="text-center italic text-[11px] leading-snug text-black">
@@ -1009,7 +1191,7 @@ export default function SettingsContent() {
 
                                         <div className="mt-12 text-slate-500 text-xs font-bold flex items-center gap-2 uppercase tracking-widest">
                                             <span className="material-symbols-outlined text-sm">info</span>
-                                            L'aperçu est mis à jour en temps réel
+                                            L&apos;aperçu est mis à jour en temps réel
                                         </div>
                                     </div>
                                 </section>
@@ -1022,7 +1204,7 @@ export default function SettingsContent() {
                             {/* Section: Couleur d'accentuation */}
                             <section className="space-y-6">
                                 <div className="flex flex-col gap-1">
-                                    <h2 className="text-xl font-bold text-white">Couleur d'accentuation</h2>
+                                    <h2 className="text-xl font-bold text-white">Couleur d&apos;accentuation</h2>
                                     <p className="text-sm text-slate-400">Personnalisez la couleur principale de votre interface admin.</p>
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
@@ -1088,7 +1270,7 @@ export default function SettingsContent() {
                                             <Loader2 className="animate-spin text-[#ec5b13] size-8 mb-3" />
                                         ) : dashboardLogoUrl ? (
                                             <div className="mb-3 h-12 flex items-center justify-center w-full">
-                                                <img src={dashboardLogoUrl} className="h-full w-auto object-contain" alt="Dashboard Logo" />
+                                                <Image src={dashboardLogoUrl} className="object-contain" alt="Dashboard Logo" width={120} height={48} />
                                             </div>
                                         ) : (
                                             <span className="material-symbols-outlined text-3xl text-slate-500 group-hover:text-[#ec5b13] mb-3">upload_file</span>
@@ -1106,7 +1288,7 @@ export default function SettingsContent() {
                                             <Loader2 className="animate-spin text-[#ec5b13] size-8 mb-3" />
                                         ) : logoUrl ? (
                                             <div className="mb-3 h-12 flex items-center justify-center w-full">
-                                                <img src={logoUrl} className="h-full w-auto object-contain" alt="Terminal Logo" />
+                                                <Image src={logoUrl} className="object-contain" alt="Terminal Logo" width={120} height={48} />
                                             </div>
                                         ) : (
                                             <span className="material-symbols-outlined text-3xl text-slate-500 group-hover:text-[#ec5b13] mb-3">upload_file</span>
@@ -1131,7 +1313,7 @@ export default function SettingsContent() {
                                             <Loader2 className="animate-spin text-[#ec5b13] size-8 mb-3" />
                                         ) : faviconUrl ? (
                                             <div className="mb-3 size-10 flex items-center justify-center">
-                                                <img src={faviconUrl} className="size-full object-contain" alt="Favicon" />
+                                                <Image src={faviconUrl} className="object-contain" alt="Favicon" width={40} height={40} />
                                             </div>
                                         ) : (
                                             <span className="material-symbols-outlined text-3xl text-slate-500 group-hover:text-[#ec5b13] mb-3">branding_watermark</span>
@@ -1148,7 +1330,7 @@ export default function SettingsContent() {
                             <section className="space-y-6">
                                 <div className="flex flex-col gap-1">
                                     <h2 className="text-xl font-bold text-white">Personnalisation du Ticket</h2>
-                                    <p className="text-sm text-slate-400">Configurez l'apparence des tickets imprimés en caisse.</p>
+                                    <p className="text-sm text-slate-400">Configurez l&apos;apparence des tickets imprimés en caisse.</p>
                                 </div>
                                 <div className="space-y-6 max-w-2xl">
                                     <div className="space-y-2">
@@ -1188,10 +1370,196 @@ export default function SettingsContent() {
                             </div>
                         </div>
                     )}
+                    {activeTab === "b2b" && (
+                        <div className="space-y-10 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                            {/* B2B Sub Tabs */}
+                            <div className="flex gap-4 p-1 bg-[#1a1614] w-fit rounded-xl border border-[#2d2622]">
+                                <button
+                                    onClick={() => setB2bSubTab("config")}
+                                    className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${b2bSubTab === "config" ? "bg-[#ec5b13] text-white" : "text-slate-400 hover:text-white"}`}
+                                >
+                                    Configuration
+                                </button>
+                                <button
+                                    onClick={() => setB2bSubTab("manage")}
+                                    className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${b2bSubTab === "manage" ? "bg-[#ec5b13] text-white" : "text-slate-400 hover:text-white"}`}
+                                >
+                                    Gestion des Revendeurs
+                                </button>
+                            </div>
+
+                            {b2bSubTab === "config" ? (
+                                <section className="max-w-4xl space-y-8">
+                                    <div className="bg-[#1a1614] p-8 rounded-2xl border border-[#2d2622] space-y-8">
+                                        <div className="flex items-center justify-between p-4 bg-orange-500/5 border border-orange-500/10 rounded-xl">
+                                            <div className="flex items-center gap-4">
+                                                <div className="size-12 rounded-full bg-orange-500/20 flex items-center justify-center">
+                                                    <Store className="size-6 text-[#ec5b13]" />
+                                                </div>
+                                                <div className="flex flex-col">
+                                                    <span className="text-base font-bold text-white">Activer le Portail B2B</span>
+                                                    <span className="text-xs text-slate-500 uppercase tracking-wider font-semibold">Permettre l&apos;accès aux partenaires revendeurs</span>
+                                                </div>
+                                            </div>
+                                            <label className="custom-switch">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={isB2bEnabled}
+                                                    onChange={(e) => setIsB2bEnabled(e.target.checked)}
+                                                />
+                                                <span className="slider"></span>
+                                            </label>
+                                        </div>
+
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                                            <div className="space-y-3">
+                                                <label className="text-sm font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                                                    <Percent className="size-4 text-orange-400" />
+                                                    Remise par défaut (%)
+                                                </label>
+                                                <input
+                                                    className="w-full bg-[#0f0d0c] border border-[#2d2622] rounded-xl px-4 py-3 text-slate-200 outline-none focus:ring-1 focus:ring-orange-500/50"
+                                                    type="number"
+                                                    step="0.01"
+                                                    value={defaultResellerDiscount}
+                                                    onChange={(e) => setDefaultResellerDiscount(e.target.value)}
+                                                />
+                                                <p className="text-[10px] text-slate-500 italic">Appliquée à tous les revendeurs n&apos;ayant pas de remise personnalisée.</p>
+                                            </div>
+
+                                            <div className="space-y-3">
+                                                <label className="text-sm font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                                                    <Coins className="size-4 text-orange-400" />
+                                                    Recharge Minimum (DZD)
+                                                </label>
+                                                <input
+                                                    className="w-full bg-[#0f0d0c] border border-[#2d2622] rounded-xl px-4 py-3 text-slate-200 outline-none focus:ring-1 focus:ring-orange-500/50"
+                                                    type="number"
+                                                    value={minResellerRecharge}
+                                                    onChange={(e) => setMinResellerRecharge(e.target.value)}
+                                                />
+                                                <p className="text-[10px] text-slate-500 italic">Montant minimum pour un dépôt de crédit B2B.</p>
+                                            </div>
+                                        </div>
+
+                                        <div className="p-4 bg-blue-500/10 border border-blue-500/20 rounded-xl flex items-start gap-4">
+                                            <AlertTriangle className="size-5 text-blue-400 shrink-0 mt-0.5" />
+                                            <div className="space-y-1">
+                                                <p className="text-sm font-bold text-blue-300">Mode de fonctionnement</p>
+                                                <p className="text-xs text-blue-200/70 leading-relaxed">
+                                                    Une fois activé, les revendeurs pourront se connecter à leur interface dédiée.
+                                                    Leurs commandes seront payées via leur <b>Wallet Pré-payé</b>. Assurez-vous d&apos;avoir configuré les prix grossistes.
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="flex justify-end">
+                                        <button
+                                            onClick={handleSave}
+                                            disabled={isSaving}
+                                            className="bg-[#ec5b13] hover:bg-orange-600 text-white px-8 py-4 rounded-xl font-bold text-base shadow-lg shadow-[#ec5b13]/40 transition-all flex items-center gap-3 disabled:opacity-50"
+                                        >
+                                            {isSaving ? <Loader2 className="animate-spin size-5" /> : <Save className="size-5" />}
+                                            Sauvegarder la configuration B2B
+                                        </button>
+                                    </div>
+                                </section>
+                            ) : (
+                                <section className="space-y-6">
+                                    <div className="flex items-center justify-between">
+                                        <div>
+                                            <h3 className="text-lg font-bold">Liste des Partenaires</h3>
+                                            <p className="text-sm text-slate-400 mt-1">Gérez vos revendeurs actifs et leurs soldes.</p>
+                                        </div>
+                                        <button
+                                            onClick={onB2bModalOpen}
+                                            className="bg-white/5 hover:bg-white/10 border border-white/10 px-6 py-3 rounded-xl font-bold text-sm transition-all flex items-center gap-2"
+                                        >
+                                            <Plus className="size-4" />
+                                            Nouveau Partenaire
+                                        </button>
+                                    </div>
+
+                                    {isResellersLoading ? (
+                                        <div className="py-20 flex flex-col items-center justify-center gap-4">
+                                            <Spinner color="warning" />
+                                            <p className="text-slate-500 animate-pulse">Chargement des revendeurs...</p>
+                                        </div>
+                                    ) : resellersList.length === 0 ? (
+                                        <div className="py-20 border-2 border-dashed border-[#2d2622] rounded-3xl flex flex-col items-center justify-center gap-4">
+                                            <Building2 className="size-16 text-slate-700" />
+                                            <p className="text-slate-500 font-medium">Aucun revendeur enregistré pour le moment.</p>
+                                        </div>
+                                    ) : (
+                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                            {resellersList.map((reseller) => (
+                                                <div key={reseller.id} className="bg-[#1a1614] border border-[#2d2622] rounded-2xl p-6 space-y-6 hover:border-[#ec5b13]/30 transition-all group">
+                                                    <div className="flex items-start justify-between">
+                                                        <div className="flex items-center gap-4">
+                                                            <div className="size-12 rounded-xl bg-[#ec5b13]/10 flex items-center justify-center text-[#ec5b13] font-bold text-xl border border-[#ec5b13]/20">
+                                                                {reseller.companyName.substring(0, 1).toUpperCase()}
+                                                            </div>
+                                                            <div>
+                                                                <h4 className="font-bold text-white text-lg leading-tight">{reseller.companyName}</h4>
+                                                                <p className="text-xs text-slate-400 font-medium">{reseller.user?.email}</p>
+                                                            </div>
+                                                        </div>
+                                                        <div className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${reseller.status === 'ACTIVE' ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' : 'bg-red-500/10 text-red-500'}`}>
+                                                            {reseller.status}
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="grid grid-cols-2 gap-4">
+                                                        <div className="bg-[#0f0d0c] p-3 rounded-xl border border-[#2d2622]">
+                                                            <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest mb-1">Solde</p>
+                                                            <p className="text-lg font-black text-white">{formatCurrency(Number(reseller.wallet?.balance || 0), 'DZD')}</p>
+                                                        </div>
+                                                        <div className="bg-[#0f0d0c] p-3 rounded-xl border border-[#2d2622]">
+                                                            <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest mb-1">Remise</p>
+                                                            <p className="text-lg font-black text-[#ec5b13]">{reseller.customDiscount || defaultResellerDiscount}%</p>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="pt-4 border-t border-[#2d2622] flex items-center justify-between">
+                                                        <div className="flex items-center gap-2">
+                                                            <Wallet className="size-4 text-slate-500" />
+                                                            <span className="text-xs text-slate-400 font-bold">B2B ID #{reseller.id}</span>
+                                                        </div>
+                                                        <button
+                                                            onClick={() => handleDeleteReseller(reseller.id, reseller.companyName)}
+                                                            className="p-2 text-slate-600 hover:text-red-500 transition-colors"
+                                                        >
+                                                            <Trash2 className="size-5" />
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </section>
+                            )}
+                        </div>
+                    )}
                 </div>
             </main>
 
-            <AddMemberModal isOpen={isOpen} onOpenChange={onOpenChange} />
+            <AddMemberModal
+                isOpen={isOpen}
+                onOpenChange={onOpenChange}
+            />
+
+            <EditMemberModal
+                isOpen={isEditModalOpen}
+                onOpenChange={setIsEditModalOpen}
+                member={selectedMember}
+                onSuccess={fetchInitialData}
+            />
+
+            <AddResellerModal
+                isOpen={isB2bModalOpen}
+                onOpenChange={onB2bModalOpenChange}
+                onSuccess={fetchResellers}
+            />
         </div>
     );
 }

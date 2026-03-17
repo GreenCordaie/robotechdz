@@ -2,165 +2,115 @@
 
 import { db } from "@/db";
 import { clients, clientPayments, orders, users } from "@/db/schema";
-import { eq, sql, and, gte, sum, count, desc, or, ilike } from "drizzle-orm";
+import { eq, sql, desc, and } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import { withAuth } from "@/lib/security";
+import { z } from "zod";
 
-export async function getClientsStats() {
-    const today = new Date();
-    const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+export const getClientStats = withAuth(
+    { roles: ["ADMIN", "CAISSIER"] },
+    async () => {
+        const totalClients = await db.select({ count: sql<number>`count(*)` }).from(clients);
+        const totalDette = await db.select({ sum: sql<string>`sum(cast(total_dette_dzd as decimal))` }).from(clients);
+        const list = await db.query.clients.findMany({ limit: 5, orderBy: [desc(clients.createdAt)] });
 
-    // 1. Total des créances (Sum of all totalDetteDzd)
-    const totalDebtRes = await db.select({
-        total: sum(clients.totalDetteDzd)
-    }).from(clients);
+        return {
+            totalClients: Number(totalClients[0].count),
+            totalDette: totalDette[0].sum || "0",
+            lastClients: list
+        };
+    }
+);
 
-    // 2. Paiements récupérés ce mois-ci (Sum of REMBOURSEMENT this month)
-    const recoveredRes = await db.select({
-        total: sum(clientPayments.montantDzd)
-    }).from(clientPayments)
-        .where(
-            and(
-                gte(clientPayments.createdAt, firstDayOfMonth),
-                eq(clientPayments.typeAction, "REMBOURSEMENT")
-            )
-        );
+export const getIndebtedClients = withAuth(
+    { roles: ["ADMIN", "CAISSIER"] },
+    async () => {
+        return await db.query.clients.findMany({
+            where: sql`cast(total_dette_dzd as decimal) > 0`,
+            orderBy: [desc(clients.totalDetteDzd)]
+        });
+    }
+);
 
-    // 3. Nombre de clients endettés
-    const indebtedCountRes = await db.select({
-        count: count()
-    }).from(clients)
-        .where(sql`${clients.totalDetteDzd} > 0`);
+// Corrected export name and enum values for schema alignment
+export const recordPayment = withAuth(
+    {
+        roles: ["ADMIN", "CAISSIER"],
+        schema: z.object({
+            clientId: z.number(),
+            amount: z.string(),
+            typeAction: z.enum(["ACOMPTE", "REMBOURSEMENT", "RETOUR"]), // Exact enum from schema
+            note: z.string().optional()
+        })
+    },
+    async (data) => {
+        try {
+            await db.transaction(async (tx) => {
+                const client = await tx.query.clients.findFirst({ where: eq(clients.id, data.clientId) });
+                if (!client) throw new Error("Client introuvable");
 
-    return {
-        totalDebt: Number(totalDebtRes[0]?.total || 0),
-        recoveredThisMonth: Number(recoveredRes[0]?.total || 0),
-        indebtedCount: indebtedCountRes[0]?.count || 0,
-    };
-}
+                const currentDette = parseFloat(client.totalDetteDzd || "0");
+                const paymentAmount = parseFloat(data.amount);
+                const newDette = Math.max(0, currentDette - paymentAmount).toString();
 
-export async function getIndebtedClients(search?: string) {
-    const query = db.query.clients.findMany({
-        where: (clients, { gt, and, or, ilike }) => {
-            const base = gt(clients.totalDetteDzd, "0");
-            if (search) {
-                return and(
-                    base,
-                    or(
-                        ilike(clients.nomComplet, `%${search}%`),
-                        ilike(clients.telephone, `%${search}%`)
-                    )
-                );
-            }
-            return base;
-        },
-        with: {
-            orders: {
-                orderBy: (orders, { desc }) => [desc(orders.createdAt)],
-                limit: 1,
-            }
-        },
-        orderBy: (clients, { desc }) => [desc(clients.totalDetteDzd)]
-    });
+                await tx.insert(clientPayments).values({
+                    clientId: data.clientId,
+                    montantDzd: data.amount,
+                    typeAction: data.typeAction,
+                });
 
-    const result = await query;
-    return result;
-}
+                await tx.update(clients).set({ totalDetteDzd: newDette }).where(eq(clients.id, data.clientId));
+            });
 
-export async function recordPayment(clientId: number, montant: number) {
-    // 1. Find all partial/non_paye orders for this client
-    const unpaidOrders = await db.query.orders.findMany({
-        where: and(
-            eq(orders.clientId, clientId),
-            sql`${orders.status} IN ('PARTIEL', 'NON_PAYE', 'EN_ATTENTE')`
-        ),
-        orderBy: (orders, { asc }) => [asc(orders.createdAt)]
-    });
-
-    let remainingPayment = montant;
-
-    for (const order of unpaidOrders) {
-        if (remainingPayment <= 0) break;
-
-        const orderDebt = Number(order.resteAPayer);
-        const amountToApply = Math.min(remainingPayment, orderDebt);
-
-        const newPaid = Number(order.montantPaye) + amountToApply;
-        const newReste = orderDebt - amountToApply;
-
-        let newStatus = order.status;
-        if (newReste <= 0) {
-            newStatus = order.isDelivered ? "TERMINE" : "PAYE";
-        } else {
-            newStatus = "PARTIEL";
+            revalidatePath("/admin/clients");
+            return { success: true };
+        } catch (error) {
+            return { success: false, error: (error as Error).message };
         }
+    }
+);
 
-        await db.update(orders)
-            .set({
-                montantPaye: newPaid.toString(),
-                resteAPayer: newReste.toString(),
-                status: newStatus as any
-            })
-            .where(eq(orders.id, order.id));
-
-        // Record individual payment link if needed, or just one global?
-        // Let's record one per order for traceability
-        await db.insert(clientPayments).values({
-            clientId,
-            orderId: order.id,
-            montantDzd: amountToApply.toString(),
-            typeAction: "REMBOURSEMENT"
+export const getClientHistory = withAuth(
+    {
+        roles: ["ADMIN", "CAISSIER"],
+        schema: z.object({ clientId: z.number() })
+    },
+    async ({ clientId }) => {
+        const payments = await db.query.clientPayments.findMany({
+            where: eq(clientPayments.clientId, clientId),
+            orderBy: [desc(clientPayments.createdAt)]
         });
 
-        remainingPayment -= amountToApply;
+        const clientOrders = await db.query.orders.findMany({
+            where: eq(orders.clientId, clientId),
+            orderBy: [desc(orders.createdAt)],
+            with: { items: true }
+        });
+
+        return { payments, orders: clientOrders };
     }
+);
 
-    // 3. Update client global debt
-    const client = await db.query.clients.findFirst({
-        where: eq(clients.id, clientId)
-    });
-
-    if (client) {
-        const newTotalDebt = Math.max(0, Number(client.totalDetteDzd) - montant);
-        await db.update(clients)
-            .set({ totalDetteDzd: newTotalDebt.toString() })
-            .where(eq(clients.id, clientId));
+// Corrected export name and property name for schema alignment (nomComplet)
+export const createClient = withAuth(
+    {
+        roles: ["ADMIN", "CAISSIER"],
+        schema: z.object({ nom: z.string().min(1), telephone: z.string().optional() })
+    },
+    async (data) => {
+        // Map UI 'nom' to DB 'nomComplet'
+        const [newClient] = await db.insert(clients).values({
+            nomComplet: data.nom,
+            telephone: data.telephone
+        }).returning();
+        revalidatePath("/admin/clients");
+        return { success: true, client: newClient };
     }
+);
 
-    revalidatePath("/admin/clients");
-    revalidatePath("/admin");
-    return { success: true };
-}
-
-export async function getClientHistory(clientId: number) {
-    const history = await db.query.clientPayments.findMany({
-        where: eq(clientPayments.clientId, clientId),
-        orderBy: (p, { desc }) => [desc(p.createdAt)],
-        with: {
-            order: true
-        }
-    });
-
-    // Also get orders to see debt items
-    const clientOrders = await db.query.orders.findMany({
-        where: eq(orders.clientId, clientId),
-        orderBy: (o, { desc }) => [desc(o.createdAt)]
-    });
-
-    return { payments: history, orders: clientOrders };
-}
-
-export async function createClient(data: { nomComplet: string, telephone?: string }) {
-    const res = await db.insert(clients).values({
-        nomComplet: data.nomComplet,
-        telephone: data.telephone,
-        totalDetteDzd: "0"
-    }).returning();
-    revalidatePath("/admin/clients");
-    return res[0];
-}
-
-export async function getAllClients() {
-    return await db.query.clients.findMany({
-        orderBy: (c, { asc }) => [asc(c.nomComplet)]
-    });
-}
+export const getAllClients = withAuth(
+    { roles: ["ADMIN", "CAISSIER"] },
+    async () => {
+        return await db.query.clients.findMany({ orderBy: [desc(clients.createdAt)] });
+    }
+);

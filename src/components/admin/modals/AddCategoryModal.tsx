@@ -10,20 +10,37 @@ import {
     Button
 } from "@heroui/react";
 import { uploadImage } from "@/app/admin/actions/upload";
-import { createCategoryAction } from "@/app/admin/catalogue/actions";
+import { createCategoryAction, updateCategoryAction } from "@/app/admin/catalogue/actions";
 import { toast } from "react-hot-toast";
+import Image from "next/image";
 
 interface AddCategoryModalProps {
     isOpen: boolean;
     onClose: () => void;
+    categoryToEdit?: {
+        id: number;
+        name: string;
+        imageUrl: string | null;
+    } | null;
 }
 
-export const AddCategoryModal = ({ isOpen, onClose }: AddCategoryModalProps) => {
+export const AddCategoryModal = ({ isOpen, onClose, categoryToEdit }: AddCategoryModalProps) => {
     const [isSaving, setIsSaving] = useState(false);
     const [name, setName] = useState("");
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
     const [previewUrl, setPreviewUrl] = useState<string | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
+
+    // Initialize state when modal opens or categoryToEdit changes
+    React.useEffect(() => {
+        if (categoryToEdit) {
+            setName(categoryToEdit.name);
+            setPreviewUrl(categoryToEdit.imageUrl);
+            setSelectedFile(null);
+        } else {
+            resetForm();
+        }
+    }, [categoryToEdit, isOpen]);
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -41,7 +58,7 @@ export const AddCategoryModal = ({ isOpen, onClose }: AddCategoryModalProps) => 
         }
 
         setIsSaving(true);
-        let imageUrl: string | null = null;
+        let imageUrl: string | null = categoryToEdit?.imageUrl || null;
 
         try {
             if (selectedFile) {
@@ -57,10 +74,12 @@ export const AddCategoryModal = ({ isOpen, onClose }: AddCategoryModalProps) => 
                 }
             }
 
-            const res = await createCategoryAction(name, imageUrl);
+            const res = categoryToEdit
+                ? await updateCategoryAction(categoryToEdit.id, name, imageUrl)
+                : await createCategoryAction(name, imageUrl);
 
             if (res.success) {
-                toast.success("Catégorie créée avec succès");
+                toast.success(categoryToEdit ? "Catégorie modifiée avec succès" : "Catégorie créée avec succès");
                 resetForm();
                 onClose();
             } else {
@@ -94,8 +113,12 @@ export const AddCategoryModal = ({ isOpen, onClose }: AddCategoryModalProps) => 
                 {(onClose) => (
                     <>
                         <ModalHeader className="flex items-center gap-3">
-                            <span className="material-symbols-outlined text-[#ec5b13]">category</span>
-                            <h2 className="text-slate-100 text-lg font-bold">Nouvelle Catégorie</h2>
+                            <span className="material-symbols-outlined text-[#ec5b13]">
+                                {categoryToEdit ? "edit_note" : "category"}
+                            </span>
+                            <h2 className="text-slate-100 text-lg font-bold">
+                                {categoryToEdit ? "Modifier la Catégorie" : "Nouvelle Catégorie"}
+                            </h2>
                         </ModalHeader>
                         <ModalBody className="p-8 space-y-6">
                             <div className="flex flex-col gap-2">
@@ -122,7 +145,7 @@ export const AddCategoryModal = ({ isOpen, onClose }: AddCategoryModalProps) => 
                                     className="aspect-video border-2 border-dashed border-[#262626] bg-[#0a0a0a] rounded-xl flex flex-col items-center justify-center gap-2 cursor-pointer hover:border-[#ec5b13]/50 transition-all group overflow-hidden relative"
                                 >
                                     {previewUrl ? (
-                                        <img src={previewUrl} className="absolute inset-0 w-full h-full object-cover" alt="Preview" />
+                                        <Image src={previewUrl} className="object-cover" alt="Preview" fill />
                                     ) : (
                                         <>
                                             <span className="material-symbols-outlined text-slate-500 text-3xl group-hover:scale-110 transition-transform">add_photo_alternate</span>
@@ -139,7 +162,7 @@ export const AddCategoryModal = ({ isOpen, onClose }: AddCategoryModalProps) => 
                                 onClick={handleSubmit}
                                 isLoading={isSaving}
                             >
-                                Créer la catégorie
+                                {categoryToEdit ? "Enregistrer" : "Créer la catégorie"}
                             </Button>
                         </ModalFooter>
                     </>

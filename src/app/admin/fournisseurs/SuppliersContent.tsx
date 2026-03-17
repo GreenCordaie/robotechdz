@@ -30,6 +30,8 @@ import {
     History,
     LayoutDashboard
 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { formatCurrency } from "@/lib/formatters";
 import { AddSupplierModal } from "@/components/admin/modals/AddSupplierModal";
 import { RechargeBalanceModal } from "@/components/admin/modals/RechargeBalanceModal";
 import { SupplierSettingsModal } from "@/components/admin/modals/SupplierSettingsModal";
@@ -37,22 +39,18 @@ import { SupplierSettingsModal } from "@/components/admin/modals/SupplierSetting
 interface Supplier {
     id: number;
     name: string;
-    balanceUsd: string;
-    balanceDzd: string;
-    exchangeRate: string;
-    baseCurrency: 'USD' | 'DZD';
+    balance: string;
+    currency: 'USD' | 'DZD';
+    status: string;
 }
 
 interface Transaction {
     id: number;
     supplier: Supplier;
     type: string;
-    amountUsd: string;
-    exchangeRate: string;
-    amountDzd: string;
-    salePriceDzd: string | null;
+    amount: string;
+    currency: string;
     reason: string | null;
-    status: string;
     createdAt: string | Date;
 }
 
@@ -62,8 +60,9 @@ interface SuppliersContentProps {
 }
 
 export default function SuppliersContent({ initialSuppliers, initialHistory }: SuppliersContentProps) {
-    const [suppliers, setSuppliers] = useState(initialSuppliers);
-    const [history, setHistory] = useState(initialHistory);
+    const router = useRouter();
+    const [suppliers, setSuppliers] = useState<Supplier[]>(initialSuppliers || []);
+    const [history, setHistory] = useState<Transaction[]>(initialHistory || []);
 
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
     const [isRechargeModalOpen, setIsRechargeModalOpen] = useState(false);
@@ -74,21 +73,28 @@ export default function SuppliersContent({ initialSuppliers, initialHistory }: S
     // Filter states
     const [searchTerm, setSearchTerm] = useState("");
     const [filterSupplier, setFilterSupplier] = useState("all");
-    const [filterStatus, setFilterStatus] = useState("all");
     const [filterDate, setFilterDate] = useState("today");
     const [filterAmount, setFilterAmount] = useState("all");
     const [searchHistory, setSearchHistory] = useState("");
 
     // Sync state when props change
     React.useEffect(() => {
-        setSuppliers(initialSuppliers);
-        setHistory(initialHistory);
+        setSuppliers(initialSuppliers || []);
+        setHistory(initialHistory || []);
     }, [initialSuppliers, initialHistory]);
 
-    const totalCapitalUsd = suppliers.reduce((acc, s) => acc + parseFloat(s.balanceUsd || "0"), 0);
-    const totalValeurDzd = suppliers.reduce((acc, s) => acc + parseFloat(s.balanceDzd || "0"), 0);
-    const avgRate = totalCapitalUsd > 0 ? (totalValeurDzd / totalCapitalUsd).toFixed(2) : "225";
-    const alertsCount = suppliers.filter(s => parseFloat(s.balanceUsd || "0") < 50).length;
+    React.useEffect(() => {
+        const interval = setInterval(() => {
+            router.refresh();
+        }, 3000);
+        return () => clearInterval(interval);
+    }, [router]);
+
+    const EXCHANGE_RATE_USD_DZD = 245;
+
+    const totalSuppliedUsd = suppliers.reduce((acc, s) => acc + (s.currency === 'USD' ? parseFloat(s.balance || "0") : 0), 0);
+    const totalSuppliedDzd = suppliers.reduce((acc, s) => acc + (s.currency === 'DZD' ? parseFloat(s.balance || "0") : 0), 0);
+    const totalValeurDzd = totalSuppliedDzd + (totalSuppliedUsd * EXCHANGE_RATE_USD_DZD);
 
     const handleOpenRecharge = (supplier: Supplier) => {
         setSelectedSupplier(supplier);
@@ -101,14 +107,21 @@ export default function SuppliersContent({ initialSuppliers, initialHistory }: S
     };
 
     const filteredSuppliers = suppliers.filter(s =>
-        s.name.toLowerCase().includes(searchTerm.toLowerCase())
+        s.name.toLowerCase().includes(searchTerm.toLowerCase()) &&
+        s.status !== 'ARCHIVE'
     );
+
+    const alertsCount = suppliers.filter(s => {
+        if (s.status === 'ARCHIVE') return false;
+        const bal = parseFloat(s.balance || "0");
+        const equivalentUsd = s.currency === 'USD' ? bal : bal / EXCHANGE_RATE_USD_DZD;
+        return equivalentUsd < 100;
+    }).length;
 
     const filteredHistory = useMemo(() => {
         return history.filter(h => {
-            const matchesSearch = !searchHistory || (h.reason?.toLowerCase().includes(searchHistory.toLowerCase()));
-            const matchesSupplier = filterSupplier === "all" || h.supplier.id.toString() === filterSupplier;
-            const matchesStatus = filterStatus === "all" || h.status === filterStatus;
+            const matchesSearch = !searchHistory || (h.reason?.toLowerCase().includes(searchHistory.toLowerCase()) || h.type.toLowerCase().includes(searchHistory.toLowerCase()));
+            const matchesSupplier = filterSupplier === "all" || h.supplier.id === parseInt(filterSupplier);
 
             // Date filter logic
             let matchesDate = true;
@@ -118,27 +131,26 @@ export default function SuppliersContent({ initialSuppliers, initialHistory }: S
                 matchesDate = today.toDateString() === hDate.toDateString();
             }
 
-            // Amount filter logic (example: high amount > 1000)
+            // Amount filter logic
             let matchesAmount = true;
             if (filterAmount === "high") {
-                matchesAmount = parseFloat(h.amountUsd) > 1000;
+                matchesAmount = parseFloat(h.amount) > 1000;
             } else if (filterAmount === "low") {
-                matchesAmount = parseFloat(h.amountUsd) <= 1000;
+                matchesAmount = parseFloat(h.amount) <= 1000;
             }
 
-            return matchesSearch && matchesSupplier && matchesStatus && matchesDate && matchesAmount;
+            return matchesSearch && matchesSupplier && matchesDate && matchesAmount;
         });
-    }, [history, searchHistory, filterSupplier, filterStatus, filterDate, filterAmount]);
+    }, [history, searchHistory, filterSupplier, filterDate, filterAmount]);
 
     const handleExportCSV = () => {
-        const headers = ["Date", "Reason", "Supplier", "Amount USD", "Amount DZD", "Status"];
+        const headers = ["Date", "Motif", "Fournisseur", "Montant", "Devise"];
         const rows = filteredHistory.map(h => [
             new Date(h.createdAt).toLocaleString(),
             h.reason || h.type,
             h.supplier.name,
-            h.amountUsd,
-            h.amountDzd,
-            h.status
+            h.amount,
+            h.currency
         ]);
 
         const csvContent = [headers, ...rows].map(e => e.join(",")).join("\n");
@@ -146,7 +158,7 @@ export default function SuppliersContent({ initialSuppliers, initialHistory }: S
         const url = URL.createObjectURL(blob);
         const link = document.createElement("a");
         link.setAttribute("href", url);
-        link.setAttribute("download", `history_${new Date().toISOString()}.csv`);
+        link.setAttribute("download", `journal_fournisseurs_${new Date().toISOString()}.csv`);
         link.style.visibility = 'hidden';
         document.body.appendChild(link);
         link.click();
@@ -181,7 +193,8 @@ export default function SuppliersContent({ initialSuppliers, initialHistory }: S
                         className={`pb-4 px-1 text-sm font-bold transition-colors relative whitespace-nowrap flex items-center gap-2 ${activeTab === "overview" ? "text-[#ec5b13]" : "text-slate-400 hover:text-white"}`}
                     >
                         <LayoutDashboard className="w-4 h-4 shrink-0" />
-                        Vue d'ensemble
+                        Vue d&apos;ensemble
+
                         {activeTab === "overview" && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#ec5b13] rounded-full" />}
                     </button>
                     <button
@@ -189,7 +202,7 @@ export default function SuppliersContent({ initialSuppliers, initialHistory }: S
                         className={`pb-4 px-1 text-sm font-bold transition-colors relative whitespace-nowrap flex items-center gap-2 ${activeTab === "history" ? "text-[#ec5b13]" : "text-slate-400 hover:text-white"}`}
                     >
                         <History className="w-4 h-4 shrink-0" />
-                        Historique des Transactions
+                        Journal de Caisse Fournisseurs
                         {activeTab === "history" && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#ec5b13] rounded-full" />}
                     </button>
                 </div>
@@ -200,23 +213,23 @@ export default function SuppliersContent({ initialSuppliers, initialHistory }: S
                         <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
                             <Card className="bg-[#161616] border border-[#262626] shadow-sm">
                                 <CardBody className="p-6">
-                                    <div className="text-slate-400 text-xs font-black uppercase tracking-widest">Capital Total (USD)</div>
-                                    <div className="text-2xl font-black mt-2 text-white">{totalCapitalUsd.toLocaleString()} $</div>
-                                </CardBody>
-                            </Card>
-                            <Card className="bg-[#161616] border border-[#262626] shadow-sm">
-                                <CardBody className="p-6">
                                     <div className="text-slate-400 text-xs font-black uppercase tracking-widest">Valeur Totale (DZD)</div>
-                                    <div className="text-2xl font-black mt-2 text-white">{totalValeurDzd.toLocaleString()} <span className="text-sm font-bold text-slate-500">DZD</span></div>
+                                    <div className="text-2xl font-black mt-2 text-white">{formatCurrency(totalValeurDzd, 'DZD')}</div>
                                 </CardBody>
                             </Card>
                             <Card className="bg-[#161616] border border-[#262626] shadow-sm">
                                 <CardBody className="p-6">
-                                    <div className="text-slate-400 text-xs font-black uppercase tracking-widest">Taux Moyen</div>
-                                    <div className="text-2xl font-black mt-2 text-[#ec5b13]">1 USD = {avgRate} DZD</div>
+                                    <div className="text-slate-400 text-xs font-black uppercase tracking-widest">Capital USD (Brut)</div>
+                                    <div className="text-2xl font-black mt-2 text-white">{formatCurrency(totalSuppliedUsd, 'USD')}</div>
                                 </CardBody>
                             </Card>
-                            <Card className={`bg-[#161616] border ${alertsCount > 0 ? "border-red-500/50" : "border-[#262626]"} shadow-sm`}>
+                            <Card className="bg-[#161616] border border-[#262626] shadow-sm">
+                                <CardBody className="p-6">
+                                    <div className="text-slate-400 text-xs font-black uppercase tracking-widest">Taux de Change (Fixe)</div>
+                                    <div className="text-2xl font-black mt-2 text-[#ec5b13]">1 USD = {formatCurrency(EXCHANGE_RATE_USD_DZD, 'DZD')}</div>
+                                </CardBody>
+                            </Card>
+                            <Card className={`bg-[#161616] border ${alertsCount > 0 ? "border-red-500/50 shadow-[0_0_15px_rgba(239,68,68,0.2)]" : "border-[#262626]"} shadow-sm transition-all duration-500`}>
                                 <CardBody className="p-6 flex flex-row items-start justify-between">
                                     <div>
                                         <div className="text-slate-400 text-xs font-black uppercase tracking-widest">Alertes</div>
@@ -224,7 +237,7 @@ export default function SuppliersContent({ initialSuppliers, initialHistory }: S
                                             {alertsCount} {alertsCount <= 1 ? "Critique" : "Critiques"}
                                         </div>
                                     </div>
-                                    <div className={`p-2 rounded-lg ${alertsCount > 0 ? "bg-red-500/10 text-red-500" : "bg-emerald-500/10 text-emerald-500"}`}>
+                                    <div className={`p-2 rounded-lg ${alertsCount > 0 ? "bg-red-500/10 text-red-500 animate-pulse" : "bg-emerald-500/10 text-emerald-500"}`}>
                                         <AlertTriangle className="w-6 h-6 shrink-0" />
                                     </div>
                                 </CardBody>
@@ -248,10 +261,15 @@ export default function SuppliersContent({ initialSuppliers, initialHistory }: S
                         {/* Suppliers Grid */}
                         <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-12">
                             {filteredSuppliers.map((s) => {
-                                const balUsd = parseFloat(s.balanceUsd || "0");
-                                const balDzd = parseFloat(s.balanceDzd || "0");
+                                const bal = parseFloat(s.balance || "0");
+                                const equivalentUsd = s.currency === 'USD' ? bal : bal / EXCHANGE_RATE_USD_DZD;
+                                const isLow = equivalentUsd < 100;
+
                                 return (
-                                    <div key={s.id} className="bg-[#161616] border border-[#262626] rounded-2xl flex flex-col transition-all hover:translate-y-[-4px] hover:shadow-2xl hover:border-white/10 group">
+                                    <div
+                                        key={s.id}
+                                        className={`bg-[#161616] border rounded-2xl flex flex-col transition-all hover:translate-y-[-4px] hover:shadow-2xl group ${isLow ? 'border-red-500 shadow-[0_0_10px_rgba(239,68,68,0.1)]' : 'border-[#262626] hover:border-white/10'}`}
+                                    >
                                         <div className="p-6">
                                             <div className="flex items-center justify-between mb-6">
                                                 <div className="flex items-center space-x-3">
@@ -262,27 +280,23 @@ export default function SuppliersContent({ initialSuppliers, initialHistory }: S
                                                     </div>
                                                     <div className="truncate font-bold text-lg text-white uppercase tracking-tight">{s.name}</div>
                                                 </div>
-                                                <Chip size="sm" variant="flat" className={`font-black uppercase text-[10px] ${balUsd > 50 ? "bg-emerald-500/10 text-emerald-500" : "bg-red-500/10 text-red-500"}`}>
-                                                    {balUsd > 50 ? "Actif" : "Vide"}
+                                                <Chip size="sm" variant="flat" className={`font-black uppercase text-[10px] ${!isLow ? "bg-emerald-500/10 text-emerald-500" : "bg-red-500/10 text-red-500 animate-pulse"}`}>
+                                                    {!isLow ? "Actif" : "Balance Basse"}
                                                 </Chip>
                                             </div>
                                             <div className="space-y-1 mb-6">
                                                 <div className="text-slate-500 text-[10px] font-black uppercase tracking-widest">Solde disponible</div>
-                                                <div className="text-3xl font-black tracking-tighter whitespace-nowrap text-white">
-                                                    {s.baseCurrency === 'DZD' ? (
-                                                        <>{balDzd.toLocaleString()} <span className="text-sm">DA</span></>
-                                                    ) : (
-                                                        <>{balUsd.toLocaleString()} $</>
-                                                    )}
+                                                <div className={`text-3xl font-black tracking-tighter whitespace-nowrap ${isLow ? 'text-red-500' : 'text-white'}`}>
+                                                    {formatCurrency(bal, s.currency)}
                                                 </div>
-                                                <div className="flex items-center space-x-2 mt-2">
-                                                    <span className="text-slate-400 text-xs font-bold">
-                                                        {s.baseCurrency === 'DZD' ? `~ ${balUsd.toLocaleString()} $` : `~ ${balDzd.toLocaleString()} DZD`}
-                                                    </span>
-                                                    {s.baseCurrency === 'USD' && (
-                                                        <span className="px-2 py-0.5 bg-[#262626] text-[10px] text-slate-300 rounded font-black uppercase tracking-tighter border border-white/5">{s.exchangeRate} / USD</span>
-                                                    )}
-                                                </div>
+                                                {s.currency === 'USD' && (
+                                                    <div className="flex items-center space-x-2 mt-2">
+                                                        <span className="text-slate-400 text-xs font-bold">
+                                                            ~ {formatCurrency(bal * EXCHANGE_RATE_USD_DZD, 'DZD')}
+                                                        </span>
+                                                        <span className="px-2 py-0.5 bg-[#262626] text-[10px] text-slate-300 rounded font-black uppercase tracking-tighter border border-white/5">{formatCurrency(EXCHANGE_RATE_USD_DZD, 'DZD')} / USD</span>
+                                                    </div>
+                                                )}
                                             </div>
                                         </div>
                                         <div className="mt-auto p-4 flex space-x-2 border-t border-[#262626] bg-[#262626]/20">
@@ -309,12 +323,12 @@ export default function SuppliersContent({ initialSuppliers, initialHistory }: S
                     <>
                         {/* Transaction History Filters */}
                         <div className="bg-[#161616] border border-[#262626] rounded-2xl p-4 mb-6 shadow-sm">
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                                 <div className="relative group">
                                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 w-4 h-4 shrink-0 pointer-events-none group-focus-within:text-[#ec5b13] transition-colors" />
                                     <input
                                         className="w-full bg-[#0a0a0a] border border-[#262626] rounded-xl pl-10 pr-4 py-2 text-sm focus:ring-1 focus:ring-[#ec5b13] focus:border-[#ec5b13] text-white placeholder:text-slate-600 transition-all font-medium"
-                                        placeholder="Produit / Commande..."
+                                        placeholder="Filtrer motif / type..."
                                         type="text"
                                         value={searchHistory}
                                         onChange={(e) => setSearchHistory(e.target.value)}
@@ -328,7 +342,7 @@ export default function SuppliersContent({ initialSuppliers, initialHistory }: S
                                     >
                                         <option value="all">Tous les Fournisseurs</option>
                                         {suppliers.map(s => (
-                                            <option key={s.id} value={s.id.toString()}>{s.name}</option>
+                                            <option key={s.id} value={s.id}>{s.name}</option>
                                         ))}
                                     </select>
                                     <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500">
@@ -342,24 +356,11 @@ export default function SuppliersContent({ initialSuppliers, initialHistory }: S
                                         onChange={(e) => setFilterDate(e.target.value)}
                                     >
                                         <option value="all">Toutes les Dates</option>
-                                        <option value="today">Aujourd'hui</option>
+                                        <option value="today">Aujourd&apos;hui</option>
+
                                     </select>
                                     <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500">
                                         <Calendar className="w-4 h-4 shrink-0" />
-                                    </div>
-                                </div>
-                                <div className="relative">
-                                    <select
-                                        className="w-full bg-[#0a0a0a] border border-[#262626] rounded-xl px-4 py-2 text-sm focus:ring-1 focus:ring-[#ec5b13] text-white appearance-none cursor-pointer font-medium"
-                                        value={filterStatus}
-                                        onChange={(e) => setFilterStatus(e.target.value)}
-                                    >
-                                        <option value="all">Tous les Statuts</option>
-                                        <option value="COMPLETED">Validé</option>
-                                        <option value="PENDING">En attente</option>
-                                    </select>
-                                    <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500">
-                                        <ArrowDownCircle className="w-4 h-4 shrink-0" />
                                     </div>
                                 </div>
                                 <div className="relative">
@@ -369,8 +370,8 @@ export default function SuppliersContent({ initialSuppliers, initialHistory }: S
                                         onChange={(e) => setFilterAmount(e.target.value)}
                                     >
                                         <option value="all">Tous les Montants</option>
-                                        <option value="high">Plus de 1000$</option>
-                                        <option value="low">1000$ ou moins</option>
+                                        <option value="high">Plus de 1000</option>
+                                        <option value="low">1000 ou moins</option>
                                     </select>
                                     <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500">
                                         <CircleDollarSign className="w-4 h-4 shrink-0" />
@@ -382,7 +383,7 @@ export default function SuppliersContent({ initialSuppliers, initialHistory }: S
                         {/* Transaction Table */}
                         <section className="bg-[#161616] border border-[#262626] rounded-2xl overflow-hidden mb-12 shadow-sm">
                             <div className="px-6 py-4 border-b border-[#262626] flex justify-between items-center bg-[#161616]">
-                                <h2 className="font-black text-xs uppercase tracking-[0.2em] text-slate-400">Historique des Ventes & Débits</h2>
+                                <h2 className="font-black text-xs uppercase tracking-[0.2em] text-slate-400">Journal de Caisse</h2>
                                 <div className="flex items-center space-x-2">
                                     <Button
                                         isIconOnly
@@ -409,22 +410,21 @@ export default function SuppliersContent({ initialSuppliers, initialHistory }: S
                                     <thead>
                                         <tr className="text-slate-500 text-[10px] font-black uppercase tracking-[0.2em] bg-black/20 border-b border-[#262626]">
                                             <th className="px-6 py-4">Date & Heure</th>
-                                            <th className="px-6 py-4">Détails / Produit</th>
+                                            <th className="px-6 py-4">Mouvement / Détails</th>
                                             <th className="px-6 py-4">Fournisseur</th>
-                                            <th className="px-6 py-4 text-right">Debit USD</th>
-                                            <th className="px-6 py-4 text-right">Vente DZD</th>
-                                            <th className="px-6 py-4 text-center">Statut</th>
+                                            <th className="px-6 py-4 text-right">Montant</th>
+                                            <th className="px-6 py-4 text-center">Type</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-[#262626]">
                                         {filteredHistory.length === 0 ? (
                                             <tr>
-                                                <td colSpan={6} className="px-6 py-12 text-center text-slate-500 font-bold uppercase tracking-widest text-xs">
+                                                <td colSpan={5} className="px-6 py-12 text-center text-slate-500 font-bold uppercase tracking-widest text-xs">
                                                     Aucune transaction trouvée
                                                 </td>
                                             </tr>
                                         ) : filteredHistory.map((h) => {
-                                            const isAchat = h.type === "ACHAT_STOCK";
+                                            const isDebit = h.type === "DEBIT" || h.type === "ACHAT_STOCK";
                                             return (
                                                 <tr key={h.id} className="hover:bg-white/[0.02] transition-colors group">
                                                     <td className="px-6 py-4 text-xs text-slate-400 font-bold">
@@ -432,10 +432,10 @@ export default function SuppliersContent({ initialSuppliers, initialHistory }: S
                                                     </td>
                                                     <td className="px-6 py-4">
                                                         <div className="flex flex-col">
-                                                            <span className="text-sm font-black text-white uppercase tracking-tight truncate max-w-[200px]">
-                                                                {isAchat ? h.reason?.replace("Achat automatique : ", "") : h.type}
+                                                            <span className="text-sm font-black text-white uppercase tracking-tight truncate max-w-[250px]">
+                                                                {h.reason || h.type}
                                                             </span>
-                                                            <span className="text-[10px] text-slate-500 font-black uppercase tracking-widest mt-0.5">#{h.id + 5000}</span>
+                                                            <span className="text-[10px] text-slate-500 font-black uppercase tracking-widest mt-0.5 opacity-50">#{h.id}</span>
                                                         </div>
                                                     </td>
                                                     <td className="px-6 py-4">
@@ -448,15 +448,13 @@ export default function SuppliersContent({ initialSuppliers, initialHistory }: S
                                                             <span className="text-xs font-bold text-slate-300 uppercase tracking-tight">{h.supplier.name}</span>
                                                         </div>
                                                     </td>
-                                                    <td className={`px-6 py-4 text-sm font-black text-right whitespace-nowrap ${isAchat ? 'text-red-500' : 'text-emerald-500'}`}>
-                                                        {isAchat ? '-' : '+'}{parseFloat(h.amountUsd).toLocaleString()} $
-                                                    </td>
-                                                    <td className="px-6 py-4 text-sm font-black text-right whitespace-nowrap text-white">
-                                                        {h.salePriceDzd ? `${parseFloat(h.salePriceDzd).toLocaleString()} DZD` : "-"}
+                                                    <td className={`px-6 py-4 text-sm font-black text-right whitespace-nowrap ${isDebit ? 'text-red-500' : 'text-emerald-500'}`}>
+                                                        {isDebit ? '-' : '+'}
+                                                        {formatCurrency(h.amount, h.currency as any)}
                                                     </td>
                                                     <td className="px-6 py-4 text-center">
-                                                        <Chip size="sm" variant="flat" className={`font-black uppercase text-[9px] tracking-widest ${h.status === "COMPLETED" ? "bg-emerald-500/10 text-emerald-500" : "bg-orange-500/10 text-orange-400"}`}>
-                                                            {h.status === "COMPLETED" ? "Validé" : "En attente"}
+                                                        <Chip size="sm" variant="flat" className={`font-black uppercase text-[9px] tracking-widest ${!isDebit ? "bg-emerald-500/10 text-emerald-500" : "bg-red-500/10 text-red-500"}`}>
+                                                            {h.type}
                                                         </Chip>
                                                     </td>
                                                 </tr>
@@ -480,8 +478,9 @@ export default function SuppliersContent({ initialSuppliers, initialHistory }: S
                 onClose={() => setIsRechargeModalOpen(false)}
                 supplierId={selectedSupplier?.id || 0}
                 supplierName={selectedSupplier?.name || ""}
-                currentBalance={selectedSupplier?.balanceUsd || "0"}
-                exchangeRate={selectedSupplier?.exchangeRate || "225"}
+                currentBalance={selectedSupplier?.balance || "0"}
+                exchangeRate={EXCHANGE_RATE_USD_DZD.toString()}
+                baseCurrency={selectedSupplier?.currency || 'USD'}
             />
 
             <SupplierSettingsModal
