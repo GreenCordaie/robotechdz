@@ -17,7 +17,7 @@ import { uploadImage } from "@/app/admin/actions/upload";
 import { toast } from "react-hot-toast";
 import Image from "next/image";
 import { formatCurrency } from "@/lib/formatters";
-import { X, Gamepad2, Layers, Link as LinkIcon, Trash2, PlusCircle, Rocket, Save, Image as ImageIcon, ChevronDown } from "lucide-react";
+import { X, Gamepad2, Layers, Link as LinkIcon, Trash2, PlusCircle, Rocket, Save, Image as ImageIcon, ChevronDown, Brain } from "lucide-react";
 
 interface LinkedSupplier {
     id: string;
@@ -54,6 +54,7 @@ export const AddProductModal = ({ isOpen, onClose, categories, suppliers, produc
     const [previewUrl, setPreviewUrl] = useState<string | null>(null);
     const [requiresPlayerId, setRequiresPlayerId] = useState(false);
     const [isManualDelivery, setIsManualDelivery] = useState(true);
+    const [tutorialText, setTutorialText] = useState("");
     const fileInputRef = React.useRef<HTMLInputElement>(null);
 
     const [variants, setVariants] = useState<Variant[]>([
@@ -70,6 +71,7 @@ export const AddProductModal = ({ isOpen, onClose, categories, suppliers, produc
             setPreviewUrl(productToEdit.imageUrl);
             setRequiresPlayerId(productToEdit.requiresPlayerId || false);
             setIsManualDelivery(productToEdit.isManualDelivery ?? true);
+            setTutorialText(productToEdit.tutorialText || "");
             setSelectedFile(null);
 
             if (productToEdit.variants && productToEdit.variants.length > 0) {
@@ -110,6 +112,7 @@ export const AddProductModal = ({ isOpen, onClose, categories, suppliers, produc
         setSelectedFile(null);
         setRequiresPlayerId(false);
         setIsManualDelivery(true);
+        setTutorialText("");
         setVariants([{ id: Math.random().toString(), name: "", salePrice: "", isSharing: false, totalSlots: 5, linkedSuppliers: [] }]);
         setError(null);
     };
@@ -160,6 +163,7 @@ export const AddProductModal = ({ isOpen, onClose, categories, suppliers, produc
                 imageUrl: finalImageUrl,
                 requiresPlayerId,
                 isManualDelivery,
+                tutorialText,
                 variants: variants.map(v => ({
                     id: v.id.includes('.') ? null : parseInt(v.id), // Only send real numeric IDs for updates
                     name: v.name,
@@ -302,7 +306,7 @@ export const AddProductModal = ({ isOpen, onClose, categories, suppliers, produc
             >
                 <ModalContent>
                     {(onClose) => (
-                        <>
+                        <div className="flex flex-col h-full overflow-hidden">
                             <ModalHeader>
                                 <div className="flex flex-col gap-1">
                                     <div className="flex items-center gap-3">
@@ -398,35 +402,53 @@ export const AddProductModal = ({ isOpen, onClose, categories, suppliers, produc
                                         </div>
                                     </section>
 
-                                    {/* Settings Switches */}
-                                    <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        <div className="flex items-center justify-between p-4 bg-[#0a0a0a] border border-[#262626] rounded-xl group hover:border-[#ec5b13]/30 transition-colors">
-                                            <div className="flex flex-col gap-0.5">
-                                                <span className="text-slate-100 text-xs font-black uppercase tracking-tight">Direct Top-up</span>
-                                                <span className="text-slate-500 text-[9px] font-black uppercase tracking-wider">Nécessite ID / Lien Client</span>
-                                            </div>
-                                            <Switch
-                                                isSelected={requiresPlayerId}
-                                                onValueChange={setRequiresPlayerId}
-                                                color="primary"
-                                                size="sm"
-                                            />
+                                    {/* AI & Delivery Section */}
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                                        <div className="flex flex-col gap-2">
+                                            <label className="text-slate-400 text-xs font-black uppercase tracking-widest flex items-center gap-2">
+                                                <Brain size={14} className="text-purple-500" />
+                                                Tutoriel d&apos;installation (Bot Gemini)
+                                            </label>
+                                            <textarea
+                                                className="w-full bg-[#0a0a0a] border border-[#262626] rounded-xl px-4 py-3.5 text-slate-100 placeholder:text-slate-600 focus:ring-1 focus:ring-purple-500 focus:border-purple-500 outline-none transition-all resize-none h-[140px] font-bold text-sm"
+                                                placeholder="Instructions étape par étape, liens vidéo, codes promos..."
+                                                value={tutorialText}
+                                                onChange={(e) => setTutorialText(e.target.value)}
+                                            ></textarea>
                                         </div>
 
-                                        <div className="flex items-center justify-between p-4 bg-[#0a0a0a] border border-[#262626] rounded-xl group hover:border-[#ec5b13]/30 transition-colors">
-                                            <div className="flex flex-col gap-0.5">
-                                                <span className="text-slate-100 text-xs font-black uppercase tracking-tight">Livraison Manuelle</span>
-                                                <span className="text-slate-500 text-[9px] font-black uppercase tracking-wider">{isManualDelivery ? "Stock Infini" : "Code Numérique"}</span>
+                                        <div className="flex flex-col gap-4">
+                                            <p className="text-slate-400 text-xs font-black uppercase tracking-widest">Options de livraison</p>
+                                            <div className="space-y-4">
+                                                <div className="flex items-center justify-between p-4 bg-[#0a0a0a] border border-[#262626] rounded-xl group hover:border-blue-500/30 transition-colors">
+                                                    <div className="flex flex-col gap-0.5">
+                                                        <span className="text-slate-100 text-xs font-black uppercase tracking-tight">Direct Top-up</span>
+                                                        <span className="text-slate-500 text-[9px] font-black uppercase tracking-wider">Nécessite ID / Lien Client</span>
+                                                    </div>
+                                                    <Switch
+                                                        isSelected={requiresPlayerId}
+                                                        onValueChange={setRequiresPlayerId}
+                                                        color="primary"
+                                                        size="sm"
+                                                    />
+                                                </div>
+
+                                                <div className="flex items-center justify-between p-4 bg-[#0a0a0a] border border-[#262626] rounded-xl group hover:border-[#ec5b13]/30 transition-colors">
+                                                    <div className="flex flex-col gap-0.5">
+                                                        <span className="text-slate-100 text-xs font-black uppercase tracking-tight">Livraison Manuelle</span>
+                                                        <span className="text-slate-500 text-[9px] font-black uppercase tracking-wider">{isManualDelivery ? "Stock Infini" : "Code Numérique"}</span>
+                                                    </div>
+                                                    <Switch
+                                                        isSelected={isManualDelivery}
+                                                        onValueChange={setIsManualDelivery}
+                                                        color="warning"
+                                                        size="sm"
+                                                        isDisabled={variants.some(v => v.isSharing)}
+                                                    />
+                                                </div>
                                             </div>
-                                            <Switch
-                                                isSelected={isManualDelivery}
-                                                onValueChange={setIsManualDelivery}
-                                                color="warning"
-                                                size="sm"
-                                                isDisabled={variants.some(v => v.isSharing)}
-                                            />
                                         </div>
-                                    </section>
+                                    </div>
 
                                     {/* Section 2: Variants & Pricing */}
                                     <section className="flex flex-col gap-6">
@@ -601,7 +623,7 @@ export const AddProductModal = ({ isOpen, onClose, categories, suppliers, produc
                                     )}
                                 </button>
                             </ModalFooter>
-                        </>
+                        </div>
                     )}
                 </ModalContent>
             </Modal>

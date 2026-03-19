@@ -1,7 +1,7 @@
 "use server";
 
 import { db } from "@/db";
-import { orders, orderItems, products, digitalCodes, shopSettings } from "@/db/schema";
+import { orders, orderItems, products, digitalCodes, shopSettings, supportTickets } from "@/db/schema";
 import { eq, sql, and, gte, lte, desc, count, isNull } from "drizzle-orm";
 import { withAuth } from "@/lib/security";
 import { z } from "zod";
@@ -100,13 +100,17 @@ export const getDashboardStats = withAuth(
                 ) as alerts
             `);
 
+            const openTicketsCount = await db.select({ count: count() })
+                .from(supportTickets)
+                .where(eq(supportTickets.status, "OUVERT"));
+
             const latestOrders = await db.query.orders.findMany({
                 limit: 10,
                 orderBy: [desc(orders.createdAt)],
                 with: { items: true }
             });
 
-            const pendingCount = await db.select({ count: count() })
+            const pendingCountResult = await db.select({ count: count() })
                 .from(orders)
                 .where(eq(orders.status, "EN_ATTENTE"));
 
@@ -142,10 +146,10 @@ export const getDashboardStats = withAuth(
                 profitChange,
                 ordersToday: currentStats.count,
                 ordersChange,
-                pendingOrdersCount: Number(pendingCount[0]?.count || 0),
+                pendingOrdersCount: Number(pendingCountResult[0]?.count || 0),
                 latestOrders,
                 stockAlerts: Number((lowStockAlerts[0] as any)?.count || 0),
-                openTicketsCount: 0,
+                openTicketsCount: Number(openTicketsCount[0]?.count || 0),
                 isMaintenanceMode: !!settings?.isMaintenanceMode,
                 revenueData: weekData,
                 notifications: []

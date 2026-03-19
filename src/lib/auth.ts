@@ -1,26 +1,8 @@
-import { SignJWT, jwtVerify } from "jose";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { db } from "@/db";
 import { users } from "@/db/schema";
 import { eq } from "drizzle-orm";
-
-const secretKey = process.env.SESSION_SECRET;
-const key = new TextEncoder().encode(secretKey);
-
-export async function encrypt(payload: any) {
-    return await new SignJWT(payload)
-        .setProtectedHeader({ alg: "HS256" })
-        .setIssuedAt()
-        .setExpirationTime("12h")
-        .sign(key);
-}
-
-export async function decrypt(input: string): Promise<any> {
-    const { payload } = await jwtVerify(input, key, {
-        algorithms: ["HS256"],
-    });
-    return payload;
-}
+import { encrypt, decrypt } from "./jwt";
 
 export async function createSession(user: { id: number; role: string }) {
     const expires = new Date(Date.now() + 12 * 60 * 60 * 1000);
@@ -31,10 +13,13 @@ export async function createSession(user: { id: number; role: string }) {
         .set({ lastActiveAt: new Date() })
         .where(eq(users.id, user.id));
 
+    const headerList = headers();
+    const isHttps = headerList.get("x-forwarded-proto") === "https";
+
     cookies().set("session", session, {
         expires,
         httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
+        secure: process.env.NODE_ENV === "production" || isHttps,
         sameSite: "lax",
         path: "/",
     });
@@ -56,6 +41,17 @@ export async function deleteSession() {
 
 export async function getSession() {
     const session = cookies().get("session")?.value;
-    if (!session) return null;
-    return await decrypt(session);
+    if (!session) {
+        const headerList = headers();
+        const host = headerList.get("host");
+        console.log(`🚫 SESSION COOKIE MISSING (Host: ${host})`);
+        return null;
+    }
+    try {
+        const payload = await decrypt(session);
+        return payload;
+    } catch (e) {
+        console.error("🚫 SESSION DECRYPT FAILED:", e);
+        return null;
+    }
 }

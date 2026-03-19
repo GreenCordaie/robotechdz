@@ -1,7 +1,7 @@
 "use server";
 
 import { db } from "@/db";
-import { suppliers, supplierTransactions } from "@/db/schema";
+import { suppliers, supplierTransactions, orderItems, orders, shopSettings } from "@/db/schema";
 import { eq, desc, sql, and } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { withAuth, logSecurityAction } from "@/lib/security";
@@ -24,16 +24,98 @@ export const getSupplierHistoryAction = withAuth(
     },
     async ({ supplierId }) => {
         return await db.query.supplierTransactions.findMany({
-            where: eq(supplierTransactions.supplierId, supplierId),
-            orderBy: [desc(supplierTransactions.createdAt)]
+            where: supplierId > 0 ? eq(supplierTransactions.supplierId, supplierId) : undefined,
+            orderBy: [desc(supplierTransactions.createdAt)],
+            with: { supplier: true }
         });
+    }
+);
+
+export const getSupplierStatsAction = withAuth(
+    { roles: ["ADMIN"] },
+    async () => {
+        try {
+            const settings = await db.query.shopSettings.findFirst();
+            const exchangeRate = parseFloat(settings?.usdExchangeRate || "245");
+
+            // 1. Recharges totals (conversion to DZD for KPI)
+            const allRecharges = await db.query.supplierTransactions.findMany({
+                where: eq(supplierTransactions.type, "RECHARGE")
+            });
+
+            let totalPaidDzd = 0;
+            let totalUnpaidDzd = 0;
+
+            allRecharges.forEach(r => {
+                const amount = parseFloat(r.amount);
+                // Use per-transaction rate if available (+ fallback to global)
+                const txRate = r.exchangeRate ? parseFloat(r.exchangeRate) : exchangeRate;
+                const dzdAmount = r.currency === "USD" ? amount * txRate : amount;
+
+                if (r.paymentStatus === "PAID") {
+                    totalPaidDzd += dzdAmount;
+                } else {
+                    totalUnpaidDzd += dzdAmount;
+                }
+            });
+
+            // 2. Profit Net
+            const salesItems = await db.select({
+                price: orderItems.price,
+                quantity: orderItems.quantity,
+                purchasePrice: orderItems.purchasePrice,
+                purchaseCurrency: orderItems.purchaseCurrency
+            }).from(orderItems)
+                .innerJoin(orders, eq(orderItems.orderId, orders.id))
+                .where(
+                    sql`${orders.status} IN ('PAYE', 'LIVRE', 'TERMINE')`
+                );
+
+            let totalNetProfit = 0;
+            salesItems.forEach(item => {
+                const saleTotal = parseFloat(item.price) * (item.quantity || 1);
+                let costDzd = 0;
+
+                if (item.purchasePrice) {
+                    const pPrice = parseFloat(item.purchasePrice);
+                    costDzd = item.purchaseCurrency === 'USD'
+                        ? pPrice * (item.quantity || 1) * exchangeRate
+                        : pPrice * (item.quantity || 1);
+                } else {
+                    // Fallback to 85% cost (15% margin) like in dashboard
+                    costDzd = saleTotal * 0.85;
+                }
+
+                totalNetProfit += (saleTotal - costDzd);
+            });
+
+            return {
+                success: true,
+                data: {
+                    totalPaidDzd: totalPaidDzd.toFixed(2),
+                    totalUnpaidDzd: totalUnpaidDzd.toFixed(2),
+                    netProfit: totalNetProfit.toFixed(2),
+                    exchangeRate: exchangeRate.toString()
+                }
+            };
+        } catch (error) {
+            return { success: false, error: (error as Error).message };
+        }
     }
 );
 
 export const rechargeSupplierAction = withAuth(
     {
         roles: ["ADMIN"],
-        schema: z.object({ supplierId: z.number(), amount: z.string(), currency: z.string(), note: z.string().optional() })
+        schema: z.object({
+            supplierId: z.number(),
+            amount: z.string(),
+            currency: z.string(),
+            note: z.string().optional(),
+            paymentStatus: z.enum(["PAID", "UNPAID"]).default("PAID"),
+            paidAt: z.string().optional(), // ISO string
+            exchangeRate: z.string().optional()
+        })
     },
     async (data) => {
         try {
@@ -49,9 +131,30 @@ export const rechargeSupplierAction = withAuth(
                     type: "RECHARGE",
                     amount: data.amount,
                     currency: data.currency,
-                    reason: data.note || "Recharge de balance"
+                    reason: data.note || "Recharge de balance",
+                    paymentStatus: data.paymentStatus,
+                    paidAt: data.paymentStatus === "PAID" ? (data.paidAt ? new Date(data.paidAt) : new Date()) : null,
+                    exchangeRate: data.exchangeRate
                 });
             });
+            revalidatePath("/admin/fournisseurs");
+            return { success: true };
+        } catch (error) {
+            return { success: false, error: (error as Error).message };
+        }
+    }
+);
+
+export const markTransactionAsPaidAction = withAuth(
+    {
+        roles: ["ADMIN"],
+        schema: z.object({ transactionId: z.number() })
+    },
+    async ({ transactionId }) => {
+        try {
+            await db.update(supplierTransactions)
+                .set({ paymentStatus: "PAID", paidAt: new Date() })
+                .where(eq(supplierTransactions.id, transactionId));
             revalidatePath("/admin/fournisseurs");
             return { success: true };
         } catch (error) {

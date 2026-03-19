@@ -332,6 +332,25 @@ export default function SettingsMobile() {
                                 onChange={(e) => setShopData({ ...shopData, shopAddress: e.target.value })}
                             />
                         </div>
+
+                        <div className="p-5 bg-[#ec5b13]/10 border border-[#ec5b13]/20 rounded-3xl space-y-4">
+                            <div className="flex items-center gap-3 text-[#ec5b13]">
+                                <Smartphone size={18} />
+                                <h3 className="text-xs font-black uppercase tracking-wider">Accès Rapide Webhook WhatsApp</h3>
+                            </div>
+                            <p className="text-[10px] text-slate-400 font-medium leading-relaxed">
+                                Si vous redémarrez vos serveurs et que le lien Cloudflare change, mettez à jour l&apos;URL ici pour que le robot WhatsApp continue de fonctionner.
+                            </p>
+                            <div className="space-y-2">
+                                <label className="text-[9px] font-black uppercase text-slate-500 ml-1">URL du Webhook</label>
+                                <input
+                                    className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-xs font-mono outline-none focus:border-[#ec5b13]/50 transition-all text-[#ec5b13]"
+                                    placeholder="https://xyz.trycloudflare.com/api/webhooks/whatsapp"
+                                    value={shopData.whatsappWebhookUrl || ""}
+                                    onChange={(e) => setShopData({ ...shopData, whatsappWebhookUrl: e.target.value })}
+                                />
+                            </div>
+                        </div>
                     </main>
                 </div>
             )}

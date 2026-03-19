@@ -6,7 +6,8 @@ import {
     ModalContent,
     ModalHeader,
     ModalBody,
-    Button
+    Button,
+    Switch
 } from "@heroui/react";
 
 import { rechargeSupplier } from "@/app/admin/fournisseurs/actions";
@@ -38,10 +39,14 @@ export const RechargeBalanceModal = ({
     const [estimatedOther, setEstimatedOther] = useState<number>(0);
     const [projectedNewBalance, setProjectedNewBalance] = useState<number>(0);
     const [isSaving, setIsSaving] = useState(false);
+    const [isPaid, setIsPaid] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
-    const rate = parseFloat(String(exchangeRate)) || 245;
+    const rateValue = parseFloat(String(exchangeRate)) || 245;
+    const [manualRate, setManualRate] = useState<string>(rateValue.toString());
     const currentBalanceNum = parseFloat(String(currentBalance)) || 0;
+
+    const rate = parseFloat(manualRate) || rateValue;
 
     useEffect(() => {
         const val = parseFloat(amount) || 0;
@@ -74,11 +79,6 @@ export const RechargeBalanceModal = ({
         setError(null);
 
         try {
-            // If the supplier is USD and we recharge in DZD, we should probably pass the converted USD amount to the action 
-            // OR let the action handle it. My action currently does balance + amount directly.
-            // So if I recharge a USD supplier with 10,000 DZD, it adds 10,000 to the USD balance... NOT GOOD.
-            // FIXED: I should always recharge in the SUPPLIER'S currency.
-
             let amountToSubmit = amount;
             if (baseCurrency === 'USD' && currency === 'DZD') {
                 amountToSubmit = (parseFloat(amount) / rate).toFixed(2);
@@ -90,10 +90,12 @@ export const RechargeBalanceModal = ({
                 supplierId,
                 amount: amountToSubmit,
                 currency: baseCurrency,
-                note: `Recharge via ${paymentMethod}`
+                note: `Recharge via ${paymentMethod}`,
+                paymentStatus: isPaid ? "PAID" : "UNPAID",
+                exchangeRate: manualRate
             });
             if (res.success) {
-                toast.success(`Solde rechargé (${amountToSubmit} ${baseCurrency})`);
+                toast.success(`Solde rechargé (${amountToSubmit} ${baseCurrency})${isPaid ? '' : ' - MARQUÉ COMME DETTE'}`);
                 onClose();
                 setAmount("");
                 window.location.reload();
@@ -183,6 +185,27 @@ export const RechargeBalanceModal = ({
 
                                 {/* Section 2: Recharge Form */}
                                 <div className="space-y-6">
+                                    {/* Manual Rate Input */}
+                                    {baseCurrency !== 'DZD' && (
+                                        <div className="bg-[#0a0a0a] border border-[#262626] rounded-xl p-4">
+                                            <label className="block text-slate-400 text-[10px] font-bold uppercase tracking-widest mb-2 px-1">
+                                                Taux de change personnalisé (1 USD = ? DZD)
+                                            </label>
+                                            <div className="relative group">
+                                                <input
+                                                    className="w-full bg-black/40 border border-[#262626] focus:border-[#ec5b13] rounded-xl py-3 px-4 text-white font-mono text-sm outline-none transition-all"
+                                                    type="number"
+                                                    step="0.01"
+                                                    value={manualRate}
+                                                    onChange={(e) => setManualRate(e.target.value)}
+                                                />
+                                                <div className="absolute right-4 top-1/2 -translate-y-1/2">
+                                                    <span className="text-slate-600 text-[10px] font-bold uppercase tracking-widest">DZD / $</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+
                                     <div>
                                         <label htmlFor="rechargeAmount" className="block text-slate-400 text-xs font-semibold uppercase tracking-widest mb-3 px-1">
                                             Montant de la recharge ({baseCurrency === 'DZD' ? 'DZD' : currency})
@@ -234,6 +257,19 @@ export const RechargeBalanceModal = ({
                                                 <span className="material-symbols-outlined text-[20px]">expand_more</span>
                                             </div>
                                         </div>
+                                    </div>
+
+                                    <div className="flex items-center justify-between bg-[#0a0a0a] border border-[#262626] rounded-xl p-4">
+                                        <div className="flex flex-col">
+                                            <span className="text-white text-xs font-bold uppercase tracking-tight">Paiement effectué ?</span>
+                                            <span className="text-slate-500 text-[10px]">Si désactivé, sera compté comme dette.</span>
+                                        </div>
+                                        <Switch
+                                            isSelected={isPaid}
+                                            onValueChange={setIsPaid}
+                                            color="warning"
+                                            size="sm"
+                                        />
                                     </div>
                                 </div>
 

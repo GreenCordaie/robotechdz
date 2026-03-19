@@ -607,16 +607,44 @@ export const cancelOrderAction = withAuth(
                 for (const item of (order.items || [])) {
                     if (item.codes && item.codes.length > 0) {
                         const codeIds = item.codes.map((c: any) => c.id);
-                        await tx.update(digitalCodes).set({ status: "DISPONIBLE", orderItemId: null }).where(inArray(digitalCodes.id, codeIds));
+                        await tx.update(digitalCodes).set({ status: "DISPONIBLE", orderItemId: null, isDebitCompleted: false }).where(inArray(digitalCodes.id, codeIds));
                     }
                     if (item.slots && item.slots.length > 0) {
                         const slotIds = item.slots.map((s: any) => s.id);
                         await tx.update(digitalCodeSlots).set({ status: "DISPONIBLE", orderItemId: null }).where(inArray(digitalCodeSlots.id, slotIds));
                         const parentIds = Array.from(new Set(item.slots.map((s: any) => s.digitalCodeId)));
                         for (const pid of parentIds) {
-                            await tx.update(digitalCodes).set({ status: "DISPONIBLE" }).where(eq(digitalCodes.id, pid as any as number));
+                            await tx.update(digitalCodes).set({ status: "DISPONIBLE", isDebitCompleted: false }).where(eq(digitalCodes.id, pid as any as number));
                         }
                     }
+                }
+
+                // --- 🔄 BALANCE REVERSAL LOGIC ---
+                // Find all previous debits for this order
+                const relatedTransactions = await tx.query.supplierTransactions.findMany({
+                    where: (table: any, { and, eq }: any) => and(
+                        eq(table.orderId, orderId),
+                        eq(table.type, "ACHAT_STOCK")
+                    )
+                });
+
+                for (const st of relatedTransactions) {
+                    // Credit the supplier back
+                    await tx.update(suppliers)
+                        .set({ balance: sql`${suppliers.balance} + ${st.amount}` })
+                        .where(eq(suppliers.id, st.supplierId));
+
+                    // Log the reversal
+                    await tx.insert(supplierTransactions).values({
+                        supplierId: st.supplierId,
+                        orderId: orderId,
+                        type: "RECHARGE",
+                        paymentStatus: "PAID",
+                        paidAt: new Date(),
+                        amount: st.amount,
+                        currency: st.currency,
+                        reason: `Annulation Commande #${orderId} (Remboursement Auto)`
+                    });
                 }
             });
 

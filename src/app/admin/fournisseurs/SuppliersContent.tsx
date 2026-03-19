@@ -11,7 +11,8 @@ import {
     Tab,
     Card,
     CardBody,
-    Chip
+    Chip,
+    Tooltip
 } from "@heroui/react";
 import toast from "react-hot-toast";
 import {
@@ -28,8 +29,13 @@ import {
     ArrowDownCircle,
     ArrowUpCircle,
     History,
-    LayoutDashboard
+    LayoutDashboard,
+    Banknote,
+    TrendingUp,
+    ShieldCheck,
+    Clock
 } from "lucide-react";
+import { markTransactionAsPaidAction } from "./actions";
 import { useRouter } from "next/navigation";
 import { formatCurrency } from "@/lib/formatters";
 import { AddSupplierModal } from "@/components/admin/modals/AddSupplierModal";
@@ -52,14 +58,24 @@ interface Transaction {
     currency: string;
     reason: string | null;
     createdAt: string | Date;
+    paymentStatus?: 'PAID' | 'UNPAID';
+    paidAt?: string | Date | null;
+    exchangeRate?: string | null;
 }
 
 interface SuppliersContentProps {
     initialSuppliers: Supplier[];
     initialHistory: Transaction[];
+    initialStats?: {
+        totalPaidDzd: string;
+        totalUnpaidDzd: string;
+        netProfit: string;
+        exchangeRate: string;
+    };
+    shopSettings?: any;
 }
 
-export default function SuppliersContent({ initialSuppliers, initialHistory }: SuppliersContentProps) {
+export default function SuppliersContent({ initialSuppliers, initialHistory, initialStats, shopSettings }: SuppliersContentProps) {
     const router = useRouter();
     const [suppliers, setSuppliers] = useState<Supplier[]>(initialSuppliers || []);
     const [history, setHistory] = useState<Transaction[]>(initialHistory || []);
@@ -69,6 +85,7 @@ export default function SuppliersContent({ initialSuppliers, initialHistory }: S
     const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
     const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(null);
     const [activeTab, setActiveTab] = useState("overview");
+    const [isProcessing, setIsProcessing] = useState(false);
 
     // Filter states
     const [searchTerm, setSearchTerm] = useState("");
@@ -86,11 +103,12 @@ export default function SuppliersContent({ initialSuppliers, initialHistory }: S
     React.useEffect(() => {
         const interval = setInterval(() => {
             router.refresh();
-        }, 3000);
+        }, 5000);
         return () => clearInterval(interval);
     }, [router]);
 
-    const EXCHANGE_RATE_USD_DZD = 245;
+    const stats = initialStats || { totalPaidDzd: "0", totalUnpaidDzd: "0", netProfit: "0", exchangeRate: "245" };
+    const EXCHANGE_RATE_USD_DZD = parseFloat(stats.exchangeRate || "245");
 
     const totalSuppliedUsd = suppliers.reduce((acc, s) => acc + (s.currency === 'USD' ? parseFloat(s.balance || "0") : 0), 0);
     const totalSuppliedDzd = suppliers.reduce((acc, s) => acc + (s.currency === 'DZD' ? parseFloat(s.balance || "0") : 0), 0);
@@ -99,6 +117,23 @@ export default function SuppliersContent({ initialSuppliers, initialHistory }: S
     const handleOpenRecharge = (supplier: Supplier) => {
         setSelectedSupplier(supplier);
         setIsRechargeModalOpen(true);
+    };
+
+    const handleMarkAsPaid = async (transactionId: number) => {
+        setIsProcessing(true);
+        try {
+            const res = await markTransactionAsPaidAction({ transactionId });
+            if (res.success) {
+                toast.success("Transaction marquée comme payée");
+                router.refresh();
+            } else {
+                toast.error(res.error || "Erreur lors de la mise à jour");
+            }
+        } catch (err) {
+            toast.error("Erreur réseau");
+        } finally {
+            setIsProcessing(false);
+        }
     };
 
     const handleOpenSettings = (supplier: Supplier) => {
@@ -211,34 +246,61 @@ export default function SuppliersContent({ initialSuppliers, initialHistory }: S
                     <>
                         {/* KPI Section */}
                         <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
-                            <Card className="bg-[#161616] border border-[#262626] shadow-sm">
-                                <CardBody className="p-6">
-                                    <div className="text-slate-400 text-xs font-black uppercase tracking-widest">Valeur Totale (DZD)</div>
-                                    <div className="text-2xl font-black mt-2 text-white">{formatCurrency(totalValeurDzd, 'DZD')}</div>
-                                </CardBody>
-                            </Card>
-                            <Card className="bg-[#161616] border border-[#262626] shadow-sm">
-                                <CardBody className="p-6">
-                                    <div className="text-slate-400 text-xs font-black uppercase tracking-widest">Capital USD (Brut)</div>
-                                    <div className="text-2xl font-black mt-2 text-white">{formatCurrency(totalSuppliedUsd, 'USD')}</div>
-                                </CardBody>
-                            </Card>
-                            <Card className="bg-[#161616] border border-[#262626] shadow-sm">
-                                <CardBody className="p-6">
-                                    <div className="text-slate-400 text-xs font-black uppercase tracking-widest">Taux de Change (Fixe)</div>
-                                    <div className="text-2xl font-black mt-2 text-[#ec5b13]">1 USD = {formatCurrency(EXCHANGE_RATE_USD_DZD, 'DZD')}</div>
-                                </CardBody>
-                            </Card>
-                            <Card className={`bg-[#161616] border ${alertsCount > 0 ? "border-red-500/50 shadow-[0_0_15px_rgba(239,68,68,0.2)]" : "border-[#262626]"} shadow-sm transition-all duration-500`}>
-                                <CardBody className="p-6 flex flex-row items-start justify-between">
-                                    <div>
-                                        <div className="text-slate-400 text-xs font-black uppercase tracking-widest">Alertes</div>
-                                        <div className={`text-2xl font-black mt-2 ${alertsCount > 0 ? "text-red-500" : "text-emerald-500"}`}>
-                                            {alertsCount} {alertsCount <= 1 ? "Critique" : "Critiques"}
-                                        </div>
+                            <Card className="bg-[#161616] border border-[#262626] shadow-sm overflow-hidden group">
+                                <CardBody className="p-6 relative">
+                                    <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+                                        <Landmark className="w-12 h-12 text-white" />
                                     </div>
-                                    <div className={`p-2 rounded-lg ${alertsCount > 0 ? "bg-red-500/10 text-red-500 animate-pulse" : "bg-emerald-500/10 text-emerald-500"}`}>
-                                        <AlertTriangle className="w-6 h-6 shrink-0" />
+                                    <div className="text-slate-400 text-[10px] font-black uppercase tracking-[0.2em]">Valeur Stock (DZD)</div>
+                                    <div className="text-2xl font-black mt-2 text-white">{formatCurrency(totalValeurDzd, 'DZD')}</div>
+                                    <div className="mt-2 flex items-center gap-1.5">
+                                        <span className="text-[10px] px-2 py-0.5 bg-white/5 rounded-full text-slate-500 font-bold border border-white/5">
+                                            Cap. Brut: {formatCurrency(totalSuppliedUsd, 'USD')}
+                                        </span>
+                                    </div>
+                                </CardBody>
+                            </Card>
+
+                            <Card className="bg-[#161616] border border-[#262626] shadow-sm overflow-hidden group">
+                                <CardBody className="p-6 relative">
+                                    <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+                                        <Banknote className="w-12 h-12 text-emerald-500" />
+                                    </div>
+                                    <div className="text-slate-400 text-[10px] font-black uppercase tracking-[0.2em]">Total Payé (DZD)</div>
+                                    <div className="text-2xl font-black mt-2 text-emerald-500">{formatCurrency(stats.totalPaidDzd, 'DZD')}</div>
+                                    <div className="mt-2 flex items-center gap-1">
+                                        <ShieldCheck className="w-3 h-3 text-emerald-500/50" />
+                                        <span className="text-[10px] text-emerald-500/50 font-bold">Flux sécurisé</span>
+                                    </div>
+                                </CardBody>
+                            </Card>
+
+                            <Card className={`bg-[#161616] border ${parseFloat(stats.totalUnpaidDzd) > 0 ? "border-orange-500/50" : "border-[#262626]"} shadow-sm overflow-hidden group transition-all duration-500`}>
+                                <CardBody className="p-6 relative">
+                                    <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+                                        <Clock className="w-12 h-12 text-orange-500" />
+                                    </div>
+                                    <div className="text-slate-400 text-[10px] font-black uppercase tracking-[0.2em]">Dettes Fournisseurs</div>
+                                    <div className={`text-2xl font-black mt-2 ${parseFloat(stats.totalUnpaidDzd) > 0 ? "text-orange-500" : "text-slate-500"}`}>
+                                        {formatCurrency(stats.totalUnpaidDzd, 'DZD')}
+                                    </div>
+                                    <div className="mt-2 flex items-center gap-1.5">
+                                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-black uppercase tracking-tighter ${parseFloat(stats.totalUnpaidDzd) > 0 ? "bg-orange-500/10 text-orange-500 animate-pulse" : "bg-white/5 text-slate-600"}`}>
+                                            {parseFloat(stats.totalUnpaidDzd) > 0 ? "Paiements En Attente" : "Aucune Dette"}
+                                        </span>
+                                    </div>
+                                </CardBody>
+                            </Card>
+
+                            <Card className="bg-[#161616] border border-[#ec5b13]/20 shadow-[0_0_20px_rgba(236,91,19,0.05)] overflow-hidden group">
+                                <CardBody className="p-6 relative">
+                                    <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+                                        <TrendingUp className="w-12 h-12 text-[#ec5b13]" />
+                                    </div>
+                                    <div className="text-slate-400 text-[10px] font-black uppercase tracking-[0.2em]">Profit Net Estimé</div>
+                                    <div className="text-2xl font-black mt-2 text-[#ec5b13]">{formatCurrency(stats.netProfit, 'DZD')}</div>
+                                    <div className="mt-2 flex items-center gap-1">
+                                        <span className="text-[10px] text-[#ec5b13]/50 font-bold uppercase tracking-tight">Marge brute calculée</span>
                                     </div>
                                 </CardBody>
                             </Card>
@@ -414,26 +476,28 @@ export default function SuppliersContent({ initialSuppliers, initialHistory }: S
                                             <th className="px-6 py-4">Fournisseur</th>
                                             <th className="px-6 py-4 text-right">Montant</th>
                                             <th className="px-6 py-4 text-center">Type</th>
+                                            <th className="px-6 py-4 text-center">Paiement</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-[#262626]">
                                         {filteredHistory.length === 0 ? (
                                             <tr>
-                                                <td colSpan={5} className="px-6 py-12 text-center text-slate-500 font-bold uppercase tracking-widest text-xs">
+                                                <td colSpan={6} className="px-6 py-12 text-center text-slate-500 font-bold uppercase tracking-widest text-xs">
                                                     Aucune transaction trouvée
                                                 </td>
                                             </tr>
                                         ) : filteredHistory.map((h) => {
                                             const isDebit = h.type === "DEBIT" || h.type === "ACHAT_STOCK";
+                                            const isUnpaid = h.type === "RECHARGE" && h.paymentStatus === "UNPAID";
                                             return (
                                                 <tr key={h.id} className="hover:bg-white/[0.02] transition-colors group">
-                                                    <td className="px-6 py-4 text-xs text-slate-400 font-bold">
+                                                    <td className="px-6 py-4 text-xs text-slate-400 font-bold whitespace-nowrap">
                                                         {new Date(h.createdAt).toLocaleDateString("fr-FR", { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
                                                     </td>
                                                     <td className="px-6 py-4">
                                                         <div className="flex flex-col">
                                                             <span className="text-sm font-black text-white uppercase tracking-tight truncate max-w-[250px]">
-                                                                {h.reason || h.type}
+                                                                {h.reason || (h.type === "RECHARGE" ? "Réapprovisionnement" : h.type)}
                                                             </span>
                                                             <span className="text-[10px] text-slate-500 font-black uppercase tracking-widest mt-0.5 opacity-50">#{h.id}</span>
                                                         </div>
@@ -449,13 +513,49 @@ export default function SuppliersContent({ initialSuppliers, initialHistory }: S
                                                         </div>
                                                     </td>
                                                     <td className={`px-6 py-4 text-sm font-black text-right whitespace-nowrap ${isDebit ? 'text-red-500' : 'text-emerald-500'}`}>
-                                                        {isDebit ? '-' : '+'}
-                                                        {formatCurrency(h.amount, h.currency as any)}
+                                                        <div className="flex flex-col items-end">
+                                                            <span>{isDebit ? '-' : '+'}{formatCurrency(h.amount, h.currency as any)}</span>
+                                                            {h.exchangeRate && h.currency === 'USD' && (
+                                                                <span className="text-[9px] text-slate-500 font-bold mt-1 bg-white/5 px-1.5 py-0.5 rounded">
+                                                                    1$ = {h.exchangeRate} DZD
+                                                                </span>
+                                                            )}
+                                                        </div>
                                                     </td>
                                                     <td className="px-6 py-4 text-center">
-                                                        <Chip size="sm" variant="flat" className={`font-black uppercase text-[9px] tracking-widest ${!isDebit ? "bg-emerald-500/10 text-emerald-500" : "bg-red-500/10 text-red-500"}`}>
+                                                        <Chip size="sm" variant="flat" className={`font-black uppercase text-[9px] tracking-widest border-none ${!isDebit ? "bg-emerald-500/10 text-emerald-500" : "bg-red-500/10 text-red-500"}`}>
                                                             {h.type}
                                                         </Chip>
+                                                    </td>
+                                                    <td className="px-6 py-4 text-center">
+                                                        {h.type === "RECHARGE" ? (
+                                                            <div className="flex justify-center">
+                                                                {h.paymentStatus === "PAID" ? (
+                                                                    <Tooltip content={h.paidAt ? `Payé le ${new Date(h.paidAt).toLocaleDateString()}` : "Déjà payé"}>
+                                                                        <Chip
+                                                                            size="sm"
+                                                                            startContent={<ShieldCheck size={12} />}
+                                                                            className="bg-emerald-500/10 text-emerald-500 text-[10px] font-black uppercase border-none h-6"
+                                                                        >
+                                                                            Payé
+                                                                        </Chip>
+                                                                    </Tooltip>
+                                                                ) : (
+                                                                    <Button
+                                                                        size="sm"
+                                                                        variant="solid"
+                                                                        color="warning"
+                                                                        isLoading={isProcessing}
+                                                                        onPress={() => handleMarkAsPaid(h.id)}
+                                                                        className="h-7 min-w-unit-0 px-3 text-[10px] font-black uppercase rounded-lg shadow-lg shadow-orange-500/20"
+                                                                    >
+                                                                        Marquer Payé
+                                                                    </Button>
+                                                                )}
+                                                            </div>
+                                                        ) : (
+                                                            <span className="text-[10px] text-slate-600 font-bold uppercase tracking-widest">N/A</span>
+                                                        )}
                                                     </td>
                                                 </tr>
                                             );

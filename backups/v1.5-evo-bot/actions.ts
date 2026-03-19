@@ -88,7 +88,6 @@ export const saveShopSettingsAction = withAuth(
             whatsappApiUrl: z.string().nullable().optional(),
             whatsappApiKey: z.string().nullable().optional(),
             whatsappInstanceName: z.string().nullable().optional(),
-            usdExchangeRate: z.string().optional(),
         })
     },
     async (data, user) => {

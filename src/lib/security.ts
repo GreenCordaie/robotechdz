@@ -44,12 +44,6 @@ export async function getAuthenticatedUser() {
 
     if (!user) return null;
 
-    // Inactivity Check (2 hours)
-    const TWO_HOURS_MS = 2 * 60 * 60 * 1000;
-    if (user.lastActiveAt && (Date.now() - new Date(user.lastActiveAt).getTime() > TWO_HOURS_MS)) {
-        return null; // Force unauthorized
-    }
-
     return user;
 }
 
@@ -124,6 +118,11 @@ export function withAuth<T extends z.ZodType, R>(
             // 1. Authentication Check
             const user = await getAuthenticatedUser();
             if (!user) {
+                const session = await getSession();
+                console.warn("🔐 Auth Failed:", {
+                    hasSession: !!session,
+                    reason: session ? "User not found in DB" : "No session cookie"
+                });
                 throw new UnauthorizedError("Session expirée ou invalide");
             }
 

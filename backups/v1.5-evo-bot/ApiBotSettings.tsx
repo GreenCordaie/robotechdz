@@ -20,8 +20,7 @@ import {
     ShieldCheck,
     Info,
     Smartphone,
-    Globe,
-    CircleDollarSign
+    Globe
 } from "lucide-react";
 import { Card, CardBody, Button, Spinner, Input, Textarea, Switch } from "@heroui/react";
 import { toast } from "react-hot-toast";
@@ -61,7 +60,6 @@ export function ApiBotSettings() {
     const [chatbotGreeting, setChatbotGreeting] = useState("");
     const [geminiKey, setGeminiKey] = useState("");
     const [chatbotRole, setChatbotRole] = useState("");
-    const [usdRate, setUsdRate] = useState("245.00");
     const [isActivatingWebhook, setIsActivatingWebhook] = useState(false);
 
     // FAQ State
@@ -132,7 +130,6 @@ export function ApiBotSettings() {
                 setChatbotGreeting(s.chatbotGreeting || "");
                 setGeminiKey(s.geminiApiKey || "");
                 setChatbotRole(s.chatbotRole || "");
-                setUsdRate(s.usdExchangeRate || "245.00");
             }
         } catch (err) {
             toast.error("Erreur chargement paramètres");
@@ -162,7 +159,6 @@ export function ApiBotSettings() {
                 chatbotGreeting,
                 geminiApiKey: geminiKey,
                 chatbotRole,
-                usdExchangeRate: usdRate,
                 shopName: "FLEXBOX DIRECT",
             } as any);
 
@@ -325,20 +321,6 @@ export function ApiBotSettings() {
                                                 className="dark"
                                                 startContent={<Key size={16} className="text-slate-500" />}
                                             />
-                                        </div>
-
-                                        <div className="space-y-2">
-                                            <label className="text-[10px] font-black uppercase tracking-widest text-[#ec5b13] ml-1">Taux de Change (USD ➔ DZD)</label>
-                                            <Input
-                                                value={usdRate}
-                                                onValueChange={setUsdRate}
-                                                placeholder="245.00"
-                                                variant="bordered"
-                                                className="dark"
-                                                startContent={<CircleDollarSign size={16} className="text-[#ec5b13]" />}
-                                                endContent={<span className="text-[10px] font-black text-slate-500">DZD</span>}
-                                            />
-                                            <p className="text-[9px] text-slate-500 italic mt-1 ml-1">Ce taux est utilisé pour les calculs de profit et les balances fournisseurs.</p>
                                         </div>
 
                                         <div className="space-y-4 md:col-span-2 p-6 bg-blue-500/5 border border-blue-500/10 rounded-3xl">

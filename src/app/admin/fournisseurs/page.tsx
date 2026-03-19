@@ -1,12 +1,15 @@
-import { getSuppliersAction, getSupplierHistoryAction } from "./actions";
+import { getSuppliersAction, getSupplierHistoryAction, getSupplierStatsAction } from "./actions";
 import SuppliersViewSwitcher from "./SuppliersViewSwitcher";
+import { getShopSettingsAction } from "../settings/actions";
 
 export const dynamic = "force-dynamic";
 
 export default async function FournisseursPage() {
-    const [suppliers, history]: any[] = await Promise.all([
+    const [suppliers, history, settings, stats]: any[] = await Promise.all([
         getSuppliersAction({}),
-        getSupplierHistoryAction({ supplierId: 0 })
+        getSupplierHistoryAction({ supplierId: 0 }),
+        getShopSettingsAction({}),
+        getSupplierStatsAction({})
     ]);
 
     if (suppliers.success === false || history.success === false) {
@@ -21,6 +24,8 @@ export default async function FournisseursPage() {
         <SuppliersViewSwitcher
             initialSuppliers={suppliers as any}
             initialHistory={history as any}
+            shopSettings={settings.success ? settings.data : null}
+            initialStats={stats.success ? stats.data : null}
         />
     );
 }

@@ -31,12 +31,16 @@ import { AddSupplierModal } from "@/components/admin/modals/AddSupplierModal";
 import { RechargeBalanceModal } from "@/components/admin/modals/RechargeBalanceModal";
 import { SupplierSettingsModal } from "@/components/admin/modals/SupplierSettingsModal";
 
-export default function SuppliersMobile({ initialSuppliers, initialHistory }: any) {
+import { markTransactionAsPaidAction } from "./actions";
+import toast from "react-hot-toast";
+
+export default function SuppliersMobile({ initialSuppliers, initialHistory, initialStats, shopSettings }: any) {
     const router = useRouter();
     const [suppliers, setSuppliers] = useState(initialSuppliers || []);
     const [history, setHistory] = useState(initialHistory || []);
     const [activeTab, setActiveTab] = useState("overview");
     const [searchTerm, setSearchTerm] = useState("");
+    const [isProcessing, setIsProcessing] = useState(false);
 
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
     const [isRechargeModalOpen, setIsRechargeModalOpen] = useState(false);
@@ -47,7 +51,8 @@ export default function SuppliersMobile({ initialSuppliers, initialHistory }: an
     const [searchHist, setSearchHist] = useState("");
     const [filterSupp, setFilterSupp] = useState("all");
 
-    const EXCHANGE_RATE_USD_DZD = 245;
+    const stats = initialStats || { totalPaidDzd: "0", totalUnpaidDzd: "0", netProfit: "0", exchangeRate: "245" };
+    const EXCHANGE_RATE_USD_DZD = parseFloat(stats.exchangeRate || "245");
 
     useEffect(() => {
         setSuppliers(initialSuppliers || []);
@@ -55,13 +60,30 @@ export default function SuppliersMobile({ initialSuppliers, initialHistory }: an
     }, [initialSuppliers, initialHistory]);
 
     useEffect(() => {
-        const interval = setInterval(() => router.refresh(), 3000);
+        const interval = setInterval(() => router.refresh(), 5000);
         return () => clearInterval(interval);
     }, [router]);
 
     const totalSuppliedUsd = suppliers.reduce((acc: number, s: any) => acc + (s.currency === 'USD' ? parseFloat(s.balance || "0") : 0), 0);
     const totalSuppliedDzd = suppliers.reduce((acc: number, s: any) => acc + (s.currency === 'DZD' ? parseFloat(s.balance || "0") : 0), 0);
     const totalValeurDzd = totalSuppliedDzd + (totalSuppliedUsd * EXCHANGE_RATE_USD_DZD);
+
+    const handleMarkAsPaid = async (transactionId: number) => {
+        setIsProcessing(true);
+        try {
+            const res = await markTransactionAsPaidAction({ transactionId });
+            if (res.success) {
+                toast.success("Payé !");
+                router.refresh();
+            } else {
+                toast.error(res.error || "Erreur");
+            }
+        } catch (err) {
+            toast.error("Erreur réseau");
+        } finally {
+            setIsProcessing(false);
+        }
+    };
 
     const filteredSuppliers = suppliers.filter((s: any) =>
         s.name.toLowerCase().includes(searchTerm.toLowerCase()) && s.status !== 'ARCHIVE'
@@ -134,13 +156,21 @@ export default function SuppliersMobile({ initialSuppliers, initialHistory }: an
 
             {/* Quick KPIs Summary */}
             <div className="p-4 grid grid-cols-2 gap-3">
-                <div className="p-4 bg-gradient-to-br from-primary/20 to-transparent border border-primary/20 rounded-[2rem] space-y-1">
-                    <p className="text-[8px] font-black uppercase text-primary/80">Valeur Stock</p>
-                    <p className="text-lg font-black">{formatCurrency(totalValeurDzd, 'DZD')}</p>
-                </div>
                 <div className="p-4 bg-white/5 border border-white/10 rounded-[2rem] space-y-1">
-                    <p className="text-[8px] font-black uppercase text-slate-500">Capital Brut</p>
-                    <p className="text-lg font-black">{formatCurrency(totalSuppliedUsd, 'USD')}</p>
+                    <p className="text-[8px] font-black uppercase text-slate-500 tracking-widest">Valeur Stock</p>
+                    <p className="text-base font-black truncate">{formatCurrency(totalValeurDzd, 'DZD')}</p>
+                </div>
+                <div className="p-4 bg-[#ec5b13]/10 border border-[#ec5b13]/20 rounded-[2rem] space-y-1 shadow-[0_0_15px_rgba(236,91,19,0.05)]">
+                    <p className="text-[8px] font-black uppercase text-[#ec5b13] tracking-widest">Profit Net</p>
+                    <p className="text-base font-black text-[#ec5b13] truncate">{formatCurrency(stats.netProfit, 'DZD')}</p>
+                </div>
+                <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-[2rem] space-y-1">
+                    <p className="text-[8px] font-black uppercase text-emerald-500 tracking-widest">Total Payé</p>
+                    <p className="text-base font-black text-emerald-500 truncate">{formatCurrency(stats.totalPaidDzd, 'DZD')}</p>
+                </div>
+                <div className={`p-4 ${parseFloat(stats.totalUnpaidDzd) > 0 ? 'bg-orange-500/10 border-orange-500/30 shadow-[0_0_15px_rgba(249,115,22,0.1)]' : 'bg-white/5 border-white/10'} rounded-[2rem] space-y-1 transition-all`}>
+                    <p className={`text-[8px] font-black uppercase tracking-widest ${parseFloat(stats.totalUnpaidDzd) > 0 ? 'text-orange-500 pulse' : 'text-slate-500'}`}>Dettes</p>
+                    <p className={`text-base font-black truncate ${parseFloat(stats.totalUnpaidDzd) > 0 ? 'text-orange-500' : 'text-slate-400'}`}>{formatCurrency(stats.totalUnpaidDzd, 'DZD')}</p>
                 </div>
             </div>
 
@@ -244,20 +274,51 @@ export default function SuppliersMobile({ initialSuppliers, initialHistory }: an
                             <div className="space-y-3">
                                 {filteredHistory.slice(0, 30).map((h: any) => {
                                     const isDebit = h.type === "DEBIT" || h.type === "ACHAT_STOCK";
+                                    const isUnpaid = h.type === "RECHARGE" && h.paymentStatus === "UNPAID";
+
                                     return (
-                                        <div key={h.id} className="p-4 bg-white/[0.02] border border-white/5 rounded-2xl flex justify-between items-center">
-                                            <div className="flex items-center gap-3">
-                                                <div className={`size-8 rounded-full flex items-center justify-center ${isDebit ? 'bg-red-500/10 text-red-500' : 'bg-emerald-500/10 text-emerald-500'}`}>
-                                                    {isDebit ? <ArrowUpCircle size={16} /> : <ArrowDownCircle size={16} />}
+                                        <div key={h.id} className={`p-4 ${isUnpaid ? 'bg-orange-500/5 border-orange-500/20' : 'bg-white/[0.02] border-white/5'} border rounded-2xl`}>
+                                            <div className="flex justify-between items-center mb-3">
+                                                <div className="flex items-center gap-3">
+                                                    <div className={`size-8 rounded-full flex items-center justify-center ${isDebit ? 'bg-red-500/10 text-red-500' : 'bg-emerald-500/10 text-emerald-500'}`}>
+                                                        {isDebit ? <ArrowUpCircle size={16} /> : <ArrowDownCircle size={16} />}
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-[10px] font-black uppercase text-white truncate max-w-[120px]">{h.reason || (h.type === "RECHARGE" ? "Fonds" : h.type)}</p>
+                                                        <p className="text-[8px] font-bold text-slate-600 uppercase">{new Date(h.createdAt).toLocaleDateString()} • {h.supplier.name}</p>
+                                                    </div>
                                                 </div>
-                                                <div>
-                                                    <p className="text-[10px] font-black uppercase text-white truncate max-w-[120px]">{h.reason || h.type}</p>
-                                                    <p className="text-[8px] font-bold text-slate-600 uppercase">{new Date(h.createdAt).toLocaleDateString()} {h.supplier.name}</p>
+                                                <div className="text-right">
+                                                    <p className={`text-sm font-black ${isDebit ? 'text-red-500' : 'text-emerald-500'}`}>
+                                                        {isDebit ? '-' : '+'}{formatCurrency(h.amount, h.currency as any)}
+                                                    </p>
                                                 </div>
                                             </div>
-                                            <p className={`text-xs font-black ${isDebit ? 'text-red-500' : 'text-emerald-500'}`}>
-                                                {isDebit ? '-' : '+'}{formatCurrency(h.amount, h.currency as any)}
-                                            </p>
+
+                                            {h.type === "RECHARGE" && (
+                                                <div className="pt-3 border-t border-white/5 flex items-center justify-between">
+                                                    <Chip
+                                                        size="sm"
+                                                        variant="flat"
+                                                        className={`h-5 text-[8px] font-black uppercase border-none ${h.paymentStatus === "PAID" ? "bg-emerald-500/10 text-emerald-500" : "bg-orange-500/10 text-orange-500"}`}
+                                                    >
+                                                        {h.paymentStatus === "PAID" ? "Payé" : "En Attente"}
+                                                    </Chip>
+
+                                                    {h.paymentStatus === "UNPAID" && (
+                                                        <Button
+                                                            size="sm"
+                                                            variant="solid"
+                                                            color="warning"
+                                                            isLoading={isProcessing}
+                                                            onPress={() => handleMarkAsPaid(h.id)}
+                                                            className="h-7 text-[8px] font-black uppercase rounded-lg px-4"
+                                                        >
+                                                            Marquer Payé
+                                                        </Button>
+                                                    )}
+                                                </div>
+                                            )}
                                         </div>
                                     );
                                 })}

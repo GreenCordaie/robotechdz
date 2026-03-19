@@ -84,9 +84,9 @@ async function updateConfigAndTelegram(url) {
 
         const currentSettings = settings[0];
 
-        // Update URL in DB
-        await sql`UPDATE shop_settings SET webhook_url = ${url} WHERE id = ${currentSettings.id}`;
-        console.log("✅ URL enregistrée dans la base de données (shop_settings).");
+        // Update URL and WhatsApp Webhook in DB
+        await sql`UPDATE shop_settings SET webhook_url = ${url}, whatsapp_webhook_url = ${url + '/api/webhooks/whatsapp'} WHERE id = ${currentSettings.id}`;
+        console.log("✅ URLs enregistrées dans la base de données (shop_settings).");
 
         // Format dates correctly for Telegram
         const now = new Date().toLocaleString('fr-FR');
@@ -124,6 +124,40 @@ async function updateConfigAndTelegram(url) {
             }
         } else {
             console.log("⚠️ Token ou Chat ID Telegram manquants. Configuration ignorée.");
+        }
+
+        // 🤖 C. WhatsApp Webhook (Evolution API)
+        const waUrl = (currentSettings.whatsapp_api_url || "http://127.0.0.1:3001").replace(/\/$/, '');
+        const waKey = currentSettings.whatsapp_api_key || "abc";
+        const waInstance = currentSettings.whatsapp_instance_name || "FLEXBOX_APP";
+        const waWebhook = `${url}/api/webhooks/whatsapp`;
+
+        if (waUrl && waInstance) {
+            console.log(`📡 Configuration WhatsApp : ${waInstance} -> ${waWebhook}`);
+            try {
+                // Windows fix: if local, use 127.0.0.1
+                const waRequestUrl = waUrl.includes('localhost') ? waUrl.replace('localhost', '127.0.0.1') : waUrl;
+
+                const waRes = await fetch(`${waRequestUrl}/webhook/instance/${waInstance}`, {
+                    method: 'POST',
+                    headers: { 'apikey': waKey, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        url: waWebhook,
+                        enabled: true,
+                        webhook_by_events: false,
+                        events: ["MESSAGES_UPSERT"]
+                    })
+                });
+
+                if (waRes.ok) {
+                    console.log("✅ Webhook WhatsApp (Evolution API) configuré avec succès !");
+                } else {
+                    const err = await waRes.json();
+                    console.error("❌ Erreur Webhook WhatsApp:", err);
+                }
+            } catch (waErr) {
+                console.error("❌ Impossible de joindre Evolution API pour le Webhook:", waErr.message);
+            }
         }
 
     } catch (e) {

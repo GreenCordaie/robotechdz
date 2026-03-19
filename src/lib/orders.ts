@@ -31,7 +31,10 @@ export async function allocateOrderStock(
     });
 
     let hasManualDelivery = false;
-    const EXCHANGE_RATE = 245;
+
+    // Fetch dynamic exchange rate
+    const settings = await tx.query.shopSettings.findFirst();
+    const EXCHANGE_RATE = settings?.usdExchangeRate ? parseFloat(settings.usdExchangeRate) : 245;
 
     for (const item of items) {
         let currentItemSlots: any[] = [];
@@ -168,6 +171,7 @@ export async function allocateOrderStock(
                     await tx.update(suppliers).set({ balance: sql`${suppliers.balance} - ${cost}` }).where(eq(suppliers.id, supplierId));
                     await tx.insert(supplierTransactions).values({
                         supplierId,
+                        orderId,
                         type: "ACHAT_STOCK",
                         amount: cost.toFixed(2),
                         currency: supplier.currency!,

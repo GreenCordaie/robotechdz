@@ -26,6 +26,7 @@ export const products = pgTable("products", {
     requiresPlayerId: boolean("requires_player_id").default(false).notNull(),
     isManualDelivery: boolean("is_manual_delivery").default(true).notNull(),
     status: text("status").default("ACTIVE").notNull(), // 'ACTIVE' or 'ARCHIVED'
+    tutorialText: text("tutorial_text"),
 }, (table) => {
     return {
         categoryIdIdx: index("products_category_id_idx").on(table.categoryId),
@@ -53,21 +54,6 @@ export const suppliers = pgTable("suppliers", {
     balance: numeric("balance", { precision: 12, scale: 2 }).default("0"),
     currency: text("currency").default("DZD"), // 'USD' or 'DZD'
     status: text("status").default("ACTIVE").notNull(), // 'ACTIVE' or 'INACTIVE'
-});
-
-export const supplierTransactions = pgTable("supplier_transactions", {
-    id: serial("id").primaryKey(),
-    supplierId: integer("supplier_id").references(() => suppliers.id, { onDelete: "cascade" }).notNull(),
-    type: text("type").notNull(), // 'RECHARGE' or 'DEBIT' (simplified as per request)
-    amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
-    currency: text("currency").notNull(), // 'DZD' or 'USD'
-    reason: text("reason"),
-    createdAt: timestamp("created_at", { mode: 'date' }).defaultNow().notNull(),
-}, (table) => {
-    return {
-        supplierIdIdx: index("st_supplier_id_idx").on(table.supplierId),
-        createdAtIdx: index("st_created_at_idx").on(table.createdAt),
-    };
 });
 
 export const clients = pgTable("clients", {
@@ -215,6 +201,40 @@ export const shopSettings = pgTable("shop_settings", {
     whatsappInstanceName: text("whatsapp_instance_name").default("FLEXBOX_BOT"),
     whatsappSenderNumber: text("whatsapp_sender_number"),
     whatsappMessageTemplate: text("whatsapp_message_template"),
+    chatbotEnabled: boolean("chatbot_enabled").default(false).notNull(),
+    chatbotGreeting: text("chatbot_greeting"),
+    whatsappWebhookUrl: text("whatsapp_webhook_url"),
+    whatsappVerifyToken: text("whatsapp_verify_token").default("flexbox_direct_webhook_secret"),
+    geminiApiKey: text("gemini_api_key"),
+    chatbotRole: text("chatbot_role"),
+    usdExchangeRate: numeric("usd_exchange_rate", { precision: 10, scale: 2 }).default("245.00").notNull(),
+});
+
+export const whatsappFaqs = pgTable("whatsapp_faqs", {
+    id: serial("id").primaryKey(),
+    question: text("question").notNull(),
+    answer: text("answer").notNull(),
+    createdAt: timestamp("created_at", { mode: 'date' }).defaultNow(),
+});
+
+export const supplierTransactions = pgTable("supplier_transactions", {
+    id: serial("id").primaryKey(),
+    supplierId: integer("supplier_id").references(() => suppliers.id, { onDelete: "cascade" }).notNull(),
+    orderId: integer("order_id").references(() => orders.id, { onDelete: "set null" }),
+    type: text("type").notNull(), // 'RECHARGE' or 'DEBIT' (simplified as per request)
+    amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
+    currency: text("currency").notNull(), // 'DZD' or 'USD'
+    reason: text("reason"),
+    paymentStatus: text("payment_status").default("PAID").notNull(), // 'PAID', 'UNPAID'
+    paidAt: timestamp("paid_at", { mode: 'date' }),
+    exchangeRate: numeric("exchange_rate", { precision: 10, scale: 2 }),
+    createdAt: timestamp("created_at", { mode: 'date' }).defaultNow().notNull(),
+}, (table) => {
+    return {
+        supplierIdIdx: index("st_supplier_id_idx").on(table.supplierId),
+        orderIdIdx: index("st_order_id_idx").on(table.orderId),
+        createdAtIdx: index("st_created_at_idx").on(table.createdAt),
+    };
 });
 
 export const resellers = pgTable("resellers", {
@@ -260,8 +280,8 @@ export const supportTickets = pgTable("support_tickets", {
     updatedAt: timestamp("updated_at", { mode: 'date' }).defaultNow(),
 }, (table) => {
     return {
-        orderIdIdx: index("st_order_id_idx").on(table.orderId),
-        statusIdx: index("st_status_idx").on(table.status),
+        orderIdIdx: index("spt_order_id_idx").on(table.orderId),
+        statusIdx: index("spt_status_idx").on(table.status),
     };
 });
 
