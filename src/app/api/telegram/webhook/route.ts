@@ -78,7 +78,7 @@ export async function POST(req: NextRequest) {
 
         try {
             await db.transaction(async (tx) => {
-                for (const item of order.items) {
+                for (const item of (order as any).items) {
                     const needed = item.quantity;
                     const forThisItem = codesFound.slice(codeIndex, codeIndex + needed);
 
@@ -130,10 +130,10 @@ export async function POST(req: NextRequest) {
                     if (finalOrder) {
                         let messageBody = `🎉 Merci pour votre achat !\nVoici votre commande ${finalOrder.orderNumber} :\n\n`;
 
-                        finalOrder.items.forEach(item => {
+                        (finalOrder as any).items.forEach((item: any) => {
                             if (item.codes && item.codes.length > 0) {
                                 messageBody += `🛒 *${item.name}* :\n`;
-                                item.codes.forEach(c => {
+                                item.codes.forEach((c: any) => {
                                     messageBody += `\`${c.code}\`\n`;
                                 });
                                 messageBody += `\n`;

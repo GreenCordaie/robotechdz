@@ -2,10 +2,11 @@
 
 import React, { useEffect, useState } from "react";
 import { AdminSidebar } from "@/components/admin/AdminSidebar";
-import { LockScreen } from "@/components/admin/LockScreen";
+import { MobileNavbar } from "@/components/admin/MobileNavbar";
 import { useAuthStore } from "@/store/useAuthStore";
 import { usePathname, useRouter } from "next/navigation";
 import { useSettingsStore } from "@/store/useSettingsStore";
+import { useIsMobile } from "@/hooks/useIsMobile";
 
 export default function AdminLayout({
     children,
@@ -17,6 +18,7 @@ export default function AdminLayout({
     const router = useRouter();
     const [isMounted, setIsMounted] = useState(false);
     const { shopName, faviconUrl, fetchSettings } = useSettingsStore();
+    const isMobile = useIsMobile();
 
     useEffect(() => {
         setIsMounted(true);
@@ -56,14 +58,23 @@ export default function AdminLayout({
     }
 
     return (
-        <div className="flex bg-black text-white min-h-screen dark">
-            {/* {isAuthenticated && <LockScreen />} */}
-            <AdminSidebar />
-            <main className="flex-1 h-screen overflow-y-auto scrollbar-hide bg-background-dark text-slate-100">
-                <div className="p-8 max-w-7xl mx-auto min-h-full">
+        <div className="flex flex-col md:flex-row bg-black text-white min-h-screen dark overflow-hidden">
+            {!isMobile && <AdminSidebar />}
+            {isMobile && (
+                <header className="h-14 border-b border-white/5 bg-[#0a0a0a]/80 backdrop-blur-md flex items-center justify-between px-6 shrink-0 z-50">
+                    <div className="font-black text-[#ec5b13] uppercase tracking-tighter text-sm">{shopName}</div>
+                    <div className="flex items-center gap-3">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                        <span className="text-[10px] font-bold text-slate-500 uppercase">Live</span>
+                    </div>
+                </header>
+            )}
+            <main className="flex-1 h-screen overflow-y-auto scrollbar-hide bg-background-dark text-slate-100 pb-20 md:pb-0">
+                <div className={`${isMobile ? 'p-4' : 'p-8'} max-w-7xl mx-auto min-h-full`}>
                     {children}
                 </div>
             </main>
+            {isMobile && <MobileNavbar />}
         </div>
     );
 }

@@ -4,6 +4,7 @@ import { users, auditLogs, shopSettings } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { headers } from "next/headers";
+import { cache } from "react";
 import { sendTelegramNotification } from "./telegram";
 
 export class UnauthorizedError extends Error {
@@ -12,6 +13,13 @@ export class UnauthorizedError extends Error {
         this.name = "UnauthorizedError";
     }
 }
+
+/**
+ * Cache shop settings for the duration of the request to avoid redundant DB queries.
+ */
+export const getCachedSettings = cache(async () => {
+    return await db.query.shopSettings.findFirst();
+});
 
 /**
  * Recharges the authenticated user from the database based on the session ID.
@@ -46,6 +54,24 @@ export async function getAuthenticatedUser() {
 }
 
 /**
+ * Sanitizes sensitive fields from log data objects.
+ */
+function sanitizeSensitiveData(data: any): any {
+    if (!data || typeof data !== "object") return data;
+    const sensitiveKeys = ["code", "password", "passwordHash", "pinCode", "secret", "twoFactorSecret", "mfaBackupCodes"];
+
+    const sanitized = { ...data };
+    for (const key of Object.keys(sanitized)) {
+        if (sensitiveKeys.some(sk => key.toLowerCase().includes(sk.toLowerCase()))) {
+            sanitized[key] = "[MASKED]";
+        } else if (typeof sanitized[key] === "object") {
+            sanitized[key] = sanitizeSensitiveData(sanitized[key]);
+        }
+    }
+    return sanitized;
+}
+
+/**
  * Logs a security or administrative action to the audit_logs table.
  */
 export async function logSecurityAction(params: {
@@ -66,8 +92,8 @@ export async function logSecurityAction(params: {
             action: params.action,
             entityType: params.entityType,
             entityId: params.entityId,
-            oldData: params.oldData,
-            newData: params.newData,
+            oldData: sanitizeSensitiveData(params.oldData),
+            newData: sanitizeSensitiveData(params.newData),
             ipAddress,
             userAgent,
         });
@@ -103,7 +129,7 @@ export function withAuth<T extends z.ZodType, R>(
 
             // 2. Maintenance Mode Check
             // Allow ADMIN to bypass maintenance mode
-            const settings = await db.query.shopSettings.findFirst();
+            const settings = await getCachedSettings();
             if (user.role !== "ADMIN") {
                 if (settings?.isMaintenanceMode) {
                     // Send alert for maintenance block
@@ -184,7 +210,7 @@ export function withAuth<T extends z.ZodType, R>(
 
         } catch (error: any) {
             console.error("Action Security Error:", error);
-            const message = error instanceof UnauthorizedError ? error.message : "Une erreur de sécurité est survenue";
+            const message = error instanceof UnauthorizedError ? error.message : `Une erreur de sécurité est survenue : ${error.message}`;
             return { success: false, error: message } as any;
         }
     };

@@ -10,6 +10,7 @@ import {
 } from "@/db/schema";
 import { eq, and, sql, inArray, exists } from "drizzle-orm";
 import { checkStockAndAlert } from "@/lib/stock-alerts";
+import { logSecurityAction } from "@/lib/security";
 
 type Transaction = any; // Drizzle transaction type depends on client, using any for broad compatibility
 
@@ -38,22 +39,28 @@ export async function allocateOrderStock(
         // 1. Digital Stock Allocation
         if (item.variant?.product?.isManualDelivery === false) {
             if (item.variant.isSharing) {
-                const availableSlots = await tx.query.digitalCodeSlots.findMany({
-                    where: (dcs: any, { and, eq, exists }: any) => and(
-                        eq(dcs.status, "DISPONIBLE"),
-                        exists(
-                            tx.select().from(digitalCodes)
-                                .where(and(
-                                    eq(digitalCodes.id, dcs.digitalCodeId),
-                                    eq(digitalCodes.variantId, item.variantId),
-                                    eq(digitalCodes.status, "DISPONIBLE")
-                                ))
-                        )
-                    ),
-                    with: { digitalCode: true },
-                    limit: item.quantity,
-                    orderBy: (dcs: any, { asc }: any) => [asc(dcs.digitalCodeId), asc(dcs.slotNumber)]
-                });
+                const availableSlots = await tx.select({
+                    id: digitalCodeSlots.id,
+                    digitalCodeId: digitalCodeSlots.digitalCodeId,
+                    slotNumber: digitalCodeSlots.slotNumber,
+                    status: digitalCodeSlots.status,
+                    digitalCode: {
+                        id: digitalCodes.id,
+                        code: digitalCodes.code,
+                        status: digitalCodes.status,
+                        variantId: digitalCodes.variantId
+                    }
+                })
+                    .from(digitalCodeSlots)
+                    .innerJoin(digitalCodes, eq(digitalCodes.id, digitalCodeSlots.digitalCodeId))
+                    .where(and(
+                        eq(digitalCodeSlots.status, "DISPONIBLE"),
+                        eq(digitalCodes.variantId, item.variantId),
+                        eq(digitalCodes.status, "DISPONIBLE")
+                    ))
+                    .orderBy(digitalCodeSlots.digitalCodeId, digitalCodeSlots.slotNumber)
+                    .limit(item.quantity)
+                    .for('update');
 
                 if (availableSlots.length < item.quantity) {
                     throw new Error(`Stock insuffisant pour ${item.name}`);
@@ -76,22 +83,32 @@ export async function allocateOrderStock(
                     }
                 }
             } else {
-                const availableCodes = await tx.query.digitalCodes.findMany({
-                    where: (dc: any, { and, eq }: any) => and(
-                        eq(dc.variantId, item.variantId),
-                        eq(dc.status, "DISPONIBLE")
-                    ),
-                    limit: item.quantity
-                });
+                const availableCodes = await tx.select()
+                    .from(digitalCodes)
+                    .where(and(
+                        eq(digitalCodes.variantId, item.variantId),
+                        eq(digitalCodes.status, "DISPONIBLE")
+                    ))
+                    .limit(item.quantity)
+                    .for('update');
 
                 if (availableCodes.length < item.quantity) {
                     throw new Error(`Stock insuffisant pour ${item.name}`);
                 }
 
-                const codeIds = availableCodes.map((c: any) => c.id);
+                const codeIds = availableCodes.map((c: any) => (c as any).id);
                 await tx.update(digitalCodes)
                     .set({ status: "VENDU", orderItemId: item.id })
                     .where(inArray(digitalCodes.id, codeIds));
+
+                // Audit: Stock movement
+                await logSecurityAction({
+                    userId: options.userId || null,
+                    action: "AUTO_STOCK_ALLOCATION",
+                    entityType: "ORDER_ITEM",
+                    entityId: item.id.toString(),
+                    newData: { variantId: item.variantId, quantity: item.quantity, codeIds }
+                });
             }
         } else {
             hasManualDelivery = true;
@@ -155,6 +172,15 @@ export async function allocateOrderStock(
                         amount: cost.toFixed(2),
                         currency: supplier.currency!,
                         reason: `Vente Automatique : ${item.name} (#${orderId})`
+                    });
+
+                    // Audit: Supplier Debit
+                    await logSecurityAction({
+                        userId: options.userId || null,
+                        action: "AUTO_SUPPLIER_DEBIT",
+                        entityType: "SUPPLIER",
+                        entityId: supplierId.toString(),
+                        newData: { amount: cost, currency: supplier.currency, orderId }
                     });
                 }
                 await tx.update(orderItems).set({ supplierId }).where(eq(orderItems.id, item.id));

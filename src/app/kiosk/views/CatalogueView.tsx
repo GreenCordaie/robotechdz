@@ -139,11 +139,29 @@ export default function CatalogueView({ products, categories }: CatalogueViewPro
                                         />
                                     )}
                                 </div>
-                                <div className="p-8 flex flex-col gap-2">
+                                <div className="p-8 flex flex-col gap-2 relative">
                                     <h3 className="text-2xl font-black text-black leading-tight uppercase tracking-tight">{product.name}</h3>
-                                    <p className="text-[#ec5b13] text-xl font-black mt-1">
-                                        À partir de {formatCurrency(Math.min(...product.variants.map((v: any) => Number(v.salePriceDzd))), 'DZD')}
-                                    </p>
+
+                                    <div className="flex items-center justify-between mt-1">
+                                        <p className="text-[#ec5b13] text-xl font-black">
+                                            À partir de {formatCurrency(Math.min(...product.variants.map((v: any) => Number(v.salePriceDzd))), 'DZD')}
+                                        </p>
+
+                                        {/* Stock Badge */}
+                                        {(() => {
+                                            const totalStock = product.variants.reduce((acc: number, v: any) => acc + (v.stockCount || 0), 0);
+                                            return totalStock > 0 ? (
+                                                <div className="px-3 py-1 bg-emerald-50 text-[10px] font-black text-emerald-600 rounded-full border border-emerald-100 flex items-center gap-1.5 uppercase tracking-wider">
+                                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse" />
+                                                    Dispo
+                                                </div>
+                                            ) : (
+                                                <div className="px-3 py-1 bg-rose-50 text-[10px] font-black text-rose-600 rounded-full border border-rose-100 uppercase tracking-wider">
+                                                    Rupture
+                                                </div>
+                                            );
+                                        })()}
+                                    </div>
                                 </div>
                             </div>
                         ))}

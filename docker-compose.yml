@@ -19,5 +19,18 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
+  whatsapp:
+    image: atendai/evolution-api:v1.8.2
+    ports:
+      - "3001:8080"
+    environment:
+      - API_KEY=abc
+      - AUTHENTICATION_API_KEY=abc
+      - AUTHENTICATION_TYPE=apikey
+      - AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES=true
+    volumes:
+      - evo_data:/evolution
+
 volumes:
   postgres_data:
+  evo_data:

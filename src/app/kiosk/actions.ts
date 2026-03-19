@@ -1,9 +1,9 @@
 "use server";
 
 import { db } from "@/db";
-import { orders, orderItems, productVariants, supportTickets, digitalCodes, products } from "@/db/schema";
+import { orders, orderItems, productVariants, supportTickets, digitalCodes, products, digitalCodeSlots } from "@/db/schema";
 import { revalidatePath } from "next/cache";
-import { sql, eq, and, count } from "drizzle-orm";
+import { sql, eq, and, count, exists } from "drizzle-orm";
 import { sendTelegramNotification } from "@/lib/telegram";
 
 export async function createKioskOrder(
@@ -15,7 +15,7 @@ export async function createKioskOrder(
     // 1. Recalculate Short Order ID
     const countResult = await db.select({ count: sql`count(*)` }).from(orders);
     const count = (Number(countResult[0]?.count || 0) % 999) + 1;
-    const orderNumber = `#C${count}`;
+    const orderNumber = `#C${count}-${Date.now().toString().slice(-3)}`;
 
     try {
         const newOrder = await db.transaction(async (tx) => {
@@ -24,7 +24,12 @@ export async function createKioskOrder(
 
             for (const item of items) {
                 const variant = await tx.query.productVariants.findFirst({
-                    where: (v, { eq }) => eq(v.id, item.variantId)
+                    where: (v, { eq }) => eq(v.id, item.variantId),
+                    with: {
+                        variantSuppliers: {
+                            limit: 1
+                        }
+                    }
                 });
 
                 if (!variant) throw new Error("Variante introuvable");
@@ -32,11 +37,16 @@ export async function createKioskOrder(
                 const itemTotal = parseFloat(variant.salePriceDzd) * item.quantity;
                 realTotalAmount += itemTotal;
 
+                const supplierInfo = variant.variantSuppliers?.[0];
+
                 secureItems.push({
                     variantId: item.variantId,
-                    name: variant.name, // Use DB name
+                    name: variant.name,
                     price: variant.salePriceDzd,
                     quantity: item.quantity,
+                    supplierId: supplierInfo?.supplierId || null,
+                    purchasePrice: supplierInfo?.purchasePrice || null,
+                    purchaseCurrency: supplierInfo?.currency || null,
                     customData: item.customData,
                     playerNickname: item.playerNickname
                 });
@@ -59,15 +69,22 @@ export async function createKioskOrder(
 
         revalidatePath("/admin/caisse");
 
-        // Telegram Notification
+        console.log(`[KIOSK] Order created: ${orderNumber}. Notifying admins...`);
+
+        // Telegram Notification (Non-blocking)
         const itemsMsg = items.map(i => `• ${i.name} (x${i.quantity})`).join("\n");
         const msg = `📦 *Nouvelle Commande : ${orderNumber}*\n💰 *Total* : ${(newOrder as any).verifiedTotal.toLocaleString()} DZD\n🛒 *Articles* :\n${itemsMsg}`;
-        await sendTelegramNotification(msg, ['ADMIN', 'CAISSIER']);
+
+        // Fire and forget, don't block the client
+        sendTelegramNotification(msg, ['ADMIN', 'CAISSIER']).catch(err =>
+            console.error("[KIOSK] Telegram notification failed:", err)
+        );
 
         return newOrder;
     } catch (error) {
         console.error("Kiosk order failed:", error);
-        throw new Error("Échec de la commande");
+        const errorMessage = error instanceof Error ? error.message : "Erreur inconnue";
+        throw new Error(`Échec de la commande: ${errorMessage}`);
     }
 }
 
@@ -84,16 +101,41 @@ export async function getKioskData() {
         }
     });
 
-    // Separately fetch counts to avoid large complex joins that might leak data
-    const stockCounts = await db.select({
+    // Separately fetch counts for STANDARD codes
+    const standardStockCounts = await db.select({
         variantId: digitalCodes.variantId,
         count: count()
     })
         .from(digitalCodes)
-        .where(eq(digitalCodes.status, "DISPONIBLE"))
+        .where(and(
+            eq(digitalCodes.status, "DISPONIBLE"),
+            exists(
+                db.select().from(productVariants)
+                    .where(and(
+                        eq(productVariants.id, digitalCodes.variantId),
+                        eq(productVariants.isSharing, false)
+                    ))
+            )
+        ))
         .groupBy(digitalCodes.variantId);
 
-    const stockMap = new Map(stockCounts.map(s => [s.variantId, s.count]));
+    // Separately fetch counts for SHARING slots
+    const sharingStockCounts = await db.select({
+        variantId: productVariants.id,
+        count: count(digitalCodeSlots.id)
+    })
+        .from(digitalCodeSlots)
+        .innerJoin(digitalCodes, eq(digitalCodeSlots.digitalCodeId, digitalCodes.id))
+        .innerJoin(productVariants, eq(digitalCodes.variantId, productVariants.id))
+        .where(and(
+            eq(digitalCodeSlots.status, "DISPONIBLE"),
+            eq(digitalCodes.status, "DISPONIBLE"),
+            eq(productVariants.isSharing, true)
+        ))
+        .groupBy(productVariants.id);
+
+    const standardMap = new Map(standardStockCounts.map(s => [s.variantId, s.count]));
+    const sharingMap = new Map(sharingStockCounts.map(s => [s.variantId, s.count]));
 
     // Reassemble safe data
     const safeProducts = productsList.map(p => ({
@@ -104,7 +146,7 @@ export async function getKioskData() {
             salePriceDzd: v.salePriceDzd,
             isSharing: v.isSharing,
             totalSlots: v.totalSlots,
-            stockCount: stockMap.get(v.id) || 0
+            stockCount: v.isSharing ? (sharingMap.get(v.id) || 0) : (standardMap.get(v.id) || 0)
         }))
     }));
 

@@ -10,7 +10,7 @@ import {
     users,
     productVariants
 } from "@/db/schema";
-import { eq, desc, and, inArray } from "drizzle-orm";
+import { eq, desc, and, inArray, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { withAuth } from "@/lib/security";
 import { z } from "zod";
@@ -97,7 +97,12 @@ export const checkoutResellerAction = withAuth(
             // HARDENING: Recalculate prices server-side to prevent client-side manipulation
             const variantIds = cart.map(item => item.id);
             const dbVariants = await db.query.productVariants.findMany({
-                where: inArray(productVariants.id, variantIds)
+                where: inArray(productVariants.id, variantIds),
+                with: {
+                    variantSuppliers: {
+                        limit: 1
+                    }
+                }
             });
 
             const variantMap = new Map(dbVariants.map(v => [v.id, v]));
@@ -107,17 +112,39 @@ export const checkoutResellerAction = withAuth(
                 if (!variant) throw new Error(`Variante ${item.id} introuvable`);
                 const priceNum = parseFloat(variant.salePriceDzd);
                 totalAmount += priceNum * item.quantity;
-                return { ...item, name: variant.name, price: priceNum };
+
+                const supplierInfo = variant.variantSuppliers?.[0];
+
+                return {
+                    ...item,
+                    name: variant.name,
+                    price: priceNum,
+                    supplierId: supplierInfo?.supplierId || null,
+                    purchasePrice: supplierInfo?.purchasePrice || null,
+                    purchaseCurrency: supplierInfo?.currency || null
+                };
             });
 
-            const wallet = reseller.wallet;
-            if (!wallet || parseFloat(wallet.balance || "0") < totalAmount) {
-                return { success: false, error: "Solde insuffisant" };
-            }
-
             const orderNumber = `B2B-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+            const userId = user.id;
 
             return await db.transaction(async (tx) => {
+                // 1. RE-FETCH Wallet inside transaction with FOR UPDATE lock
+                const lockedReseller = await tx.query.resellers.findFirst({
+                    where: and(eq(resellers.id, resellerId), eq(resellers.userId, userId)),
+                    with: { wallet: true }
+                });
+
+                if (!lockedReseller || !lockedReseller.wallet) {
+                    throw new Error("Portefeuille introuvable");
+                }
+
+                const currentBalance = parseFloat(lockedReseller.wallet.balance || "0");
+                if (currentBalance < totalAmount) {
+                    throw new Error("Solde insuffisant (Concurrence bloquée)");
+                }
+
+                // 2. Insert Order
                 const [newOrder] = await tx.insert(orders).values({
                     orderNumber,
                     status: "PAYE",
@@ -129,7 +156,7 @@ export const checkoutResellerAction = withAuth(
                     deliveryMethod: "TICKET",
                 }).returning();
 
-                // 2. Insert Items Correctly
+                // 3. Insert Items
                 for (const item of enrichedCart) {
                     await tx.insert(orderItems).values({
                         orderId: newOrder.id,
@@ -137,25 +164,28 @@ export const checkoutResellerAction = withAuth(
                         name: item.name,
                         price: item.price.toString(),
                         quantity: item.quantity,
+                        supplierId: item.supplierId,
+                        purchasePrice: item.purchasePrice,
+                        purchaseCurrency: item.purchaseCurrency
                     });
                 }
 
-                // 3. Centralized Allocation (Stock & Supplier Debit)
+                // 4. Centralized Allocation
                 await allocateOrderStock(tx, newOrder.id, {
-                    userId: user.id
+                    userId: userId
                 });
 
-                // 4. Wallet Update
+                // 5. ATOMIC Wallet Update
                 await tx.update(resellerWallets)
                     .set({
-                        balance: (parseFloat(wallet.balance!) - totalAmount).toString(),
-                        totalSpent: (parseFloat(wallet.totalSpent || "0") + totalAmount).toString(),
+                        balance: sql`${resellerWallets.balance} - ${totalAmount}`,
+                        totalSpent: sql`${resellerWallets.totalSpent} + ${totalAmount}`,
                         updatedAt: new Date()
                     })
-                    .where(eq(resellerWallets.id, wallet.id));
+                    .where(eq(resellerWallets.id, lockedReseller.wallet.id));
 
                 await tx.insert(resellerTransactions).values({
-                    walletId: wallet.id,
+                    walletId: lockedReseller.wallet.id,
                     type: "PURCHASE",
                     amount: totalAmount.toString(),
                     orderId: newOrder.id,

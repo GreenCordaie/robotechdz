@@ -1,6 +1,8 @@
 import { sendWhatsAppMessage } from "@/lib/whatsapp";
 import { db } from "@/db";
 import { decrypt } from "@/lib/encryption";
+import { orders } from "@/db/schema";
+import { eq } from "drizzle-orm";
 
 export async function triggerOrderDelivery(orderId: number) {
     const order = await db.query.orders.findFirst({
@@ -19,45 +21,78 @@ export async function triggerOrderDelivery(orderId: number) {
         }
     });
 
-    if (!order || order.deliveryMethod !== 'WHATSAPP' || !order.customerPhone) {
+    if (!order) {
+        console.warn(`[WA-DELIVERY] Order #${orderId} not found in DB`);
+        return;
+    }
+
+    if (order.deliveryMethod !== 'WHATSAPP') {
+        console.log(`[WA-DELIVERY] Order #${orderId} skipped: delivery method is ${order.deliveryMethod}`);
+        return;
+    }
+
+    if (!order.customerPhone) {
+        console.warn(`[WA-DELIVERY] Order #${orderId} skipped: no customer phone`);
         return;
     }
 
     const settings = await db.query.shopSettings.findFirst();
-    if (!settings?.whatsappToken || !settings?.whatsappPhoneId) {
+    if (!settings?.whatsappApiUrl) {
+        console.warn(`[WA-DELIVERY] WhatsApp API URL missing in settings`);
         return;
     }
 
-    let messageBody = `🎉 Merci pour votre achat !\nVoici votre commande ${order.orderNumber} :\n\n`;
+    let itemsText = "";
 
     (order as any).items.forEach((item: any) => {
-        const standardCodes = (item.codes || []).map((c: any) => decrypt(c.code));
+        const standardCodes = (item.codes || []).map((c: any) => decrypt(c.code)).filter(Boolean);
         const slotCodes = (item.slots || []).map((s: any) => {
-            const [email, pass] = decrypt(s.digitalCode.code).split(' | ');
-            const base = `Compte: ${email} | Pass: ${pass} | Profil: ${s.profileName || `Profil ${s.slotNumber}`}`;
-            return s.code ? `${base} | PIN: ${decrypt(s.code)}` : base;
+            const parentCode = decrypt(s.digitalCode.code);
+            const slotPin = s.code ? decrypt(s.code) : null;
+            return {
+                parentCode,
+                slotNumber: s.slotNumber,
+                pin: slotPin
+            };
         });
-        const allCodes = [...standardCodes, ...slotCodes];
 
-        if (allCodes.length > 0) {
-            messageBody += `🛒 *${item.name}* :\n`;
-            if (item.customData) messageBody += `🆔 ID/LIEN: *${item.customData}*\n`;
-            if (item.playerNickname) messageBody += `👤 Pseudo: *${item.playerNickname}*\n`;
-
-            allCodes.forEach(c => {
-                messageBody += `\`${c}\`\n`;
+        if (standardCodes.length > 0) {
+            standardCodes.forEach((code: string) => {
+                itemsText += `Produit : ${item.name}\nAccès : *${code}*\n\n`;
             });
-            messageBody += `\n`;
+        }
+
+        if (slotCodes.length > 0) {
+            slotCodes.forEach((slot: any) => {
+                itemsText += `Produit : ${item.name}\nAccès : *${slot.parentCode}*\nProfil : ${slot.slotNumber}${slot.pin ? ` | PIN : ${slot.pin}` : ""}\n\n`;
+            });
         }
     });
 
+    const fallbackTemplate = `*FLEXBOX DIRECT - Livraison Automatique*\nMerci pour votre confiance {{customer}} !\n\nVoici vos accès :\n{{items}}\n\n_Service client : t.me/FlexboxDirect_`;
+
+    let messageBody = settings.whatsappMessageTemplate || fallbackTemplate;
+
+    // Template Replacements
+    messageBody = messageBody.replace(/{{items}}/g, itemsText.trim());
+    messageBody = messageBody.replace(/{{orderId}}/g, order.orderNumber);
+    messageBody = messageBody.replace(/{{customer}}/g, order.customerPhone || "Client");
+    messageBody = messageBody.replace(/{{shopName}}/g, settings.shopName || "FLEXBOX DIRECT");
 
     try {
-        await sendWhatsAppMessage(order.customerPhone, messageBody, {
-            whatsappToken: settings.whatsappToken,
-            whatsappPhoneId: settings.whatsappPhoneId
+        const res = await sendWhatsAppMessage(order.customerPhone, messageBody, {
+            whatsappApiUrl: settings.whatsappApiUrl,
+            whatsappApiKey: settings.whatsappApiKey || undefined,
+            whatsappInstanceName: settings.whatsappInstanceName || undefined
         });
-        return { success: true };
+
+        if (res.success) {
+            await db.update(orders)
+                .set({ whatsappSentAt: new Date() })
+                .where(eq(orders.id, orderId));
+        }
+
+        return res;
     } catch (error) {
         console.error("WhatsApp Delivery Failed:", error);
         return { success: false, error };

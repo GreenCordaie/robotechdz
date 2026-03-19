@@ -1,7 +1,7 @@
 import React from "react";
 import { db } from "@/db";
 import { getPaginatedProducts } from "./actions";
-import CatalogueContent from "@/components/admin/CatalogueContent";
+import CatalogueViewSwitcher from "./CatalogueViewSwitcher";
 
 export const dynamic = "force-dynamic";
 
@@ -40,7 +40,7 @@ export default async function CataloguePage({
     const { products, total, totalPages } = result;
 
     return (
-        <CatalogueContent
+        <CatalogueViewSwitcher
             initialProducts={products}
             suppliers={allSuppliers}
             categories={allCategories}

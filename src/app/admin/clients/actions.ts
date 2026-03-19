@@ -49,17 +49,16 @@ export const recordPayment = withAuth(
                 const client = await tx.query.clients.findFirst({ where: eq(clients.id, data.clientId) });
                 if (!client) throw new Error("Client introuvable");
 
-                const currentDette = parseFloat(client.totalDetteDzd || "0");
-                const paymentAmount = parseFloat(data.amount);
-                const newDette = Math.max(0, currentDette - paymentAmount).toString();
-
                 await tx.insert(clientPayments).values({
                     clientId: data.clientId,
                     montantDzd: data.amount,
                     typeAction: data.typeAction,
                 });
 
-                await tx.update(clients).set({ totalDetteDzd: newDette }).where(eq(clients.id, data.clientId));
+                // ATOMIC Update: SQL-level decrement to prevent lost updates
+                await tx.update(clients)
+                    .set({ totalDetteDzd: sql`GREATEST(0, cast(total_dette_dzd as decimal) - ${data.amount})::text` })
+                    .where(eq(clients.id, data.clientId));
             });
 
             revalidatePath("/admin/clients");

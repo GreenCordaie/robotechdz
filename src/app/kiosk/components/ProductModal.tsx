@@ -135,7 +135,7 @@ export default function ProductModal({ isOpen, onClose, product }: ProductModalP
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     {product.variants && product.variants.map((variant: any) => {
                                         const isActive = selectedVariant?.id === variant.id;
-                                        const stockCount = variant.digitalCodes?.length || 0;
+                                        const stockCount = variant.stockCount || 0;
                                         const isOutOfStock = !product.isManualDelivery && stockCount === 0;
 
                                         return (
@@ -168,7 +168,7 @@ export default function ProductModal({ isOpen, onClose, product }: ProductModalP
                                                 <div className="mt-3 flex items-center justify-between">
                                                     {!product.isManualDelivery && (
                                                         <span className={`text-[10px] font-black uppercase tracking-wider ${stockCount > 5 ? 'text-black/30' : stockCount > 0 ? 'text-orange-500' : 'text-red-600'}`}>
-                                                            {stockCount > 0 ? `${stockCount} en stock` : 'Plus de stock'}
+                                                            {stockCount > 0 ? `${stockCount} ${variant.isSharing ? 'profils' : 'en stock'}` : 'Plus de stock'}
                                                         </span>
                                                     )}
                                                     {isActive && !isOutOfStock && (
@@ -208,7 +208,7 @@ export default function ProductModal({ isOpen, onClose, product }: ProductModalP
                             <div className="mt-12">
                                 <button
                                     onClick={handleAddToCart}
-                                    disabled={!selectedVariant || (!product.isManualDelivery && (selectedVariant.digitalCodes?.length || 0) < quantity)}
+                                    disabled={!selectedVariant || (!product.isManualDelivery && (selectedVariant.stockCount || 0) < quantity)}
                                     className="w-full h-24 bg-[#ec5b13] hover:bg-orange-600 disabled:bg-slate-200 disabled:cursor-not-allowed text-white rounded-[24px] flex items-center justify-between px-8 shadow-lg shadow-orange-500/10 active:scale-[0.99] transition-all group"
                                 >
                                     <div className="flex items-center gap-4">

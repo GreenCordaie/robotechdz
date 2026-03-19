@@ -7,10 +7,14 @@ import { payOrder, getTodayOrders, cancelOrderAction, replaceOrderItemCode, refu
 import { useAuthStore } from "@/store/useAuthStore";
 import { toast } from "react-hot-toast";
 import OrderDetailModal from "@/components/admin/modals/OrderDetailModal";
-import { Eye, User as UserIcon, Plus } from "lucide-react";
+import { Eye, User as UserIcon, Plus, Usb, Loader2 } from "lucide-react";
 import { getAllClients, createClient } from "../clients/actions";
 import { formatCurrency } from "@/lib/formatters";
-import { ThermalReceipt } from "@/components/admin/receipt/ThermalReceipt";
+import { ThermalReceiptV2 } from "@/components/admin/receipt/ThermalReceiptV2";
+import { useThermalPrinter } from "@/hooks/useThermalPrinter";
+import { useWebUSBPrinter } from "@/hooks/useWebUSBPrinter";
+import { generateOrderEscPos } from "@/lib/escpos";
+import { useSettingsStore } from "@/store/useSettingsStore";
 
 export default function CaisseContent() {
     const {
@@ -36,22 +40,45 @@ export default function CaisseContent() {
     const [newClientPhone, setNewClientPhone] = useState("");
     const [itemSuppliers, setItemSuppliers] = useState<Record<number, number>>({});
     const [printData, setPrintData] = useState<any>(null);
+    const [lastReloadTime, setLastReloadTime] = useState<Date>(new Date());
+    const { printToIframe } = useThermalPrinter();
 
-    const handlePrint = () => {
+    const settings = useSettingsStore();
+    const webusb = useWebUSBPrinter();
+
+    const handlePrint = async (data: any) => {
+        // High Performance: WebUSB Direct Print
+        if (webusb.connected) {
+            try {
+                const buffer = generateOrderEscPos(data, settings);
+                await webusb.print(buffer);
+                toast.success(`Impression USB : #${data.orderNumber}`);
+                return;
+            } catch (error) {
+                console.error("USB Print failed:", error);
+                toast.error("Échec USB, basculement en mode standard...");
+            }
+        }
+
+        // Standard Fallback: hidden iframe rendering
         setTimeout(() => {
-            window.print();
-            setPrintData(null);
+            const printContent = document.getElementById('thermal-receipt-source');
+            if (printContent) {
+                printToIframe(data.orderNumber, printContent.innerHTML);
+                toast.success(`Impression : #${data.orderNumber}`);
+            }
         }, 500);
     };
 
     useEffect(() => {
         if (printData) {
-            handlePrint();
+            handlePrint(printData);
+            setPrintData(null);
         }
     }, [printData]);
 
-    const loadOrders = async () => {
-        setIsLoading(true);
+    const loadOrders = async (silent = false) => {
+        if (!silent) setIsLoading(true);
         try {
             const res: any = await getTodayOrders({});
             if (res && res.success === false) {
@@ -59,12 +86,13 @@ export default function CaisseContent() {
                 setAllTodayOrders([]);
             } else {
                 setAllTodayOrders(Array.isArray(res) ? res : []);
+                setLastReloadTime(new Date());
             }
         } catch (error) {
             console.error("Orders load failed:", error);
             setAllTodayOrders([]);
         } finally {
-            setIsLoading(false);
+            if (!silent) setIsLoading(false);
         }
     };
 
@@ -75,12 +103,12 @@ export default function CaisseContent() {
             setAllClients(Array.isArray(res) ? res : []);
         };
         loadClients();
+
+        // POLL Strategy: 10s (Extended from 3s)
         const interval = setInterval(async () => {
-            const res: any = await getTodayOrders({});
-            if (res && res.success !== false) {
-                setAllTodayOrders(Array.isArray(res) ? res : []);
-            }
-        }, 3000);
+            await loadOrders(true);
+        }, 10000);
+
         return () => clearInterval(interval);
     }, []);
 
@@ -244,7 +272,22 @@ export default function CaisseContent() {
                 {/* Header / Filters */}
                 <header className="p-6 space-y-6">
                     <div className="flex items-center justify-between gap-4">
-                        <h2 className="text-lg font-bold tracking-tight shrink-0 text-[#ec5b13]">Commandes du jour</h2>
+                        <div className="flex items-center gap-3">
+                            <h2 className="text-lg font-bold tracking-tight shrink-0 text-[#ec5b13]">Commandes du jour</h2>
+                            <div className="hidden sm:flex items-center gap-2 px-2 py-1 bg-slate-100 dark:bg-white/5 rounded-lg border border-slate-200 dark:border-white/10">
+                                <span className={`w-1.5 h-1.5 rounded-full ${isLoading ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500'}`}></span>
+                                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-tighter">
+                                    Actualisé à {lastReloadTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                                </span>
+                                <button
+                                    onClick={() => loadOrders()}
+                                    disabled={isLoading}
+                                    className="ml-1 p-0.5 hover:text-[#ec5b13] transition-colors disabled:opacity-30"
+                                >
+                                    <span className={`material-symbols-outlined !text-[14px] ${isLoading ? 'animate-spin' : ''}`}>refresh</span>
+                                </button>
+                            </div>
+                        </div>
                         <div className="flex flex-nowrap gap-1 p-1 bg-slate-200 dark:bg-[#ec5b13]/5 rounded-xl transition-all overflow-x-auto scrollbar-hide">
                             {["Toutes", "En attente", "Payées", "Partiel", "Dettes", "Livrées", "Remboursés"].map((s) => (
                                 <button
@@ -259,6 +302,28 @@ export default function CaisseContent() {
                                 </button>
                             ))}
                         </div>
+
+                        {/* WebUSB Hardware UI */}
+                        <div className="flex items-center gap-2 pl-4 border-l border-[#ec5b13]/20">
+                            <div className={`hidden lg:flex items-center gap-1.5 px-2 py-1 rounded-md border text-[9px] font-bold uppercase tracking-tight transition-all ${webusb.connected
+                                ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
+                                : "bg-red-500/10 border-red-500/20 text-red-400"
+                                }`}>
+                                <div className={`size-1.5 rounded-full ${webusb.connected ? "bg-emerald-400 animate-pulse" : "bg-red-400"}`} />
+                                {webusb.connected ? "USB Prête" : "Hors ligne"}
+                            </div>
+                            <button
+                                onClick={webusb.connected ? webusb.disconnect : webusb.connect}
+                                disabled={webusb.isConnecting}
+                                className={`h-8 px-3 rounded-lg flex items-center gap-2 text-[10px] font-black uppercase transition-all shadow-sm active:scale-95 ${webusb.connected
+                                    ? "bg-zinc-800 text-zinc-400 hover:bg-zinc-700"
+                                    : "bg-[#ec5b13] text-white hover:bg-orange-600"
+                                    }`}
+                            >
+                                {webusb.isConnecting ? <Loader2 className="size-3 animate-spin" /> : <Usb className="size-3" />}
+                                {webusb.connected ? "Off" : "USB"}
+                            </button>
+                        </div>
                     </div>
                     <div className="relative">
                         <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">search</span>
@@ -272,9 +337,10 @@ export default function CaisseContent() {
                     </div>
                 </header>
 
-                {/* Table */}
+                {/* Orders List / Cards */}
                 <div className="flex-1 overflow-y-auto custom-scrollbar px-6 pb-6">
-                    <div className="bg-white dark:bg-[#ec5b13]/5 rounded-2xl border border-slate-200 dark:border-[#ec5b13]/10 overflow-x-auto shadow-sm">
+                    {/* Desktop Table View */}
+                    <div className="hidden md:block bg-white dark:bg-[#ec5b13]/5 rounded-2xl border border-slate-200 dark:border-[#ec5b13]/10 overflow-x-auto shadow-sm">
                         <table className="w-full text-left border-collapse">
                             <thead>
                                 <tr className="border-b border-slate-100 dark:border-[#ec5b13]/10 bg-slate-50 dark:bg-[#ec5b13]/10">
@@ -316,28 +382,89 @@ export default function CaisseContent() {
                                                 {new Date(o.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                             </td>
                                             <td className="px-6 py-4 font-semibold whitespace-nowrap">{formatCurrency(o.totalAmount, 'DZD')}</td>
-                                            <td className="px-6 py-4">
-                                                <span className={`inline-flex items-center px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide border shrink-0 ${config.classes}`}>
-                                                    {config.label}
-                                                </span>
-                                            </td>
                                             <td className="px-6 py-4 text-right">
-                                                <button
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        setOrderForDetail(o);
-                                                        setIsDetailModalOpen(true);
-                                                    }}
-                                                    className="p-1.5 rounded-lg bg-white/5 hover:bg-[#ec5b13]/20 text-slate-400 hover:text-[#ec5b13] transition-all"
-                                                >
-                                                    <Eye size={14} />
-                                                </button>
+                                                <div className="flex items-center justify-end gap-3">
+                                                    <span className={`inline-flex items-center px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide border shrink-0 ${config.classes}`}>
+                                                        {config.label}
+                                                    </span>
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setOrderForDetail(o);
+                                                            setIsDetailModalOpen(true);
+                                                        }}
+                                                        className="p-1.5 rounded-lg bg-white/5 hover:bg-[#ec5b13]/20 text-slate-400 hover:text-[#ec5b13] transition-all"
+                                                    >
+                                                        <Eye size={14} />
+                                                    </button>
+                                                </div>
                                             </td>
                                         </tr>
                                     );
                                 })}
                             </tbody>
                         </table>
+                    </div>
+
+                    {/* Mobile Card View */}
+                    <div className="md:hidden space-y-4">
+                        {isLoading && allTodayOrders.length === 0 ? (
+                            <div className="flex justify-center p-12"><Spinner color="warning" /></div>
+                        ) : filteredOrders.map((o) => {
+                            const config = getStatusConfig(o.status);
+                            const isActive = currentOrder?.id === o.id;
+                            return (
+                                <div
+                                    key={o.id}
+                                    onClick={() => setCurrentOrder(o)}
+                                    className={`p-4 rounded-2xl border transition-all cursor-pointer ${isActive
+                                        ? 'bg-[#ec5b13]/10 border-[#ec5b13] shadow-lg shadow-[#ec5b13]/5 ring-1 ring-[#ec5b13]/20'
+                                        : 'bg-white dark:bg-[#ec5b13]/5 border-slate-200 dark:border-[#ec5b13]/10 shadow-sm'
+                                        }`}
+                                >
+                                    <div className="flex items-center justify-between mb-3">
+                                        <div className="flex items-center gap-2">
+                                            <span className={`text-sm font-black ${isActive ? 'text-[#ec5b13]' : 'text-slate-900 dark:text-white'}`}>
+                                                {o.orderNumber.startsWith('#') ? o.orderNumber : `#${o.orderNumber}`}
+                                            </span>
+                                            {o.deliveryMethod === "WHATSAPP" && (
+                                                <div className="bg-[#25D366]/10 p-1 rounded-md">
+                                                    <svg className="w-3 h-3 text-[#25D366]" fill="currentColor" viewBox="0 0 24 24">
+                                                        <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.438 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"></path>
+                                                    </svg>
+                                                </div>
+                                            )}
+                                        </div>
+                                        <span className="text-[10px] text-slate-400 font-bold uppercase">
+                                            {new Date(o.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                        </span>
+                                    </div>
+                                    <div className="flex items-end justify-between">
+                                        <div>
+                                            <p className="text-xs text-slate-500 font-medium mb-1">Total à régler</p>
+                                            <p className="text-lg font-black text-slate-900 dark:text-white">{formatCurrency(o.totalAmount, 'DZD')}</p>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-tighter border ${config.classes}`}>
+                                                {config.label}
+                                            </span>
+                                            <Button
+                                                isIconOnly
+                                                size="sm"
+                                                variant="light"
+                                                onPress={(e) => {
+                                                    setOrderForDetail(o);
+                                                    setIsDetailModalOpen(true);
+                                                }}
+                                                className="text-[#ec5b13]"
+                                            >
+                                                <Eye size={16} />
+                                            </Button>
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        })}
                     </div>
                 </div>
             </section>
@@ -566,7 +693,7 @@ export default function CaisseContent() {
                     const res = await refundOrderItem({ orderItemId, returnToStock });
                     if (res.success) loadOrders();
                 }}
-                onReprint={() => {
+                onReprint={async () => {
                     if (!orderForDetail) return;
                     const enrichedItems = orderForDetail.items.map((it: any) => {
                         const standard = (it.fullCodes || []).map((c: any) => c.code);
@@ -580,13 +707,32 @@ export default function CaisseContent() {
                             playerNickname: it.playerNickname
                         };
                     });
-                    setPrintData({
+
+                    const dataToPrint = {
                         orderNumber: orderForDetail.orderNumber,
                         date: orderForDetail.createdAt,
                         items: enrichedItems,
                         totalAmount: orderForDetail.totalAmount,
-                        paymentMethod: orderForDetail.paymentMethod || "Espèces"
-                    });
+                        paymentMethod: orderForDetail.paymentMethod || "Espèces",
+                        cashier: user?.nom || "Admin"
+                    };
+
+                    if (webusb.connected) {
+                        try {
+                            const buffer = generateOrderEscPos(dataToPrint, settings);
+                            await webusb.print(buffer);
+                            toast.success("Réimpression USB lancée");
+                        } catch (e) {
+                            console.error("Manual reprint fail:", e);
+                            toast.error("Erreur USB");
+                        }
+                    } else {
+                        const printContent = document.getElementById('thermal-receipt-source');
+                        if (printContent) {
+                            toast.loading("Lancement réimpression...", { duration: 2000 });
+                            printToIframe(orderForDetail.orderNumber, printContent.innerHTML);
+                        }
+                    }
                 }}
             />
 
@@ -666,12 +812,14 @@ export default function CaisseContent() {
                 </ModalContent>
             </Modal>
 
-            {/* Hidden Print Container */}
-            {printData && (
-                <div className="fixed inset-0 z-[-50] opacity-0 pointer-events-none print:z-[9999] print:opacity-100 print:pointer-events-auto">
-                    <ThermalReceipt {...printData} />
-                </div>
-            )}
+            {/* Hidden Print Container - Sync source for hook */}
+            <div
+                id="thermal-receipt-source"
+                className="fixed -top-[9999px] -left-[9999px] opacity-0 pointer-events-none text-black bg-white"
+                aria-hidden="true"
+            >
+                {printData && <ThermalReceiptV2 {...printData} />}
+            </div>
         </main>
     );
 }

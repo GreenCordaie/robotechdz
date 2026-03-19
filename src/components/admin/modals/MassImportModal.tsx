@@ -121,7 +121,7 @@ export const MassImportModal = ({ isOpen, onClose, product }: MassImportModalPro
 
         setIsSaving(true);
         try {
-            const res = await bulkInsertCodes(parseInt(selectedVariantId), data);
+            const res = await bulkInsertCodes({ variantId: parseInt(selectedVariantId), ...data });
             if (res.success) {
                 toast.success(selectedVariant?.isSharing ? `${res.count} comptes partagés importés` : `${res.count} codes importés`);
                 setCodesInput("");
@@ -149,7 +149,7 @@ export const MassImportModal = ({ isOpen, onClose, product }: MassImportModalPro
             }}
         >
             <ModalContent>
-                {(onClose) => (
+                <>
                     <>
                         <ModalHeader>
                             <div className="flex items-center gap-3">
@@ -306,7 +306,7 @@ export const MassImportModal = ({ isOpen, onClose, product }: MassImportModalPro
                             </Button>
                         </ModalFooter>
                     </>
-                )}
+                </>
             </ModalContent>
         </Modal>
     );

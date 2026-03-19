@@ -1,8 +1,8 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { Spinner, Button, Card, CardBody, Dropdown, DropdownTrigger, DropdownMenu, DropdownItem, Chip } from "@heroui/react";
-import { Search, Filter, Eye, CheckCircle2, AlertCircle, Clock, MoreVertical, MessageSquare } from "lucide-react";
+import React, { useState, useEffect, useCallback } from "react";
+import { Spinner, Button, Card, CardBody, Chip } from "@heroui/react";
+import { Search, Eye, CheckCircle2, Clock, MessageSquare } from "lucide-react";
 import { getSupportTickets, updateTicketStatus } from "./actions";
 import { replaceOrderItemCode, refundOrderItem, refundFullOrder } from "../caisse/actions";
 import OrderDetailModal from "@/components/admin/modals/OrderDetailModal";
@@ -16,27 +16,28 @@ export default function SupportContent() {
     const [statusFilter, setStatusFilter] = useState<"OUVERT" | "RESOLU">("OUVERT");
     const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
 
-    const loadTickets = async () => {
+    const loadTickets = useCallback(async () => {
         setIsLoading(true);
         try {
-            const data = await getSupportTickets({ status: statusFilter });
+            // Fix: the action expects an object with status
+            const data = await getSupportTickets(statusFilter);
             setTickets(data);
         } catch (error) {
             toast.error("Échec du chargement des tickets");
         } finally {
             setIsLoading(false);
         }
-    };
+    }, [statusFilter]);
 
     useEffect(() => {
         loadTickets();
         const interval = setInterval(loadTickets, 5000);
         return () => clearInterval(interval);
-    }, [statusFilter]);
+    }, [loadTickets]);
 
     const handleResolve = async (ticketId: number) => {
         try {
-            const res: any = await updateTicketStatus({ id: ticketId, status: "RESOLU" });
+            const res: any = await updateTicketStatus(ticketId, "RESOLU");
             if (res.success) {
                 toast.success("Ticket marqué comme résolu");
                 loadTickets();

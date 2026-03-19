@@ -1,6 +1,13 @@
 import crypto from "crypto";
 
-const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || process.env.SESSION_SECRET || "default_fallback_key_32_chars_long_!";
+const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || process.env.SESSION_SECRET;
+if (!ENCRYPTION_KEY) {
+    if (process.env.NODE_ENV === "production") {
+        console.error("CRITICAL: ENCRYPTION_KEY or SESSION_SECRET must be set in production.");
+        process.exit(1);
+    }
+}
+const DEFAULT_KEY = "fallback_key_for_dev_only_32_chars";
 const ALGORITHM = "aes-256-gcm";
 const IV_LENGTH = 12; // Standard for GCM
 const AUTH_TAG_LENGTH = 16;
@@ -13,7 +20,7 @@ export function encrypt(text: string): string {
     if (!text) return text;
 
     // Ensure key is 32 bytes
-    const key = crypto.createHash('sha256').update(ENCRYPTION_KEY).digest();
+    const key = crypto.createHash('sha256').update(ENCRYPTION_KEY || DEFAULT_KEY).digest();
     const iv = crypto.randomBytes(IV_LENGTH);
     const cipher = crypto.createCipheriv(ALGORITHM, key, iv);
 
@@ -27,9 +34,9 @@ export function encrypt(text: string): string {
 
 /**
  * Decrypts a string formatted as: iv.authTag.encryptedData.
- * Returns the original plain text.
+ * Returns the original plain text or null if decryption fails.
  */
-export function decrypt(encryptedText: string): string {
+export function decrypt(encryptedText: string): string | null {
     if (!encryptedText || !encryptedText.includes(".")) return encryptedText;
 
     try {
@@ -37,7 +44,7 @@ export function decrypt(encryptedText: string): string {
 
         if (!ivHex || !authTagHex || !encryptedDataHex) return encryptedText;
 
-        const key = crypto.createHash('sha256').update(ENCRYPTION_KEY).digest();
+        const key = crypto.createHash('sha256').update(ENCRYPTION_KEY || DEFAULT_KEY).digest();
         const iv = Buffer.from(ivHex, "hex");
         const authTag = Buffer.from(authTagHex, "hex");
         const encryptedData = Buffer.from(encryptedDataHex, "hex");
@@ -50,7 +57,8 @@ export function decrypt(encryptedText: string): string {
 
         return decrypted;
     } catch (error) {
-        console.error("Decryption failed:", error);
-        return encryptedText; // Return original if decryption fails (safeguard for migration)
+        // If it was supposed to be encrypted (standard format) but failed, return null for safety
+        console.error("Decryption failed for ciphertext:", error);
+        return null;
     }
 }

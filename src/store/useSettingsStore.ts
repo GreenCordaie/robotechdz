@@ -3,16 +3,30 @@ import { getShopSettingsAction } from "@/app/admin/settings/actions";
 
 interface SettingsState {
     shopName: string;
+    shopTel: string;
+    shopAddress: string;
+    footerMessage: string;
+    showCashier: boolean;
+    showDateTime: boolean;
+    showLogo: boolean;
+    logoUrl: string;
     dashboardLogoUrl: string;
     faviconUrl: string;
     isB2bEnabled: boolean;
     isLoading: boolean;
     fetchSettings: () => Promise<void>;
-    updateSettings: (settings: Partial<{ shopName: string; dashboardLogoUrl: string; faviconUrl: string; isB2bEnabled: boolean }>) => void;
+    updateSettings: (settings: Partial<Omit<SettingsState, 'fetchSettings' | 'isLoading'>>) => void;
 }
 
 export const useSettingsStore = create<SettingsState>((set) => ({
     shopName: "FLEXBOX Direct",
+    shopTel: "",
+    shopAddress: "",
+    footerMessage: "Merci de votre visite !",
+    showCashier: true,
+    showDateTime: true,
+    showLogo: true,
+    logoUrl: "",
     dashboardLogoUrl: "",
     faviconUrl: "",
     isB2bEnabled: false,
@@ -24,6 +38,13 @@ export const useSettingsStore = create<SettingsState>((set) => ({
             if (res.success && res.data) {
                 set({
                     shopName: res.data.shopName || "FLEXBOX Direct",
+                    shopTel: res.data.shopTel || "",
+                    shopAddress: res.data.shopAddress || "",
+                    footerMessage: res.data.footerMessage || "Merci de votre visite !",
+                    showCashier: res.data.showCashierOnReceipt ?? true,
+                    showDateTime: res.data.showDateTimeOnReceipt ?? true,
+                    showLogo: res.data.showLogoOnReceipt ?? true,
+                    logoUrl: res.data.logoUrl || "",
                     dashboardLogoUrl: res.data.dashboardLogoUrl || "",
                     faviconUrl: res.data.faviconUrl || "",
                     isB2bEnabled: !!res.data.isB2bEnabled,

@@ -230,54 +230,62 @@ export default function OrderDetailModal({
 
                                             {/* Shared Slots */}
                                             {item.fullSlots?.map((slotObj, idx) => (
-                                                <div key={`slot-${slotObj.id}`} className="flex items-center justify-between group gap-2">
-                                                    <div className="flex flex-col gap-0.5 overflow-hidden flex-1">
+                                                <div key={`slot-${slotObj.id}`} className="flex flex-col gap-2 bg-emerald-500/5 border border-emerald-500/10 rounded-lg p-3 group transition-all hover:bg-emerald-500/10">
+                                                    <div className="flex items-center justify-between">
                                                         <div className="flex items-center gap-2.5">
-                                                            <ShieldCheck className="text-emerald-500 w-3.5 h-3.5 shrink-0" />
-                                                            <code className="font-mono text-emerald-500 text-[11px] sm:text-xs tracking-[0.1em] font-black truncate">
-                                                                [PROFIL {slotObj.slotNumber}] : {slotObj.profileName || "Disponible"}
-                                                            </code>
+                                                            <div className="size-6 rounded bg-emerald-500 flex items-center justify-center text-black font-black text-[10px]">
+                                                                P{slotObj.slotNumber}
+                                                            </div>
+                                                            <div className="flex flex-col">
+                                                                <span className="text-[10px] text-emerald-500 font-bold uppercase tracking-wider">{slotObj.profileName || "Profil unique"}</span>
+                                                                <code className="font-mono text-slate-400 text-[10px] tracking-tight truncate max-w-[200px]">{slotObj.parentCode}</code>
+                                                            </div>
                                                         </div>
-                                                        <div className="flex items-center gap-2 pl-6">
-                                                            <Key className="text-slate-600 w-3 h-3 shrink-0" />
-                                                            <code className="font-mono text-slate-500 text-[9px] tracking-widest truncate">{slotObj.parentCode}</code>
+                                                        <div className="flex gap-1">
+                                                            <Button
+                                                                size="sm"
+                                                                variant="light"
+                                                                isIconOnly
+                                                                className="h-7 w-7 text-slate-400 hover:text-white"
+                                                                onClick={() => copyToClipboard(`${slotObj.parentCode} | Profil ${slotObj.slotNumber}`)}
+                                                            >
+                                                                <Copy size={12} />
+                                                            </Button>
+                                                            {onReplaceCode && (
+                                                                <Dropdown>
+                                                                    <DropdownTrigger>
+                                                                        <Button size="sm" variant="light" isIconOnly className="h-7 w-7 text-emerald-500">
+                                                                            <RefreshCw size={12} />
+                                                                        </Button>
+                                                                    </DropdownTrigger>
+                                                                    <DropdownMenu variant="flat" color="warning">
+                                                                        <DropdownItem
+                                                                            key="defective"
+                                                                            onPress={() => handleAction(() => onReplaceCode(item.id, slotObj.id, 'slot', 'DEFECTIVE'), "Profil remplacé")}
+                                                                        >
+                                                                            Profil Défectueux
+                                                                        </DropdownItem>
+                                                                        <DropdownItem
+                                                                            key="return"
+                                                                            onPress={() => handleAction(() => onReplaceCode(item.id, slotObj.id, 'slot', 'RETURN_TO_STOCK'), "Profil remis en stock")}
+                                                                        >
+                                                                            Retour en Stock
+                                                                        </DropdownItem>
+                                                                    </DropdownMenu>
+                                                                </Dropdown>
+                                                            )}
                                                         </div>
                                                     </div>
-                                                    <div className="flex gap-1.5 shrink-0">
-                                                        <Button
-                                                            size="sm"
-                                                            variant="light"
-                                                            className="h-7 text-[9px] font-black text-slate-400 bg-white/5 hover:bg-[#ec5b13] px-2 rounded-md transition-all uppercase"
-                                                            onClick={() => copyToClipboard(`${slotObj.parentCode} | Profil ${slotObj.slotNumber}`)}
-                                                        >
-                                                            <Copy size={12} />
-                                                        </Button>
-                                                        {onReplaceCode && (
-                                                            <Dropdown>
-                                                                <DropdownTrigger>
-                                                                    <Button size="sm" variant="light" className="h-7 text-[9px] font-black text-emerald-500 bg-emerald-500/10 border border-emerald-500/20 px-2 rounded-md transition-all uppercase">
-                                                                        <RefreshCw size={12} className="mr-1" /> Remplacer
-                                                                    </Button>
-                                                                </DropdownTrigger>
-                                                                <DropdownMenu variant="flat" color="warning">
-                                                                    <DropdownItem
-                                                                        key="defective"
-                                                                        description="Marquer profil défectueux"
-                                                                        onPress={() => handleAction(() => onReplaceCode(item.id, slotObj.id, 'slot', 'DEFECTIVE'), "Profil remplacé")}
-                                                                    >
-                                                                        Profil Défectueux
-                                                                    </DropdownItem>
-                                                                    <DropdownItem
-                                                                        key="return"
-                                                                        description="Remettre profil en stock"
-                                                                        onPress={() => handleAction(() => onReplaceCode(item.id, slotObj.id, 'slot', 'RETURN_TO_STOCK'), "Profil remis en stock")}
-                                                                    >
-                                                                        Retour en Stock
-                                                                    </DropdownItem>
-                                                                </DropdownMenu>
-                                                            </Dropdown>
-                                                        )}
-                                                    </div>
+
+                                                    {slotObj.code && (
+                                                        <div className="flex items-center justify-between bg-black/60 rounded-xl px-4 py-2.5 border border-emerald-500/20 mt-1 shadow-lg ring-1 ring-emerald-500/10">
+                                                            <div className="flex items-center gap-3">
+                                                                <Key size={16} className="text-emerald-500 animate-pulse" />
+                                                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Secret PIN :</span>
+                                                            </div>
+                                                            <span className="font-mono text-emerald-400 text-lg font-black tracking-[0.4em] drop-shadow-[0_0_8px_rgba(52,211,153,0.3)]">{slotObj.code}</span>
+                                                        </div>
+                                                    )}
                                                 </div>
                                             ))}
 

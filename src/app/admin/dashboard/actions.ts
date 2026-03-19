@@ -15,37 +15,79 @@ export const getDashboardStats = withAuth(
     },
     async ({ period }) => {
         const now = new Date();
-        let startDate = new Date(0);
+        let startDate = new Date();
+        let prevStartDate = new Date();
+        let prevEndDate = new Date();
 
         if (period === "today") {
             startDate = new Date(now.setHours(0, 0, 0, 0));
+            prevStartDate = new Date(new Date(startDate).setDate(startDate.getDate() - 1));
+            prevEndDate = new Date(startDate);
         } else if (period === "yesterday") {
-            startDate = new Date(now.setDate(now.getDate() - 1));
+            startDate = new Date(new Date(now).setDate(now.getDate() - 1));
             startDate.setHours(0, 0, 0, 0);
+            const endDate = new Date(startDate);
+            endDate.setHours(23, 59, 59, 999);
+            prevStartDate = new Date(new Date(startDate).setDate(startDate.getDate() - 1));
+            prevEndDate = new Date(startDate);
         } else if (period === "week") {
-            startDate = new Date(now.setDate(now.getDate() - 7));
+            startDate = new Date(new Date(now).setDate(now.getDate() - 7));
+            prevStartDate = new Date(new Date(startDate).setDate(startDate.getDate() - 7));
+            prevEndDate = new Date(startDate);
         } else if (period === "month") {
-            startDate = new Date(now.setMonth(now.getMonth() - 1));
+            startDate = new Date(new Date(now).setMonth(now.getMonth() - 1));
+            prevStartDate = new Date(new Date(startDate).setMonth(startDate.getMonth() - 1));
+            prevEndDate = new Date(startDate);
+        } else {
+            startDate = new Date(0);
+            prevStartDate = new Date(0);
+            prevEndDate = new Date(0);
         }
 
         try {
-            const turnoverResult = await db.select({ total: sql<string>`sum(total_amount)` })
-                .from(orders)
-                .where(and(
-                    sql`status IN ('PAYE', 'TERMINE', 'LIVRE', 'PARTIEL')`,
-                    gte(orders.createdAt, startDate)
-                ));
+            const getStats = async (start: Date, end?: Date) => {
+                const filters = [sql`status IN ('PAYE', 'TERMINE', 'LIVRE', 'PARTIEL')`, gte(orders.createdAt, start)];
+                if (end) filters.push(lte(orders.createdAt, end));
 
-            const profitResult = await db.select({ profit: sql<string>`sum(total_amount * 0.15)` })
-                .from(orders)
-                .where(and(
-                    sql`status IN ('PAYE', 'TERMINE', 'LIVRE', 'PARTIEL')`,
-                    gte(orders.createdAt, startDate)
-                ));
+                const turnoverResult = await db.select({ total: sql<string>`sum(total_amount)` })
+                    .from(orders)
+                    .where(and(...filters));
 
-            const ordersCount = await db.select({ count: count() })
-                .from(orders)
-                .where(gte(orders.createdAt, startDate));
+                const profitResult = await db.select({
+                    totalProfit: sql<string>`sum(
+                        cast(${orderItems.price} as numeric) * ${orderItems.quantity} - 
+                        case 
+                            when ${orderItems.purchasePrice} is not null then cast(${orderItems.purchasePrice} as numeric) * ${orderItems.quantity} 
+                            else cast(${orderItems.price} as numeric) * ${orderItems.quantity} * 0.85
+                        end
+                    )`
+                })
+                    .from(orderItems)
+                    .innerJoin(orders, eq(orders.id, orderItems.orderId))
+                    .where(and(...filters));
+
+                const countResult = await db.select({ count: count() })
+                    .from(orders)
+                    .where(and(...filters));
+
+                return {
+                    turnover: Number(turnoverResult[0]?.total || 0),
+                    profit: Number(profitResult[0]?.totalProfit || 0),
+                    count: Number(countResult[0]?.count || 0)
+                };
+            };
+
+            const currentStats = await getStats(startDate);
+            const previousStats = await getStats(prevStartDate, prevEndDate);
+
+            const calculateChange = (current: number, previous: number) => {
+                if (previous === 0) return current > 0 ? 100 : 0;
+                return ((current - previous) / previous) * 100;
+            };
+
+            const turnoverChange = calculateChange(currentStats.turnover, previousStats.turnover);
+            const profitChange = calculateChange(currentStats.profit, previousStats.profit);
+            const ordersChange = calculateChange(currentStats.count, previousStats.count);
 
             const lowStockAlerts = await db.execute(sql`
                 SELECT COUNT(*) as count FROM (
@@ -61,6 +103,7 @@ export const getDashboardStats = withAuth(
             const latestOrders = await db.query.orders.findMany({
                 limit: 10,
                 orderBy: [desc(orders.createdAt)],
+                with: { items: true }
             });
 
             const pendingCount = await db.select({ count: count() })
@@ -69,48 +112,42 @@ export const getDashboardStats = withAuth(
 
             const settings = await db.query.shopSettings.findFirst();
 
-            // Fetch revenue data for the last 7 days
-            const weekAgo = new Date();
-            weekAgo.setDate(weekAgo.getDate() - 7);
-            weekAgo.setHours(0, 0, 0, 0);
+            const weekData = [];
+            for (let i = 6; i >= 0; i--) {
+                const day = new Date();
+                day.setDate(day.getDate() - i);
+                day.setHours(0, 0, 0, 0);
+                const nextDay = new Date(day);
+                nextDay.setDate(nextDay.getDate() + 1);
 
-            const dailyRevenueBuffer = await db.execute(sql`
-                SELECT 
-                    TO_CHAR(created_at, 'Dy') as day_name,
-                    SUM(CAST(total_amount AS NUMERIC)) as total_daily,
-                    MIN(created_at) as sort_date
-                FROM orders
-                WHERE created_at >= ${weekAgo} AND status IN ('PAYE', 'TERMINE', 'LIVRE', 'PARTIEL')
-                GROUP BY TO_CHAR(created_at, 'Dy')
-                ORDER BY sort_date ASC
-            `);
+                const dayResult = await db.select({ total: sql<string>`sum(total_amount)` })
+                    .from(orders)
+                    .where(and(
+                        sql`status IN ('PAYE', 'TERMINE', 'LIVRE', 'PARTIEL')`,
+                        gte(orders.createdAt, day),
+                        lte(orders.createdAt, nextDay)
+                    ));
 
-            const revenueData = (dailyRevenueBuffer as any[]).map((row: any) => ({
-                name: row.day_name,
-                total: parseFloat(row.total_daily || "0")
-            }));
+                const dayNames = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
+                weekData.push({
+                    name: dayNames[day.getDay()],
+                    total: Number(dayResult[0]?.total || 0)
+                });
+            }
 
             return {
-                totalTurnover: Number(turnoverResult[0]?.total || 0),
-                turnoverChange: 12,
-                totalProfit: Number(profitResult[0]?.profit || 0),
-                profitChange: 8,
-                ordersToday: Number(ordersCount[0]?.count || 0),
-                ordersChange: 5,
+                totalTurnover: currentStats.turnover,
+                turnoverChange,
+                totalProfit: currentStats.profit,
+                profitChange,
+                ordersToday: currentStats.count,
+                ordersChange,
                 pendingOrdersCount: Number(pendingCount[0]?.count || 0),
-                latestOrders: latestOrders,
+                latestOrders,
                 stockAlerts: Number((lowStockAlerts[0] as any)?.count || 0),
                 openTicketsCount: 0,
                 isMaintenanceMode: !!settings?.isMaintenanceMode,
-                revenueData: revenueData.length > 0 ? revenueData : [
-                    { name: 'Lun', total: 0 },
-                    { name: 'Mar', total: 0 },
-                    { name: 'Mer', total: 0 },
-                    { name: 'Jeu', total: 0 },
-                    { name: 'Ven', total: 0 },
-                    { name: 'Sam', total: 0 },
-                    { name: 'Dim', total: 0 },
-                ],
+                revenueData: weekData,
                 notifications: []
             };
         } catch (error) {
@@ -126,6 +163,7 @@ export const getDashboardStats = withAuth(
                 latestOrders: [],
                 stockAlerts: 0,
                 openTicketsCount: 0,
+                isMaintenanceMode: false,
                 revenueData: [],
                 notifications: []
             };

@@ -1,8 +1,7 @@
-import React from "react";
-import B2bManagementContent from "@/components/admin/B2bManagementContent";
+import B2bViewSwitcher from "./B2bViewSwitcher";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminB2bPage() {
-    return <B2bManagementContent />;
+    return <B2bViewSwitcher />;
 }

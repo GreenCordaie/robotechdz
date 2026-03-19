@@ -7,6 +7,13 @@ import { useDisclosure } from "@heroui/react";
 import DeliveryMethodModal from "../components/DeliveryMethodModal";
 import Image from "next/image";
 import { formatCurrency } from "@/lib/formatters";
+import { toast } from "react-hot-toast";
+import { useThermalPrinter } from "@/hooks/useThermalPrinter";
+import { useWebUSBPrinter } from "@/hooks/useWebUSBPrinter";
+import { generateOrderEscPos } from "@/lib/escpos";
+import { useSettingsStore } from "@/store/useSettingsStore";
+import { ThermalReceiptV2 } from "@/components/admin/receipt/ThermalReceiptV2";
+import { Usb, Loader2 } from "lucide-react";
 
 export default function CartView() {
     const {
@@ -21,6 +28,11 @@ export default function CartView() {
 
     const { isOpen, onOpen, onOpenChange, onClose } = useDisclosure();
     const [isSubmitting, setIsSubmitting] = React.useState(false);
+    const [printData, setPrintData] = React.useState<any>(null);
+    const { printToIframe } = useThermalPrinter();
+
+    const settings = useSettingsStore();
+    const webusb = useWebUSBPrinter();
 
     const totalAmount = getTotalAmount();
 
@@ -45,12 +57,53 @@ export default function CartView() {
                 playerNickname: i.playerNickname
             }));
             const order = await createKioskOrder(formattedItems, totalAmount.toFixed(2), deliveryMethod, phone);
+
+            if (deliveryMethod === "TICKET") {
+                const printPayload = {
+                    orderNumber: order.orderNumber,
+                    date: new Date(),
+                    items: formattedItems.map(i => ({
+                        ...i,
+                        price: i.price,
+                    })),
+                    totalAmount: totalAmount,
+                    paymentMethod: "À RÉGLER EN CAISSE"
+                };
+
+                setPrintData(printPayload);
+
+                // High-Speed Direct Hardware Pipeline
+                if (webusb.connected) {
+                    try {
+                        const buffer = generateOrderEscPos(printPayload, settings);
+                        await webusb.print(buffer);
+                        toast.success("Impression du ticket en cours...");
+                    } catch (e) {
+                        console.error("Kiosk USB Print Fail:", e);
+                        // Fallback to standard hidden iframe
+                        setTimeout(() => {
+                            const printContent = document.getElementById('thermal-receipt-source');
+                            if (printContent) printToIframe(order.orderNumber, printContent.innerHTML);
+                        }, 500);
+                    }
+                } else {
+                    // Standard fallback
+                    setTimeout(() => {
+                        const printContent = document.getElementById('thermal-receipt-source');
+                        if (printContent) {
+                            printToIframe(order.orderNumber, printContent.innerHTML);
+                        }
+                    }, 500);
+                }
+            }
+
             setLastOrderNumber(order.orderNumber);
             setStep("CONFIRMATION");
             clearCart();
             onClose();
-        } catch (error) {
+        } catch (error: any) {
             console.error("Order failed:", error);
+            toast.error(error.message || "Échec de la validation");
         } finally {
             setIsSubmitting(false);
         }
@@ -86,8 +139,32 @@ export default function CartView() {
                         <path d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" strokeLinecap="round" strokeLinejoin="round"></path>
                     </svg>
                 </button>
-                {/* Title */}
-                <h1 className="text-4xl font-bold tracking-tight text-black">Mon Panier</h1>
+                {/* Title and Hardware Status */}
+                <div className="flex flex-col items-center gap-2">
+                    <h1 className="text-4xl font-bold tracking-tight text-black">Mon Panier</h1>
+
+                    {/* Discrete Printer Status */}
+                    <div className="flex items-center gap-4">
+                        <div className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full border text-[9px] font-black uppercase tracking-widest transition-all ${webusb.connected
+                            ? "bg-emerald-50 border-emerald-200 text-emerald-600"
+                            : "bg-slate-50 border-slate-200 text-slate-400"
+                            }`}>
+                            <div className={`size-1.5 rounded-full ${webusb.connected ? "bg-emerald-500 animate-pulse" : "bg-slate-300"}`} />
+                            {webusb.connected ? "Imprimante Connectée" : "Mode Standard"}
+                        </div>
+
+                        {!webusb.connected && (
+                            <button
+                                onClick={webusb.connect}
+                                disabled={webusb.isConnecting}
+                                className="flex items-center gap-1 text-[9px] font-black text-[#ec5b13] uppercase hover:underline disabled:opacity-50"
+                            >
+                                {webusb.isConnecting ? <Loader2 size={10} className="animate-spin" /> : <Usb size={10} />}
+                                Configurer USB
+                            </button>
+                        )}
+                    </div>
+                </div>
                 {/* Empty Cart Button */}
                 <button
                     onClick={clearCart}
@@ -209,6 +286,23 @@ export default function CartView() {
                 onConfirm={confirmOrder}
                 isSubmitting={isSubmitting}
             />
+
+            {/* Hidden Print Container - Standardized for Audit Reliability */}
+            <div
+                id="thermal-receipt-source"
+                className="fixed -top-[9999px] -left-[9999px] opacity-0 pointer-events-none text-black bg-white"
+                aria-hidden="true"
+            >
+                {printData && (
+                    <ThermalReceiptV2
+                        orderNumber={printData.orderNumber}
+                        date={printData.date}
+                        items={printData.items}
+                        totalAmount={printData.totalAmount}
+                        paymentMethod={printData.paymentMethod}
+                    />
+                )}
+            </div>
         </div>
     );
 }

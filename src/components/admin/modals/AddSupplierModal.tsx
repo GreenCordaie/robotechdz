@@ -37,9 +37,9 @@ export const AddSupplierModal = ({ isOpen, onClose }: AddSupplierModalProps) => 
         setError(null);
 
         try {
-            const res = await addSupplierAction({
+            const res: any = await addSupplierAction({
                 name,
-                balance: initialBalance,
+                initialBalance,
                 currency
             });
 

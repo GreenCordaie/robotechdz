@@ -33,7 +33,7 @@ import {
 } from "lucide-react";
 import NextImage from "next/image";
 import { QRCodeSVG } from "qrcode.react";
-import { useDisclosure, Spinner, Button } from "@heroui/react";
+import { useDisclosure, Spinner, Button, Card, CardBody } from "@heroui/react";
 import Link from "next/link";
 import { toast } from "react-hot-toast";
 import { AddMemberModal } from "@/components/admin/modals/AddMemberModal";
@@ -56,6 +56,8 @@ import {
 import { uploadImage } from "@/app/admin/actions/upload";
 import { useSettingsStore } from "@/store/useSettingsStore";
 import { formatCurrency } from "@/lib/formatters";
+import { ReceiptSettings } from "@/components/admin/settings/ReceiptSettings";
+import { ApiBotSettings } from "@/components/admin/settings/ApiBotSettings";
 
 export default function SettingsContent() {
     const [activeTab, setActiveTab] = useState<"general" | "team" | "api" | "b2b" | "appearance" | "receipt" | "security">("general");
@@ -92,22 +94,11 @@ export default function SettingsContent() {
     const faviconInputRef = React.useRef<HTMLInputElement>(null);
     const [selectedMember, setSelectedMember] = useState<any>(null);
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-    const [telegramBotToken, setTelegramBotToken] = useState("");
-    const [telegramChatId, setTelegramChatId] = useState("");
-    const [telegramChatIdAdmin, setTelegramChatIdAdmin] = useState("");
-    const [telegramChatIdCaisse, setTelegramChatIdCaisse] = useState("");
-    const [telegramChatIdTraiteur, setTelegramChatIdTraiteur] = useState("");
-    const [isTestingBot, setIsTestingBot] = useState(false);
 
     // B2B Modal state
     const [isUploadingLogo, setIsUploadingLogo] = useState(false);
     const [isUploadingDashboardLogo, setIsUploadingDashboardLogo] = useState(false);
     const [isUploadingFavicon, setIsUploadingFavicon] = useState(false);
-    const [isActivatingWebhook, setIsActivatingWebhook] = useState(false);
-    const [webhookUrl, setWebhookUrl] = useState("");
-    const [whatsappToken, setWhatsappToken] = useState("");
-    const [whatsappPhoneId, setWhatsappPhoneId] = useState("");
-    const [isTestingWhatsApp, setIsTestingWhatsApp] = useState(false);
 
     // Global loading/saving states
     const [isLoading, setIsLoading] = useState(true);
@@ -134,28 +125,6 @@ export default function SettingsContent() {
         fetchInitialData();
     }, []);
 
-    const handleActivateWebhook = async () => {
-        if (!telegramBotToken) {
-            toast.error("Veuillez saisir un Token Bot");
-            return;
-        }
-
-        setIsActivatingWebhook(true);
-        try {
-            const appUrl = webhookUrl || window.location.origin;
-            const res: any = await setTelegramWebhookAction({ token: telegramBotToken, url: appUrl });
-            if (res.success) {
-                toast.success("Webhook Telegram activé avec succès !");
-            } else {
-                toast.error(res.error || "Erreur d'activation");
-            }
-        } catch (err) {
-            toast.error("Erreur de connexion");
-        } finally {
-            setIsActivatingWebhook(false);
-        }
-    };
-
     const fetchInitialData = async () => {
         setIsLoading(true);
         try {
@@ -179,14 +148,6 @@ export default function SettingsContent() {
                 if (s.logoUrl) setLogoUrl(s.logoUrl);
                 if (s.dashboardLogoUrl) setDashboardLogoUrl(s.dashboardLogoUrl);
                 if (s.faviconUrl) setFaviconUrl(s.faviconUrl);
-                if (s.telegramBotToken) setTelegramBotToken(s.telegramBotToken);
-                if (s.telegramChatId) setTelegramChatId(s.telegramChatId);
-                if (s.telegramChatIdAdmin) setTelegramChatIdAdmin(s.telegramChatIdAdmin);
-                if (s.telegramChatIdCaisse) setTelegramChatIdCaisse(s.telegramChatIdCaisse);
-                if (s.telegramChatIdTraiteur) setTelegramChatIdTraiteur(s.telegramChatIdTraiteur);
-                if (s.webhookUrl) setWebhookUrl(s.webhookUrl);
-                if (s.whatsappToken) setWhatsappToken(s.whatsappToken);
-                if (s.whatsappPhoneId) setWhatsappPhoneId(s.whatsappPhoneId);
                 setIsB2bEnabled(s.isB2bEnabled ?? false);
                 setDefaultResellerDiscount(s.defaultResellerDiscount || "5.00");
                 setMinResellerRecharge(s.minResellerRecharge || "1000.00");
@@ -225,14 +186,6 @@ export default function SettingsContent() {
                 logoUrl,
                 dashboardLogoUrl,
                 faviconUrl,
-                telegramBotToken,
-                telegramChatId,
-                telegramChatIdAdmin,
-                telegramChatIdCaisse,
-                telegramChatIdTraiteur,
-                webhookUrl,
-                whatsappToken,
-                whatsappPhoneId,
                 isB2bEnabled,
                 defaultResellerDiscount,
                 minResellerRecharge,
@@ -254,48 +207,6 @@ export default function SettingsContent() {
             toast.error(msg);
         } finally {
             setIsSaving(false);
-        }
-    };
-
-    const handleTestBot = async () => {
-        if (!telegramBotToken || !telegramChatId) {
-            toast.error("Veuillez saisir un Token et un Chat ID");
-            return;
-        }
-
-        setIsTestingBot(true);
-        try {
-            const res: any = await testTelegramBotAction({ token: telegramBotToken, chatId: telegramChatId });
-            if (res.success) {
-                toast.success("Message de test envoyé à Telegram !");
-            } else {
-                toast.error(res.error || "Erreur lors du test");
-            }
-        } catch (err) {
-            toast.error("Erreur de connexion");
-        } finally {
-            setIsTestingBot(false);
-        }
-    };
-
-    const handleWhatsAppTest = async () => {
-        if (!whatsappToken || !whatsappPhoneId) {
-            toast.error("Veuillez saisir un Token et un Phone ID");
-            return;
-        }
-
-        setIsTestingWhatsApp(true);
-        try {
-            const res: any = await testWhatsAppAction({ token: whatsappToken, phoneId: whatsappPhoneId });
-            if (res.success) {
-                toast.success("Message de test envoyé à WhatsApp !");
-            } else {
-                toast.error(res.error || "Erreur lors du test WhatsApp");
-            }
-        } catch (err) {
-            toast.error("Erreur de connexion");
-        } finally {
-            setIsTestingWhatsApp(false);
         }
     };
 
@@ -353,6 +264,99 @@ export default function SettingsContent() {
         } catch (err) {
             console.error(err);
             toast.error("Erreur de connexion");
+        }
+    };
+
+    const fetchAuditLogs = async () => {
+        setIsAuditLoading(true);
+        try {
+            const res: any = await getAuditLogsAction({});
+            if (res.success) {
+                setAuditLogs(res.data || []);
+            }
+        } catch (err) {
+            toast.error("Erreur chargement logs");
+        } finally {
+            setIsAuditLoading(false);
+        }
+    };
+
+    const handleGenerateMfa = async () => {
+        try {
+            const res: any = await generateMfaSecretAction({});
+            if (res.success) {
+                setMfaSecret(res.data.secret);
+                setMfaQrCode(res.data.otpauth);
+            }
+        } catch (err) {
+            toast.error("Erreur génération MFA");
+        }
+    };
+
+    const handleEnableMfa = async () => {
+        if (!mfaSecret || !mfaInputCode) return;
+        setIsMfaEnabling(true);
+        try {
+            const res: any = await enableMfaAction({ secret: mfaSecret, code: mfaInputCode });
+            if (res.success) {
+                toast.success("2FA activé avec succès");
+                setMfaSecret(null);
+                setMfaQrCode(null);
+                setMfaInputCode("");
+                fetchInitialData(); // Refresh user data to show status
+            } else {
+                toast.error(res.error || "Code invalide");
+            }
+        } catch (err) {
+            toast.error("Erreur activation");
+        } finally {
+            setIsMfaEnabling(false);
+        }
+    };
+
+    const handleGenerateBackupCodes = async () => {
+        setIsGeneratingCodes(true);
+        try {
+            const res: any = await generateBackupCodesAction({});
+            if (res.success) {
+                setBackupCodes(res.data);
+                toast.success("Codes de secours générés");
+            }
+        } catch (err) {
+            toast.error("Erreur génération codes");
+        } finally {
+            setIsGeneratingCodes(false);
+        }
+    };
+
+    const handleExportLogs = async (format: 'csv' | 'json') => {
+        setIsExporting(true);
+        try {
+            const res: any = await exportAuditLogsAction({});
+            if (res.success) {
+                const data = res.data;
+                let blob;
+                let filename;
+                const ts = new Date().toISOString().replace(/[:.]/g, '-');
+                if (format === 'json') {
+                    blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                    filename = `audit_logs_${ts}.json`;
+                } else {
+                    const headers = "ID,User,Action,Entity,Date,IP\n";
+                    const rows = data.map((l: any) => `${l.id},"${l.user?.nom || 'System'}","${l.action}","${l.entityType || ''}",${l.createdAt},${l.ipAddress}`).join("\n");
+                    blob = new Blob([headers + rows], { type: 'text/csv' });
+                    filename = `audit_logs_${ts}.csv`;
+                }
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                a.click();
+            }
+        } catch (err) {
+            toast.error("Erreur export");
+        } finally {
+            setIsExporting(false);
         }
     };
 
@@ -465,6 +469,16 @@ export default function SettingsContent() {
                             >
                                 Apparence & Personnalisation
                                 {activeTab === "appearance" && <span className="absolute bottom-0 left-0 w-full h-0.5 bg-[#ec5b13] rounded-full"></span>}
+                            </button>
+                            <button
+                                onClick={() => setActiveTab("security")}
+                                className={`pb-4 border-b-2 text-sm transition-all relative whitespace-nowrap ${activeTab === "security" ? "text-[#ec5b13] font-bold" : "text-slate-500 hover:text-slate-200 font-medium"}`}
+                            >
+                                <span className="flex items-center gap-2">
+                                    <Lock size={16} />
+                                    Sécurité & God Mode
+                                </span>
+                                {activeTab === "security" && <span className="absolute bottom-0 left-0 w-full h-0.5 bg-[#ec5b13] rounded-full"></span>}
                             </button>
                         </div>
                     </div>
@@ -671,529 +685,11 @@ export default function SettingsContent() {
                     )}
 
                     {activeTab === "api" && (
-                        <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-300 max-w-6xl">
-                            {/* API & Bot Section */}
-                            <section className="space-y-8">
-                                <div className="flex items-center justify-between">
-                                    <div>
-                                        <h3 className="text-lg font-bold">API & Bot Python</h3>
-                                        <p className="text-sm text-slate-400 mt-1">Gérez vos accès API et l&apos;état de vos connecteurs automatisés.</p>
-
-                                    </div>
-                                    <div className="flex items-center gap-2 bg-[#10b981]/10 text-[#10b981] px-4 py-1.5 rounded-full border border-[#10b981]/20">
-                                        <span className="relative flex h-2 w-2">
-                                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#10b981] opacity-75"></span>
-                                            <span className="relative inline-flex rounded-full h-2 w-2 bg-[#10b981]"></span>
-                                        </span>
-                                        <span className="text-[10px] font-bold uppercase tracking-widest">Bot Python : Connecté</span>
-                                    </div>
-                                </div>
-
-                                {/* BEGIN: Telegram Integration Guide */}
-                                <div className="bg-[#1e293b]/50 border border-[#334155] rounded-2xl p-8 space-y-6">
-                                    <div className="flex items-center gap-3 mb-2">
-                                        <div className="size-10 rounded-full bg-blue-500/20 flex items-center justify-center">
-                                            <span className="material-symbols-outlined text-blue-400">info</span>
-                                        </div>
-                                        <h4 className="text-lg font-bold text-white">Comment configurer l&apos;automatisation Telegram ?</h4>
-
-                                    </div>
-
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                        <div className="flex gap-4">
-                                            <div className="size-8 rounded-lg bg-zinc-800 flex items-center justify-center shrink-0 border border-zinc-700">
-                                                <span className="text-sm font-bold text-slate-400">1</span>
-                                            </div>
-                                            <div className="space-y-1">
-                                                <p className="text-sm font-bold text-slate-200">Créer le Bot</p>
-                                                <p className="text-xs text-slate-400 leading-relaxed">
-                                                    Ouvrez Telegram, cherchez <span className="text-blue-400">@BotFather</span> et envoyez <code className="bg-black/40 px-1 py-0.5 rounded text-blue-300">/newbot</code>. Suivez les instructions pour obtenir votre Token API.
-                                                </p>
-                                            </div>
-                                        </div>
-
-                                        <div className="flex gap-4">
-                                            <div className="size-8 rounded-lg bg-zinc-800 flex items-center justify-center shrink-0 border border-zinc-700">
-                                                <span className="text-sm font-bold text-slate-400">2</span>
-                                            </div>
-                                            <div className="space-y-1">
-                                                <p className="text-sm font-bold text-slate-200">Créer le Groupe</p>
-                                                <p className="text-xs text-slate-400 leading-relaxed">
-                                                    Créez un nouveau groupe Telegram (ex: &quot;FLEXBOX Commandes&quot;) et ajoutez votre nouveau bot en tant que membre.
-
-                                                </p>
-                                            </div>
-                                        </div>
-
-                                        <div className="flex gap-4">
-                                            <div className="size-8 rounded-lg bg-zinc-800 flex items-center justify-center shrink-0 border border-zinc-700">
-                                                <span className="text-sm font-bold text-slate-400">3</span>
-                                            </div>
-                                            <div className="space-y-1">
-                                                <p className="text-sm font-bold text-slate-200">Obtenir le Chat ID</p>
-                                                <p className="text-xs text-slate-400 leading-relaxed">
-                                                    Ajoutez temporairement le bot <span className="text-blue-400">@RawDataBot</span> (ou <span className="text-blue-400">@getidsbot</span>) dans votre groupe. Il vous donnera l&apos;ID.
-
-                                                </p>
-                                            </div>
-                                        </div>
-
-                                        <div className="flex gap-4">
-                                            <div className="size-8 rounded-lg bg-zinc-800 flex items-center justify-center shrink-0 border border-zinc-700">
-                                                <span className="text-sm font-bold text-slate-400">4</span>
-                                            </div>
-                                            <div className="space-y-1">
-                                                <p className="text-sm font-bold text-slate-200">Connecter</p>
-                                                <p className="text-xs text-slate-400 leading-relaxed">
-                                                    Collez le Token et le Chat ID ci-dessous, puis sauvegardez pour activer les notifications.
-                                                </p>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                                {/* END: Telegram Integration Guide */}
-
-                                <div className="bg-[#1a1614] p-8 rounded-2xl border border-[#2d2622] space-y-8">
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                                        <div className="space-y-3">
-                                            <label className="text-sm font-medium text-slate-400 uppercase tracking-wider flex items-center gap-2">
-                                                <span className="material-symbols-outlined text-sm text-blue-400">key</span>
-                                                Bot Token Telegram
-                                            </label>
-                                            <input
-                                                className="w-full bg-[#0f0d0c] border border-[#2d2622] rounded-xl px-4 py-3 font-mono text-sm text-slate-200 outline-none focus:ring-1 focus:ring-blue-500/50"
-                                                type="password"
-                                                placeholder="7348923489:AAEj..."
-                                                value={telegramBotToken}
-                                                onChange={(e) => setTelegramBotToken(e.target.value)}
-                                            />
-                                        </div>
-
-                                        <div className="space-y-3">
-                                            <label className="text-sm font-medium text-slate-400 uppercase tracking-wider flex items-center gap-2">
-                                                <span className="material-symbols-outlined text-sm text-blue-400">chat</span>
-                                                Chat ID du Groupe
-                                            </label>
-                                            <div className="flex gap-3">
-                                                <input
-                                                    className="flex-1 bg-[#0f0d0c] border border-[#2d2622] rounded-xl px-4 py-3 font-mono text-sm text-slate-200 outline-none focus:ring-1 focus:ring-blue-500/50"
-                                                    type="text"
-                                                    placeholder="-100..."
-                                                    value={telegramChatId}
-                                                    onChange={(e) => setTelegramChatId(e.target.value)}
-                                                />
-                                                <button
-                                                    onClick={handleActivateWebhook}
-                                                    disabled={isActivatingWebhook}
-                                                    className="px-4 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 rounded-xl text-emerald-400 transition-all disabled:opacity-50 flex items-center gap-2 font-bold text-xs shrink-0"
-                                                >
-                                                    {isActivatingWebhook ? <Loader2 className="animate-spin size-4" /> : <span className="material-symbols-outlined text-lg">api</span>}
-                                                    {isActivatingWebhook ? "Activation..." : "Activer le Webhook"}
-                                                </button>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                                        <div className="space-y-3">
-                                            <label className="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2">
-                                                <span className="material-symbols-outlined text-sm">shield_person</span>
-                                                ADMIN Chat ID
-                                            </label>
-                                            <input
-                                                className="w-full bg-[#0f0d0c] border border-[#2d2622] rounded-xl px-4 py-3 font-mono text-sm text-slate-200 outline-none focus:ring-1 focus:ring-[#ec5b13]/50"
-                                                type="text"
-                                                placeholder="-100..."
-                                                value={telegramChatIdAdmin}
-                                                onChange={(e) => setTelegramChatIdAdmin(e.target.value)}
-                                            />
-                                        </div>
-                                        <div className="space-y-3">
-                                            <label className="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2">
-                                                <span className="material-symbols-outlined text-sm">point_of_sale</span>
-                                                CAISSE Chat ID
-                                            </label>
-                                            <input
-                                                className="w-full bg-[#0f0d0c] border border-[#2d2622] rounded-xl px-4 py-3 font-mono text-sm text-slate-200 outline-none focus:ring-1 focus:ring-emerald-500/50"
-                                                type="text"
-                                                placeholder="-100..."
-                                                value={telegramChatIdCaisse}
-                                                onChange={(e) => setTelegramChatIdCaisse(e.target.value)}
-                                            />
-                                        </div>
-                                        <div className="space-y-3">
-                                            <label className="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2">
-                                                <span className="material-symbols-outlined text-sm">conveyor_belt</span>
-                                                TRAITEUR Chat ID
-                                            </label>
-                                            <input
-                                                className="w-full bg-[#0f0d0c] border border-[#2d2622] rounded-xl px-4 py-3 font-mono text-sm text-slate-200 outline-none focus:ring-1 focus:ring-blue-500/50"
-                                                type="text"
-                                                placeholder="-100..."
-                                                value={telegramChatIdTraiteur}
-                                                onChange={(e) => setTelegramChatIdTraiteur(e.target.value)}
-                                            />
-                                        </div>
-                                    </div>
-
-                                    <div className="p-4 rounded-xl bg-blue-500/5 border border-dashed border-blue-500/20">
-                                        <p className="text-[11px] text-slate-400 font-medium leading-relaxed italic">
-                                            Le Chat ID doit commencer par un signe moins (-) s&apos;il s&apos;agit d&apos;un groupe ou d&apos;un supergroupe (ex: -1001234567890).
-
-                                        </p>
-                                    </div>
-
-                                    <div className="space-y-3">
-                                        <label className="text-sm font-medium text-slate-400 uppercase tracking-wider flex items-center gap-2">
-                                            <span className="material-symbols-outlined text-sm text-blue-400">link</span>
-                                            URL Publique du Webhook (Tunnel HTTPS requis)
-                                        </label>
-                                        <div className="flex flex-col gap-2">
-                                            <input
-                                                className="w-full bg-[#0f0d0c] border border-[#2d2622] rounded-xl px-4 py-3 font-mono text-sm text-slate-200 outline-none focus:ring-1 focus:ring-blue-500/50"
-                                                type="text"
-                                                placeholder="https://votre-tunnel.ngrok.io"
-                                                value={webhookUrl}
-                                                onChange={(e) => setWebhookUrl(e.target.value)}
-                                            />
-                                            <p className="text-[10px] text-slate-500 italic">
-                                                En local, utilisez <b>Ngrok</b> pour obtenir une URL HTTPS vers votre port 1556. Telegram refuse l&apos;HTTP simple.
-
-                                            </p>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* BEGIN: WhatsApp Business API Configuration */}
-                                <div className="space-y-8 pt-10 border-t border-[#2d2622]">
-                                    <div className="flex items-center justify-between">
-                                        <div>
-                                            <h3 className="text-lg font-bold">WhatsApp Business API (Meta)</h3>
-                                            <p className="text-sm text-slate-400 mt-1">Configurez l&apos;envoi automatique des codes par WhatsApp.</p>
-
-                                        </div>
-                                        <div className="flex items-center gap-2 bg-[#25D366]/10 text-[#25D366] px-4 py-1.5 rounded-full border border-[#25D366]/20">
-                                            <span className="relative flex h-2 w-2">
-                                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#25D366] opacity-75"></span>
-                                                <span className="relative inline-flex rounded-full h-2 w-2 bg-[#25D366]"></span>
-                                            </span>
-                                            <span className="text-[10px] font-bold uppercase tracking-widest">API Meta : Configurable</span>
-                                        </div>
-                                    </div>
-
-                                    {/* WhatsApp Tutorial Card */}
-                                    <div className="bg-[#25D366]/5 border border-[#25D366]/20 rounded-2xl p-8 space-y-6">
-                                        <div className="flex items-center gap-3 mb-2">
-                                            <div className="size-10 rounded-full bg-[#25D366]/20 flex items-center justify-center">
-                                                <span className="material-symbols-outlined text-[#25D366] text-xl">help</span>
-                                            </div>
-                                            <h4 className="text-lg font-bold text-white">Comment configurer l&apos;API WhatsApp ?</h4>
-
-                                        </div>
-
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                            <div className="flex gap-4">
-                                                <div className="size-8 rounded-lg bg-zinc-800 flex items-center justify-center shrink-0 border border-zinc-700">
-                                                    <span className="text-sm font-bold text-[#25D366]">1</span>
-                                                </div>
-                                                <div className="space-y-1">
-                                                    <p className="text-sm font-bold text-slate-200">Application Meta</p>
-                                                    <p className="text-xs text-slate-400 leading-relaxed">
-                                                        Allez sur <span className="text-[#25D366]">developers.facebook.com</span> et créez une application &quot;Entreprise&quot;.
-
-                                                    </p>
-                                                </div>
-                                            </div>
-
-                                            <div className="flex gap-4">
-                                                <div className="size-8 rounded-lg bg-zinc-800 flex items-center justify-center shrink-0 border border-zinc-700">
-                                                    <span className="text-sm font-bold text-[#25D366]">2</span>
-                                                </div>
-                                                <div className="space-y-1">
-                                                    <p className="text-sm font-bold text-slate-200">Produit WhatsApp</p>
-                                                    <p className="text-xs text-slate-400 leading-relaxed">
-                                                        Ajoutez le produit &quot;WhatsApp&quot; et associez votre numéro de téléphone professionnel.
-
-                                                    </p>
-                                                </div>
-                                            </div>
-
-                                            <div className="flex gap-4">
-                                                <div className="size-8 rounded-lg bg-zinc-800 flex items-center justify-center shrink-0 border border-zinc-700">
-                                                    <span className="text-sm font-bold text-[#25D366]">3</span>
-                                                </div>
-                                                <div className="space-y-1">
-                                                    <p className="text-sm font-bold text-slate-200">Phone Number ID</p>
-                                                    <p className="text-xs text-slate-400 leading-relaxed">
-                                                        Copiez l&apos;<b>Identifiant du numéro de téléphone</b> (Phone Number ID) depuis le tableau de bord.
-
-                                                    </p>
-                                                </div>
-                                            </div>
-
-                                            <div className="flex gap-4">
-                                                <div className="size-8 rounded-lg bg-zinc-800 flex items-center justify-center shrink-0 border border-zinc-700">
-                                                    <span className="text-sm font-bold text-[#25D366]">4</span>
-                                                </div>
-                                                <div className="space-y-1">
-                                                    <p className="text-sm font-bold text-slate-200">Token Permanent</p>
-                                                    <p className="text-xs text-slate-400 leading-relaxed">
-                                                        Générez un <b>Token d&apos;accès permanent</b> via les paramètres d&apos;entreprise (Système users).
-                                                    </p>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    {/* WhatsApp Inputs */}
-                                    <div className="bg-[#1a1614] p-8 rounded-2xl border border-[#2d2622] space-y-8">
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                                            <div className="space-y-3">
-                                                <label className="text-sm font-medium text-slate-400 uppercase tracking-wider flex items-center gap-2">
-                                                    <span className="material-symbols-outlined text-sm text-[#25D366]">key</span>
-                                                    Token Permanent WhatsApp
-                                                </label>
-                                                <input
-                                                    className="w-full bg-[#0f0d0c] border border-[#2d2622] rounded-xl px-4 py-3 font-mono text-sm text-slate-200 outline-none focus:ring-1 focus:ring-[#25D366]/50"
-                                                    type="password"
-                                                    placeholder="EAAl..."
-                                                    value={whatsappToken}
-                                                    onChange={(e) => setWhatsappToken(e.target.value)}
-                                                />
-                                            </div>
-
-                                            <div className="space-y-3">
-                                                <label className="text-sm font-medium text-slate-400 uppercase tracking-wider flex items-center gap-2">
-                                                    <span className="material-symbols-outlined text-sm text-[#25D366]">phone_iphone</span>
-                                                    Phone Number ID
-                                                </label>
-                                                <div className="flex gap-3">
-                                                    <input
-                                                        className="flex-1 bg-[#0f0d0c] border border-[#2d2622] rounded-xl px-4 py-3 font-mono text-sm text-slate-200 outline-none focus:ring-1 focus:ring-[#25D366]/50"
-                                                        type="text"
-                                                        placeholder="1029384756..."
-                                                        value={whatsappPhoneId}
-                                                        onChange={(e) => setWhatsappPhoneId(e.target.value)}
-                                                    />
-                                                    <button
-                                                        onClick={handleWhatsAppTest}
-                                                        disabled={isTestingWhatsApp}
-                                                        className="px-6 bg-[#25D366]/10 hover:bg-[#25D366]/20 border border-[#25D366]/20 rounded-xl text-[#25D366] transition-all disabled:opacity-50 flex items-center gap-2 font-bold text-xs shrink-0"
-                                                    >
-                                                        {isTestingWhatsApp ? <Loader2 className="animate-spin size-4" /> : <span className="material-symbols-outlined text-lg">send</span>}
-                                                        {isTestingWhatsApp ? "Test..." : "Tester"}
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div className="pt-10 flex justify-end">
-                                    <button
-                                        onClick={handleSave}
-                                        disabled={isSaving}
-                                        className="bg-[#ec5b13] hover:bg-orange-600 text-white px-8 py-4 rounded-xl font-bold text-base shadow-lg shadow-[#ec5b13]/40 transition-all flex items-center gap-3 disabled:opacity-50"
-                                    >
-                                        {isSaving ? <Loader2 className="animate-spin size-5" /> : <Save className="size-5" />}
-                                        {isSaving ? "Sauvegarde..." : "Sauvegarder les modifications"}
-                                    </button>
-                                </div>
-                            </section>
-                        </div>
+                        <ApiBotSettings />
                     )}
 
                     {activeTab === "receipt" && (
-                        <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
-                            <div className="flex flex-col lg:flex-row gap-12">
-                                {/* Form Column */}
-                                <section className="lg:w-3/5 space-y-8">
-                                    <div className="bg-[#161616] p-8 rounded-2xl border border-[#2d2622] shadow-xl">
-                                        <h2 className="text-lg font-bold mb-6 flex items-center gap-2">
-                                            <span className="material-symbols-outlined text-[#ec5b13]">print</span>
-                                            Paramètres d&apos;Impression (Ticket Thermique)
-                                        </h2>
-                                        <form className="space-y-6" onSubmit={(e) => e.preventDefault()}>
-                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                                <div className="space-y-2">
-                                                    <label className="text-sm text-slate-400 font-medium">Nom de la boutique</label>
-                                                    <input
-                                                        className="w-full bg-[#0a0a0a] border border-[#262626] rounded-xl px-4 py-3 focus:ring-1 focus:ring-[#ec5b13] transition-all outline-none text-white"
-                                                        type="text"
-                                                        value={shopName}
-                                                        onChange={(e) => setShopName(e.target.value)}
-                                                    />
-                                                </div>
-                                                <div className="space-y-2">
-                                                    <label className="text-sm text-slate-400 font-medium">Téléphone</label>
-                                                    <input
-                                                        className="w-full bg-[#0a0a0a] border border-[#262626] rounded-xl px-4 py-3 focus:ring-1 focus:ring-[#ec5b13] transition-all outline-none text-white"
-                                                        type="text"
-                                                        value={shopTel}
-                                                        onChange={(e) => setShopTel(e.target.value)}
-                                                    />
-                                                </div>
-                                            </div>
-                                            <div className="space-y-2">
-                                                <label className="text-sm text-slate-400 font-medium">Adresse</label>
-                                                <input
-                                                    className="w-full bg-[#0a0a0a] border border-[#262626] rounded-xl px-4 py-3 focus:ring-1 focus:ring-[#ec5b13] transition-all outline-none text-white"
-                                                    type="text"
-                                                    value={shopAddress}
-                                                    onChange={(e) => setShopAddress(e.target.value)}
-                                                />
-                                            </div>
-                                            <div className="space-y-2">
-                                                <label className="text-sm text-slate-400 font-medium">Message de pied de page</label>
-                                                <textarea
-                                                    className="w-full bg-[#0a0a0a] border border-[#262626] rounded-xl px-4 py-3 focus:ring-1 focus:ring-[#ec5b13] transition-all outline-none text-white"
-                                                    rows={3}
-                                                    value={footerMessage}
-                                                    onChange={(e) => setFooterMessage(e.target.value)}
-                                                />
-                                            </div>
-
-                                            <div className="pt-4 space-y-4">
-                                                <div className="flex items-center justify-between p-4 bg-black/50 rounded-xl border border-[#262626]/50">
-                                                    <div>
-                                                        <p className="font-bold text-sm">Afficher le nom du caissier</p>
-                                                        <p className="text-xs text-slate-500">Ajoute le nom de l&apos;utilisateur actif sur le ticket</p>
-                                                    </div>
-                                                    <label className="custom-switch">
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={showCashier}
-                                                            onChange={(e) => setShowCashier(e.target.checked)}
-                                                        />
-                                                        <span className="slider"></span>
-                                                    </label>
-                                                </div>
-                                                <div className="flex items-center justify-between p-4 bg-black/50 rounded-xl border border-[#262626]/50">
-                                                    <div>
-                                                        <p className="font-bold text-sm">Date et Heure d&apos;impression</p>
-                                                        <p className="text-xs text-slate-500">Obligatoire pour la conformité fiscale</p>
-                                                    </div>
-                                                    <label className="custom-switch">
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={showDateTime}
-                                                            onChange={(e) => setShowDateTime(e.target.checked)}
-                                                        />
-                                                        <span className="slider"></span>
-                                                    </label>
-                                                </div>
-                                                <div className="flex items-center justify-between p-4 bg-black/50 rounded-xl border border-[#262626]/50">
-                                                    <div>
-                                                        <p className="font-bold text-sm">Afficher le Logo</p>
-                                                        <p className="text-xs text-slate-500">Imprimer le logo au format monochrome</p>
-                                                    </div>
-                                                    <label className="custom-switch">
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={showLogo}
-                                                            onChange={(e) => setShowLogo(e.target.checked)}
-                                                        />
-                                                        <span className="slider"></span>
-                                                    </label>
-                                                </div>
-                                            </div>
-
-                                            <button
-                                                onClick={handleSave}
-                                                disabled={isSaving}
-                                                className="w-full bg-[#ec5b13] hover:bg-orange-600 text-white font-bold py-4 rounded-xl shadow-lg shadow-[#ec5b13]/20 transition-all transform active:scale-[0.98] mt-8 flex items-center justify-center gap-2 disabled:opacity-50"
-                                                type="button"
-                                            >
-                                                {isSaving ? <Loader2 className="animate-spin size-5" /> : <Save className="size-5" />}
-                                                {isSaving ? "ENREGISTREMENT..." : "ENREGISTRER LES MODIFICATIONS"}
-                                            </button>
-                                        </form>
-                                    </div>
-                                </section>
-
-                                {/* Preview Column */}
-                                <section className="lg:w-2/5 flex flex-col items-center">
-                                    <div className="sticky top-40 w-full flex flex-col items-center">
-                                        <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-8">Aperçu du Ticket (80mm)</h3>
-
-                                        <div className="ticket-paper w-[320px] p-6 font-mono text-[13px] leading-tight select-none">
-                                            <div className="text-center mb-4 text-black">
-                                                {showLogo && (
-                                                    <div className="mb-4 flex justify-center grayscale contrast-[200%]">
-                                                        <NextImage src={logoUrl || "https://lh3.googleusercontent.com/aida-public/AB6AXuAc0N62EzEzZzBI60NaoTtEF00tJ4ruXHAprleWW2Ek0c_HJiYCXwfN8trT6eQnjQrV5nE_-fyuuJosSJb_iytbtbNGp-K0Wd6vX-CPo20bhzT8S_St7llE3bP8PuJTX3ksNDuaag3oCbGIG_lZUwYPpyNcDhS-ZZsyPgxdx6s6c1GGpOhrqGqPdgtDJu-cj6Xz_MqFfmz6rBVYDmiePw407Len9Q5yGIf3OUX-df_CRLX9jEKC9xgO2mOWd1gftB6LcGqkoR0lqGU5"} alt="Logo" width={100} height={48} className="h-12 w-auto grayscale contrast-[200%]" />
-                                                    </div>
-                                                )}
-                                                <p className="text-lg font-bold mb-1 uppercase">{shopName}</p>
-                                                <p className="text-[11px] leading-none mb-1">{shopAddress}</p>
-                                                <p className="text-[11px]">Tel: {shopTel}</p>
-                                                <p className="mt-2 text-[11px]">--------------------------------</p>
-                                            </div>
-
-                                            <div className="mb-4 text-black">
-                                                <div className="flex justify-between">
-                                                    <span>Commande:</span>
-                                                    <span className="font-bold">#C42</span>
-                                                </div>
-                                                {showDateTime && (
-                                                    <div className="flex justify-between">
-                                                        <span>Date:</span>
-                                                        <span>14/03/2026 14:35</span>
-                                                    </div>
-                                                )}
-                                                {showCashier && (
-                                                    <div className="flex justify-between">
-                                                        <span>Caissier:</span>
-                                                        <span>Admin</span>
-                                                    </div>
-                                                )}
-                                                <p className="text-[11px] mt-1 text-center font-bold">--------------------------------</p>
-                                            </div>
-
-                                            <div className="space-y-3 mb-6 text-black">
-                                                <div>
-                                                    <div className="flex justify-between font-bold">
-                                                        <span>1x Netflix 1 Mois</span>
-                                                        <span className="whitespace-nowrap font-black">{formatCurrency(1500, 'DZD')}</span>
-                                                    </div>
-                                                    <div className="text-[11px] mt-0.5 bg-gray-100 p-1.5 rounded-md font-bold">
-                                                        [CODE]: A1B2-C3D4-E5F6
-                                                    </div>
-                                                </div>
-                                                <div>
-                                                    <div className="flex justify-between font-bold">
-                                                        <span>3x PSN 20$</span>
-                                                        <span className="whitespace-nowrap font-black">{formatCurrency(13500, 'DZD')}</span>
-                                                    </div>
-                                                    <div className="text-[11px] mt-0.5 space-y-0.5 bg-gray-100 p-1.5 rounded-md font-bold">
-                                                        <p>[CODE 1/3]: P8X2-L9M3-QW12</p>
-                                                        <p>[CODE 2/3]: Z4V7-K0J5-RT99</p>
-                                                        <p>[CODE 3/3]: N1Y4-U6B8-GH44</p>
-                                                    </div>
-                                                </div>
-                                            </div>
-
-                                            <div className="border-t border-dashed border-black pt-4 mb-6 text-center text-black">
-                                                <p className="text-[10px] uppercase tracking-[0.2em] font-bold">Total à payer</p>
-                                                <p className="text-2xl font-black mt-1">{formatCurrency(15000, 'DZD')}</p>
-                                            </div>
-
-                                            <div className="text-center italic text-[11px] leading-snug text-black">
-                                                {footerMessage.split('\n').map((line, i) => (
-                                                    <p key={i}>{line}</p>
-                                                ))}
-                                                <div className="mt-4 opacity-50 font-bold">
-                                                    <p>**** FIN DU TICKET ****</p>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        <div className="mt-12 text-slate-500 text-xs font-bold flex items-center gap-2 uppercase tracking-widest">
-                                            <span className="material-symbols-outlined text-sm">info</span>
-                                            L&apos;aperçu est mis à jour en temps réel
-                                        </div>
-                                    </div>
-                                </section>
-                            </div>
-                        </div>
+                        <ReceiptSettings />
                     )}
 
                     {activeTab === "appearance" && (
@@ -1500,6 +996,211 @@ export default function SettingsContent() {
                             )}
                         </div>
                     )}
+                    {activeTab === "security" && (
+                        <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                            {/* God Mode / Build Protection */}
+                            <Card className="bg-[#1a1614] border border-white/5 rounded-[32px] overflow-hidden shadow-2xl">
+                                <CardBody className="p-8">
+                                    <div className="flex items-center gap-4 mb-8">
+                                        <div className="p-3 bg-red-500/10 rounded-2xl">
+                                            <ShieldAlert className="text-red-500 w-6 h-6" />
+                                        </div>
+                                        <div>
+                                            <h3 className="text-lg font-black text-white uppercase tracking-tight">Contrôle Système (God Mode)</h3>
+                                            <p className="text-slate-500 text-xs font-bold uppercase tracking-wider mt-1">Actions d&apos;urgence et restrictions globales</p>
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-6">
+                                        <div className="flex items-center justify-between p-6 bg-black/40 rounded-3xl border border-white/5">
+                                            <div className="flex items-center gap-4 text-white">
+                                                <Power className={isMaintenanceMode ? "text-red-500" : "text-emerald-500"} size={20} />
+                                                <div>
+                                                    <span className="text-sm font-black uppercase block tracking-widest">Mode Maintenance</span>
+                                                    <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Bloque tout accès sauf ADMIN</span>
+                                                </div>
+                                            </div>
+                                            <button
+                                                onClick={() => setIsMaintenanceMode(!isMaintenanceMode)}
+                                                className={`w-14 h-7 rounded-full transition-all relative ${isMaintenanceMode ? "bg-red-500" : "bg-white/10"}`}
+                                            >
+                                                <div className={`absolute top-1 w-5 h-5 bg-white rounded-full transition-all ${isMaintenanceMode ? "left-8" : "left-1"}`} />
+                                            </button>
+                                        </div>
+
+                                        <div className="space-y-3">
+                                            <div className="flex items-center gap-2 text-white ml-1">
+                                                <Globe size={14} className="text-[#ec5b13]" />
+                                                <span className="text-[10px] font-black uppercase tracking-widest">IP Whitelisting (Séparez par virgule)</span>
+                                            </div>
+                                            <textarea
+                                                className="w-full bg-black/40 border border-white/5 rounded-3xl p-6 text-sm text-white placeholder:text-slate-700 outline-none focus:border-[#ec5b13]/50 transition-all min-h-[100px] font-mono leading-relaxed"
+                                                placeholder="ex: 123.456.78.90, 89.0.1.2"
+                                                value={allowedIps}
+                                                onChange={(e) => setAllowedIps(e.target.value)}
+                                            />
+                                            <p className="text-[10px] text-slate-600 font-bold px-2">Laissez vide pour autoriser toutes les IP. Attention : restreindre aux IP fixes uniquement.</p>
+                                        </div>
+                                    </div>
+                                </CardBody>
+                            </Card>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                {/* MFA Configuration */}
+                                <Card className="bg-[#1a1614] border border-white/5 rounded-[32px] overflow-hidden shadow-2xl">
+                                    <CardBody className="p-8">
+                                        <div className="flex items-center gap-4 mb-8">
+                                            <div className="p-3 bg-[#ec5b13]/10 rounded-2xl">
+                                                <Smartphone className="text-[#ec5b13] w-6 h-6" />
+                                            </div>
+                                            <div>
+                                                <h3 className="text-lg font-black text-white uppercase tracking-tight">Authentification Forte</h3>
+                                                <p className="text-slate-500 text-xs font-bold uppercase tracking-wider mt-1">Sécurisez votre compte personnel</p>
+                                            </div>
+                                        </div>
+
+                                        {!mfaQrCode ? (
+                                            <div className="space-y-6">
+                                                <div className="p-6 bg-black/40 rounded-3xl border border-white/5 text-center">
+                                                    <p className="text-slate-400 text-sm italic mb-6">&quot;L&apos;authentification à deux facteurs ajoute une couche de sécurité supplémentaire en demandant un code depuis votre téléphone.&quot;</p>
+                                                    <Button
+                                                        onPress={handleGenerateMfa}
+                                                        className="bg-[#ec5b13] text-white font-black uppercase tracking-widest text-[10px] py-6 px-10 rounded-2xl shadow-xl shadow-[#ec5b13]/20"
+                                                    >
+                                                        Activer le 2FA
+                                                    </Button>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <div className="space-y-6 animate-in zoom-in-95 duration-300">
+                                                <div className="flex flex-col items-center p-6 bg-white rounded-3xl mb-4">
+                                                    <QRCodeSVG value={mfaQrCode} size={150} />
+                                                    <span className="text-black font-mono text-[10px] mt-4 font-bold select-all">{mfaSecret}</span>
+                                                </div>
+                                                <p className="text-[10px] text-slate-500 uppercase font-black text-center tracking-widest px-4">Scannez ce code avec Google Authenticator ou Authy</p>
+                                                <div className="space-y-3">
+                                                    <input
+                                                        type="text"
+                                                        placeholder="Code de vérification (6 chiffres)"
+                                                        className="w-full bg-black/40 border border-white/5 rounded-2xl py-4 px-6 text-center text-lg font-black tracking-[0.5em] text-[#ec5b13] outline-none"
+                                                        maxLength={6}
+                                                        value={mfaInputCode}
+                                                        onChange={(e) => setMfaInputCode(e.target.value)}
+                                                    />
+                                                    <Button
+                                                        onPress={handleEnableMfa}
+                                                        isLoading={isMfaEnabling}
+                                                        disabled={mfaInputCode.length !== 6}
+                                                        className="w-full bg-emerald-500 text-white font-black uppercase tracking-widest text-[10px] py-4 rounded-2xl"
+                                                    >
+                                                        Confirmer et Activer
+                                                    </Button>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        <div className="mt-8 pt-8 border-t border-white/5">
+                                            <button
+                                                onClick={handleGenerateBackupCodes}
+                                                disabled={isGeneratingCodes}
+                                                className="w-full flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-widest text-slate-500 hover:text-white transition-colors"
+                                            >
+                                                <History size={14} />
+                                                Codes de secours
+                                            </button>
+
+                                            {backupCodes && (
+                                                <div className="mt-4 p-4 bg-black/40 border border-white/5 rounded-2xl grid grid-cols-2 gap-2 font-mono text-[10px] text-[#ec5b13]">
+                                                    {backupCodes.map((code, idx) => (
+                                                        <div key={idx} className="flex items-center gap-2">
+                                                            <span className="text-slate-700">{idx + 1}.</span> {code}
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </CardBody>
+                                </Card>
+
+                                {/* System Logs & Forensics */}
+                                <Card className="bg-[#1a1614] border border-white/5 rounded-[32px] overflow-hidden shadow-2xl">
+                                    <CardBody className="p-8">
+                                        <div className="flex items-center justify-between mb-8">
+                                            <div className="flex items-center gap-4">
+                                                <div className="p-3 bg-blue-500/10 rounded-2xl">
+                                                    <History className="text-blue-500 w-6 h-6" />
+                                                </div>
+                                                <div>
+                                                    <h3 className="text-lg font-black text-white uppercase tracking-tight">Audit & Forensics</h3>
+                                                    <p className="text-slate-500 text-xs font-bold uppercase tracking-wider mt-1">Historique complet des actions</p>
+                                                </div>
+                                            </div>
+                                            <div className="flex gap-2">
+                                                <Button
+                                                    size="sm"
+                                                    variant="flat"
+                                                    onPress={() => handleExportLogs('csv')}
+                                                    isLoading={isExporting}
+                                                    className="bg-white/5 text-white font-black uppercase text-[9px] min-w-0 px-3"
+                                                >
+                                                    <FileSpreadsheet size={14} />
+                                                </Button>
+                                                <Button
+                                                    size="sm"
+                                                    variant="flat"
+                                                    onPress={() => handleExportLogs('json')}
+                                                    isLoading={isExporting}
+                                                    className="bg-white/5 text-white font-black uppercase text-[9px] min-w-0 px-3"
+                                                >
+                                                    <FileJson size={14} />
+                                                </Button>
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+                                            {isAuditLoading ? (
+                                                <div className="flex justify-center py-10"><Spinner color="warning" size="sm" /></div>
+                                            ) : auditLogs.length === 0 ? (
+                                                <div className="text-center py-10 text-slate-600 text-[10px] uppercase font-black tracking-widest">Aucun log récent</div>
+                                            ) : (
+                                                auditLogs.map((log: any) => (
+                                                    <div key={log.id} className="p-4 bg-black/40 border border-white/5 rounded-2xl space-y-2 group hover:border-[#ec5b13]/20 transition-colors">
+                                                        <div className="flex justify-between items-start">
+                                                            <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${log.action.includes('ERROR') || log.action.includes('BLOCKED') ? 'bg-red-500/10 text-red-500' : 'bg-blue-500/10 text-blue-500'}`}>
+                                                                {log.action.replace(/_/g, ' ')}
+                                                            </span>
+                                                            <span className="text-[9px] text-slate-600 font-bold">{new Date(log.createdAt).toLocaleString()}</span>
+                                                        </div>
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="text-[10px] text-white font-black uppercase tracking-wider">{log.user?.nom || 'Système'}</span>
+                                                            <span className="text-[9px] text-slate-500 font-bold whitespace-nowrap">IP: {log.ipAddress}</span>
+                                                        </div>
+                                                        {log.entityType && (
+                                                            <div className="text-[9px] text-slate-500 uppercase tracking-widest">
+                                                                Cible: <span className="text-slate-400">{log.entityType} ({log.entityId || 'N/A'})</span>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                ))
+                                            )}
+                                        </div>
+
+                                        <Button
+                                            fullWidth
+                                            size="sm"
+                                            variant="ghost"
+                                            onPress={fetchAuditLogs}
+                                            className="mt-6 border-white/5 text-slate-500 font-black uppercase text-[10px] h-10 rounded-2xl hover:text-white"
+                                            startContent={<RefreshCw size={14} />}
+                                        >
+                                            Rafraîchir
+                                        </Button>
+                                    </CardBody>
+                                </Card>
+                            </div>
+                        </div>
+                    )}
+
                 </div>
             </main>
 

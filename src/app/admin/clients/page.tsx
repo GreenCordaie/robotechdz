@@ -1,7 +1,6 @@
-import React from "react";
-import ClientsContent from "@/components/admin/ClientsContent";
 import { getClientStats, getIndebtedClients } from "./actions";
 import { redirect } from "next/navigation";
+import ClientsViewSwitcher from "./ClientsViewSwitcher";
 
 export const dynamic = "force-dynamic";
 
@@ -21,7 +20,7 @@ export default async function ClientsPage() {
     }
 
     return (
-        <ClientsContent
+        <ClientsViewSwitcher
             initialStats={stats}
             initialClients={indebtedClients}
         />

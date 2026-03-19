@@ -65,6 +65,12 @@ interface DashboardContentProps {
 
 import OrderDetailModal from "./modals/OrderDetailModal";
 import { cancelOrderAction } from "@/app/admin/caisse/actions";
+import { useThermalPrinter } from "@/hooks/useThermalPrinter";
+import { useWebUSBPrinter } from "@/hooks/useWebUSBPrinter";
+import { generateOrderEscPos } from "@/lib/escpos";
+import { useSettingsStore } from "@/store/useSettingsStore";
+import { ThermalReceiptV2 } from "@/components/admin/receipt/ThermalReceiptV2";
+import { Usb, Loader2 } from "lucide-react";
 
 export default function DashboardContent({ stats }: DashboardContentProps) {
     const router = useRouter();
@@ -72,11 +78,14 @@ export default function DashboardContent({ stats }: DashboardContentProps) {
     const [isDetailModalOpen, setIsDetailModalOpen] = React.useState(false);
     const [searchTerm, setSearchTerm] = React.useState("");
     const [chartPeriod, setChartPeriod] = React.useState<"7" | "30">("7");
+    const { printToIframe } = useThermalPrinter();
+    const settings = useSettingsStore();
+    const webusb = useWebUSBPrinter();
 
     React.useEffect(() => {
         const interval = setInterval(() => {
             router.refresh();
-        }, 3000);
+        }, 30000); // Sustainable 30s refresh
         return () => clearInterval(interval);
     }, [router]);
 
@@ -189,6 +198,27 @@ export default function DashboardContent({ stats }: DashboardContentProps) {
                             ))}
                         </DropdownMenu>
                     </Dropdown>
+
+                    {/* WebUSB Hardware UI */}
+                    <div className="flex items-center gap-2 pl-3 border-l border-white/10 mx-1">
+                        <div className={`hidden lg:flex items-center gap-1.5 px-2 py-1 rounded-md border text-[9px] font-black uppercase transition-all ${webusb.connected
+                                ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
+                                : "bg-red-500/10 border-red-500/20 text-red-400"
+                            }`}>
+                            <div className={`size-1.5 rounded-full ${webusb.connected ? "bg-emerald-400 animate-pulse" : "bg-red-400"}`} />
+                            {webusb.connected ? "PRÊT" : "OFF"}
+                        </div>
+                        <Button
+                            isIconOnly
+                            className={`size-10 rounded-xl border border-white/5 flex items-center justify-center transition-all ${webusb.connected ? "bg-zinc-800 text-slate-400" : "bg-primary/10 text-primary border-primary/20"
+                                }`}
+                            onClick={webusb.connected ? webusb.disconnect : webusb.connect}
+                            disabled={webusb.isConnecting}
+                        >
+                            {webusb.isConnecting ? <Loader2 className="size-5 animate-spin" /> : <Usb className="size-5" />}
+                        </Button>
+                    </div>
+
                     <Button
                         isIconOnly
                         className="size-10 rounded-xl bg-[#161616] border border-[#262626] flex items-center justify-center hover:bg-[#262626] transition-colors"
@@ -264,8 +294,9 @@ export default function DashboardContent({ stats }: DashboardContentProps) {
                         <h3 className="text-lg font-bold text-white tracking-tight">Évolution des Ventes</h3>
                         <div className="flex items-center gap-2 mt-1">
                             <span className="text-3xl font-black text-white tracking-tighter">{formatCurrency(stats.totalTurnover, 'DZD')}</span>
-                            <span className="text-green-500 font-bold text-sm flex items-center gap-1">
-                                <TrendingUp className="w-4 h-4" /> +8.4%
+                            <span className={`${stats.turnoverChange >= 0 ? "text-green-500" : "text-red-500"} font-bold text-sm flex items-center gap-1`}>
+                                {stats.turnoverChange >= 0 ? <TrendingUp className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4 rotate-180" />}
+                                {stats.turnoverChange >= 0 ? "+" : ""}{stats.turnoverChange.toFixed(1)}%
                             </span>
                         </div>
                     </div>
@@ -408,8 +439,49 @@ export default function DashboardContent({ stats }: DashboardContentProps) {
                 isOpen={isDetailModalOpen}
                 onClose={() => setIsDetailModalOpen(false)}
                 order={selectedOrder}
-                onReprint={() => window.print()}
+                onReprint={async () => {
+                    if (!selectedOrder) return;
+
+                    if (webusb.connected) {
+                        try {
+                            const buffer = generateOrderEscPos(selectedOrder, settings);
+                            await webusb.print(buffer);
+                            toast.success("Réimpression USB lancée");
+                        } catch (e) {
+                            console.error("Dashboard USB print fail:", e);
+                            toast.error("Erreur USB");
+                        }
+                    } else {
+                        const printContent = document.getElementById('thermal-receipt-source');
+                        if (printContent) {
+                            toast.success("Lancement impression (standard)...");
+                            printToIframe(selectedOrder.orderNumber, printContent.innerHTML);
+                        }
+                    }
+                }}
             />
+
+            {/* Hidden Print Container */}
+            {selectedOrder && (
+                <div
+                    id="thermal-receipt-source"
+                    className="fixed -top-[9999px] -left-[9999px] opacity-0 pointer-events-none text-black bg-white"
+                    aria-hidden="true"
+                >
+                    <ThermalReceiptV2
+                        orderNumber={selectedOrder.orderNumber}
+                        date={selectedOrder.createdAt}
+                        items={selectedOrder.items.map((it: any) => ({
+                            ...it,
+                            codes: it.codes || [],
+                            customData: it.customData,
+                            playerNickname: it.playerNickname
+                        }))}
+                        totalAmount={selectedOrder.totalAmount}
+                        paymentMethod={selectedOrder.paymentMethod}
+                    />
+                </div>
+            )}
         </div>
     );
 }

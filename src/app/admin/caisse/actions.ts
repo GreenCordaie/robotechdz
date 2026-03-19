@@ -48,13 +48,13 @@ export const findOrderByNumber = withAuth(
         const mappedItems = (result as any).items.map((item: any) => {
             return {
                 ...item,
-                fullCodes: (item.codes || []).map((c: any) => ({ id: c.id, code: decrypt(c.code) })),
+                fullCodes: (item.codes || []).map((c: any) => ({ id: c.id, code: decrypt(c.code) || "[ERREUR DÉCRYPTAGE]" })),
                 fullSlots: (item.slots || []).map((s: any) => ({
                     id: s.id,
-                    code: decrypt(s.code),
+                    code: decrypt(s.code) || "[ERREUR DÉCRYPTAGE]",
                     slotNumber: s.slotNumber,
                     profileName: s.profileName,
-                    parentCode: decrypt(s.digitalCode.code)
+                    parentCode: decrypt(s.digitalCode.code) || "[ERREUR DÉCRYPTAGE]"
                 }))
             };
         });
@@ -82,7 +82,7 @@ export const getPendingOrders = withAuth(
             ...order,
             items: (order.items || []).map((item: any) => ({
                 ...item,
-                codes: (item.codes || []).map((c: any) => decrypt(c.code))
+                codes: (item.codes || []).map((c: any) => decrypt(c.code) || "[ERREUR DÉCRYPTAGE]")
             }))
         }));
     }
@@ -162,7 +162,7 @@ export const payOrder = withAuth(
                 });
 
                 // 4. Fetch Enriched Order for Frontend Return
-                return await tx.query.orders.findFirst({
+                const finalOrder = await tx.query.orders.findFirst({
                     where: eq(orders.id, id),
                     with: {
                         items: {
@@ -174,11 +174,31 @@ export const payOrder = withAuth(
                         }
                     }
                 });
+
+                if (!finalOrder) return null;
+
+                const mappedItems = (finalOrder as any).items.map((item: any) => {
+                    const standardCodes = (item.codes || []).map((c: any) => decrypt(c.code) || "[ERREUR DÉCRYPTAGE]");
+                    const slotCodes = (item.slots || []).map((s: any) => {
+                        const decryptedParent = decrypt(s.digitalCode.code) || "[ERREUR COMPTE]";
+                        const decryptedSlotPin = s.code ? decrypt(s.code) : null;
+                        let slotInfo = `${decryptedParent} | Profil ${s.slotNumber}`;
+                        if (s.code) slotInfo += ` | PIN: ${decryptedSlotPin || "[ERREUR PIN]"}`;
+                        return slotInfo;
+                    });
+                    return { ...item, codes: [...standardCodes, ...slotCodes] };
+                });
+
+                return { ...finalOrder, items: mappedItems };
             });
 
             revalidatePath("/admin/caisse");
             revalidatePath("/admin/traitement");
-            await triggerOrderDelivery(id);
+
+            // Non-blocking background delivery
+            triggerOrderDelivery(id).catch(err => {
+                console.error(`[Background Delivery Error] Order #${id}:`, err);
+            });
 
             return { success: true, order: result };
         } catch (error) {
@@ -226,7 +246,11 @@ export const getPaidOrders = withAuth(
                     });
                     const slotCodes = (item.slots || []).map((s: any) => {
                         try {
-                            return `${decrypt(s.digitalCode.code)} | Profil ${s.slotNumber}`;
+                            const decryptedParent = decrypt(s.digitalCode.code);
+                            const decryptedSlotPin = s.code ? decrypt(s.code) : null;
+                            let slotInfo = `${decryptedParent} | Profil ${s.slotNumber}`;
+                            if (decryptedSlotPin) slotInfo += ` | PIN: ${decryptedSlotPin}`;
+                            return slotInfo;
                         } catch {
                             return "Error | Profil Error";
                         }
@@ -272,15 +296,20 @@ export const processOrder = withAuth(
                 }
             });
 
-            await triggerOrderDelivery(id);
             revalidatePath("/admin/caisse");
+
+            // Non-blocking background delivery
+            triggerOrderDelivery(id).catch(err => {
+                console.error(`[Background Delivery Error] Order #${id}:`, err);
+            });
 
             const enrichedOrder = await db.query.orders.findFirst({
                 where: eq(orders.id, id),
                 with: {
                     items: {
                         with: {
-                            digitalCodes: true
+                            codes: true,
+                            slots: { with: { digitalCode: true } }
                         }
                     },
                     client: true
@@ -292,10 +321,17 @@ export const processOrder = withAuth(
             const order = enrichedOrder as any;
             return {
                 ...order,
-                items: order.items.map((item: any) => ({
-                    ...item,
-                    codes: item.digitalCodes.map((dc: any) => dc.code)
-                }))
+                items: order.items.map((item: any) => {
+                    const standardCodes = (item.codes || []).map((c: any) => decrypt(c.code) || "[ERREUR DÉCRYPTAGE]");
+                    const slotCodes = (item.slots || []).map((s: any) => {
+                        const decryptedParent = decrypt(s.digitalCode.code) || "[ERREUR COMPTE]";
+                        const decryptedSlotPin = s.code ? decrypt(s.code) : null;
+                        let slotInfo = `${decryptedParent} | Profil ${s.slotNumber}`;
+                        if (s.code) slotInfo += ` | PIN: ${decryptedSlotPin || "[ERREUR PIN]"}`;
+                        return slotInfo;
+                    });
+                    return { ...item, codes: [...standardCodes, ...slotCodes] };
+                })
             };
         } catch (error) {
             return { error: (error as Error).message };
@@ -329,15 +365,13 @@ export const getTodayOrders = withAuth(
                 nomComplet: res.client?.nomComplet || "Anonyme",
                 telephone: res.client?.telephone || res.customerPhone,
                 items: (res.items || []).map((item: any) => {
-                    const standardCodes = (item.codes || []).map((c: any) => {
-                        try { return decrypt(c.code); } catch { return "Error"; }
-                    });
+                    const standardCodes = (item.codes || []).map((c: any) => decrypt(c.code) || "[ERREUR DÉCRYPTAGE]");
                     const slotCodes = (item.slots || []).map((s: any) => {
-                        try {
-                            return `${decrypt(s.digitalCode.code)} | Profil ${s.slotNumber}`;
-                        } catch {
-                            return "Error | Profil Error";
-                        }
+                        const decryptedParent = decrypt(s.digitalCode.code) || "[ERREUR COMPTE]";
+                        const decryptedSlotPin = s.code ? decrypt(s.code) : null;
+                        let slotInfo = `${decryptedParent} | Profil ${s.slotNumber}`;
+                        if (s.code) slotInfo += ` | PIN: ${decryptedSlotPin || "[ERREUR PIN]"}`;
+                        return slotInfo;
                     });
                     return { ...item, codes: [...standardCodes, ...slotCodes] };
                 })
@@ -388,7 +422,11 @@ export const getFinishedOrders = withAuth(
                     });
                     const slotCodes = (item.slots || []).map((s: any) => {
                         try {
-                            return `${decrypt(s.digitalCode.code)} | Profil ${s.slotNumber}`;
+                            const decryptedParent = decrypt(s.digitalCode.code);
+                            const decryptedSlotPin = s.code ? decrypt(s.code) : null;
+                            let slotInfo = `${decryptedParent} | Profil ${s.slotNumber}`;
+                            if (decryptedSlotPin) slotInfo += ` | PIN: ${decryptedSlotPin}`;
+                            return slotInfo;
                         } catch {
                             return "Error | Profil Error";
                         }
@@ -604,5 +642,19 @@ export const getPendingOrdersCount = withAuth(
             ));
 
         return { count: result[0]?.count || 0 };
+    }
+);
+export const resendWhatsAppAction = withAuth(
+    {
+        roles: ["ADMIN", "CAISSIER"],
+        schema: z.object({ orderId: z.number() })
+    },
+    async ({ orderId }) => {
+        try {
+            await triggerOrderDelivery(orderId);
+            return { success: true };
+        } catch (error) {
+            return { success: false, error: (error as Error).message };
+        }
     }
 );

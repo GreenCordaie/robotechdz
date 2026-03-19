@@ -72,11 +72,16 @@ export const saveShopSettingsAction = withAuth(
             webhookUrl: z.string().nullable().optional(),
             whatsappToken: z.string().nullable().optional(),
             whatsappPhoneId: z.string().nullable().optional(),
+            whatsappApiUrl: z.string().nullable().optional(),
+            whatsappApiKey: z.string().nullable().optional(),
+            whatsappInstanceName: z.string().nullable().optional(),
+            whatsappSenderNumber: z.string().nullable().optional(),
             isB2bEnabled: z.boolean().optional(),
             defaultResellerDiscount: z.string().optional(),
             minResellerRecharge: z.string().optional(),
             isMaintenanceMode: z.boolean().optional(),
             allowedIps: z.string().nullable().optional(),
+            whatsappMessageTemplate: z.string().nullable().optional(),
         })
     },
     async (data, user) => {
@@ -312,8 +317,85 @@ export const setTelegramWebhookAction = withAuth(
 );
 
 export const testWhatsAppAction = withAuth(
-    { roles: ["ADMIN"], schema: z.object({ token: z.string(), phoneId: z.string() }) },
-    async () => ({ success: true })
+    { roles: ["ADMIN"], schema: z.object({ url: z.string(), key: z.string().optional(), instance: z.string().optional(), number: z.string() }) },
+    async ({ url, key, instance, number }) => {
+        const { sendWhatsAppMessage } = await import("@/lib/whatsapp");
+        return await sendWhatsAppMessage(number, "✅ *TEST RÉUSSI* - Votre bot WhatsApp est correctement configuré sur FLEXBOX II.", {
+            whatsappApiUrl: url,
+            whatsappApiKey: key,
+            whatsappInstanceName: instance
+        });
+    }
+);
+
+export const getWhatsAppStatusAction = withAuth(
+    { roles: ["ADMIN"] },
+    async () => {
+        const settings = await getSettingsInternal();
+        if (!settings.whatsappApiUrl || !settings.whatsappInstanceName) {
+            return { success: false, error: "Configuration manquante" };
+        }
+
+        const headers = { 'apikey': settings.whatsappApiKey || 'abc' };
+        let apiUrl = settings.whatsappApiUrl.replace(/\/$/, '');
+
+        // Windows/Docker networking fix: replace localhost with 127.0.0.1
+        if (apiUrl.includes('localhost')) {
+            apiUrl = apiUrl.replace('localhost', '127.0.0.1');
+        }
+
+        try {
+            // 1. Get status
+            let statusRes;
+            try {
+                statusRes = await fetch(`${apiUrl}/instance/connectionState/${settings.whatsappInstanceName}`, { headers, signal: AbortSignal.timeout(5000) });
+            } catch (e: any) {
+                return { success: false, error: `Moteur injoignable (Port 3001). Vérifiez Docker.` };
+            }
+
+            if (statusRes.status === 404) {
+                try {
+                    await fetch(`${apiUrl}/instance/create`, {
+                        method: 'POST',
+                        headers: { ...headers, 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            instanceName: settings.whatsappInstanceName,
+                            token: settings.whatsappApiKey || 'abc',
+                            qrcode: true
+                        })
+                    });
+                    return { success: true, state: 'connecting', qr: null };
+                } catch (e) {
+                    return { success: false, error: "Impossible de créer l'instance" };
+                }
+            }
+
+            const data = await statusRes.json().catch(() => ({}));
+            const state = data.instance?.state || data.instance?.status || 'close';
+
+            // 2. If not open, try to get QR
+            if (state !== 'open') {
+                try {
+                    const qrRes = await fetch(`${apiUrl}/instance/connect/${settings.whatsappInstanceName}`, { headers });
+                    const qrData = await qrRes.json().catch(() => ({}));
+
+                    let rawQr = qrData.base64 || qrData.qrcode?.base64 || qrData.code || null;
+
+                    if (rawQr && typeof rawQr === 'string' && !rawQr.startsWith('data:')) {
+                        if (rawQr.length > 100) rawQr = `data:image/png;base64,${rawQr}`;
+                    }
+
+                    return { success: true, state: state, qr: rawQr, error: qrData.message || null };
+                } catch (e) {
+                    return { success: true, state: state, qr: null };
+                }
+            }
+
+            return { success: true, state: 'open', number: data.instance?.owner || data.instance?.number };
+        } catch (error: any) {
+            return { success: false, error: `Erreur interne: ${error.message}` };
+        }
+    }
 );
 
 export const getAuditLogsAction = withAuth(

@@ -93,6 +93,7 @@ export const orders = pgTable("orders", {
     deliveryMethod: deliveryMethodEnum("delivery_method").default("TICKET").notNull(),
     customerPhone: text("customer_phone"),
     isDelivered: boolean("is_delivered").default(false),
+    whatsappSentAt: timestamp("whatsapp_sent_at", { mode: 'date' }),
     createdAt: timestamp("created_at", { mode: 'date' }).defaultNow(),
 }, (table) => {
     return {
@@ -110,8 +111,14 @@ export const orderItems = pgTable("order_items", {
     price: numeric("price", { precision: 12, scale: 2 }).notNull(),
     quantity: integer("quantity").notNull(),
     supplierId: integer("supplier_id").references(() => suppliers.id, { onDelete: "set null" }),
+    purchasePrice: numeric("purchase_price", { precision: 10, scale: 2 }), // Historical cost
+    purchaseCurrency: text("purchase_currency"),
     customData: text("custom_data"),
     playerNickname: text("player_nickname"),
+}, (table) => {
+    return {
+        orderIdIdx: index("oi_order_id_idx").on(table.orderId),
+    };
 });
 
 export const digitalCodes = pgTable("digital_codes", {
@@ -154,6 +161,11 @@ export const clientPayments = pgTable("client_payments", {
     montantDzd: numeric("montant_dzd", { precision: 12, scale: 2 }).notNull(),
     typeAction: actionTypeEnum("type_action").notNull(), // ACOMPTE, REMBOURSEMENT, RETOUR
     createdAt: timestamp("created_at", { mode: 'date' }).defaultNow(),
+}, (table) => {
+    return {
+        clientIdIdx: index("cp_client_id_idx").on(table.clientId),
+        orderIdIdx: index("cp_order_id_idx").on(table.orderId),
+    };
 });
 
 export const users = pgTable("users", {
@@ -198,6 +210,11 @@ export const shopSettings = pgTable("shop_settings", {
     minResellerRecharge: numeric("min_reseller_recharge", { precision: 12, scale: 2 }).default("1000.00"),
     isMaintenanceMode: boolean("is_maintenance_mode").default(false).notNull(),
     allowedIps: text("allowed_ips"),
+    whatsappApiUrl: text("whatsapp_api_url").default("http://localhost:3001"),
+    whatsappApiKey: text("whatsapp_api_key"),
+    whatsappInstanceName: text("whatsapp_instance_name").default("FLEXBOX_BOT"),
+    whatsappSenderNumber: text("whatsapp_sender_number"),
+    whatsappMessageTemplate: text("whatsapp_message_template"),
 });
 
 export const resellers = pgTable("resellers", {
@@ -226,6 +243,10 @@ export const resellerTransactions = pgTable("reseller_transactions", {
     orderId: integer("order_id").references(() => orders.id, { onDelete: "set null" }),
     description: text("description"),
     createdAt: timestamp("created_at", { mode: 'date' }).defaultNow(),
+}, (table) => {
+    return {
+        walletIdIdx: index("rt_wallet_id_idx").on(table.walletId),
+    };
 });
 
 export const supportTickets = pgTable("support_tickets", {

@@ -1,6 +1,6 @@
 "use client";
 
-import { ThermalReceipt } from "@/components/admin/receipt/ThermalReceipt";
+import { ThermalReceiptV2 } from "@/components/admin/receipt/ThermalReceiptV2";
 
 export default function TestReceiptPage() {
     const sampleItems = [
@@ -18,17 +18,28 @@ export default function TestReceiptPage() {
             name: "Netflix Premium 1 Mois",
             quantity: 1,
             price: 1800,
-            codes: ["NFLX-9876-XYZ"]
+            codes: ["netflix@demo.com | mdp1234 | Profil 2 | PIN: 66554"]
+        },
+        {
+            name: "Recharge Diamant 1000",
+            quantity: 1,
+            price: 2500,
+            codes: ["ID: 55667788 | Pseudo: GamerOne"]
         }
     ];
 
     return (
-        <ThermalReceipt
-            orderNumber="#A45"
-            date={new Date()}
-            items={sampleItems}
-            totalAmount={36300}
-            paymentMethod="Espèces"
-        />
+        <div className="bg-gray-100 min-h-screen py-10">
+            <div className="max-w-[400px] mx-auto bg-white shadow-2xl p-4 rounded-xl border border-gray-200">
+                <p className="text-center text-xs font-bold text-gray-500 mb-6 uppercase tracking-widest italic">Aperçu Réel 80mm (V2)</p>
+                <ThermalReceiptV2
+                    orderNumber="#C57-942"
+                    date={new Date()}
+                    items={sampleItems}
+                    totalAmount={38800}
+                    paymentMethod="Espèces"
+                />
+            </div>
+        </div>
     );
 }

@@ -1,12 +1,12 @@
 import { getSuppliersAction, getSupplierHistoryAction } from "./actions";
-import SuppliersContent from "./SuppliersContent";
+import SuppliersViewSwitcher from "./SuppliersViewSwitcher";
 
 export const dynamic = "force-dynamic";
 
 export default async function FournisseursPage() {
     const [suppliers, history]: any[] = await Promise.all([
         getSuppliersAction({}),
-        getSupplierHistoryAction({ supplierId: 0 }) // Wait, history needs supplierId? The page seems to fetch "all" history or just needs a placeholder? Actually getSupplierHistoryAction needs supplierId.
+        getSupplierHistoryAction({ supplierId: 0 })
     ]);
 
     if (suppliers.success === false || history.success === false) {
@@ -18,7 +18,7 @@ export default async function FournisseursPage() {
     }
 
     return (
-        <SuppliersContent
+        <SuppliersViewSwitcher
             initialSuppliers={suppliers as any}
             initialHistory={history as any}
         />

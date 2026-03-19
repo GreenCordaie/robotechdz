@@ -7,7 +7,7 @@ import { revalidatePath } from "next/cache";
 
 export async function getSupportTickets(status: "OUVERT" | "RESOLU" = "OUVERT") {
     try {
-        const results = await db.query.supportTickets.findMany({
+        const results: any = await db.query.supportTickets.findMany({
             where: eq(supportTickets.status, status),
             with: {
                 order: {
@@ -29,13 +29,13 @@ export async function getSupportTickets(status: "OUVERT" | "RESOLU" = "OUVERT") 
         });
 
         // Map order items to include fullCode/fullSlot info (same as Caisse actions)
-        return results.map(ticket => {
+        return results.map((ticket: any) => {
             if (!ticket.order) return ticket;
 
-            const enrichedItems = ticket.order.items.map(item => ({
+            const enrichedItems = ticket.order.items.map((item: any) => ({
                 ...item,
-                fullCodes: (item.codes || []).map(c => ({ id: c.id, code: c.code })),
-                fullSlots: (item.slots || []).map(s => ({
+                fullCodes: (item.codes || []).map((c: any) => ({ id: c.id, code: c.code })),
+                fullSlots: (item.slots || []).map((s: any) => ({
                     id: s.id,
                     code: s.code,
                     slotNumber: s.slotNumber,
