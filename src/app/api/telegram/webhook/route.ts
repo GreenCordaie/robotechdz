@@ -4,17 +4,30 @@ import { orders, digitalCodes, orderItems, shopSettings } from "@/db/schema";
 import { eq, sql } from "drizzle-orm";
 import { sendTelegramNotification } from "@/lib/telegram";
 import { sendWhatsAppMessage } from "@/lib/whatsapp";
+import crypto from "crypto";
 
 export async function POST(req: NextRequest) {
     try {
         const body = await req.json();
         // console.log("Full Webhook Body:", JSON.stringify(body, null, 2));
 
-        // 0. Secret Token Validation
-        const expectedToken = process.env.TELEGRAM_SECRET_TOKEN || "flexbox_secure_token_2026";
+        // 0. Secret Token Validation (Timing-safe comparison & no fallbacks)
+        const expectedToken = process.env.TELEGRAM_SECRET_TOKEN;
         const receivedToken = req.headers.get("x-telegram-bot-api-secret-token");
 
-        if (receivedToken !== expectedToken) {
+        if (!expectedToken) {
+            console.error("Critical: TELEGRAM_SECRET_TOKEN is not configured in environment.");
+            return NextResponse.json({ ok: false, error: "Internal Server Error" }, { status: 500 });
+        }
+
+        if (!receivedToken) {
+            return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+        }
+
+        const expectedBuffer = Buffer.from(expectedToken);
+        const receivedBuffer = Buffer.from(receivedToken);
+
+        if (expectedBuffer.length !== receivedBuffer.length || !crypto.timingSafeEqual(expectedBuffer, receivedBuffer)) {
             return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
         }
 

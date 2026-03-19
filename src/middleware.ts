@@ -9,7 +9,7 @@ export async function middleware(request: NextRequest) {
 
     // 1. Security Headers
     const securityHeaders = {
-        'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com https://r2cdn.perplexity.ai; img-src 'self' data: https:; connect-src 'self' https:;",
+        'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com https://r2cdn.perplexity.ai; img-src 'self' data: https:; connect-src 'self' https:;",
         'Strict-Transport-Security': 'max-age=31536000; includeSubDomains; preload',
         'X-Frame-Options': 'DENY',
         'X-Content-Type-Options': 'nosniff',
@@ -58,13 +58,21 @@ export async function middleware(request: NextRequest) {
                 return NextResponse.redirect(new URL("/admin", request.url));
             }
 
-            // RBAC for admin
+            // RBAC for admin (Default Deny - Whitelist approach)
             if (path.startsWith("/admin")) {
-                const restrictedRoutes = ["/admin/fournisseurs", "/admin/dashboard", "/admin/settings"];
-                const isRestrictedPath = restrictedRoutes.some(r => path.startsWith(r));
+                if (userRole !== "ADMIN") {
+                    const permittedPaths = [
+                        "/admin/caisse",
+                        "/admin/catalogue",
+                        "/admin/traitement",
+                        "/admin/support",
+                        "/admin/login"
+                    ];
 
-                if (isRestrictedPath && userRole !== "ADMIN") {
-                    return NextResponse.redirect(new URL("/admin/catalogue", request.url));
+                    const isPermitted = permittedPaths.some(p => path === p || path.startsWith(p + "/"));
+                    if (!isPermitted) {
+                        return NextResponse.redirect(new URL("/admin/catalogue", request.url));
+                    }
                 }
             }
         } catch (err) {

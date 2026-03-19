@@ -144,7 +144,14 @@ export function withAuth<T extends z.ZodType, R>(
             // 3. IP Whitelisting (ADMIN only)
             if (user.role === "ADMIN" && settings?.allowedIps) {
                 const headerList = headers();
-                const ipAddress = headerList.get("x-forwarded-for")?.split(',')[0] || "unknown";
+
+                // Secure IP extraction: prioritize headers that are harder to spoof depending on the proxy setup
+                const ipAddress =
+                    headerList.get("cf-connecting-ip") ||
+                    headerList.get("x-real-ip") ||
+                    headerList.get("x-forwarded-for")?.split(',').pop()?.trim() || // Last IP in chain is usually safer if proxy is trusted
+                    "unknown";
+
                 const allowedIpsList = settings.allowedIps.split(',').map(ip => ip.trim());
 
                 if (allowedIpsList.length > 0 && !allowedIpsList.includes(ipAddress)) {

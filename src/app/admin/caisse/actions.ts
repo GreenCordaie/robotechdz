@@ -2,7 +2,7 @@
 
 import { db } from "@/db";
 import { orders, digitalCodes, digitalCodeSlots, orderItems, suppliers, supplierTransactions, productVariantSuppliers, clients, clientPayments, shopSettings, resellers } from "@/db/schema";
-import { eq, sql, desc, exists, and, inArray, count, gte } from "drizzle-orm";
+import { eq, sql, desc, exists, and, inArray, count, gte, asc } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { sendTelegramNotification } from "@/lib/telegram";
 import { triggerOrderDelivery } from "@/lib/delivery";
@@ -94,8 +94,8 @@ export const payOrder = withAuth(
         schema: z.object({
             id: z.number(),
             options: z.object({
-                remise: z.number(),
-                montantPaye: z.number(),
+                remise: z.number().nonnegative().max(1000000),
+                montantPaye: z.number().nonnegative(),
                 clientId: z.number().optional(),
                 itemSuppliers: z.record(z.string(), z.number()).optional()
             })
@@ -499,22 +499,23 @@ export const replaceOrderItemCode = withAuth(
                     await tx.update(digitalCodeSlots).set({ status: "DEFECTUEUX" }).where(eq(digitalCodeSlots.id, oldSlotId));
                 }
 
-                // 2. Find new code/slot
+                // 2. Find new code/slot (Locked selection to prevent race conditions)
                 if (item.variant.isSharing) {
-                    const newSlot = await tx.query.digitalCodeSlots.findFirst({
-                        where: (dcs, { and, eq, exists }) => and(
-                            eq(dcs.status, "DISPONIBLE"),
+                    const [newSlot] = await tx.select().from(digitalCodeSlots)
+                        .where(and(
+                            eq(digitalCodeSlots.status, "DISPONIBLE"),
                             exists(
                                 tx.select().from(digitalCodes)
                                     .where(and(
-                                        eq(digitalCodes.id, dcs.digitalCodeId),
+                                        eq(digitalCodes.id, digitalCodeSlots.digitalCodeId),
                                         eq(digitalCodes.variantId, item.variantId),
                                         eq(digitalCodes.status, "DISPONIBLE")
                                     ))
                             )
-                        ),
-                        orderBy: (dcs, { asc }) => [asc(dcs.digitalCodeId), asc(dcs.slotNumber)]
-                    });
+                        ))
+                        .orderBy(asc(digitalCodeSlots.digitalCodeId), asc(digitalCodeSlots.slotNumber))
+                        .limit(1)
+                        .for("update", { skipLocked: true });
 
                     if (!newSlot) throw new Error("Plus de slots disponibles en stock");
 
@@ -525,9 +526,13 @@ export const replaceOrderItemCode = withAuth(
                     revalidatePath("/admin/caisse");
                     return { success: true };
                 } else {
-                    const newCode = await tx.query.digitalCodes.findFirst({
-                        where: and(eq(digitalCodes.variantId, item.variantId), eq(digitalCodes.status, "DISPONIBLE"))
-                    });
+                    const [newCode] = await tx.select().from(digitalCodes)
+                        .where(and(
+                            eq(digitalCodes.variantId, item.variantId),
+                            eq(digitalCodes.status, "DISPONIBLE")
+                        ))
+                        .limit(1)
+                        .for("update", { skipLocked: true });
 
                     if (!newCode) throw new Error("Plus de codes disponibles en stock");
 
@@ -662,7 +667,7 @@ export const cancelOrderAction = withAuth(
                 for (const st of relatedTransactions) {
                     // Credit the supplier back
                     await tx.update(suppliers)
-                        .set({ balance: sql`${suppliers.balance} + ${st.amount}` })
+                        .set({ balance: sql`${suppliers.balance} + ${sql.param(st.amount)}` })
                         .where(eq(suppliers.id, st.supplierId));
 
                     // Log the reversal
