@@ -7,6 +7,7 @@ interface User {
     role: "ADMIN" | "CAISSIER" | "TRAITEUR" | "RESELLER";
     nom: string;
     pinCode: string;
+    avatarUrl?: string | null;
 }
 
 interface AuthState {

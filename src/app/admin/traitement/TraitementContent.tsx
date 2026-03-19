@@ -14,7 +14,7 @@ import { useWebUSBPrinter } from "@/hooks/useWebUSBPrinter";
 import { generateOrderEscPos } from "@/lib/escpos";
 import { useSettingsStore } from "@/store/useSettingsStore";
 import { useAuthStore } from "@/store/useAuthStore";
-import { Wifi, WifiOff, Usb, Loader2 } from "lucide-react";
+import { Wifi, WifiOff, Usb, Loader2, MessageSquare } from "lucide-react";
 
 export default function TraitementContent() {
     const [view, setView] = useState<"pending" | "finished">("pending");
@@ -29,6 +29,7 @@ export default function TraitementContent() {
     const [orderForDetail, setOrderForDetail] = useState<any | null>(null);
     const [shouldPrint, setShouldPrint] = useState(false);
     const processedIds = React.useRef<Set<number>>(new Set());
+    const prevOrderIds = React.useRef<Set<number>>(new Set());
     const { printToIframe } = useThermalPrinter();
     const webusb = useWebUSBPrinter();
     const settings = useSettingsStore();
@@ -57,6 +58,30 @@ export default function TraitementContent() {
         const interval = setInterval(async () => {
             const res: any = view === "pending" ? await getPaidOrders({}) : await getFinishedOrders({});
             const data = Array.isArray(res) ? res : [];
+
+            // Visual Notification for New Arrivals
+            if (view === "pending") {
+                const currentIds = new Set(data.map((o: any) => o.id));
+                const newOrders = data.filter((o: any) => !prevOrderIds.current.has(o.id));
+
+                if (newOrders.length > 0 && prevOrderIds.current.size > 0) {
+                    newOrders.forEach((o: any) => {
+                        toast.success(`NOUVELLE COMMANDE : ${o.orderNumber}`, {
+                            icon: '🛎️',
+                            duration: 8000,
+                            style: {
+                                borderRadius: '12px',
+                                background: '#ec5b13',
+                                color: '#fff',
+                                fontWeight: 'black',
+                                fontSize: '14px'
+                            }
+                        });
+                    });
+                }
+                prevOrderIds.current = currentIds;
+            }
+
             setOrders(data);
 
             // Auto-Print Logic for Webhook-delivered orders

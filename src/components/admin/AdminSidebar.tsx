@@ -25,6 +25,7 @@ export const AdminSidebar = () => {
     const pathname = usePathname();
     const router = useRouter();
     const clearAuth = useAuthStore((state) => state.clearAuth);
+    const user = useAuthStore((state) => state.user);
     const { shopName, dashboardLogoUrl, isB2bEnabled, fetchSettings } = useSettingsStore();
 
     const [openTickets, setOpenTickets] = React.useState(0);
@@ -57,6 +58,24 @@ export const AdminSidebar = () => {
         clearAuth();
     };
 
+    const navItems = [
+        { name: "Dashboard", icon: "dashboard", href: "/admin", roles: ["ADMIN", "CAISSIER", "TRAITEUR"] },
+        { name: "Catalogue", icon: "inventory_2", href: "/admin/catalogue", roles: ["ADMIN", "CAISSIER"] },
+        { name: "Caisse", icon: "account_balance_wallet", href: "/admin/caisse", badge: pendingOrders, roles: ["ADMIN", "CAISSIER"] },
+        { name: "Comptes Partagés", icon: "group_work", href: "/admin/comptes-partages", roles: ["ADMIN", "CAISSIER"] },
+        { name: "Traitement", icon: "sync_alt", href: "/admin/traitement", roles: ["ADMIN", "CAISSIER", "TRAITEUR"] },
+        { name: "Clients & Crédits", icon: "person", href: "/admin/clients", roles: ["ADMIN", "CAISSIER"] },
+        { name: "Fournisseurs", icon: "group", href: "/admin/fournisseurs", roles: ["ADMIN"] },
+        ...(isB2bEnabled ? [{ name: "B2B & Revendeurs", icon: "corporate_fare", href: "/admin/b2b", roles: ["ADMIN"] }] : []),
+        { name: "Tickets Support", icon: "support_agent", href: "/admin/support", badge: openTickets, roles: ["ADMIN", "CAISSIER", "TRAITEUR"] },
+        { name: "Paramètres", icon: "settings", href: "/admin/settings", roles: ["ADMIN"] },
+    ];
+
+    const visibleItems = navItems.filter(item => {
+        if (!user) return false;
+        return (item.roles as string[]).includes(user.role);
+    });
+
     return (
         <aside className="w-64 flex flex-col border-r border-[#2d2622] h-screen sticky top-0 bg-[#1a1614] shrink-0 shadow-2xl">
             <div className="p-6 flex items-center gap-3">
@@ -84,19 +103,7 @@ export const AdminSidebar = () => {
             </div>
 
             <nav className="flex-1 px-4 space-y-1 mt-2">
-                {[
-                    { name: "Dashboard", icon: "dashboard", href: "/admin" },
-                    { name: "Catalogue", icon: "inventory_2", href: "/admin/catalogue" },
-                    { name: "Caisse", icon: "account_balance_wallet", href: "/admin/caisse", badge: pendingOrders },
-                    { name: "Comptes Partagés", icon: "group_work", href: "/admin/comptes-partages" },
-                    { name: "Traitement", icon: "sync_alt", href: "/admin/traitement" },
-
-                    { name: "Clients & Crédits", icon: "person", href: "/admin/clients" },
-                    { name: "Fournisseurs", icon: "group", href: "/admin/fournisseurs" },
-                    ...(isB2bEnabled ? [{ name: "B2B & Revendeurs", icon: "corporate_fare", href: "/admin/b2b" }] : []),
-                    { name: "Tickets Support", icon: "support_agent", href: "/admin/support", badge: openTickets },
-                    { name: "Paramètres", icon: "settings", href: "/admin/settings", fill: true },
-                ].map((item) => {
+                {visibleItems.map((item) => {
                     const isActive = pathname === item.href;
                     return (
                         <Link
@@ -109,7 +116,7 @@ export const AdminSidebar = () => {
                         >
                             <span
                                 className="material-symbols-outlined text-[20px] shrink-0 transition-transform group-hover:scale-110"
-                                style={item.fill || isActive ? { fontVariationSettings: "'FILL' 1" } : {}}
+                                style={isActive || (item as any).fill ? { fontVariationSettings: "'FILL' 1" } : {}}
                             >
                                 {item.icon}
                             </span>
@@ -132,14 +139,14 @@ export const AdminSidebar = () => {
                         <Image
                             alt="Profile"
                             className="object-cover"
-                            src="https://lh3.googleusercontent.com/aida-public/AB6AXuCZzSogzgSYWL4sV8cYS-i9sYM5fwva6Q0n4I55293IQmD03umRiums_O9xTBdasBU1_angHiWiAckgyWwn6UB9MBLipWMhFehIUd_Qc0NUCfkXrUB7xtX-66jetAhnxQNxVTRztumuzjGfV4latkz0g53wc7eiJUn89bYwLuPezAenuEtVe-t4k1298Xg1AQqPP6l314oAlSj3m3UMutiTNXAv4ywmJUO7cWO3xprkiMgliBjEdbhP9gqPQREeem3Jv00wZuEZHdbM"
+                            src={user?.avatarUrl || "https://lh3.googleusercontent.com/aida-public/AB6AXuCZzSogzgSYWL4sV8cYS-i9sYM5fwva6Q0n4I55293IQmD03umRiums_O9xTBdasBU1_angHiWiAckgyWwn6UB9MBLipWMhFehIUd_Qc0NUCfkXrUB7xtX-66jetAhnxQNxVTRztumuzjGfV4latkz0g53wc7eiJUn89bYwLuPezAenuEtVe-t4k1298Xg1AQqPP6l314oAlSj3m3UMutiTNXAv4ywmJUO7cWO3xprkiMgliBjEdbhP9gqPQREeem3Jv00wZuEZHdbM"}
                             fill
                             sizes="32px"
                         />
                     </div>
                     <div className="min-w-0 flex-1">
-                        <p className="text-xs font-bold truncate text-slate-100">Admin Panel</p>
-                        <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider">v2.4.0-stable</p>
+                        <p className="text-xs font-bold truncate text-slate-100">{user?.nom || 'Admin'}</p>
+                        <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider">{user?.role || 'SYSTEM'}</p>
                     </div>
                     <button
                         onClick={handleLogout}

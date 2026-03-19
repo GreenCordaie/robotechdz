@@ -5,6 +5,7 @@ import { orders, orderItems, productVariants, supportTickets, digitalCodes, prod
 import { revalidatePath } from "next/cache";
 import { sql, eq, and, count, exists } from "drizzle-orm";
 import { sendTelegramNotification } from "@/lib/telegram";
+import { sendPushToRoleAction } from "../admin/push/actions";
 
 export async function createKioskOrder(
     items: { variantId: number; quantity: number; name: string; customData?: string; playerNickname?: string }[],
@@ -79,6 +80,13 @@ export async function createKioskOrder(
         sendTelegramNotification(msg, ['ADMIN', 'CAISSIER']).catch(err =>
             console.error("[KIOSK] Telegram notification failed:", err)
         );
+
+        // Push Notification for Cashiers
+        sendPushToRoleAction("CAISSIER", {
+            title: "💎 Nouveau client (Kiosque)",
+            body: `Commande ${orderNumber} en attente de paiement (${(newOrder as any).verifiedTotal.toLocaleString()} DZD)`,
+            url: "/admin/caisse"
+        }).catch(err => console.error("[KIOSK] Push notification failed:", err));
 
         return newOrder;
     } catch (error) {

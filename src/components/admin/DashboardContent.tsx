@@ -35,6 +35,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import toast from "react-hot-toast";
 import { formatCurrency } from "@/lib/formatters";
+import { useAuthStore } from "@/store/useAuthStore";
 import {
     AreaChart,
     Area,
@@ -73,6 +74,7 @@ import { ThermalReceiptV2 } from "@/components/admin/receipt/ThermalReceiptV2";
 import { Usb, Loader2 } from "lucide-react";
 
 export default function DashboardContent({ stats }: DashboardContentProps) {
+    const { user } = useAuthStore();
     const router = useRouter();
     const [selectedOrder, setSelectedOrder] = React.useState<any>(null);
     const [isDetailModalOpen, setIsDetailModalOpen] = React.useState(false);
@@ -202,8 +204,8 @@ export default function DashboardContent({ stats }: DashboardContentProps) {
                     {/* WebUSB Hardware UI */}
                     <div className="flex items-center gap-2 pl-3 border-l border-white/10 mx-1">
                         <div className={`hidden lg:flex items-center gap-1.5 px-2 py-1 rounded-md border text-[9px] font-black uppercase transition-all ${webusb.connected
-                                ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
-                                : "bg-red-500/10 border-red-500/20 text-red-400"
+                            ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
+                            : "bg-red-500/10 border-red-500/20 text-red-400"
                             }`}>
                             <div className={`size-1.5 rounded-full ${webusb.connected ? "bg-emerald-400 animate-pulse" : "bg-red-400"}`} />
                             {webusb.connected ? "PRÊT" : "OFF"}
@@ -241,7 +243,7 @@ export default function DashboardContent({ stats }: DashboardContentProps) {
                         </span>
                     </div>
                     <div className="text-[28px] font-black leading-none text-white tracking-tighter">
-                        {formatCurrency(stats.totalTurnover, 'DZD')}
+                        {user?.role === 'ADMIN' ? formatCurrency(stats.totalTurnover, 'DZD') : '************'}
                     </div>
                     <p className="text-[11px] text-slate-500 mt-2 font-medium">Ventes aujourd&apos;hui</p>
                 </div>
@@ -255,7 +257,7 @@ export default function DashboardContent({ stats }: DashboardContentProps) {
                         </span>
                     </div>
                     <div className="text-[28px] font-black leading-none text-white tracking-tighter">
-                        {formatCurrency(stats.totalProfit, 'DZD')}
+                        {user?.role === 'ADMIN' ? formatCurrency(stats.totalProfit, 'DZD') : '************'}
                     </div>
                     <p className="text-[11px] text-slate-500 mt-2 font-medium">Aujourd&apos;hui vs Hier</p>
                 </div>
@@ -287,84 +289,88 @@ export default function DashboardContent({ stats }: DashboardContentProps) {
                 </Link>
             </div>
 
-            {/* Main Chart Section - 100% Visual Fidelity with SVG and #161616 */}
-            <div className="bg-[#161616] border border-[#262626] p-8 rounded-xl shadow-sm">
-                <div className="flex items-center justify-between mb-8">
-                    <div>
-                        <h3 className="text-lg font-bold text-white tracking-tight">Évolution des Ventes</h3>
-                        <div className="flex items-center gap-2 mt-1">
-                            <span className="text-3xl font-black text-white tracking-tighter">{formatCurrency(stats.totalTurnover, 'DZD')}</span>
-                            <span className={`${stats.turnoverChange >= 0 ? "text-green-500" : "text-red-500"} font-bold text-sm flex items-center gap-1`}>
-                                {stats.turnoverChange >= 0 ? <TrendingUp className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4 rotate-180" />}
-                                {stats.turnoverChange >= 0 ? "+" : ""}{stats.turnoverChange.toFixed(1)}%
-                            </span>
+            {/* Main Chart Section - Only for Admin */}
+            {user?.role === 'ADMIN' && (
+                <div className="bg-[#161616] border border-[#262626] p-8 rounded-xl shadow-sm">
+                    <div className="flex items-center justify-between mb-8">
+                        <div>
+                            <h3 className="text-lg font-bold text-white tracking-tight">Évolution des Ventes</h3>
+                            <div className="flex items-center gap-2 mt-1">
+                                <span className="text-3xl font-black text-white tracking-tighter">
+                                    {formatCurrency(stats.totalTurnover, 'DZD')}
+                                </span>
+                                <span className={`${stats.turnoverChange >= 0 ? "text-green-500" : "text-red-500"} font-bold text-sm flex items-center gap-1`}>
+                                    {stats.turnoverChange >= 0 ? <TrendingUp className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4 rotate-180" />}
+                                    {stats.turnoverChange >= 0 ? "+" : ""}{stats.turnoverChange.toFixed(1)}%
+                                </span>
+                            </div>
+                        </div>
+                        <div className="flex bg-[#0a0a0a] p-1 rounded-xl border border-[#262626]">
+                            <button
+                                onClick={() => setChartPeriod("7")}
+                                className={`px-4 py-1.5 text-[11px] font-bold rounded-lg shadow-sm transition-all ${chartPeriod === "7" ? "bg-[#262626] text-white" : "text-slate-500 hover:text-white"}`}
+                            >
+                                7 Jours
+                            </button>
+                            <button
+                                onClick={() => setChartPeriod("30")}
+                                className={`px-4 py-1.5 text-[11px] font-bold rounded-lg shadow-sm transition-all ${chartPeriod === "30" ? "bg-[#262626] text-white" : "text-slate-500 hover:text-white"}`}
+                            >
+                                30 Jours
+                            </button>
                         </div>
                     </div>
-                    <div className="flex bg-[#0a0a0a] p-1 rounded-xl border border-[#262626]">
-                        <button
-                            onClick={() => setChartPeriod("7")}
-                            className={`px-4 py-1.5 text-[11px] font-bold rounded-lg shadow-sm transition-all ${chartPeriod === "7" ? "bg-[#262626] text-white" : "text-slate-500 hover:text-white"}`}
-                        >
-                            7 Jours
-                        </button>
-                        <button
-                            onClick={() => setChartPeriod("30")}
-                            className={`px-4 py-1.5 text-[11px] font-bold rounded-lg shadow-sm transition-all ${chartPeriod === "30" ? "bg-[#262626] text-white" : "text-slate-500 hover:text-white"}`}
-                        >
-                            30 Jours
-                        </button>
+                    <div className="h-72 w-full relative">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <AreaChart
+                                data={stats.revenueData}
+                                margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
+                            >
+                                <defs>
+                                    <linearGradient id="colorTotal" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="5%" stopColor="#ec5b13" stopOpacity={0.3} />
+                                        <stop offset="95%" stopColor="#ec5b13" stopOpacity={0} />
+                                    </linearGradient>
+                                </defs>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#262626" vertical={false} />
+                                <XAxis
+                                    dataKey="name"
+                                    stroke="#64748b"
+                                    fontSize={10}
+                                    tickLine={false}
+                                    axisLine={false}
+                                    dy={10}
+                                />
+                                <YAxis
+                                    stroke="#64748b"
+                                    fontSize={10}
+                                    tickLine={false}
+                                    axisLine={false}
+                                    tickFormatter={(value) => `${value}`}
+                                    hide
+                                />
+                                <Tooltip
+                                    contentStyle={{
+                                        backgroundColor: '#161616',
+                                        border: '1px solid #262626',
+                                        borderRadius: '8px',
+                                        fontSize: '12px'
+                                    }}
+                                    itemStyle={{ color: '#ec5b13', fontWeight: 'bold' }}
+                                />
+                                <Area
+                                    type="monotone"
+                                    dataKey="total"
+                                    stroke="#ec5b13"
+                                    strokeWidth={3}
+                                    fillOpacity={1}
+                                    fill="url(#colorTotal)"
+                                />
+                            </AreaChart>
+                        </ResponsiveContainer>
                     </div>
                 </div>
-                <div className="h-72 w-full relative">
-                    <ResponsiveContainer width="100%" height="100%">
-                        <AreaChart
-                            data={stats.revenueData}
-                            margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
-                        >
-                            <defs>
-                                <linearGradient id="colorTotal" x1="0" y1="0" x2="0" y2="1">
-                                    <stop offset="5%" stopColor="#ec5b13" stopOpacity={0.3} />
-                                    <stop offset="95%" stopColor="#ec5b13" stopOpacity={0} />
-                                </linearGradient>
-                            </defs>
-                            <CartesianGrid strokeDasharray="3 3" stroke="#262626" vertical={false} />
-                            <XAxis
-                                dataKey="name"
-                                stroke="#64748b"
-                                fontSize={10}
-                                tickLine={false}
-                                axisLine={false}
-                                dy={10}
-                            />
-                            <YAxis
-                                stroke="#64748b"
-                                fontSize={10}
-                                tickLine={false}
-                                axisLine={false}
-                                tickFormatter={(value) => `${value}`}
-                                hide
-                            />
-                            <Tooltip
-                                contentStyle={{
-                                    backgroundColor: '#161616',
-                                    border: '1px solid #262626',
-                                    borderRadius: '8px',
-                                    fontSize: '12px'
-                                }}
-                                itemStyle={{ color: '#ec5b13', fontWeight: 'bold' }}
-                            />
-                            <Area
-                                type="monotone"
-                                dataKey="total"
-                                stroke="#ec5b13"
-                                strokeWidth={3}
-                                fillOpacity={1}
-                                fill="url(#colorTotal)"
-                            />
-                        </AreaChart>
-                    </ResponsiveContainer>
-                </div>
-            </div>
+            )}
 
             {/* Latest Orders Section - 161616 Background */}
             <div className="bg-[#161616] border border-[#262626] rounded-xl shadow-sm overflow-hidden">
@@ -400,7 +406,7 @@ export default function DashboardContent({ stats }: DashboardContentProps) {
                                             {new Date(order.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                         </td>
                                         <td className="px-6 py-4 text-right font-black text-sm whitespace-nowrap text-white">
-                                            {formatCurrency(order.totalAmount, 'DZD')}
+                                            {user?.role === 'ADMIN' ? formatCurrency(order.totalAmount, 'DZD') : '************'}
                                         </td>
                                         <td className="px-6 py-4">
                                             <Chip

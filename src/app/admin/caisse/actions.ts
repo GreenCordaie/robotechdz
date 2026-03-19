@@ -1,16 +1,16 @@
 "use server";
 
 import { db } from "@/db";
-import { orders, digitalCodes, digitalCodeSlots, orderItems, suppliers, supplierTransactions, productVariantSuppliers, clients, clientPayments, shopSettings } from "@/db/schema";
+import { orders, digitalCodes, digitalCodeSlots, orderItems, suppliers, supplierTransactions, productVariantSuppliers, clients, clientPayments, shopSettings, resellers } from "@/db/schema";
 import { eq, sql, desc, exists, and, inArray, count, gte } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { sendTelegramNotification } from "@/lib/telegram";
 import { triggerOrderDelivery } from "@/lib/delivery";
-import { withAuth } from "@/lib/security";
+import { withAuth, logSecurityAction } from "@/lib/security";
 import { z } from "zod";
-import { decrypt } from "@/lib/encryption";
-import { checkStockAndAlert } from "@/lib/stock-alerts";
 import { allocateOrderStock } from "@/lib/orders";
+import { sendPushToRoleAction, sendPushToUserAction } from "../push/actions";
+import { decrypt } from "@/lib/encryption";
 
 export const findOrderByNumber = withAuth(
     {
@@ -195,6 +195,16 @@ export const payOrder = withAuth(
             revalidatePath("/admin/caisse");
             revalidatePath("/admin/traitement");
 
+            // Trigger Push Notification for Traiteurs if paid
+            if (result?.status === "PAYE") {
+                // Start async without awaiting to not block response
+                sendPushToRoleAction("TRAITEUR", {
+                    title: "🔔 Nouvelle Commande",
+                    body: `Commande #${result.orderNumber} payée. À préparer !`,
+                    url: "/admin/traitement"
+                }).catch(err => console.error("Push trigger error:", err));
+            }
+
             // Non-blocking background delivery
             triggerOrderDelivery(id).catch(err => {
                 console.error(`[Background Delivery Error] Order #${id}:`, err);
@@ -220,7 +230,7 @@ export const updateOrderStatus = withAuth(
 );
 
 export const getPaidOrders = withAuth(
-    { roles: ["ADMIN", "CAISSIER"] },
+    { roles: ["ADMIN", "CAISSIER", "TRAITEUR"] },
     async () => {
         try {
             const results = await db.query.orders.findMany({
@@ -242,7 +252,7 @@ export const getPaidOrders = withAuth(
                 ...res,
                 items: (res.items || []).map((item: any) => {
                     const standardCodes = (item.codes || []).map((c: any) => {
-                        try { return decrypt(c.code); } catch { return "Error"; }
+                        try { return decrypt(c.code) || "[Invalide]"; } catch { return "[Erreur]"; }
                     });
                     const slotCodes = (item.slots || []).map((s: any) => {
                         try {
@@ -252,7 +262,7 @@ export const getPaidOrders = withAuth(
                             if (decryptedSlotPin) slotInfo += ` | PIN: ${decryptedSlotPin}`;
                             return slotInfo;
                         } catch {
-                            return "Error | Profil Error";
+                            return "[Erreur Profil]";
                         }
                     });
                     return { ...item, codes: [...standardCodes, ...slotCodes] };
@@ -389,9 +399,30 @@ export const markOrderAsTermine = withAuth(
         schema: z.object({ id: z.number() })
     },
     async ({ id }) => {
+        const order = await db.query.orders.findFirst({
+            where: eq(orders.id, id),
+            columns: { orderNumber: true, userId: true, resellerId: true }
+        });
+
         await db.update(orders).set({ status: "TERMINE", isDelivered: true }).where(eq(orders.id, id));
         revalidatePath("/admin/traitement");
         revalidatePath("/admin/caisse");
+
+        // Notify Reseller if applicable
+        if (order?.resellerId) {
+            const reseller = await db.query.resellers.findFirst({
+                where: eq(resellers.id, order.resellerId),
+                columns: { userId: true }
+            });
+            if (reseller) {
+                sendPushToUserAction(reseller.userId, {
+                    title: "✅ Commande Prête",
+                    body: `Votre commande ${order.orderNumber} est terminée et prête !`,
+                    url: "/reseller/orders"
+                }).catch(err => console.error("Push to reseller failed:", err));
+            }
+        }
+
         return { success: true };
     }
 );
@@ -418,7 +449,7 @@ export const getFinishedOrders = withAuth(
                 ...res,
                 items: (res.items || []).map((item: any) => {
                     const standardCodes = (item.codes || []).map((c: any) => {
-                        try { return decrypt(c.code); } catch { return "Error"; }
+                        try { return decrypt(c.code) || "[Invalide]"; } catch { return "[Erreur]"; }
                     });
                     const slotCodes = (item.slots || []).map((s: any) => {
                         try {
@@ -428,7 +459,7 @@ export const getFinishedOrders = withAuth(
                             if (decryptedSlotPin) slotInfo += ` | PIN: ${decryptedSlotPin}`;
                             return slotInfo;
                         } catch {
-                            return "Error | Profil Error";
+                            return "[Erreur Profil]";
                         }
                     });
                     return { ...item, codes: [...standardCodes, ...slotCodes] };
@@ -657,7 +688,7 @@ export const cancelOrderAction = withAuth(
 );
 
 export const getPendingOrdersCount = withAuth(
-    { roles: ["ADMIN", "CAISSIER"] },
+    { roles: ["ADMIN", "CAISSIER", "TRAITEUR"] },
     async () => {
         const startOfDay = new Date();
         startOfDay.setHours(0, 0, 0, 0);

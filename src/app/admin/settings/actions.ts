@@ -1,8 +1,13 @@
 "use server";
 
 import { db } from "@/db";
-import { shopSettings, users, resellers, resellerWallets, resellerTransactions, auditLogs, whatsappFaqs } from "@/db/schema";
-import { eq, desc, sql } from "drizzle-orm";
+import {
+    shopSettings, users, resellers, resellerWallets, resellerTransactions, auditLogs,
+    whatsappFaqs, orders, orderItems, suppliers, supplierTransactions,
+    supportTickets, digitalCodes, digitalCodeSlots, clients,
+    clientPayments, productVariantSuppliers
+} from "@/db/schema";
+import { eq, desc, sql, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { withAuth, logSecurityAction } from "@/lib/security";
 import { z } from "zod";
@@ -505,5 +510,71 @@ export const disableMfaAction = withAuth(
     async (_, user) => {
         await db.update(users).set({ twoFactorSecret: null }).where(eq(users.id, user.id));
         return { success: true };
+    }
+);
+export const resetProductionDataAction = withAuth(
+    {
+        roles: ["ADMIN"],
+        schema: z.object({ confirmation: z.string() })
+    },
+    async (data, user) => {
+        if (data.confirmation !== "PERMANENT DELETE") {
+            return { success: false, error: "Confirmation incorrecte" };
+        }
+
+        try {
+            await db.transaction(async (tx) => {
+                // Delete in order of dependencies (leaves to roots)
+                await tx.delete(supportTickets);
+                await tx.delete(clientPayments);
+                await tx.delete(digitalCodeSlots);
+                await tx.delete(digitalCodes);
+                await tx.delete(orderItems);
+                await tx.delete(orders);
+                await tx.delete(resellerTransactions);
+                await tx.delete(resellerWallets);
+                await tx.delete(resellers);
+                await tx.delete(supplierTransactions);
+                await tx.delete(productVariantSuppliers);
+                await tx.delete(suppliers);
+                await tx.delete(clients);
+                await tx.delete(auditLogs);
+                // Preserve shopSettings and users (except for resellers deleted above)
+            });
+
+            await logSecurityAction({
+                userId: user.id,
+                action: "FACTORY_RESET",
+                entityType: "DATABASE",
+                entityId: "SYSTEM",
+                newData: { timestamp: new Date() }
+            });
+
+            revalidatePath("/admin/settings");
+            return { success: true };
+        } catch (error) {
+            return { success: false, error: (error as Error).message };
+        }
+    }
+);
+
+export const exportDatabaseAction = withAuth(
+    { roles: ["ADMIN"] },
+    async () => {
+        try {
+            const data = {
+                settings: await db.query.shopSettings.findMany(),
+                users: await db.query.users.findMany(),
+                suppliers: await db.query.suppliers.findMany(),
+                orders: await db.query.orders.findMany(),
+                resellers: await db.query.resellers.findMany(),
+                categories: await db.query.categories.findMany(),
+                products: await db.query.products.findMany(),
+                exportDate: new Date().toISOString()
+            };
+            return { success: true, data };
+        } catch (error) {
+            return { success: false, error: (error as Error).message };
+        }
     }
 );

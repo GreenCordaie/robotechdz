@@ -9,6 +9,13 @@ const publicSans = Public_Sans({ subsets: ["latin"], variable: "--font-public-sa
 export const metadata: Metadata = {
     title: "100% PC IA - Admin",
     description: "Premium Admin Module for 100% PC IA",
+    manifest: "/manifest.json",
+    themeColor: "#ec5b13",
+    appleWebApp: {
+        capable: true,
+        statusBarStyle: "default",
+        title: "100% PC IA",
+    },
 };
 
 export default function RootLayout({

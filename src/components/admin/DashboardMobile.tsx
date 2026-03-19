@@ -128,7 +128,10 @@ export default function DashboardMobile({ stats }: DashboardMobileProps) {
                         <span className="text-[10px] font-black text-slate-500 uppercase">Revenu</span>
                         <TrendingUp size={12} className="text-emerald-500" />
                     </div>
-                    <p className="text-xl font-black text-white">{formatCurrency(stats.totalTurnover, 'DZD').split(',')[0]}<span className="text-[10px] ml-1 opacity-50">DZD</span></p>
+                    <p className="text-xl font-black text-white">
+                        {user?.role === 'ADMIN' ? formatCurrency(stats.totalTurnover, 'DZD').split(',')[0] : '************'}
+                        <span className="text-[10px] ml-1 opacity-50">DZD</span>
+                    </p>
                     <p className="text-[9px] font-bold text-emerald-500">+{stats.turnoverChange.toFixed(0)}%</p>
                 </div>
                 <div className="bg-[#161616] border border-white/5 p-5 rounded-[2rem] space-y-2">
@@ -136,45 +139,50 @@ export default function DashboardMobile({ stats }: DashboardMobileProps) {
                         <span className="text-[10px] font-black text-slate-500 uppercase">Profit</span>
                         <Wallet size={12} className="text-primary" />
                     </div>
-                    <p className="text-xl font-black text-white">{formatCurrency(stats.totalProfit, 'DZD').split(',')[0]}<span className="text-[10px] ml-1 opacity-50">DZD</span></p>
+                    <p className="text-xl font-black text-white">
+                        {user?.role === 'ADMIN' ? formatCurrency(stats.totalProfit, 'DZD').split(',')[0] : '************'}
+                        <span className="text-[10px] ml-1 opacity-50">DZD</span>
+                    </p>
                     <p className="text-[9px] font-bold text-primary">+{stats.profitChange.toFixed(0)}%</p>
                 </div>
             </div>
 
-            {/* Micro Chart */}
-            <div className="bg-[#161616] border border-white/5 p-6 rounded-[2.5rem] space-y-4">
-                <div className="flex justify-between items-center px-2">
-                    <h3 className="text-sm font-black uppercase tracking-widest text-slate-400">Activité</h3>
-                    <div className="flex items-center gap-1">
-                        <span className="w-2 h-2 rounded-full bg-[#ec5b13]"></span>
-                        <span className="text-[10px] font-bold">Ventes</span>
+            {/* Micro Chart - Only for Admin */}
+            {user?.role === 'ADMIN' && (
+                <div className="bg-[#161616] border border-white/5 p-6 rounded-[2.5rem] space-y-4">
+                    <div className="flex justify-between items-center px-2">
+                        <h3 className="text-sm font-black uppercase tracking-widest text-slate-400">Activité</h3>
+                        <div className="flex items-center gap-1">
+                            <span className="w-2 h-2 rounded-full bg-[#ec5b13]"></span>
+                            <span className="text-[10px] font-bold">Ventes</span>
+                        </div>
+                    </div>
+                    <div className="h-40 w-full">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <AreaChart data={stats.revenueData}>
+                                <defs>
+                                    <linearGradient id="mobileGrad" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="5%" stopColor="#ec5b13" stopOpacity={0.2} />
+                                        <stop offset="95%" stopColor="#ec5b13" stopOpacity={0} />
+                                    </linearGradient>
+                                </defs>
+                                <XAxis dataKey="name" hide />
+                                <RechartsTooltip
+                                    contentStyle={{ backgroundColor: '#111', border: 'none', borderRadius: '12px', fontSize: '10px' }}
+                                    itemStyle={{ color: '#ec5b13' }}
+                                />
+                                <Area
+                                    type="monotone"
+                                    dataKey="total"
+                                    stroke="#ec5b13"
+                                    strokeWidth={3}
+                                    fill="url(#mobileGrad)"
+                                />
+                            </AreaChart>
+                        </ResponsiveContainer>
                     </div>
                 </div>
-                <div className="h-40 w-full">
-                    <ResponsiveContainer width="100%" height="100%">
-                        <AreaChart data={stats.revenueData}>
-                            <defs>
-                                <linearGradient id="mobileGrad" x1="0" y1="0" x2="0" y2="1">
-                                    <stop offset="5%" stopColor="#ec5b13" stopOpacity={0.2} />
-                                    <stop offset="95%" stopColor="#ec5b13" stopOpacity={0} />
-                                </linearGradient>
-                            </defs>
-                            <XAxis dataKey="name" hide />
-                            <RechartsTooltip
-                                contentStyle={{ backgroundColor: '#111', border: 'none', borderRadius: '12px', fontSize: '10px' }}
-                                itemStyle={{ color: '#ec5b13' }}
-                            />
-                            <Area
-                                type="monotone"
-                                dataKey="total"
-                                stroke="#ec5b13"
-                                strokeWidth={3}
-                                fill="url(#mobileGrad)"
-                            />
-                        </AreaChart>
-                    </ResponsiveContainer>
-                </div>
-            </div>
+            )}
 
             {/* Action List */}
             <div className="space-y-4">
@@ -240,7 +248,9 @@ export default function DashboardMobile({ stats }: DashboardMobileProps) {
                             </div>
                             <div className="flex items-center gap-3">
                                 <div className="text-right">
-                                    <p className="text-sm font-black text-[#ec5b13]">{formatCurrency(order.totalAmount, 'DZD')}</p>
+                                    <p className="text-sm font-black text-[#ec5b13]">
+                                        {user?.role === 'ADMIN' ? formatCurrency(order.totalAmount, 'DZD') : '************'}
+                                    </p>
                                     <div className="flex justify-end mt-1">
                                         <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-full ${order.status === 'TERMINE' ? 'bg-emerald-500/10 text-emerald-500' :
                                             order.status === 'EN_ATTENTE' ? 'bg-amber-500/10 text-amber-500' : 'bg-blue-500/10 text-blue-500'

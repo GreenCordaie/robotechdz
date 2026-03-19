@@ -8,7 +8,7 @@ import { z } from "zod";
 
 export const getDashboardStats = withAuth(
     {
-        roles: ["ADMIN"],
+        roles: ["ADMIN", "CAISSIER", "TRAITEUR"],
         schema: z.object({
             period: z.enum(["today", "yesterday", "week", "month", "all"]),
         })
@@ -176,7 +176,7 @@ export const getDashboardStats = withAuth(
 );
 
 export const getRealtimeOrders = withAuth(
-    { roles: ["ADMIN"] },
+    { roles: ["ADMIN", "CAISSIER", "TRAITEUR"] },
     async () => {
         return await db.query.orders.findMany({
             limit: 10,
@@ -189,7 +189,7 @@ export const getRealtimeOrders = withAuth(
 );
 
 export const getLowStockAlerts = withAuth(
-    { roles: ["ADMIN"] },
+    { roles: ["ADMIN", "CAISSIER"] },
     async () => {
         const result = await db.execute(sql`
             SELECT pv.id, p.name as product_name, pv.name as variant_name, COUNT(dc.id) as stock_count

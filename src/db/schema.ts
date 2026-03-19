@@ -208,6 +208,8 @@ export const shopSettings = pgTable("shop_settings", {
     geminiApiKey: text("gemini_api_key"),
     chatbotRole: text("chatbot_role"),
     usdExchangeRate: numeric("usd_exchange_rate", { precision: 10, scale: 2 }).default("245.00").notNull(),
+    vapidPublicKey: text("vapid_public_key"),
+    vapidPrivateKey: text("vapid_private_key"),
 });
 
 export const whatsappFaqs = pgTable("whatsapp_faqs", {
@@ -314,6 +316,17 @@ export const auditLogs = pgTable("audit_logs", {
         userIdIdx: index("al_user_id_idx").on(table.userId),
         actionIdx: index("al_action_idx").on(table.action),
         createdAtIdx: index("al_created_at_idx").on(table.createdAt),
+    };
+});
+
+export const pushSubscriptions = pgTable("push_subscriptions", {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    subscription: jsonb("subscription").notNull(), // endpoint, keys { p256dh, auth }
+    createdAt: timestamp("created_at", { mode: 'date' }).defaultNow().notNull(),
+}, (table) => {
+    return {
+        userIdIdx: index("ps_user_id_idx").on(table.userId),
     };
 });
 
@@ -482,6 +495,13 @@ export const ordersRelationsB2b = relations(orders, ({ one }) => ({
 export const auditLogsRelations = relations(auditLogs, ({ one }) => ({
     user: one(users, {
         fields: [auditLogs.userId],
+        references: [users.id],
+    }),
+}));
+
+export const pushSubscriptionsRelations = relations(pushSubscriptions, ({ one }) => ({
+    user: one(users, {
+        fields: [pushSubscriptions.userId],
         references: [users.id],
     }),
 }));

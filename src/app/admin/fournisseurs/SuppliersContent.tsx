@@ -40,6 +40,7 @@ import { useRouter } from "next/navigation";
 import { formatCurrency } from "@/lib/formatters";
 import { AddSupplierModal } from "@/components/admin/modals/AddSupplierModal";
 import { RechargeBalanceModal } from "@/components/admin/modals/RechargeBalanceModal";
+import { PaySupplierModal } from "@/components/admin/modals/PaySupplierModal";
 import { SupplierSettingsModal } from "@/components/admin/modals/SupplierSettingsModal";
 
 interface Supplier {
@@ -82,6 +83,7 @@ export default function SuppliersContent({ initialSuppliers, initialHistory, ini
 
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
     const [isRechargeModalOpen, setIsRechargeModalOpen] = useState(false);
+    const [isPayModalOpen, setIsPayModalOpen] = useState(false);
     const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
     const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(null);
     const [activeTab, setActiveTab] = useState("overview");
@@ -139,6 +141,11 @@ export default function SuppliersContent({ initialSuppliers, initialHistory, ini
     const handleOpenSettings = (supplier: Supplier) => {
         setSelectedSupplier(supplier);
         setIsSettingsModalOpen(true);
+    };
+
+    const handleOpenPay = (supplier: Supplier) => {
+        setSelectedSupplier(supplier);
+        setIsPayModalOpen(true);
     };
 
     const filteredSuppliers = suppliers.filter(s =>
@@ -369,6 +376,13 @@ export default function SuppliersContent({ initialSuppliers, initialHistory, ini
                                                 Recharger
                                             </Button>
                                             <Button
+                                                onPress={() => handleOpenPay(s)}
+                                                className="flex-1 bg-blue-600/10 hover:bg-blue-600 text-blue-500 hover:text-white font-bold rounded-xl text-xs transition-all uppercase tracking-widest border border-blue-500/20"
+                                                startContent={<Banknote className="w-3 h-3" />}
+                                            >
+                                                Payer Dette
+                                            </Button>
+                                            <Button
                                                 isIconOnly
                                                 onPress={() => handleOpenSettings(s)}
                                                 className="bg-transparent border border-[#262626] hover:bg-[#262626] text-slate-400 transition-colors"
@@ -488,6 +502,7 @@ export default function SuppliersContent({ initialSuppliers, initialHistory, ini
                                             </tr>
                                         ) : filteredHistory.map((h) => {
                                             const isDebit = h.type === "DEBIT" || h.type === "ACHAT_STOCK";
+                                            const isPayment = h.type === "PAYMENT";
                                             const isUnpaid = h.type === "RECHARGE" && h.paymentStatus === "UNPAID";
                                             return (
                                                 <tr key={h.id} className="hover:bg-white/[0.02] transition-colors group">
@@ -512,9 +527,9 @@ export default function SuppliersContent({ initialSuppliers, initialHistory, ini
                                                             <span className="text-xs font-bold text-slate-300 uppercase tracking-tight">{h.supplier.name}</span>
                                                         </div>
                                                     </td>
-                                                    <td className={`px-6 py-4 text-sm font-black text-right whitespace-nowrap ${isDebit ? 'text-red-500' : 'text-emerald-500'}`}>
+                                                    <td className={`px-6 py-4 text-sm font-black text-right whitespace-nowrap ${isDebit ? 'text-red-500' : isPayment ? 'text-blue-500' : 'text-emerald-500'}`}>
                                                         <div className="flex flex-col items-end">
-                                                            <span>{isDebit ? '-' : '+'}{formatCurrency(h.amount, h.currency as any)}</span>
+                                                            <span>{isDebit || isPayment ? '-' : '+'}{formatCurrency(h.amount, h.currency as any)}</span>
                                                             {h.exchangeRate && h.currency === 'USD' && (
                                                                 <span className="text-[9px] text-slate-500 font-bold mt-1 bg-white/5 px-1.5 py-0.5 rounded">
                                                                     1$ = {h.exchangeRate} DZD
@@ -523,7 +538,7 @@ export default function SuppliersContent({ initialSuppliers, initialHistory, ini
                                                         </div>
                                                     </td>
                                                     <td className="px-6 py-4 text-center">
-                                                        <Chip size="sm" variant="flat" className={`font-black uppercase text-[9px] tracking-widest border-none ${!isDebit ? "bg-emerald-500/10 text-emerald-500" : "bg-red-500/10 text-red-500"}`}>
+                                                        <Chip size="sm" variant="flat" className={`font-black uppercase text-[9px] tracking-widest border-none ${isPayment ? "bg-blue-500/10 text-blue-500" : !isDebit ? "bg-emerald-500/10 text-emerald-500" : "bg-red-500/10 text-red-500"}`}>
                                                             {h.type}
                                                         </Chip>
                                                     </td>
@@ -579,6 +594,26 @@ export default function SuppliersContent({ initialSuppliers, initialHistory, ini
                 supplierId={selectedSupplier?.id || 0}
                 supplierName={selectedSupplier?.name || ""}
                 currentBalance={selectedSupplier?.balance || "0"}
+                exchangeRate={EXCHANGE_RATE_USD_DZD.toString()}
+                baseCurrency={selectedSupplier?.currency || 'USD'}
+            />
+
+            <PaySupplierModal
+                isOpen={isPayModalOpen}
+                onClose={() => setIsPayModalOpen(false)}
+                supplierId={selectedSupplier?.id || 0}
+                supplierName={selectedSupplier?.name || ""}
+                currentDebt={useMemo(() => {
+                    if (!selectedSupplier) return 0;
+                    return history.filter(h => h.supplier.id === selectedSupplier.id).reduce((acc, h) => {
+                        const amount = parseFloat(h.amount);
+                        const rate = h.exchangeRate ? parseFloat(h.exchangeRate) : EXCHANGE_RATE_USD_DZD;
+                        const dzd = h.currency === 'USD' ? amount * rate : amount;
+                        if (h.type === 'RECHARGE' && h.paymentStatus === 'UNPAID') return acc + dzd;
+                        if (h.type === 'PAYMENT') return acc - dzd;
+                        return acc;
+                    }, 0);
+                }, [selectedSupplier, history, EXCHANGE_RATE_USD_DZD])}
                 exchangeRate={EXCHANGE_RATE_USD_DZD.toString()}
                 baseCurrency={selectedSupplier?.currency || 'USD'}
             />

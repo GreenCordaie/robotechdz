@@ -38,24 +38,26 @@ export const getSupplierStatsAction = withAuth(
             const settings = await db.query.shopSettings.findFirst();
             const exchangeRate = parseFloat(settings?.usdExchangeRate || "245");
 
-            // 1. Recharges totals (conversion to DZD for KPI)
-            const allRecharges = await db.query.supplierTransactions.findMany({
-                where: eq(supplierTransactions.type, "RECHARGE")
-            });
+            const allTransactions = await db.query.supplierTransactions.findMany();
 
             let totalPaidDzd = 0;
             let totalUnpaidDzd = 0;
 
-            allRecharges.forEach(r => {
+            allTransactions.forEach(r => {
                 const amount = parseFloat(r.amount);
-                // Use per-transaction rate if available (+ fallback to global)
                 const txRate = r.exchangeRate ? parseFloat(r.exchangeRate) : exchangeRate;
                 const dzdAmount = r.currency === "USD" ? amount * txRate : amount;
 
-                if (r.paymentStatus === "PAID") {
+                if (r.type === "RECHARGE") {
+                    if (r.paymentStatus === "PAID") {
+                        totalPaidDzd += dzdAmount;
+                    } else {
+                        totalUnpaidDzd += dzdAmount;
+                    }
+                } else if (r.type === "PAYMENT") {
+                    // Payment reduces debt and increases total paid
+                    totalUnpaidDzd -= dzdAmount;
                     totalPaidDzd += dzdAmount;
-                } else {
-                    totalUnpaidDzd += dzdAmount;
                 }
             });
 
@@ -251,6 +253,36 @@ export const adjustSupplierAction = withAuth(
                 }
             });
 
+            revalidatePath("/admin/fournisseurs");
+            return { success: true };
+        } catch (error) {
+            return { success: false, error: (error as Error).message };
+        }
+    }
+);
+export const paySupplierAction = withAuth(
+    {
+        roles: ["ADMIN"],
+        schema: z.object({
+            supplierId: z.number(),
+            amount: z.string(),
+            currency: z.string(),
+            note: z.string().optional(),
+            exchangeRate: z.string().optional()
+        })
+    },
+    async (data) => {
+        try {
+            await db.insert(supplierTransactions).values({
+                supplierId: data.supplierId,
+                type: "PAYMENT",
+                amount: data.amount,
+                currency: data.currency,
+                reason: data.note || "Paiement de dette / Virement",
+                paymentStatus: "PAID",
+                paidAt: new Date(),
+                exchangeRate: data.exchangeRate
+            });
             revalidatePath("/admin/fournisseurs");
             return { success: true };
         } catch (error) {

@@ -44,14 +44,16 @@ import {
     getUsersAction,
     deleteUserAction,
     testTelegramBotAction,
-    setTelegramWebhookAction,
+    activateTelegramWebhookAction,
     testWhatsAppAction,
     getAuditLogsAction,
     generateMfaSecretAction,
     enableMfaAction,
     disableMfaAction,
     generateBackupCodesAction,
-    exportAuditLogsAction
+    exportAuditLogsAction,
+    resetProductionDataAction,
+    exportDatabaseAction
 } from "@/app/admin/settings/actions";
 import { uploadImage } from "@/app/admin/actions/upload";
 import { useSettingsStore } from "@/store/useSettingsStore";
@@ -120,6 +122,9 @@ export default function SettingsContent() {
     const [auditLogs, setAuditLogs] = useState<any[]>([]);
     const [isAuditLoading, setIsAuditLoading] = useState(false);
     const [isExporting, setIsExporting] = useState(false);
+    const [isResetting, setIsResetting] = useState(false);
+    const [isExportingDb, setIsExportingDb] = useState(false);
+    const [resetConfirmation, setResetConfirmation] = useState("");
 
     useEffect(() => {
         fetchInitialData();
@@ -357,6 +362,53 @@ export default function SettingsContent() {
             toast.error("Erreur export");
         } finally {
             setIsExporting(false);
+        }
+    };
+
+    const handleExportDatabase = async () => {
+        setIsExportingDb(true);
+        try {
+            const res = await exportDatabaseAction({});
+            if (res.success && res.data) {
+                const blob = new Blob([JSON.stringify(res.data, null, 2)], { type: 'application/json' });
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `database_backup_${new Date().toISOString().split('T')[0]}.json`;
+                a.click();
+                toast.success("Base de données exportée");
+            } else {
+                toast.error(res.error || "Erreur export");
+            }
+        } catch (err) {
+            toast.error("Erreur de connexion");
+        } finally {
+            setIsExportingDb(false);
+        }
+    };
+
+    const handleProductionReset = async () => {
+        if (resetConfirmation !== "PERMANENT DELETE") {
+            toast.error("Veuillez saisir le texte de confirmation exact");
+            return;
+        }
+
+        if (!window.confirm("ÊTES-VOUS ABSOLUMENT SÛR ? Cette action est irréversible et supprimera tout l'historique, les commandes et les fournisseurs.")) return;
+
+        setIsResetting(true);
+        try {
+            const res = await resetProductionDataAction({ confirmation: resetConfirmation });
+            if (res.success) {
+                toast.success("Système réinitialisé pour la production");
+                setResetConfirmation("");
+                window.location.reload();
+            } else {
+                toast.error(res.error || "Erreur lors du reset");
+            }
+        } catch (err) {
+            toast.error("Erreur de connexion");
+        } finally {
+            setIsResetting(false);
         }
     };
 
@@ -680,6 +732,46 @@ export default function SettingsContent() {
                                         </div>
                                     </section>
                                 ))}
+                            </div>
+
+                            {/* BEGIN: Role Permissions Guide */}
+                            <div className="mt-12 p-8 bg-[#1a1614] border border-[#2d2622] rounded-[2rem] space-y-6">
+                                <div className="flex items-center gap-3 text-[#ec5b13]">
+                                    <ShieldCheck className="size-6" />
+                                    <h3 className="text-xl font-bold italic tracking-tight uppercase">Guide des Rôles & Permissions</h3>
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                    <div className="p-5 bg-black/40 rounded-2xl border border-white/5 space-y-3">
+                                        <div className="flex items-center gap-2">
+                                            <span className="size-2 rounded-full bg-[#ec5b13]"></span>
+                                            <h4 className="font-bold text-sm text-white uppercase tracking-wider">Administrateur</h4>
+                                        </div>
+                                        <p className="text-xs text-slate-400 leading-relaxed font-medium">
+                                            Accès total au système, gestion de l&apos;équipe, configuration de la boutique, réglages API, backups et outils de maintenance.
+                                        </p>
+                                    </div>
+
+                                    <div className="p-5 bg-black/40 rounded-2xl border border-white/5 space-y-3">
+                                        <div className="flex items-center gap-2">
+                                            <span className="size-2 rounded-full bg-emerald-500"></span>
+                                            <h4 className="font-bold text-sm text-white uppercase tracking-wider">Caissier</h4>
+                                        </div>
+                                        <p className="text-xs text-slate-400 leading-relaxed font-medium">
+                                            Vente directe (Caisse), gestion des dettes clients, accès au catalogue et au support SAV. Ne peut pas modifier les réglages boutique.
+                                        </p>
+                                    </div>
+
+                                    <div className="p-5 bg-black/40 rounded-2xl border border-white/5 space-y-3">
+                                        <div className="flex items-center gap-2">
+                                            <span className="size-2 rounded-full bg-blue-500"></span>
+                                            <h4 className="font-bold text-sm text-white uppercase tracking-wider">Traiteur</h4>
+                                        </div>
+                                        <p className="text-xs text-slate-400 leading-relaxed font-medium">
+                                            File de traitement uniquement. Saisie des codes produits et validation des commandes. Support client SAV uniquement.
+                                        </p>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     )}
@@ -1198,6 +1290,70 @@ export default function SettingsContent() {
                                     </CardBody>
                                 </Card>
                             </div>
+
+                            {/* Maintenance & Wipe Section */}
+                            <Card className="bg-[#1a1614] border border-red-500/20 rounded-[32px] overflow-hidden shadow-2xl">
+                                <CardBody className="p-8">
+                                    <div className="flex items-center gap-4 mb-8">
+                                        <div className="p-3 bg-red-500/10 rounded-2xl">
+                                            <Trash2 className="text-red-500 w-6 h-6" />
+                                        </div>
+                                        <div>
+                                            <h3 className="text-lg font-black text-white uppercase tracking-tight text-red-500">Maintenance & Données de Production</h3>
+                                            <p className="text-slate-500 text-xs font-bold uppercase tracking-wider mt-1">Préparation du passage en production</p>
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                                        <div className="space-y-4">
+                                            <div className="p-6 bg-black/40 rounded-3xl border border-white/5">
+                                                <h4 className="text-sm font-black text-white uppercase mb-2">Sauvegarde complète</h4>
+                                                <p className="text-[10px] text-slate-500 font-bold uppercase leading-relaxed mb-6">
+                                                    Exporte tous les réglages, les utilisateurs, les produits, les fournisseurs et les commandes au format JSON.
+                                                </p>
+                                                <Button
+                                                    onPress={handleExportDatabase}
+                                                    isLoading={isExportingDb}
+                                                    startContent={<Download className="size-4" />}
+                                                    className="w-full bg-[#262626] hover:bg-[#323232] text-white font-black uppercase text-[10px] py-6 rounded-2xl"
+                                                >
+                                                    Télécharger Backup JSON
+                                                </Button>
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-4">
+                                            <div className="p-6 bg-red-950/20 rounded-3xl border border-red-950/30">
+                                                <h4 className="text-sm font-black text-red-500 uppercase mb-2">Réinitialisation Production (Wipe)</h4>
+                                                <p className="text-[10px] text-slate-500 font-bold uppercase leading-relaxed mb-6 italic">
+                                                    Supprime tout l&apos;historique, les commandes, les fournisseurs et les tickets.
+                                                    Gardez les admins et les réglages intacts.
+                                                </p>
+
+                                                <div className="space-y-3">
+                                                    <label className="text-[9px] font-black text-red-500/50 uppercase tracking-widest ml-1">Taper &quot;PERMANENT DELETE&quot; pour confirmer</label>
+                                                    <input
+                                                        type="text"
+                                                        value={resetConfirmation}
+                                                        onChange={(e) => setResetConfirmation(e.target.value)}
+                                                        placeholder="Votre texte ici..."
+                                                        className="w-full bg-black/40 border border-red-900/30 rounded-2xl py-3 px-4 text-xs font-black text-red-500 outline-none focus:border-red-500/50 transition-all placeholder:text-red-950"
+                                                    />
+                                                    <Button
+                                                        onPress={handleProductionReset}
+                                                        isLoading={isResetting}
+                                                        disabled={resetConfirmation !== "PERMANENT DELETE"}
+                                                        startContent={<AlertTriangle className="size-4" />}
+                                                        className="w-full bg-red-600 hover:bg-red-700 text-white font-black uppercase text-[10px] py-6 rounded-2xl shadow-xl shadow-red-600/20 disabled:opacity-30"
+                                                    >
+                                                        RÉINITIALISER TOUT
+                                                    </Button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </CardBody>
+                            </Card>
                         </div>
                     )}
 

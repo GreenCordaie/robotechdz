@@ -10,7 +10,7 @@ import { encrypt } from "@/lib/encryption";
 
 export const getPaginatedProducts = withAuth(
     {
-        roles: ["ADMIN"],
+        roles: ["ADMIN", "CAISSIER", "TRAITEUR"],
         schema: z.object({
             page: z.number(),
             limit: z.number(),
