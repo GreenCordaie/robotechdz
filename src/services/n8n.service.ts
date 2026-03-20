@@ -9,7 +9,20 @@ export class N8nService {
      * Triggers an event on the configured n8n webhook.
      */
     static async triggerEvent(eventName: string, data: any) {
-        // ... (existing logic)
+        const webhookUrl = process.env.N8N_WEBHOOK_URL || "http://localhost:5678/webhook/flexbox";
+        try {
+            console.log(`[N8nService] Triggering event: ${eventName}`);
+            const response = await fetch(webhookUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ eventName, ...data })
+            });
+            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+            return await response.json();
+        } catch (error) {
+            console.error(`[N8nService] Error triggering event ${eventName}:`, error);
+            return null;
+        }
     }
 
     /**

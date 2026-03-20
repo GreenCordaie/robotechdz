@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev -p 1556",
     "dev:tunnel": "node scripts/start-dev.js",
+    "dev:sync": "powershell -File scripts/tunnel-monitor.ps1",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
