@@ -11,86 +11,31 @@ import { z } from "zod";
 import { allocateOrderStock } from "@/lib/orders";
 import { sendPushToRoleAction, sendPushToUserAction } from "../push/actions";
 import { decrypt } from "@/lib/encryption";
+import { OrderService } from "@/services/order.service";
+import { OrderQueries } from "@/services/queries/order.queries";
+import { UserRole, OrderStatus, SupplierTransactionType, DigitalCodeStatus, DigitalCodeSlotStatus, ClientActionType } from "@/lib/constants";
 
 export const findOrderByNumber = withAuth(
+    // ... (omitting for brevity in thought, but tool call will have full content)
     {
-        roles: ["ADMIN", "CAISSIER"],
+        roles: [UserRole.ADMIN, UserRole.CAISSIER],
         schema: z.object({ orderNumber: z.string() })
     },
     async ({ orderNumber }) => {
-        const result = await db.query.orders.findFirst({
-            where: (orders, { sql }) => sql`upper(${orders.orderNumber}) = upper(${orderNumber})`,
-            with: {
-                items: {
-                    with: {
-                        codes: true,
-                        variant: {
-                            with: {
-                                variantSuppliers: {
-                                    with: {
-                                        supplier: true
-                                    }
-                                }
-                            }
-                        },
-                        slots: {
-                            with: {
-                                digitalCode: true
-                            }
-                        }
-                    }
-                }
-            }
-        });
-
-        if (!result) return null;
-
-        const mappedItems = (result as any).items.map((item: any) => {
-            return {
-                ...item,
-                fullCodes: (item.codes || []).map((c: any) => ({ id: c.id, code: decrypt(c.code) || "[ERREUR DÉCRYPTAGE]" })),
-                fullSlots: (item.slots || []).map((s: any) => ({
-                    id: s.id,
-                    code: decrypt(s.code) || "[ERREUR DÉCRYPTAGE]",
-                    slotNumber: s.slotNumber,
-                    profileName: s.profileName,
-                    parentCode: decrypt(s.digitalCode.code) || "[ERREUR DÉCRYPTAGE]"
-                }))
-            };
-        });
-
-        return { ...result, items: mappedItems };
+        return OrderQueries.findByNumber(orderNumber);
     }
 );
 
 export const getPendingOrders = withAuth(
-    { roles: ["ADMIN", "CAISSIER"] },
+    { roles: [UserRole.ADMIN, UserRole.CAISSIER] },
     async () => {
-        const results = await db.query.orders.findMany({
-            where: (orders, { eq }) => eq(orders.status, "EN_ATTENTE"),
-            with: {
-                items: {
-                    with: {
-                        codes: true
-                    }
-                }
-            },
-            orderBy: (orders, { desc }) => [desc(orders.createdAt)]
-        });
-
-        return (results as any[]).map(order => ({
-            ...order,
-            items: (order.items || []).map((item: any) => ({
-                ...item,
-                codes: (item.codes || []).map((c: any) => decrypt(c.code) || "[ERREUR DÉCRYPTAGE]")
-            }))
-        }));
+        return OrderQueries.getPending();
     }
 );
 
 export const payOrder = withAuth(
     {
-        roles: ["ADMIN", "CAISSIER"],
+        roles: [UserRole.ADMIN, UserRole.CAISSIER],
         schema: z.object({
             id: z.number(),
             options: z.object({
@@ -102,113 +47,11 @@ export const payOrder = withAuth(
         })
     },
     async ({ id, options }, user) => {
-        const remise = options.remise || 0;
-        const montantPaye = options.montantPaye || 0;
-        const clientId = options.clientId;
-        const userId = user.id; // Fixed: Use ID from session, not argument
-
         try {
-            const result = await db.transaction(async (tx) => {
-                const order = await tx.query.orders.findFirst({
-                    where: (table, { eq }) => eq(table.id, id)
-                });
-
-                if (!order) throw new Error("Commande introuvable");
-
-                const totalApresRemise = parseFloat(order.totalAmount) - remise;
-                const resteAPayer = Math.max(0, totalApresRemise - montantPaye);
-
-                let status: "PAYE" | "PARTIEL" | "NON_PAYE" = "PAYE";
-                if (resteAPayer > 0) {
-                    status = montantPaye === 0 ? "NON_PAYE" : "PARTIEL";
-                }
-
-                await tx.update(orders)
-                    .set({
-                        status,
-                        userId,
-                        remise: remise.toString(),
-                        montantPaye: montantPaye.toString(),
-                        resteAPayer: resteAPayer.toString(),
-                        clientId: clientId || null
-                    })
-                    .where(eq(orders.id, id));
-
-                if (clientId && resteAPayer > 0) {
-                    const client = await tx.query.clients.findFirst({
-                        where: (c, { eq }) => eq(c.id, clientId)
-                    });
-                    if (client) {
-                        const newTotalDebt = (parseFloat(client.totalDetteDzd || "0") + resteAPayer).toString();
-                        await tx.update(clients)
-                            .set({ totalDetteDzd: newTotalDebt })
-                            .where(eq(clients.id, clientId));
-                    }
-                }
-
-                if (clientId && montantPaye > 0) {
-                    await tx.insert(clientPayments).values({
-                        clientId,
-                        orderId: id,
-                        montantDzd: montantPaye.toString(),
-                        typeAction: "ACOMPTE"
-                    });
-                }
-
-                // 3. Centralized Allocation
-                await allocateOrderStock(tx, id, {
-                    userId,
-                    itemSuppliers: options.itemSuppliers
-                });
-
-                // 4. Fetch Enriched Order for Frontend Return
-                const finalOrder = await tx.query.orders.findFirst({
-                    where: eq(orders.id, id),
-                    with: {
-                        items: {
-                            with: {
-                                codes: true,
-                                slots: { with: { digitalCode: true } },
-                                variant: { with: { product: true } }
-                            }
-                        }
-                    }
-                });
-
-                if (!finalOrder) return null;
-
-                const mappedItems = (finalOrder as any).items.map((item: any) => {
-                    const standardCodes = (item.codes || []).map((c: any) => decrypt(c.code) || "[ERREUR DÉCRYPTAGE]");
-                    const slotCodes = (item.slots || []).map((s: any) => {
-                        const decryptedParent = decrypt(s.digitalCode.code) || "[ERREUR COMPTE]";
-                        const decryptedSlotPin = s.code ? decrypt(s.code) : null;
-                        let slotInfo = `${decryptedParent} | Profil ${s.slotNumber}`;
-                        if (s.code) slotInfo += ` | PIN: ${decryptedSlotPin || "[ERREUR PIN]"}`;
-                        return slotInfo;
-                    });
-                    return { ...item, codes: [...standardCodes, ...slotCodes] };
-                });
-
-                return { ...finalOrder, items: mappedItems };
-            });
+            const result = await OrderService.payOrder(id, user.id, options);
 
             revalidatePath("/admin/caisse");
             revalidatePath("/admin/traitement");
-
-            // Trigger Push Notification for Traiteurs if paid
-            if (result?.status === "PAYE") {
-                // Start async without awaiting to not block response
-                sendPushToRoleAction("TRAITEUR", {
-                    title: "🔔 Nouvelle Commande",
-                    body: `Commande #${result.orderNumber} payée. À préparer !`,
-                    url: "/admin/traitement"
-                }).catch(err => console.error("Push trigger error:", err));
-            }
-
-            // Non-blocking background delivery
-            triggerOrderDelivery(id).catch(err => {
-                console.error(`[Background Delivery Error] Order #${id}:`, err);
-            });
 
             return { success: true, order: result };
         } catch (error) {
@@ -219,8 +62,8 @@ export const payOrder = withAuth(
 
 export const updateOrderStatus = withAuth(
     {
-        roles: ["ADMIN", "CAISSIER"],
-        schema: z.object({ id: z.number(), status: z.enum(["EN_ATTENTE", "PAYE", "TERMINE", "ANNULE", "PARTIEL", "NON_PAYE"]) })
+        roles: [UserRole.ADMIN, UserRole.CAISSIER],
+        schema: z.object({ id: z.number(), status: z.enum(Object.values(OrderStatus) as [string, ...string[]]) })
     },
     async ({ id, status }) => {
         await db.update(orders).set({ status }).where(eq(orders.id, id));
@@ -230,119 +73,25 @@ export const updateOrderStatus = withAuth(
 );
 
 export const getPaidOrders = withAuth(
-    { roles: ["ADMIN", "CAISSIER", "TRAITEUR"] },
+    { roles: [UserRole.ADMIN, UserRole.CAISSIER, UserRole.TRAITEUR] },
     async () => {
-        try {
-            const results = await db.query.orders.findMany({
-                where: (orders, { and, eq, inArray }) => and(
-                    inArray(orders.status, ["PAYE", "LIVRE", "PARTIEL", "NON_PAYE"]),
-                    eq(orders.isDelivered, false)
-                ),
-                with: {
-                    items: {
-                        with: {
-                            codes: true,
-                            slots: { with: { digitalCode: true } }
-                        }
-                    }
-                }
-            });
-
-            return (results as any[]).map(res => ({
-                ...res,
-                items: (res.items || []).map((item: any) => {
-                    const standardCodes = (item.codes || []).map((c: any) => {
-                        try { return decrypt(c.code) || "[Invalide]"; } catch { return "[Erreur]"; }
-                    });
-                    const slotCodes = (item.slots || []).map((s: any) => {
-                        try {
-                            const decryptedParent = decrypt(s.digitalCode.code);
-                            const decryptedSlotPin = s.code ? decrypt(s.code) : null;
-                            let slotInfo = `${decryptedParent} | Profil ${s.slotNumber}`;
-                            if (decryptedSlotPin) slotInfo += ` | PIN: ${decryptedSlotPin}`;
-                            return slotInfo;
-                        } catch {
-                            return "[Erreur Profil]";
-                        }
-                    });
-                    return { ...item, codes: [...standardCodes, ...slotCodes] };
-                })
-            }));
-        } catch (error) {
-            console.error("getPaidOrders failed:", error);
-            return { success: false, error: "Failed to fetch paid orders" };
-        }
+        return OrderQueries.getPaid();
     }
 );
 
 export const processOrder = withAuth(
     {
-        roles: ["ADMIN", "CAISSIER", "TRAITEUR"],
+        roles: [UserRole.ADMIN, UserRole.CAISSIER, UserRole.TRAITEUR],
         schema: z.object({ id: z.number(), codesData: z.array(z.object({ id: z.number(), codes: z.array(z.string()) })) })
     },
     async ({ id, codesData }) => {
         try {
-            await db.transaction(async (tx) => {
-                const current = await tx.query.orders.findFirst({ where: eq(orders.id, id) });
-                if (!current) throw new Error("Order not found");
-
-                const nextStatus = current.status === "PAYE" ? "TERMINE" : current.status;
-                await tx.update(orders).set({ status: nextStatus, isDelivered: true }).where(eq(orders.id, id));
-
-                for (const itemData of codesData) {
-                    const oi = await tx.query.orderItems.findFirst({ where: eq(orderItems.id, itemData.id) });
-                    if (oi && itemData.codes) {
-                        for (const codeContent of itemData.codes) {
-                            if (codeContent) {
-                                await tx.insert(digitalCodes).values({
-                                    variantId: oi.variantId,
-                                    orderItemId: oi.id,
-                                    code: codeContent,
-                                    status: "VENDU"
-                                });
-                            }
-                        }
-                    }
-                }
-            });
+            const result = await OrderService.processOrder(id, codesData);
 
             revalidatePath("/admin/caisse");
+            revalidatePath("/admin/traitement");
 
-            // Non-blocking background delivery
-            triggerOrderDelivery(id).catch(err => {
-                console.error(`[Background Delivery Error] Order #${id}:`, err);
-            });
-
-            const enrichedOrder = await db.query.orders.findFirst({
-                where: eq(orders.id, id),
-                with: {
-                    items: {
-                        with: {
-                            codes: true,
-                            slots: { with: { digitalCode: true } }
-                        }
-                    },
-                    client: true
-                }
-            });
-
-            if (!enrichedOrder) throw new Error("Erreur de récupération de la commande validée");
-
-            const order = enrichedOrder as any;
-            return {
-                ...order,
-                items: order.items.map((item: any) => {
-                    const standardCodes = (item.codes || []).map((c: any) => decrypt(c.code) || "[ERREUR DÉCRYPTAGE]");
-                    const slotCodes = (item.slots || []).map((s: any) => {
-                        const decryptedParent = decrypt(s.digitalCode.code) || "[ERREUR COMPTE]";
-                        const decryptedSlotPin = s.code ? decrypt(s.code) : null;
-                        let slotInfo = `${decryptedParent} | Profil ${s.slotNumber}`;
-                        if (s.code) slotInfo += ` | PIN: ${decryptedSlotPin || "[ERREUR PIN]"}`;
-                        return slotInfo;
-                    });
-                    return { ...item, codes: [...standardCodes, ...slotCodes] };
-                })
-            };
+            return result;
         } catch (error) {
             return { error: (error as Error).message };
         }
@@ -350,52 +99,15 @@ export const processOrder = withAuth(
 );
 
 export const getTodayOrders = withAuth(
-    { roles: ["ADMIN", "CAISSIER"] },
+    { roles: [UserRole.ADMIN, UserRole.CAISSIER] },
     async () => {
-        try {
-            const startOfDay = new Date();
-            startOfDay.setHours(0, 0, 0, 0);
-
-            const results = await db.query.orders.findMany({
-                where: (orders, { gte }) => gte(orders.createdAt, startOfDay),
-                with: {
-                    items: {
-                        with: {
-                            codes: true,
-                            slots: { with: { digitalCode: true } }
-                        }
-                    },
-                    client: true
-                },
-                orderBy: (orders, { desc }) => [desc(orders.createdAt)]
-            });
-
-            return (results as any[]).map(res => ({
-                ...res,
-                nomComplet: res.client?.nomComplet || "Anonyme",
-                telephone: res.client?.telephone || res.customerPhone,
-                items: (res.items || []).map((item: any) => {
-                    const standardCodes = (item.codes || []).map((c: any) => decrypt(c.code) || "[ERREUR DÉCRYPTAGE]");
-                    const slotCodes = (item.slots || []).map((s: any) => {
-                        const decryptedParent = decrypt(s.digitalCode.code) || "[ERREUR COMPTE]";
-                        const decryptedSlotPin = s.code ? decrypt(s.code) : null;
-                        let slotInfo = `${decryptedParent} | Profil ${s.slotNumber}`;
-                        if (s.code) slotInfo += ` | PIN: ${decryptedSlotPin || "[ERREUR PIN]"}`;
-                        return slotInfo;
-                    });
-                    return { ...item, codes: [...standardCodes, ...slotCodes] };
-                })
-            }));
-        } catch (error) {
-            console.error("getTodayOrders failed:", error);
-            return { success: false, error: "Failed to fetch today orders" };
-        }
+        return OrderQueries.getToday();
     }
 );
 
 export const markOrderAsTermine = withAuth(
     {
-        roles: ["ADMIN", "CAISSIER", "TRAITEUR"],
+        roles: [UserRole.ADMIN, UserRole.CAISSIER, UserRole.TRAITEUR],
         schema: z.object({ id: z.number() })
     },
     async ({ id }) => {
@@ -404,7 +116,7 @@ export const markOrderAsTermine = withAuth(
             columns: { orderNumber: true, userId: true, resellerId: true }
         });
 
-        await db.update(orders).set({ status: "TERMINE", isDelivered: true }).where(eq(orders.id, id));
+        await db.update(orders).set({ status: OrderStatus.TERMINE, isDelivered: true }).where(eq(orders.id, id));
         revalidatePath("/admin/traitement");
         revalidatePath("/admin/caisse");
 
@@ -428,53 +140,15 @@ export const markOrderAsTermine = withAuth(
 );
 
 export const getFinishedOrders = withAuth(
-    { roles: ["ADMIN", "CAISSIER", "TRAITEUR"] },
+    { roles: [UserRole.ADMIN, UserRole.CAISSIER, UserRole.TRAITEUR] },
     async () => {
-        try {
-            const results = await db.query.orders.findMany({
-                where: (orders, { eq }) => eq(orders.status, "TERMINE"),
-                with: {
-                    items: {
-                        with: {
-                            codes: true,
-                            slots: { with: { digitalCode: true } }
-                        }
-                    }
-                },
-                limit: 20,
-                orderBy: (orders, { desc }) => [desc(orders.createdAt)]
-            });
-
-            return (results as any[]).map(res => ({
-                ...res,
-                items: (res.items || []).map((item: any) => {
-                    const standardCodes = (item.codes || []).map((c: any) => {
-                        try { return decrypt(c.code) || "[Invalide]"; } catch { return "[Erreur]"; }
-                    });
-                    const slotCodes = (item.slots || []).map((s: any) => {
-                        try {
-                            const decryptedParent = decrypt(s.digitalCode.code);
-                            const decryptedSlotPin = s.code ? decrypt(s.code) : null;
-                            let slotInfo = `${decryptedParent} | Profil ${s.slotNumber}`;
-                            if (decryptedSlotPin) slotInfo += ` | PIN: ${decryptedSlotPin}`;
-                            return slotInfo;
-                        } catch {
-                            return "[Erreur Profil]";
-                        }
-                    });
-                    return { ...item, codes: [...standardCodes, ...slotCodes] };
-                })
-            }));
-        } catch (error) {
-            console.error("getFinishedOrders failed:", error);
-            return { success: false, error: "Failed to fetch finished orders" };
-        }
+        return OrderQueries.getFinished();
     }
 );
 
 export const replaceOrderItemCode = withAuth(
     {
-        roles: ["ADMIN"],
+        roles: [UserRole.ADMIN],
         schema: z.object({
             orderItemId: z.number(),
             oldCodeId: z.number().optional(),
@@ -494,22 +168,22 @@ export const replaceOrderItemCode = withAuth(
 
                 // 1. Mark old code/slot as DEFECTUEUX
                 if (oldCodeId) {
-                    await tx.update(digitalCodes).set({ status: "DEFECTUEUX" }).where(eq(digitalCodes.id, oldCodeId));
+                    await tx.update(digitalCodes).set({ status: DigitalCodeStatus.DEFECTUEUX }).where(eq(digitalCodes.id, oldCodeId));
                 } else if (oldSlotId) {
-                    await tx.update(digitalCodeSlots).set({ status: "DEFECTUEUX" }).where(eq(digitalCodeSlots.id, oldSlotId));
+                    await tx.update(digitalCodeSlots).set({ status: DigitalCodeStatus.DEFECTUEUX }).where(eq(digitalCodeSlots.id, oldSlotId));
                 }
 
                 // 2. Find new code/slot (Locked selection to prevent race conditions)
                 if (item.variant.isSharing) {
                     const [newSlot] = await tx.select().from(digitalCodeSlots)
                         .where(and(
-                            eq(digitalCodeSlots.status, "DISPONIBLE"),
+                            eq(digitalCodeSlots.status, DigitalCodeSlotStatus.DISPONIBLE),
                             exists(
                                 tx.select().from(digitalCodes)
                                     .where(and(
                                         eq(digitalCodes.id, digitalCodeSlots.digitalCodeId),
                                         eq(digitalCodes.variantId, item.variantId),
-                                        eq(digitalCodes.status, "DISPONIBLE")
+                                        eq(digitalCodes.status, DigitalCodeStatus.DISPONIBLE)
                                     ))
                             )
                         ))
@@ -520,7 +194,7 @@ export const replaceOrderItemCode = withAuth(
                     if (!newSlot) throw new Error("Plus de slots disponibles en stock");
 
                     await tx.update(digitalCodeSlots)
-                        .set({ status: "VENDU", orderItemId: item.id })
+                        .set({ status: DigitalCodeSlotStatus.VENDU, orderItemId: item.id })
                         .where(eq(digitalCodeSlots.id, newSlot.id));
 
                     revalidatePath("/admin/caisse");
@@ -529,7 +203,7 @@ export const replaceOrderItemCode = withAuth(
                     const [newCode] = await tx.select().from(digitalCodes)
                         .where(and(
                             eq(digitalCodes.variantId, item.variantId),
-                            eq(digitalCodes.status, "DISPONIBLE")
+                            eq(digitalCodes.status, DigitalCodeStatus.DISPONIBLE)
                         ))
                         .limit(1)
                         .for("update", { skipLocked: true });
@@ -537,7 +211,7 @@ export const replaceOrderItemCode = withAuth(
                     if (!newCode) throw new Error("Plus de codes disponibles en stock");
 
                     await tx.update(digitalCodes)
-                        .set({ status: "VENDU", orderItemId: item.id })
+                        .set({ status: DigitalCodeStatus.VENDU, orderItemId: item.id })
                         .where(eq(digitalCodes.id, newCode.id));
 
                     revalidatePath("/admin/caisse");
@@ -552,7 +226,7 @@ export const replaceOrderItemCode = withAuth(
 
 export const refundOrderItem = withAuth(
     {
-        roles: ["ADMIN"],
+        roles: [UserRole.ADMIN],
         schema: z.object({ orderItemId: z.number(), returnToStock: z.boolean() })
     },
     async ({ orderItemId, returnToStock }) => {
@@ -565,7 +239,7 @@ export const refundOrderItem = withAuth(
 
                 if (!item) throw new Error("Article introuvable");
 
-                const status = returnToStock ? "DISPONIBLE" : "DEFECTUEUX";
+                const status = returnToStock ? DigitalCodeStatus.DISPONIBLE : DigitalCodeStatus.DEFECTUEUX;
 
                 if (item.codes && item.codes.length > 0) {
                     await tx.update(digitalCodes)
@@ -593,7 +267,7 @@ export const refundOrderItem = withAuth(
 
 export const refundFullOrder = withAuth(
     {
-        roles: ["ADMIN"],
+        roles: [UserRole.ADMIN],
         schema: z.object({ id: z.number(), returnToStock: z.boolean() })
     },
     async ({ id, returnToStock }) => {
@@ -607,12 +281,12 @@ export const refundFullOrder = withAuth(
                 if (!order) throw new Error("Commande introuvable");
 
                 for (const item of (order as any).items) {
-                    const status = returnToStock ? "DISPONIBLE" : "DEFECTUEUX";
+                    const status = returnToStock ? DigitalCodeStatus.DISPONIBLE : DigitalCodeStatus.DEFECTUEUX;
                     await tx.update(digitalCodes).set({ status, orderItemId: null }).where(eq(digitalCodes.orderItemId, item.id));
                     await tx.update(digitalCodeSlots).set({ status, orderItemId: null }).where(eq(digitalCodeSlots.orderItemId, item.id));
                 }
 
-                await tx.update(orders).set({ status: "REMBOURSE" }).where(eq(orders.id, id));
+                await tx.update(orders).set({ status: OrderStatus.REMBOURSE }).where(eq(orders.id, id));
             });
 
             revalidatePath("/admin/caisse");
@@ -625,7 +299,7 @@ export const refundFullOrder = withAuth(
 
 export const cancelOrderAction = withAuth(
     {
-        roles: ["ADMIN", "CAISSIER"],
+        roles: [UserRole.ADMIN, UserRole.CAISSIER],
         schema: z.object({ orderId: z.number() })
     },
     async ({ orderId }) => {
@@ -638,19 +312,19 @@ export const cancelOrderAction = withAuth(
 
                 if (!order) throw new Error("Commande introuvable");
 
-                await tx.update(orders).set({ status: "ANNULE" }).where(eq(orders.id, orderId));
+                await tx.update(orders).set({ status: OrderStatus.ANNULE }).where(eq(orders.id, orderId));
 
                 for (const item of (order.items || [])) {
                     if (item.codes && item.codes.length > 0) {
                         const codeIds = item.codes.map((c: any) => c.id);
-                        await tx.update(digitalCodes).set({ status: "DISPONIBLE", orderItemId: null, isDebitCompleted: false }).where(inArray(digitalCodes.id, codeIds));
+                        await tx.update(digitalCodes).set({ status: DigitalCodeStatus.DISPONIBLE, orderItemId: null, isDebitCompleted: false }).where(inArray(digitalCodes.id, codeIds));
                     }
                     if (item.slots && item.slots.length > 0) {
                         const slotIds = item.slots.map((s: any) => s.id);
-                        await tx.update(digitalCodeSlots).set({ status: "DISPONIBLE", orderItemId: null }).where(inArray(digitalCodeSlots.id, slotIds));
+                        await tx.update(digitalCodeSlots).set({ status: DigitalCodeSlotStatus.DISPONIBLE, orderItemId: null }).where(inArray(digitalCodeSlots.id, slotIds));
                         const parentIds = Array.from(new Set(item.slots.map((s: any) => s.digitalCodeId)));
                         for (const pid of parentIds) {
-                            await tx.update(digitalCodes).set({ status: "DISPONIBLE", isDebitCompleted: false }).where(eq(digitalCodes.id, pid as any as number));
+                            await tx.update(digitalCodes).set({ status: DigitalCodeStatus.DISPONIBLE, isDebitCompleted: false }).where(eq(digitalCodes.id, pid as any as number));
                         }
                     }
                 }
@@ -674,7 +348,7 @@ export const cancelOrderAction = withAuth(
                     await tx.insert(supplierTransactions).values({
                         supplierId: st.supplierId,
                         orderId: orderId,
-                        type: "RECHARGE",
+                        type: SupplierTransactionType.RECHARGE,
                         paymentStatus: "PAID",
                         paidAt: new Date(),
                         amount: st.amount,
@@ -693,24 +367,14 @@ export const cancelOrderAction = withAuth(
 );
 
 export const getPendingOrdersCount = withAuth(
-    { roles: ["ADMIN", "CAISSIER", "TRAITEUR"] },
+    { roles: [UserRole.ADMIN, UserRole.CAISSIER, UserRole.TRAITEUR] },
     async () => {
-        const startOfDay = new Date();
-        startOfDay.setHours(0, 0, 0, 0);
-
-        const result = await db.select({ count: count() })
-            .from(orders)
-            .where(and(
-                eq(orders.status, "EN_ATTENTE"),
-                gte(orders.createdAt, startOfDay)
-            ));
-
-        return { count: result[0]?.count || 0 };
+        return OrderQueries.getPendingCount();
     }
 );
 export const resendWhatsAppAction = withAuth(
     {
-        roles: ["ADMIN", "CAISSIER"],
+        roles: [UserRole.ADMIN, UserRole.CAISSIER],
         schema: z.object({ orderId: z.number() })
     },
     async ({ orderId }) => {

@@ -1,14 +1,15 @@
 import { pgTable, serial, text, timestamp, numeric, integer, boolean, jsonb, pgEnum, index, uuid } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
+import { OrderStatus, UserRole, ClientActionType, DeliveryMethod, SupplierTransactionType, DigitalCodeStatus, DigitalCodeSlotStatus, OrderSource } from "@/lib/constants";
 
-export const orderStatusEnum = pgEnum("order_status", ["EN_ATTENTE", "PAYE", "LIVRE", "TERMINE", "ANNULE", "PARTIEL", "NON_PAYE", "REMBOURSE"]);
-export const userRoleEnum = pgEnum("user_role", ["ADMIN", "CAISSIER", "TRAITEUR", "RESELLER"]);
-export const actionTypeEnum = pgEnum("action_type", ["ACOMPTE", "REMBOURSEMENT", "RETOUR"]);
-export const deliveryMethodEnum = pgEnum("delivery_method", ["TICKET", "WHATSAPP"]);
-export const supplierTransactionTypeEnum = pgEnum("supplier_transaction_type", ["RECHARGE", "AJUSTEMENT", "ACHAT_STOCK", "DEBIT"]);
-export const digitalCodeStatusEnum = pgEnum("digital_code_status", ["DISPONIBLE", "VENDU", "UTILISE", "DEFECTUEUX"]);
-export const digitalCodeSlotStatusEnum = pgEnum("digital_code_slot_status", ["DISPONIBLE", "VENDU", "DEFECTUEUX"]);
-export const orderSourceEnum = pgEnum("order_source", ["KIOSK", "B2B_WEB", "API"]);
+export const orderStatusEnum = pgEnum("order_status", Object.values(OrderStatus) as [string, ...string[]]);
+export const userRoleEnum = pgEnum("user_role", Object.values(UserRole) as [string, ...string[]]);
+export const actionTypeEnum = pgEnum("action_type", Object.values(ClientActionType) as [string, ...string[]]);
+export const deliveryMethodEnum = pgEnum("delivery_method", Object.values(DeliveryMethod) as [string, ...string[]]);
+export const supplierTransactionTypeEnum = pgEnum("supplier_transaction_type", Object.values(SupplierTransactionType) as [string, ...string[]]);
+export const digitalCodeStatusEnum = pgEnum("digital_code_status", Object.values(DigitalCodeStatus) as [string, ...string[]]);
+export const digitalCodeSlotStatusEnum = pgEnum("digital_code_slot_status", Object.values(DigitalCodeSlotStatus) as [string, ...string[]]);
+export const orderSourceEnum = pgEnum("order_source", Object.values(OrderSource) as [string, ...string[]]);
 
 export const categories = pgTable("categories", {
     id: serial("id").primaryKey(),
@@ -327,6 +328,17 @@ export const pushSubscriptions = pgTable("push_subscriptions", {
 }, (table) => {
     return {
         userIdIdx: index("ps_user_id_idx").on(table.userId),
+    };
+});
+
+export const webhookEvents = pgTable("webhook_events", {
+    id: serial("id").primaryKey(),
+    provider: text("provider").notNull(), // 'telegram' or 'whatsapp'
+    externalId: text("external_id").notNull(), // update_id or message_id
+    processedAt: timestamp("processed_at", { mode: 'date' }).defaultNow().notNull(),
+}, (table) => {
+    return {
+        providerExternalIdIdx: index("webhook_provider_external_id_idx").on(table.provider, table.externalId),
     };
 });
 

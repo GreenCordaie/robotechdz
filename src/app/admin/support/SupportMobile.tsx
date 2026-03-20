@@ -25,9 +25,13 @@ import { replaceOrderItemCode, refundOrderItem, refundFullOrder } from "../caiss
 import OrderDetailModal from "@/components/admin/modals/OrderDetailModal";
 import { toast } from "react-hot-toast";
 
-export default function SupportMobile() {
-    const [tickets, setTickets] = useState<any[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
+interface SupportMobileProps {
+    initialTickets?: any[];
+}
+
+export default function SupportMobile({ initialTickets = [] }: SupportMobileProps) {
+    const [tickets, setTickets] = useState<any[]>(initialTickets);
+    const [isLoading, setIsLoading] = useState(false);
     const [selectedTicket, setSelectedTicket] = useState<any | null>(null);
     const [searchQuery, setSearchQuery] = useState("");
     const [statusFilter, setStatusFilter] = useState<"OUVERT" | "RESOLU">("OUVERT");
@@ -52,7 +56,7 @@ export default function SupportMobile() {
 
     const handleResolve = async (ticketId: number) => {
         try {
-            const res: any = await updateTicketStatus(ticketId, "RESOLU");
+            const res: any = await updateTicketStatus({ ticketId, status: "RESOLU" });
             if (res.success) {
                 toast.success("Ticket résolu");
                 loadTickets();

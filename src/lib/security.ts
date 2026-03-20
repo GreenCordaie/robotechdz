@@ -2,6 +2,7 @@ import { getSession } from "./auth";
 import { db } from "@/db";
 import { users, auditLogs, shopSettings } from "@/db/schema";
 import { eq } from "drizzle-orm";
+import { UserRole } from "@/lib/constants";
 import { z } from "zod";
 import { headers } from "next/headers";
 import { cache } from "react";
@@ -46,6 +47,8 @@ export async function getAuthenticatedUser() {
 
     return user;
 }
+
+export const getCurrentUser = getAuthenticatedUser;
 
 /**
  * Sanitizes sensitive fields from log data objects.
@@ -99,7 +102,7 @@ export async function logSecurityAction(params: {
 export type UserContext = { id: number; nom: string; email: string; role: string };
 
 type ActionConfig<T extends z.ZodType> = {
-    roles?: ("ADMIN" | "CAISSIER" | "TRAITEUR" | "RESELLER")[];
+    roles?: (UserRole)[];
     schema?: T;
 };
 
@@ -129,12 +132,12 @@ export function withAuth<T extends z.ZodType, R>(
             // 2. Maintenance Mode Check
             // Allow ADMIN to bypass maintenance mode
             const settings = await getCachedSettings();
-            if (user.role !== "ADMIN") {
+            if (user.role !== UserRole.ADMIN) {
                 if (settings?.isMaintenanceMode) {
                     // Send alert for maintenance block
                     await sendTelegramNotification(
                         `🚨 ACCÈS BLOQUÉ: L'utilisateur ${user.nom} (${user.role}) a tenté d'accéder au système alors que le MODE MAINTENANCE est activé.`,
-                        ['ADMIN']
+                        [UserRole.ADMIN]
                     ).catch(() => { });
 
                     throw new UnauthorizedError("Système en maintenance. Toutes les opérations sont suspendues.");
@@ -142,7 +145,7 @@ export function withAuth<T extends z.ZodType, R>(
             }
 
             // 3. IP Whitelisting (ADMIN only)
-            if (user.role === "ADMIN" && settings?.allowedIps) {
+            if (user.role === UserRole.ADMIN && settings?.allowedIps) {
                 const headerList = headers();
 
                 // Secure IP extraction: prioritize headers that are harder to spoof depending on the proxy setup
@@ -186,7 +189,7 @@ export function withAuth<T extends z.ZodType, R>(
                 // Escalate to Telegram for unauthorized attempts
                 await sendTelegramNotification(
                     `⚠️ ALERTE SÉCURITÉ: Tentative d'accès non autorisé par ${user.nom} (${user.role}) à l'action ${action.name || "système"}.`,
-                    ['ADMIN']
+                    [UserRole.ADMIN]
                 ).catch(() => { });
 
                 throw new UnauthorizedError("Permissions insuffisantes");

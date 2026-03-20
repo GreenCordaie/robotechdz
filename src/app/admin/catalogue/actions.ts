@@ -7,10 +7,12 @@ import { revalidatePath } from "next/cache";
 import { withAuth } from "@/lib/security";
 import { z } from "zod";
 import { encrypt } from "@/lib/encryption";
+import { ProductQueries } from "@/services/queries/product.queries";
+import { UserRole } from "@/lib/constants";
 
 export const getPaginatedProducts = withAuth(
     {
-        roles: ["ADMIN", "CAISSIER", "TRAITEUR"],
+        roles: [UserRole.ADMIN, UserRole.CAISSIER, UserRole.TRAITEUR],
         schema: z.object({
             page: z.number(),
             limit: z.number(),
@@ -20,49 +22,13 @@ export const getPaginatedProducts = withAuth(
         })
     },
     async (params) => {
-        const { page, limit, categoryId, search, status = "ACTIVE" } = params;
-        const offset = (page - 1) * limit;
-
-        let whereClauses = [];
-        whereClauses.push(eq(products.status, status));
-
-        if (categoryId && categoryId !== "all") {
-            whereClauses.push(eq(products.categoryId, parseInt(categoryId)));
-        }
-        if (search) {
-            whereClauses.push(ilike(products.name, `%${search}%`));
-        }
-
-        const where = whereClauses.length > 0 ? and(...whereClauses) : undefined;
-
-        const productsResult = await db.query.products.findMany({
-            where,
-            limit,
-            offset,
-            orderBy: (products, { desc }) => [desc(products.id)],
-            with: {
-                variants: {
-                    with: {
-                        variantSuppliers: true
-                    }
-                }
-            }
-        });
-
-        const totalRes = await db.select({ count: count() }).from(products).where(where);
-        const total = Number(totalRes[0].count);
-
-        return {
-            products: productsResult,
-            total,
-            totalPages: Math.ceil(total / limit)
-        };
+        return await ProductQueries.getPaginated(params as any);
     }
 );
 
 export const createProductAction = withAuth(
     {
-        roles: ["ADMIN"],
+        roles: [UserRole.ADMIN],
         schema: z.object({
             name: z.string().min(1),
             description: z.string(),
@@ -128,7 +94,7 @@ export const createProductAction = withAuth(
 
 export const updateProductAction = withAuth(
     {
-        roles: ["ADMIN"],
+        roles: [UserRole.ADMIN],
         schema: z.object({
             id: z.number(),
             formData: z.object({
@@ -245,7 +211,7 @@ export const updateProductAction = withAuth(
 
 export const deleteProductAction = withAuth(
     {
-        roles: ["ADMIN"],
+        roles: [UserRole.ADMIN],
         schema: z.object({ id: z.number() })
     },
     async ({ id }) => {
@@ -280,7 +246,7 @@ export const deleteProductAction = withAuth(
 
 export const toggleProductStatusAction = withAuth(
     {
-        roles: ["ADMIN"],
+        roles: [UserRole.ADMIN],
         schema: z.object({ id: z.number(), status: z.enum(["ACTIVE", "ARCHIVED"]) })
     },
     async ({ id, status }) => {
@@ -297,7 +263,7 @@ export const toggleProductStatusAction = withAuth(
 
 export const createCategoryAction = withAuth(
     {
-        roles: ["ADMIN"],
+        roles: [UserRole.ADMIN],
         schema: z.object({ name: z.string().min(1), imageUrl: z.string().nullable() })
     },
     async ({ name, imageUrl }) => {
@@ -313,7 +279,7 @@ export const createCategoryAction = withAuth(
 
 export const updateCategoryAction = withAuth(
     {
-        roles: ["ADMIN"],
+        roles: [UserRole.ADMIN],
         schema: z.object({ id: z.number(), name: z.string().min(1), imageUrl: z.string().nullable() })
     },
     async ({ id, name, imageUrl }) => {
@@ -329,7 +295,7 @@ export const updateCategoryAction = withAuth(
 
 export const deleteCategoryAction = withAuth(
     {
-        roles: ["ADMIN"],
+        roles: [UserRole.ADMIN],
         schema: z.object({ id: z.number() })
     },
     async ({ id }) => {
@@ -345,7 +311,7 @@ export const deleteCategoryAction = withAuth(
 
 export const bulkInsertCodes = withAuth(
     {
-        roles: ["ADMIN"],
+        roles: [UserRole.ADMIN],
         schema: z.discriminatedUnion("type", [
             z.object({ type: z.literal("STANDARD"), variantId: z.number(), codes: z.array(z.string()) }),
             z.object({

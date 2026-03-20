@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { orders, digitalCodes, orderItems, shopSettings } from "@/db/schema";
-import { eq, sql } from "drizzle-orm";
+import { orders, digitalCodes, orderItems, shopSettings, webhookEvents } from "@/db/schema";
+import { eq, sql, and } from "drizzle-orm";
 import { sendTelegramNotification } from "@/lib/telegram";
 import { sendWhatsAppMessage } from "@/lib/whatsapp";
 import crypto from "crypto";
+import { OrderService } from "@/services/order.service";
 
 export async function POST(req: NextRequest) {
     try {
@@ -29,6 +30,23 @@ export async function POST(req: NextRequest) {
 
         if (expectedBuffer.length !== receivedBuffer.length || !crypto.timingSafeEqual(expectedBuffer, receivedBuffer)) {
             return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+        }
+
+        // 0.5. Idempotence Check (Deduplication)
+        const updateId = body.update_id?.toString();
+        if (updateId) {
+            const alreadyProcessed = await db.query.webhookEvents.findFirst({
+                where: and(eq(webhookEvents.provider, "telegram"), eq(webhookEvents.externalId, updateId))
+            });
+
+            if (alreadyProcessed) {
+                return NextResponse.json({ ok: true });
+            }
+
+            await db.insert(webhookEvents).values({
+                provider: "telegram",
+                externalId: updateId
+            });
         }
 
         // 1. Basic structure validation
@@ -85,76 +103,16 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ ok: true });
         }
 
-        // 5. Map codes to order items sequentially
-        let codeIndex = 0;
-        let insertedCount = 0;
-
+        // 5. Delegate delivery to Service Layer
         try {
-            await db.transaction(async (tx) => {
-                for (const item of (order as any).items) {
-                    const needed = item.quantity;
-                    const forThisItem = codesFound.slice(codeIndex, codeIndex + needed);
+            const { insertedCount } = await OrderService.deliverManualCodes(order.id, codesFound);
 
-                    for (const code of forThisItem) {
-                        await tx.insert(digitalCodes).values({
-                            variantId: item.variantId,
-                            orderItemId: item.id,
-                            code: code,
-                            status: "VENDU"
-                        });
-                        insertedCount++;
-                    }
-                    codeIndex += needed;
-                }
-
-                if (insertedCount > 0) {
-                    // Update status to LIVRE
-                    await tx.update(orders)
-                        .set({ status: "LIVRE" })
-                        .where(eq(orders.id, order.id));
-                } else {
-                    throw new Error("No codes mapped");
-                }
-            });
-        } catch (txErr) {
-            console.error("DB Error:", (txErr as Error).message);
-            return NextResponse.json({ ok: true });
-        }
-
-        if (insertedCount > 0) {
-            await sendTelegramNotification(`✅ ${insertedCount} codes enregistrés pour ${orderNumber}.\n🚀 Impression automatique lancée.`);
-
-            // --- TRIGGER WHATSAPP DELIVERY ---
-            if (order.deliveryMethod === 'WHATSAPP' && order.customerPhone) {
-                const settings = await db.query.shopSettings.findFirst();
-                if (settings?.whatsappApiUrl && settings?.whatsappApiKey && settings?.whatsappInstanceName) {
-                    // Fetch fresh data with codes for the message
-                    const finalOrder = await db.query.orders.findFirst({
-                        where: (o, { eq }) => eq(o.id, order.id),
-                        with: {
-                            items: {
-                                with: {
-                                    codes: true,
-                                    slots: { with: { digitalCode: true } }
-                                }
-                            }
-                        }
-                    });
-
-                    if (finalOrder) {
-                        const { formatOrderItemsText } = await import("@/lib/delivery");
-                        const itemsText = formatOrderItemsText((finalOrder as any).items);
-
-                        let messageBody = `🎉 *LIVRAISON COMMANDE #${finalOrder.orderNumber}*\n\nVoici vos accès :\n${itemsText}\n\n_Merci pour votre confiance !_`;
-
-                        await sendWhatsAppMessage(order.customerPhone, messageBody, {
-                            whatsappApiUrl: settings.whatsappApiUrl,
-                            whatsappApiKey: settings.whatsappApiKey,
-                            whatsappInstanceName: settings.whatsappInstanceName
-                        });
-                    }
-                }
+            if (insertedCount > 0) {
+                await sendTelegramNotification(`✅ ${insertedCount} codes enregistrés pour ${orderNumber}.\n🚀 Livraison automatique lancée.`);
             }
+        } catch (err) {
+            console.error("OrderService.deliverManualCodes failed:", (err as Error).message);
+            return NextResponse.json({ ok: true }); // Acknowledge message anyway to avoid Telegram retries
         }
 
         return NextResponse.json({ ok: true });

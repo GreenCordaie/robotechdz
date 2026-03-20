@@ -1,35 +1,20 @@
-"use client";
-
 import React from "react";
-import DashboardContent from "@/components/admin/DashboardContent";
-import DashboardMobile from "../../../components/admin/DashboardMobile";
-import { useIsMobile } from "@/hooks/useIsMobile";
-import { getDashboardStats } from "./actions";
+import { DashboardQueries } from "@/services/queries/dashboard.queries";
+import { DashboardContainer } from "./DashboardContainer";
 import { redirect } from "next/navigation";
+import { getCurrentUser } from "@/lib/security";
 
-export default function DashboardPage() {
-    const isMobile = useIsMobile();
-    const [stats, setStats] = React.useState<any>(null);
-    const [isLoading, setIsLoading] = React.useState(true);
+export default async function DashboardPage() {
+    const user = await getCurrentUser();
+    if (!user) {
+        redirect("/admin/login");
+    }
 
-    React.useEffect(() => {
-        const loadStats = async () => {
-            const data = await getDashboardStats({ period: "week" });
-            if (data && (data as any).success === false) {
-                if ((data as any).error?.includes("Session")) {
-                    window.location.href = "/admin/login";
-                    return;
-                }
-            }
-            setStats(data);
-            setIsLoading(false);
-        };
-        loadStats();
-    }, []);
-
-    if (isLoading) return <div className="p-8 text-center text-slate-500 font-bold uppercase tracking-widest animate-pulse">Chargement Dashboard...</div>;
-
-    if (!stats || stats.success === false) return <div className="p-8 text-red-500">Erreur de chargement des statistiques.</div>;
-
-    return isMobile ? <DashboardMobile stats={stats} /> : <DashboardContent stats={stats} />;
+    try {
+        const stats = await DashboardQueries.getStats("week");
+        return <DashboardContainer initialStats={stats} />;
+    } catch (error) {
+        console.error("Dashboard page error:", error);
+        return <div className="p-8 text-red-500 font-bold uppercase tracking-widest">Erreur critique de chargement.</div>;
+    }
 }

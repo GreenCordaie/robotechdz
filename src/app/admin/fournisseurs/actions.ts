@@ -1,104 +1,39 @@
 "use server";
 
 import { db } from "@/db";
-import { suppliers, supplierTransactions, orderItems, orders, shopSettings } from "@/db/schema";
-import { eq, desc, sql, and } from "drizzle-orm";
+import { suppliers, supplierTransactions } from "@/db/schema";
+import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { withAuth, logSecurityAction } from "@/lib/security";
+import { withAuth } from "@/lib/security";
 import { z } from "zod";
+import { SupplierQueries } from "@/services/queries/supplier.queries";
+import { UserRole } from "@/lib/constants";
 
 export const getSuppliersAction = withAuth(
-    { roles: ["ADMIN"] },
+    { roles: [UserRole.ADMIN] },
     async () => {
-        return await db.query.suppliers.findMany({
-            orderBy: [desc(suppliers.id)], // suppliers table has no createdAt
-            with: { transactions: { limit: 5, orderBy: [desc(supplierTransactions.createdAt)] } }
-        });
+        return await SupplierQueries.getAll();
     }
 );
 
 export const getSupplierHistoryAction = withAuth(
     {
-        roles: ["ADMIN"],
+        roles: [UserRole.ADMIN],
         schema: z.object({ supplierId: z.number() })
     },
     async ({ supplierId }) => {
-        return await db.query.supplierTransactions.findMany({
-            where: supplierId > 0 ? eq(supplierTransactions.supplierId, supplierId) : undefined,
-            orderBy: [desc(supplierTransactions.createdAt)],
-            with: { supplier: true }
-        });
+        return await SupplierQueries.getHistory(supplierId);
     }
 );
 
 export const getSupplierStatsAction = withAuth(
-    { roles: ["ADMIN"] },
+    { roles: [UserRole.ADMIN] },
     async () => {
         try {
-            const settings = await db.query.shopSettings.findFirst();
-            const exchangeRate = parseFloat(settings?.usdExchangeRate || "245");
-
-            const allTransactions = await db.query.supplierTransactions.findMany();
-
-            let totalPaidDzd = 0;
-            let totalUnpaidDzd = 0;
-
-            allTransactions.forEach(r => {
-                const amount = parseFloat(r.amount);
-                const txRate = r.exchangeRate ? parseFloat(r.exchangeRate) : exchangeRate;
-                const dzdAmount = r.currency === "USD" ? amount * txRate : amount;
-
-                if (r.type === "RECHARGE") {
-                    if (r.paymentStatus === "PAID") {
-                        totalPaidDzd += dzdAmount;
-                    } else {
-                        totalUnpaidDzd += dzdAmount;
-                    }
-                } else if (r.type === "PAYMENT") {
-                    // Payment reduces debt and increases total paid
-                    totalUnpaidDzd -= dzdAmount;
-                    totalPaidDzd += dzdAmount;
-                }
-            });
-
-            // 2. Profit Net
-            const salesItems = await db.select({
-                price: orderItems.price,
-                quantity: orderItems.quantity,
-                purchasePrice: orderItems.purchasePrice,
-                purchaseCurrency: orderItems.purchaseCurrency
-            }).from(orderItems)
-                .innerJoin(orders, eq(orderItems.orderId, orders.id))
-                .where(
-                    sql`${orders.status} IN ('PAYE', 'LIVRE', 'TERMINE')`
-                );
-
-            let totalNetProfit = 0;
-            salesItems.forEach(item => {
-                const saleTotal = parseFloat(item.price) * (item.quantity || 1);
-                let costDzd = 0;
-
-                if (item.purchasePrice) {
-                    const pPrice = parseFloat(item.purchasePrice);
-                    costDzd = item.purchaseCurrency === 'USD'
-                        ? pPrice * (item.quantity || 1) * exchangeRate
-                        : pPrice * (item.quantity || 1);
-                } else {
-                    // Fallback to 85% cost (15% margin) like in dashboard
-                    costDzd = saleTotal * 0.85;
-                }
-
-                totalNetProfit += (saleTotal - costDzd);
-            });
-
+            const stats = await SupplierQueries.getFinancialStats();
             return {
                 success: true,
-                data: {
-                    totalPaidDzd: totalPaidDzd.toFixed(2),
-                    totalUnpaidDzd: totalUnpaidDzd.toFixed(2),
-                    netProfit: totalNetProfit.toFixed(2),
-                    exchangeRate: exchangeRate.toString()
-                }
+                data: stats
             };
         } catch (error) {
             return { success: false, error: (error as Error).message };
@@ -108,14 +43,14 @@ export const getSupplierStatsAction = withAuth(
 
 export const rechargeSupplierAction = withAuth(
     {
-        roles: ["ADMIN"],
+        roles: [UserRole.ADMIN],
         schema: z.object({
             supplierId: z.number(),
             amount: z.string(),
             currency: z.string(),
             note: z.string().optional(),
             paymentStatus: z.enum(["PAID", "UNPAID"]).default("PAID"),
-            paidAt: z.string().optional(), // ISO string
+            paidAt: z.string().optional(),
             exchangeRate: z.string().optional()
         })
     },
@@ -149,7 +84,7 @@ export const rechargeSupplierAction = withAuth(
 
 export const markTransactionAsPaidAction = withAuth(
     {
-        roles: ["ADMIN"],
+        roles: [UserRole.ADMIN],
         schema: z.object({ transactionId: z.number() })
     },
     async ({ transactionId }) => {
@@ -167,7 +102,7 @@ export const markTransactionAsPaidAction = withAuth(
 
 export const addSupplierAction = withAuth(
     {
-        roles: ["ADMIN"],
+        roles: [UserRole.ADMIN],
         schema: z.object({ name: z.string().min(1), currency: z.enum(["USD", "DZD"]), initialBalance: z.string().optional() })
     },
     async (data) => {
@@ -179,7 +114,7 @@ export const addSupplierAction = withAuth(
 
 export const deleteSupplierAction = withAuth(
     {
-        roles: ["ADMIN"],
+        roles: [UserRole.ADMIN],
         schema: z.object({ id: z.number() })
     },
     async ({ id }) => {
@@ -191,7 +126,7 @@ export const deleteSupplierAction = withAuth(
 
 export const archiveSupplierAction = withAuth(
     {
-        roles: ["ADMIN"],
+        roles: [UserRole.ADMIN],
         schema: z.object({ id: z.number() })
     },
     async ({ id }) => {
@@ -205,7 +140,7 @@ export const rechargeSupplier = rechargeSupplierAction;
 
 export const adjustSupplierAction = withAuth(
     {
-        roles: ["ADMIN"],
+        roles: [UserRole.ADMIN],
         schema: z.object({
             id: z.number(),
             data: z.object({
@@ -228,23 +163,12 @@ export const adjustSupplierAction = withAuth(
                     const oldBalance = supplier.balance;
                     updatePayload.balance = data.forcedBalance;
 
-                    // Log this adjustment specifically
                     await tx.insert(supplierTransactions).values({
                         supplierId: id,
                         type: "AJUSTEMENT",
                         amount: (parseFloat(data.forcedBalance) - parseFloat(oldBalance || "0")).toString(),
                         currency: supplier.currency || "USD",
                         reason: `Correction manuelle : ${data.reason}`
-                    });
-
-                    // Log to central Audit Log
-                    await logSecurityAction({
-                        userId: user.id,
-                        action: "SUPPLIER_BALANCE_ADJUST",
-                        entityType: "SUPPLIER",
-                        entityId: id.toString(),
-                        oldData: { balance: oldBalance },
-                        newData: { balance: data.forcedBalance, reason: data.reason }
                     });
                 }
 
@@ -260,9 +184,10 @@ export const adjustSupplierAction = withAuth(
         }
     }
 );
+
 export const paySupplierAction = withAuth(
     {
-        roles: ["ADMIN"],
+        roles: [UserRole.ADMIN],
         schema: z.object({
             supplierId: z.number(),
             amount: z.string(),

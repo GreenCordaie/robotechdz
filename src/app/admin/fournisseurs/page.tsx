@@ -1,31 +1,32 @@
-import { getSuppliersAction, getSupplierHistoryAction, getSupplierStatsAction } from "./actions";
+import React from "react";
+import { SupplierQueries } from "@/services/queries/supplier.queries";
+import { SystemQueries } from "@/services/queries/system.queries";
 import SuppliersViewSwitcher from "./SuppliersViewSwitcher";
-import { getShopSettingsAction } from "../settings/actions";
+import { getCurrentUser } from "@/lib/security";
+import { redirect } from "next/navigation";
+import { UserRole } from "@/lib/constants";
 
 export const dynamic = "force-dynamic";
 
 export default async function FournisseursPage() {
-    const [suppliers, history, settings, stats]: any[] = await Promise.all([
-        getSuppliersAction({}),
-        getSupplierHistoryAction({ supplierId: 0 }),
-        getShopSettingsAction({}),
-        getSupplierStatsAction({})
-    ]);
-
-    if (suppliers.success === false || history.success === false) {
-        return (
-            <div className="p-8 text-white bg-red-900/20 rounded-xl border border-red-500/50">
-                Une erreur de sécurité est survenue : {suppliers.error || history.error}
-            </div>
-        );
+    const user = await getCurrentUser();
+    if (!user || user.role !== UserRole.ADMIN && user.role !== UserRole.SUPER_ADMIN) {
+        redirect("/auth/login");
     }
+
+    const [suppliers, history, settings, stats] = await Promise.all([
+        SupplierQueries.getAll(),
+        SupplierQueries.getHistory(0),
+        SystemQueries.getSettings(),
+        SupplierQueries.getFinancialStats()
+    ]);
 
     return (
         <SuppliersViewSwitcher
-            initialSuppliers={suppliers as any}
-            initialHistory={history as any}
-            shopSettings={settings.success ? settings.data : null}
-            initialStats={stats.success ? stats.data : null}
+            initialSuppliers={suppliers}
+            initialHistory={history}
+            shopSettings={settings}
+            initialStats={stats}
         />
     );
 }

@@ -29,10 +29,14 @@ import { AddResellerModal } from "@/components/admin/modals/AddResellerModal";
 import { formatCurrency } from "@/lib/formatters";
 import Link from "next/link";
 
-export default function B2bMobile() {
+interface B2bMobileProps {
+    initialResellers?: any[];
+}
+
+export default function B2bMobile({ initialResellers = [] }: B2bMobileProps) {
     const { isOpen: isB2bModalOpen, onOpen: onB2bModalOpen, onOpenChange: onB2bModalOpenChange } = useDisclosure();
-    const [resellersList, setResellersList] = useState<any[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
+    const [resellersList, setResellersList] = useState<any[]>(initialResellers);
+    const [isLoading, setIsLoading] = useState(false);
     const [searchTerm, setSearchTerm] = useState("");
 
     useEffect(() => {

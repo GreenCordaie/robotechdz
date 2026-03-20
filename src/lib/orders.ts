@@ -11,6 +11,7 @@ import {
 import { eq, and, sql, inArray, exists } from "drizzle-orm";
 import { checkStockAndAlert } from "@/lib/stock-alerts";
 import { logSecurityAction } from "@/lib/security";
+import { OrderStatus, DigitalCodeStatus, DigitalCodeSlotStatus, SupplierTransactionType } from "@/lib/constants";
 
 type Transaction = any; // Drizzle transaction type depends on client, using any for broad compatibility
 
@@ -57,9 +58,9 @@ export async function allocateOrderStock(
                     .from(digitalCodeSlots)
                     .innerJoin(digitalCodes, eq(digitalCodes.id, digitalCodeSlots.digitalCodeId))
                     .where(and(
-                        eq(digitalCodeSlots.status, "DISPONIBLE"),
+                        eq(digitalCodeSlots.status, DigitalCodeSlotStatus.DISPONIBLE),
                         eq(digitalCodes.variantId, item.variantId),
-                        eq(digitalCodes.status, "DISPONIBLE")
+                        eq(digitalCodes.status, DigitalCodeStatus.DISPONIBLE)
                     ))
                     .orderBy(digitalCodeSlots.digitalCodeId, digitalCodeSlots.slotNumber)
                     .limit(item.quantity)
@@ -72,7 +73,7 @@ export async function allocateOrderStock(
                 currentItemSlots = availableSlots;
                 const slotIds = availableSlots.map((s: any) => s.id);
                 await tx.update(digitalCodeSlots)
-                    .set({ status: "VENDU", orderItemId: item.id })
+                    .set({ status: DigitalCodeSlotStatus.VENDU, orderItemId: item.id })
                     .where(inArray(digitalCodeSlots.id, slotIds));
 
                 // Mark parent codes as VENDU if all slots are gone
@@ -82,7 +83,7 @@ export async function allocateOrderStock(
                         where: (dcs: any, { and, eq }: any) => and(eq(dcs.digitalCodeId, pid), eq(dcs.status, "DISPONIBLE"))
                     });
                     if (remainingSlots.length === 0) {
-                        await tx.update(digitalCodes).set({ status: "VENDU" }).where(eq(digitalCodes.id, pid as number));
+                        await tx.update(digitalCodes).set({ status: DigitalCodeStatus.VENDU }).where(eq(digitalCodes.id, pid as number));
                     }
                 }
             } else {
@@ -90,7 +91,7 @@ export async function allocateOrderStock(
                     .from(digitalCodes)
                     .where(and(
                         eq(digitalCodes.variantId, item.variantId),
-                        eq(digitalCodes.status, "DISPONIBLE")
+                        eq(digitalCodes.status, DigitalCodeStatus.DISPONIBLE)
                     ))
                     .limit(item.quantity)
                     .for('update');
@@ -101,7 +102,7 @@ export async function allocateOrderStock(
 
                 const codeIds = availableCodes.map((c: any) => (c as any).id);
                 await tx.update(digitalCodes)
-                    .set({ status: "VENDU", orderItemId: item.id })
+                    .set({ status: DigitalCodeStatus.VENDU, orderItemId: item.id })
                     .where(inArray(digitalCodes.id, codeIds));
 
                 // Audit: Stock movement
@@ -172,7 +173,7 @@ export async function allocateOrderStock(
                     await tx.insert(supplierTransactions).values({
                         supplierId,
                         orderId,
-                        type: "ACHAT_STOCK",
+                        type: SupplierTransactionType.ACHAT_STOCK,
                         amount: cost.toFixed(2),
                         currency: supplier.currency!,
                         reason: `Vente Automatique : ${item.name} (#${orderId})`
@@ -198,7 +199,7 @@ export async function allocateOrderStock(
     // 4. Final Finalization: If no manual items, mark as TERMINE
     if (!hasManualDelivery) {
         await tx.update(orders)
-            .set({ status: "TERMINE", isDelivered: true })
+            .set({ status: OrderStatus.TERMINE, isDelivered: true })
             .where(eq(orders.id, orderId));
     }
 

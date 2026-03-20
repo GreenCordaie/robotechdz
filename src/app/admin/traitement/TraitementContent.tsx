@@ -16,9 +16,14 @@ import { useSettingsStore } from "@/store/useSettingsStore";
 import { useAuthStore } from "@/store/useAuthStore";
 import { Wifi, WifiOff, Usb, Loader2, MessageSquare } from "lucide-react";
 
-export default function TraitementContent() {
+interface TraitementContentProps {
+    initialOrders?: any[];
+    initialFinished?: any[];
+}
+
+export default function TraitementContent({ initialOrders = [], initialFinished = [] }: TraitementContentProps) {
     const [view, setView] = useState<"pending" | "finished">("pending");
-    const [orders, setOrders] = useState<any[]>([]);
+    const [orders, setOrders] = useState<any[]>(initialOrders);
     const [isLoading, setIsLoading] = useState(true);
     const [selectedOrder, setSelectedOrder] = useState<any | null>(null);
     const [codes, setCodes] = useState<Record<string, string>>({});
@@ -36,7 +41,10 @@ export default function TraitementContent() {
     const { user } = useAuthStore();
 
     const loadOrders = useCallback(async () => {
-        setIsLoading(true);
+        // Optimization: Don't set loading if we already have initial data for the current view
+        if (view === "pending" && orders.length === 0) setIsLoading(true);
+        if (view === "finished" && orders.length === 0) setIsLoading(true);
+
         try {
             const res: any = view === "pending" ? await getPaidOrders({}) : await getFinishedOrders({});
             if (res && res.success === false) {
@@ -51,10 +59,15 @@ export default function TraitementContent() {
         } finally {
             setIsLoading(false);
         }
-    }, [view]);
+    }, [view, orders.length]);
+
+    // Initial state sync when view changes
+    useEffect(() => {
+        if (view === "pending") setOrders(initialOrders);
+        else setOrders(initialFinished);
+    }, [view, initialOrders, initialFinished]);
 
     useEffect(() => {
-        loadOrders();
         const interval = setInterval(async () => {
             const res: any = view === "pending" ? await getPaidOrders({}) : await getFinishedOrders({});
             const data = Array.isArray(res) ? res : [];

@@ -2,51 +2,34 @@
 
 import { db } from "@/db";
 import {
-    shopSettings, users, resellers, resellerWallets, resellerTransactions, auditLogs,
-    whatsappFaqs, orders, orderItems, suppliers, supplierTransactions,
-    supportTickets, digitalCodes, digitalCodeSlots, clients,
-    clientPayments, productVariantSuppliers
+    shopSettings, users, resellers, resellerWallets, resellerTransactions,
+    whatsappFaqs, supportTickets, digitalCodes, digitalCodeSlots, clients,
+    clientPayments, productVariantSuppliers, auditLogs, orderItems, orders, supplierTransactions, suppliers
 } from "@/db/schema";
-import { eq, desc, sql, inArray } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { withAuth, logSecurityAction } from "@/lib/security";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import { generateSecret, generateURI, verify } from "otplib";
-import { encrypt, decrypt } from "@/lib/encryption";
-
-// Helper to get settings (internal)
-async function getSettingsInternal() {
-    const settings = await db.query.shopSettings.findFirst();
-    if (!settings) {
-        const [newSettings] = await db.insert(shopSettings).values({
-            shopName: "FLEXBOX DIRECT",
-        }).returning();
-        return newSettings;
-    }
-    return settings;
-}
+import { encrypt } from "@/lib/encryption";
+import { SystemQueries } from "@/services/queries/system.queries";
+import { ResellerQueries } from "@/services/queries/reseller.queries";
+import { UserRole } from "@/lib/constants";
 
 export const getShopSettingsAction = withAuth(
-    { roles: ["ADMIN"] },
+    { roles: [UserRole.ADMIN] },
     async () => {
-        const settings = await getSettingsInternal();
+        const settings = await SystemQueries.getSettings();
         return { success: true, data: settings };
     }
 );
 
 export async function getPublicSettingsAction() {
     try {
-        const settings = await db.query.shopSettings.findFirst();
-        return {
-            success: true,
-            data: {
-                isB2bEnabled: !!settings?.isB2bEnabled,
-                isMaintenanceMode: !!settings?.isMaintenanceMode,
-                shopName: settings?.shopName || "FLEXBOX DIRECT"
-            }
-        };
+        const data = await SystemQueries.getPublicSettings();
+        return { success: true, data };
     } catch (error) {
         return { success: false, error: "Failed to fetch public settings" };
     }
@@ -54,7 +37,7 @@ export async function getPublicSettingsAction() {
 
 export const saveShopSettingsAction = withAuth(
     {
-        roles: ["ADMIN"],
+        roles: [UserRole.ADMIN],
         schema: z.object({
             shopName: z.string().min(1),
             shopTel: z.string().nullable().optional(),
@@ -97,7 +80,7 @@ export const saveShopSettingsAction = withAuth(
         })
     },
     async (data, user) => {
-        const settings = await getSettingsInternal();
+        const settings = await SystemQueries.getSettings();
         const oldData = { ...settings };
 
         await db.update(shopSettings).set(data).where(eq(shopSettings.id, settings.id));
@@ -118,7 +101,7 @@ export const saveShopSettingsAction = withAuth(
 
 export const activateTelegramWebhookAction = withAuth(
     {
-        roles: ["ADMIN"],
+        roles: [UserRole.ADMIN],
         schema: z.object({
             token: z.string(),
             url: z.string()
@@ -126,7 +109,6 @@ export const activateTelegramWebhookAction = withAuth(
     },
     async ({ token, url }) => {
         try {
-            // The actual route is /api/telegram/webhook
             const webhookPath = url.endsWith('/') ? url + 'api/telegram/webhook' : url + '/api/telegram/webhook';
             const secretToken = process.env.TELEGRAM_SECRET_TOKEN || "flexbox_secure_token_2026";
 
@@ -152,15 +134,14 @@ export const activateTelegramWebhookAction = withAuth(
     }
 );
 
-// ... User Management Actions
 export const addUserAction = withAuth(
     {
-        roles: ["ADMIN"],
+        roles: [UserRole.ADMIN],
         schema: z.object({
             nom: z.string().min(1),
             email: z.string().email(),
             password: z.string().min(6),
-            role: z.enum(["ADMIN", "CAISSIER", "TRAITEUR", "RESELLER"]),
+            role: z.enum([UserRole.ADMIN, UserRole.CAISSIER, UserRole.TRAITEUR, UserRole.RESELLER]),
             pinCode: z.string().optional(),
             avatarUrl: z.string().nullable().optional()
         })
@@ -196,25 +177,22 @@ export const addUserAction = withAuth(
 );
 
 export const getUsersAction = withAuth(
-    { roles: ["ADMIN"] },
+    { roles: [UserRole.ADMIN] },
     async () => {
-        const list = await db.query.users.findMany({
-            where: sql`${users.role} != 'RESELLER'`,
-            orderBy: [desc(users.id)]
-        });
+        const list = await SystemQueries.getUsers();
         return { success: true, data: list };
     }
 );
 
 export const updateUserAction = withAuth(
     {
-        roles: ["ADMIN"],
+        roles: [UserRole.ADMIN],
         schema: z.object({
             id: z.number(),
             data: z.object({
                 nom: z.string().optional(),
                 email: z.string().email().optional(),
-                role: z.enum(["ADMIN", "CAISSIER", "TRAITEUR", "RESELLER"]).optional(),
+                role: z.enum([UserRole.ADMIN, UserRole.CAISSIER, UserRole.TRAITEUR, UserRole.RESELLER]).optional(),
                 pinCode: z.string().optional(),
                 avatarUrl: z.string().nullable().optional(),
                 password: z.string().min(6).optional()
@@ -250,7 +228,7 @@ export const updateUserAction = withAuth(
 
 export const deleteUserAction = withAuth(
     {
-        roles: ["ADMIN"],
+        roles: [UserRole.ADMIN],
         schema: z.object({ id: z.number() })
     },
     async ({ id }, currentUser) => {
@@ -273,19 +251,16 @@ export const deleteUserAction = withAuth(
 );
 
 export const getResellersAction = withAuth(
-    { roles: ["ADMIN"] },
+    { roles: [UserRole.ADMIN] },
     async () => {
-        const list = await db.query.resellers.findMany({
-            with: { user: true, wallet: true },
-            orderBy: [desc(resellers.id)]
-        });
+        const list = await ResellerQueries.getAll();
         return { success: true, data: list };
     }
 );
 
 export const deleteResellerAction = withAuth(
     {
-        roles: ["ADMIN"],
+        roles: [UserRole.ADMIN],
         schema: z.object({ id: z.number() })
     },
     async ({ id }) => {
@@ -307,7 +282,7 @@ export const deleteResellerAction = withAuth(
 
 export const createResellerAction = withAuth(
     {
-        roles: ["ADMIN"],
+        roles: [UserRole.ADMIN],
         schema: z.object({
             companyName: z.string().min(1),
             contactPhone: z.string().min(1),
@@ -323,14 +298,14 @@ export const createResellerAction = withAuth(
                 const existing = await tx.query.users.findFirst({ where: eq(users.email, data.email) });
                 if (existing) return { success: false, error: "Email déjà utilisé" };
 
-                const passwordHash = await bcrypt.hash("reseller123", 10); // Default password
+                const passwordHash = await bcrypt.hash("reseller123", 10);
                 const pinHash = await bcrypt.hash(data.pinCode, 10);
 
                 const [newUser] = await tx.insert(users).values({
                     nom: data.nom,
                     email: data.email,
                     passwordHash,
-                    role: "RESELLER",
+                    role: UserRole.RESELLER,
                     pinCode: pinHash
                 }).returning();
 
@@ -355,16 +330,15 @@ export const createResellerAction = withAuth(
     }
 );
 
-// Integration Tests
 export const testTelegramBotAction = withAuth(
-    { roles: ["ADMIN"], schema: z.object({ token: z.string(), chatId: z.string() }) },
+    { roles: [UserRole.ADMIN], schema: z.object({ token: z.string(), chatId: z.string() }) },
     async () => ({ success: true })
 );
 
 export const testWhatsAppAction = withAuth(
-    { roles: ["ADMIN"], schema: z.object({ number: z.string() }) },
+    { roles: [UserRole.ADMIN], schema: z.object({ number: z.string() }) },
     async ({ number }) => {
-        const settings = await getSettingsInternal();
+        const settings = await SystemQueries.getSettings();
         const { sendWhatsAppMessage } = await import("@/lib/whatsapp");
 
         return await sendWhatsAppMessage(number, "✅ *TEST RÉUSSI* - Configuration Evolution API validée sur FLEXBOX DIRECT.", {
@@ -375,37 +349,33 @@ export const testWhatsAppAction = withAuth(
     }
 );
 
-// Stubs & Dedicated Webhook
 export const saveWhatsAppWebhookAction = withAuth(
     {
-        roles: ["ADMIN"],
+        roles: [UserRole.ADMIN],
         schema: z.object({ url: z.string().nullable() })
     },
     async ({ url }) => {
-        const settings = await getSettingsInternal();
+        const settings = await SystemQueries.getSettings();
         await db.update(shopSettings).set({ whatsappWebhookUrl: url }).where(eq(shopSettings.id, settings.id));
         revalidatePath("/admin/settings");
         return { success: true };
     }
 );
 
-export const getWhatsAppStatusAction = withAuth({ roles: ["ADMIN"] }, async () => ({ success: true, state: 'open', number: 'Meta API' }));
-export const setWhatsAppWebhookAction = withAuth({ roles: ["ADMIN"] }, async () => ({ success: true }));
+export const getWhatsAppStatusAction = withAuth({ roles: [UserRole.ADMIN] }, async () => ({ success: true, state: 'open', number: 'Meta API' }));
+export const setWhatsAppWebhookAction = withAuth({ roles: [UserRole.ADMIN] }, async () => ({ success: true }));
 
-// WhatsApp FAQs
 export const getWhatsAppFaqsAction = withAuth(
-    { roles: ["ADMIN"] },
+    { roles: [UserRole.ADMIN] },
     async () => {
-        const list = await db.query.whatsappFaqs.findMany({
-            orderBy: [desc(whatsappFaqs.id)]
-        });
+        const list = await SystemQueries.getWhatsAppFaqs();
         return { success: true, data: list };
     }
 );
 
 export const upsertWhatsAppFaqAction = withAuth(
     {
-        roles: ["ADMIN"],
+        roles: [UserRole.ADMIN],
         schema: z.object({
             id: z.number().optional(),
             question: z.string().min(1),
@@ -430,7 +400,7 @@ export const upsertWhatsAppFaqAction = withAuth(
 );
 
 export const deleteWhatsAppFaqAction = withAuth(
-    { roles: ["ADMIN"], schema: z.object({ id: z.number() }) },
+    { roles: [UserRole.ADMIN], schema: z.object({ id: z.number() }) },
     async ({ id }) => {
         await db.delete(whatsappFaqs).where(eq(whatsappFaqs.id, id));
         revalidatePath("/admin/settings");
@@ -438,18 +408,11 @@ export const deleteWhatsAppFaqAction = withAuth(
     }
 );
 
-// Audit & Security
 export const getAuditLogsAction = withAuth(
-    { roles: ["ADMIN"] },
+    { roles: [UserRole.ADMIN] },
     async () => {
         try {
-            const logs = await db.query.auditLogs.findMany({
-                orderBy: [desc(auditLogs.createdAt)],
-                limit: 100,
-                with: {
-                    user: true
-                }
-            });
+            const logs = await SystemQueries.getAuditLogs(100);
             return { success: true, data: logs };
         } catch (error) {
             console.error("Audit Log Fetch Error:", error);
@@ -459,15 +422,10 @@ export const getAuditLogsAction = withAuth(
 );
 
 export const exportAuditLogsAction = withAuth(
-    { roles: ["ADMIN"] },
-    async (_, user) => {
+    { roles: [UserRole.ADMIN] },
+    async () => {
         try {
-            const logs = await db.query.auditLogs.findMany({
-                orderBy: [desc(auditLogs.createdAt)],
-                with: {
-                    user: true
-                }
-            });
+            const logs = await SystemQueries.getAuditLogs(10000); // Higher limit for export
             return { success: true, data: logs };
         } catch (error) {
             return { success: false, error: "Erreur lors de l'exportation des logs" };
@@ -476,7 +434,7 @@ export const exportAuditLogsAction = withAuth(
 );
 
 export const generateBackupCodesAction = withAuth(
-    { roles: ["ADMIN"] },
+    { roles: [UserRole.ADMIN] },
     async (_, user) => {
         const codes = Array.from({ length: 10 }, () =>
             crypto.randomBytes(4).toString("hex").toUpperCase()
@@ -487,7 +445,7 @@ export const generateBackupCodesAction = withAuth(
 );
 
 export const generateMfaSecretAction = withAuth(
-    { roles: ["ADMIN"] },
+    { roles: [UserRole.ADMIN] },
     async (_, user) => {
         const secret = generateSecret();
         const otpauth = generateURI({ secret, label: user.email, issuer: "FLEXBOX DIRECT" });
@@ -496,7 +454,7 @@ export const generateMfaSecretAction = withAuth(
 );
 
 export const enableMfaAction = withAuth(
-    { roles: ["ADMIN"], schema: z.object({ secret: z.string(), code: z.string().length(6) }) },
+    { roles: [UserRole.ADMIN], schema: z.object({ secret: z.string(), code: z.string().length(6) }) },
     async ({ secret, code }, user) => {
         const isValid = verify({ token: code, secret });
         if (!isValid) return { success: false, error: "Code invalide" };
@@ -506,15 +464,16 @@ export const enableMfaAction = withAuth(
 );
 
 export const disableMfaAction = withAuth(
-    { roles: ["ADMIN"] },
+    { roles: [UserRole.ADMIN] },
     async (_, user) => {
         await db.update(users).set({ twoFactorSecret: null }).where(eq(users.id, user.id));
         return { success: true };
     }
 );
+
 export const resetProductionDataAction = withAuth(
     {
-        roles: ["ADMIN"],
+        roles: [UserRole.ADMIN],
         schema: z.object({ confirmation: z.string() })
     },
     async (data, user) => {
@@ -524,7 +483,6 @@ export const resetProductionDataAction = withAuth(
 
         try {
             await db.transaction(async (tx) => {
-                // Delete in order of dependencies (leaves to roots)
                 await tx.delete(supportTickets);
                 await tx.delete(clientPayments);
                 await tx.delete(digitalCodeSlots);
@@ -539,7 +497,6 @@ export const resetProductionDataAction = withAuth(
                 await tx.delete(suppliers);
                 await tx.delete(clients);
                 await tx.delete(auditLogs);
-                // Preserve shopSettings and users (except for resellers deleted above)
             });
 
             await logSecurityAction({
@@ -559,7 +516,7 @@ export const resetProductionDataAction = withAuth(
 );
 
 export const exportDatabaseAction = withAuth(
-    { roles: ["ADMIN"] },
+    { roles: [UserRole.ADMIN] },
     async () => {
         try {
             const data = {

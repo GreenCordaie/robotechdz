@@ -18,11 +18,15 @@ import { AddResellerModal } from "@/components/admin/modals/AddResellerModal";
 import { formatCurrency } from "@/lib/formatters";
 import Link from "next/link";
 
-export default function B2bManagementContent() {
+interface B2bManagementContentProps {
+    initialResellers?: any[];
+}
+
+export default function B2bManagementContent({ initialResellers = [] }: B2bManagementContentProps) {
     const { isOpen: isB2bModalOpen, onOpen: onB2bModalOpen, onOpenChange: onB2bModalOpenChange } = useDisclosure();
 
-    const [resellersList, setResellersList] = useState<any[]>([]);
-    const [isResellersLoading, setIsResellersLoading] = useState(true);
+    const [resellersList, setResellersList] = useState<any[]>(initialResellers);
+    const [isResellersLoading, setIsResellersLoading] = useState(false);
     const defaultResellerDiscount = "5.00";
 
     useEffect(() => {

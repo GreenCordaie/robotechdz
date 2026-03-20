@@ -15,9 +15,14 @@ import OrderDetailModal from "@/components/admin/modals/OrderDetailModal";
 import { Search, RefreshCw, ArrowLeft, Send, CheckCircle2, History, Eye, Printer, XCircle, Usb, Loader2, Wifi, WifiOff, MessageSquare } from "lucide-react";
 import Image from "next/image";
 
-export default function TraitementMobile() {
+interface TraitementMobileProps {
+    initialOrders?: any[];
+    initialFinished?: any[];
+}
+
+export default function TraitementMobile({ initialOrders = [], initialFinished = [] }: TraitementMobileProps) {
     const [view, setView] = useState<"pending" | "finished">("pending");
-    const [orders, setOrders] = useState<any[]>([]);
+    const [orders, setOrders] = useState<any[]>(initialOrders);
     const [isLoading, setIsLoading] = useState(true);
     const [selectedOrder, setSelectedOrder] = useState<any | null>(null);
     const [codes, setCodes] = useState<Record<string, string>>({});
@@ -34,7 +39,9 @@ export default function TraitementMobile() {
     const { user } = useAuthStore();
 
     const loadOrders = useCallback(async () => {
-        setIsLoading(true);
+        if (view === "pending" && orders.length === 0) setIsLoading(true);
+        if (view === "finished" && orders.length === 0) setIsLoading(true);
+
         try {
             const res: any = view === "pending" ? await getPaidOrders({}) : await getFinishedOrders({});
             setOrders(Array.isArray(res) ? res : []);
@@ -43,10 +50,15 @@ export default function TraitementMobile() {
         } finally {
             setIsLoading(false);
         }
-    }, [view]);
+    }, [view, orders.length]);
+
+    // Sync initial state on view change
+    useEffect(() => {
+        if (view === "pending") setOrders(initialOrders);
+        else setOrders(initialFinished);
+    }, [view, initialOrders, initialFinished]);
 
     useEffect(() => {
-        loadOrders();
         const interval = setInterval(async () => {
             const res: any = view === "pending" ? await getPaidOrders({}) : await getFinishedOrders({});
             const data = Array.isArray(res) ? res : [];

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { decrypt } from "@/lib/jwt";
+import { UserRole } from "@/lib/constants";
 
 export async function middleware(request: NextRequest) {
     const path = request.nextUrl.pathname;
@@ -28,10 +29,10 @@ export async function middleware(request: NextRequest) {
             try {
                 const parsed = await decrypt(session);
                 const role = parsed.userRole;
-                if (path === "/admin/login" && role !== "RESELLER") {
+                if (path === "/admin/login" && role !== UserRole.RESELLER) {
                     return NextResponse.redirect(new URL("/admin", request.url));
                 }
-                if (path === "/reseller/login" && role === "RESELLER") {
+                if (path === "/reseller/login" && role === UserRole.RESELLER) {
                     return NextResponse.redirect(new URL("/reseller/dashboard", request.url));
                 }
             } catch (e) { }
@@ -51,16 +52,16 @@ export async function middleware(request: NextRequest) {
             const parsed = await decrypt(session);
             const userRole = parsed.userRole;
 
-            if (path.startsWith("/admin") && userRole === "RESELLER") {
+            if (path.startsWith("/admin") && userRole === UserRole.RESELLER) {
                 return NextResponse.redirect(new URL("/reseller/dashboard", request.url));
             }
-            if (path.startsWith("/reseller") && userRole !== "RESELLER") {
+            if (path.startsWith("/reseller") && userRole !== UserRole.RESELLER) {
                 return NextResponse.redirect(new URL("/admin", request.url));
             }
 
             // RBAC for admin (Default Deny - Whitelist approach)
             if (path.startsWith("/admin")) {
-                if (userRole !== "ADMIN") {
+                if (userRole !== UserRole.ADMIN) {
                     const permittedPaths = [
                         "/admin/caisse",
                         "/admin/catalogue",

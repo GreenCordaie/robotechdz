@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { sendWhatsAppMessage } from "@/lib/whatsapp";
-import { clients, shopSettings, orders, products, whatsappFaqs } from "@/db/schema";
+import { clients, shopSettings, orders, products, whatsappFaqs, webhookEvents } from "@/db/schema";
 import { eq, or, like, and, desc } from "drizzle-orm";
 import { getGeminiResponse } from "@/lib/gemini";
+import { ProductStatus, OrderStatus } from "@/lib/constants";
 
 /**
  * WHATSAPP OFFICIAL CLOUD API WEBHOOK
@@ -28,7 +29,7 @@ export async function GET(req: NextRequest) {
 async function getStoreCatalogContext() {
     try {
         const allProducts = await db.query.products.findMany({
-            where: eq(products.status, 'ACTIVE'),
+            where: eq(products.status, ProductStatus.ACTIVE),
             with: { variants: true }
         });
         if (!allProducts.length) return "Catalogue vide.";
@@ -57,6 +58,21 @@ export async function POST(req: NextRequest) {
         if (event !== "messages.upsert") return NextResponse.json({ success: true });
 
         const messageData = body.data;
+        const messageId = messageData?.key?.id;
+
+        // --- IDEMPOTENCE CHECK ---
+        if (messageId) {
+            const alreadyProcessed = await db.query.webhookEvents.findFirst({
+                where: and(eq(webhookEvents.provider, "whatsapp"), eq(webhookEvents.externalId, messageId))
+            });
+            if (alreadyProcessed) return NextResponse.json({ success: true });
+
+            await db.insert(webhookEvents).values({
+                provider: "whatsapp",
+                externalId: messageId
+            });
+        }
+
         const senderPhone = messageData.key.remoteJid.split('@')[0];
         const text = (messageData.message?.conversation || messageData.message?.extendedTextMessage?.text || "").trim();
         const lowText = text.toLowerCase();
@@ -86,7 +102,7 @@ export async function POST(req: NextRequest) {
                 : like(orders.customerPhone, `%${digits.slice(-9)}%`);
 
             const latestOrders = await db.query.orders.findMany({
-                where: and(whereClause, eq(orders.status, "TERMINE")),
+                where: and(whereClause, eq(orders.status, OrderStatus.TERMINE)),
                 with: {
                     items: {
                         with: {
@@ -130,7 +146,7 @@ export async function POST(req: NextRequest) {
         const hasProblem = problemKeywords.some(kw => lowText.includes(kw));
 
         if (hasProblem) {
-            const allProducts = await db.query.products.findMany({ where: eq(products.status, 'ACTIVE') });
+            const allProducts = await db.query.products.findMany({ where: eq(products.status, ProductStatus.ACTIVE) });
             const matchedProduct = allProducts.find(p => lowText.includes(p.name.toLowerCase()));
 
             if (matchedProduct && matchedProduct.tutorialText) {

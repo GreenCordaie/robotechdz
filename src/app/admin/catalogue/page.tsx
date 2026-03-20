@@ -1,7 +1,9 @@
 import React from "react";
-import { db } from "@/db";
-import { getPaginatedProducts } from "./actions";
+import { ProductQueries } from "@/services/queries/product.queries";
 import CatalogueViewSwitcher from "./CatalogueViewSwitcher";
+import { getCurrentUser } from "@/lib/security";
+import { redirect } from "next/navigation";
+import { UserRole, ProductStatus } from "@/lib/constants";
 
 export const dynamic = "force-dynamic";
 
@@ -10,42 +12,30 @@ export default async function CataloguePage({
 }: {
     searchParams: { page?: string; search?: string; categoryId?: string; status?: string };
 }) {
+    const user = await getCurrentUser();
+    if (!user || (user.role !== UserRole.ADMIN && user.role !== UserRole.SUPER_ADMIN)) {
+        redirect("/auth/login");
+    }
+
     const page = Number(searchParams.page) || 1;
     const search = searchParams.search || "";
     const categoryId = searchParams.categoryId || "all";
-    const status = (searchParams.status as "ACTIVE" | "ARCHIVED") || "ACTIVE";
-    const limit = 10;
+    const status = (searchParams.status as ProductStatus) || ProductStatus.ACTIVE;
+    const limit = 12; // Standardised limit
 
-    // Fetch static data (categories, suppliers)
-    const allCategories = await db.query.categories.findMany();
-    const allSuppliers = await db.query.suppliers.findMany();
-
-    // Fetch paginated products
-    const result: any = await getPaginatedProducts({
-        page,
-        limit,
-        search,
-        categoryId,
-        status,
-    });
-
-    if (result.success === false) {
-        return (
-            <div className="p-8 text-white bg-red-900/20 rounded-xl border border-red-500/50">
-                Une erreur de sécurité est survenue : {result.error}
-            </div>
-        );
-    }
-
-    const { products, total, totalPages } = result;
+    const [categories, suppliers, result] = await Promise.all([
+        ProductQueries.getCategories(),
+        ProductQueries.getSuppliers(),
+        ProductQueries.getPaginated({ page, limit, search, categoryId, status })
+    ]);
 
     return (
         <CatalogueViewSwitcher
-            initialProducts={products}
-            suppliers={allSuppliers}
-            categories={allCategories}
-            initialTotal={total}
-            initialTotalPages={totalPages}
+            initialProducts={result.products}
+            suppliers={suppliers}
+            categories={categories}
+            initialTotal={result.total}
+            initialTotalPages={result.totalPages}
             initialPage={page}
             initialSearch={search}
             initialCategoryId={categoryId}
