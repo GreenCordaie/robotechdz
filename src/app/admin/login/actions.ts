@@ -1,20 +1,27 @@
 "use server";
 
-import { db } from "@/db";
-import { users } from "@/db/schema";
-import { eq } from "drizzle-orm";
-import bcrypt from "bcryptjs";
-import { createSession, deleteSession, getSession } from "@/lib/auth";
 import { redirect } from "next/navigation";
-import { logSecurityAction } from "@/lib/security";
 import { verify } from "otplib";
-import { encrypt, decrypt } from "@/lib/encryption";
-import { checkRateLimit, recordFailure, resetRateLimit } from "@/lib/rate-limit";
+
+async function getDeps() {
+    const { db } = await import("@/db");
+    const { users } = await import("@/db/schema");
+    const { eq } = await import("drizzle-orm");
+    const bcrypt = (await import("bcryptjs")).default;
+    const { createSession, deleteSession, getSession } = await import("@/lib/auth");
+    const { logSecurityAction } = await import("@/lib/security");
+    const { encrypt, decrypt } = await import("@/lib/encryption");
+    const { checkRateLimit, recordFailure, resetRateLimit } = await import("@/lib/rate-limit");
+
+    return { db, users, eq, bcrypt, createSession, deleteSession, getSession, logSecurityAction, encrypt, decrypt, checkRateLimit, recordFailure, resetRateLimit };
+}
 
 export async function loginAction(formData: FormData) {
     const email = formData.get("email") as string;
     const password = formData.get("password") as string;
     const honeypot = formData.get("website_url") as string;
+
+    const { db, users, eq, bcrypt, createSession, logSecurityAction, checkRateLimit, recordFailure, resetRateLimit } = await getDeps();
 
     // 1. Honeypot check
     if (honeypot) {
@@ -104,17 +111,19 @@ export async function loginAction(formData: FormData) {
 
 export async function verifyMfaAction(userId: number, code: string) {
     try {
+        const { db, users, eq, createSession, logSecurityAction, encrypt, decrypt } = await getDeps();
+
         const userList = await db.select().from(users).where(eq(users.id, userId)).limit(1);
         if (userList.length === 0) return { success: false, error: "Utilisateur introuvable" };
 
         const user = userList[0];
         if (!user.twoFactorSecret) return { success: false, error: "2FA non configuré" };
 
-        let isValid: any = verify({ token: code, secret: decrypt(user.twoFactorSecret) });
+        let isValid: any = verify({ token: code, secret: decrypt(user.twoFactorSecret) as string });
         let isBackupCode = false;
 
         if (!isValid && user.mfaBackupCodes) {
-            const backupCodes: string[] = JSON.parse(decrypt(user.mfaBackupCodes));
+            const backupCodes: string[] = JSON.parse(decrypt(user.mfaBackupCodes) as string);
             const codeIndex = backupCodes.indexOf(code.toUpperCase());
 
             if (codeIndex !== -1) {
@@ -157,12 +166,14 @@ export async function verifyMfaAction(userId: number, code: string) {
 }
 
 export async function logoutAction() {
+    const { deleteSession } = await getDeps();
     await deleteSession();
     redirect("/admin/login");
 }
 
 export async function verifyPinAction(pin: string) {
     try {
+        const { db, users, eq, bcrypt, getSession } = await getDeps();
         const session = await getSession();
         if (!session) return { success: false, error: "Session expirée" };
 
