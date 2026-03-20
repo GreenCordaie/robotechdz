@@ -1,4 +1,5 @@
-export const dynamic = "force-dynamic";
-import DashboardPage from "./dashboard/page";
+import { redirect } from "next/navigation";
 
-export default DashboardPage;
+export default function AdminRootPage() {
+    redirect("/admin/dashboard");
+}
