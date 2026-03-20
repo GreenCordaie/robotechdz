@@ -16,6 +16,7 @@ import { useAuthStore } from "@/store/useAuthStore";
 
 export const MobileNavbar = () => {
     const pathname = usePathname();
+    /*
     const [pendingOrders, setPendingOrders] = React.useState(0);
 
     const refreshCounts = React.useCallback(async () => {
@@ -34,6 +35,9 @@ export const MobileNavbar = () => {
         const interval = setInterval(refreshCounts, 10000);
         return () => clearInterval(interval);
     }, [refreshCounts]);
+    */
+
+    const pendingOrders = 0;
 
     const { user } = useAuthStore();
     const navItems = [

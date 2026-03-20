@@ -28,6 +28,7 @@ export const AdminSidebar = () => {
     const user = useAuthStore((state) => state.user);
     const { shopName, dashboardLogoUrl, isB2bEnabled, fetchSettings } = useSettingsStore();
 
+    /*
     const [openTickets, setOpenTickets] = React.useState(0);
     const [pendingOrders, setPendingOrders] = React.useState(0);
 
@@ -52,6 +53,15 @@ export const AdminSidebar = () => {
         const interval = setInterval(refreshCounts, 10000); // Pulse every 10s
         return () => clearInterval(interval);
     }, [fetchSettings, refreshCounts]);
+    */
+
+    // Minimal replacement to avoid breaking layout
+    React.useEffect(() => {
+        fetchSettings();
+    }, [fetchSettings]);
+
+    const openTickets = 0;
+    const pendingOrders = 0;
 
     const handleLogout = async () => {
         await logoutAction();
