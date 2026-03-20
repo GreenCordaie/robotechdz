@@ -1,14 +1,19 @@
 import { cookies, headers } from "next/headers";
-import { db } from "@/db";
-import { users } from "@/db/schema";
-import { eq } from "drizzle-orm";
 import { encrypt, decrypt } from "./jwt";
+
+async function getAuthDeps() {
+    const { db } = await import("@/db");
+    const { users } = await import("@/db/schema");
+    const { eq } = await import("drizzle-orm");
+    return { db, users, eq };
+}
 
 export async function createSession(user: { id: number; role: string }) {
     const expires = new Date(Date.now() + 12 * 60 * 60 * 1000);
     const session = await encrypt({ userId: user.id, userRole: user.role, expires });
 
     // Initial activity tracking
+    const { db, users, eq } = await getAuthDeps();
     await db.update(users)
         .set({ lastActiveAt: new Date() })
         .where(eq(users.id, user.id));
@@ -27,6 +32,7 @@ export async function createSession(user: { id: number; role: string }) {
 
 export async function updateSessionActivity(userId: number) {
     try {
+        const { db, users, eq } = await getAuthDeps();
         await db.update(users)
             .set({ lastActiveAt: new Date() })
             .where(eq(users.id, userId));

@@ -1,12 +1,16 @@
 import { getSession } from "./auth";
-import { db } from "@/db";
-import { users, auditLogs, shopSettings } from "@/db/schema";
-import { eq } from "drizzle-orm";
 import { UserRole } from "@/lib/constants";
 import { z } from "zod";
 import { headers } from "next/headers";
 import { cache } from "react";
 import { sendTelegramNotification } from "./telegram";
+
+async function getSecurityDeps() {
+    const { db } = await import("@/db");
+    const { users, auditLogs, shopSettings } = await import("@/db/schema");
+    const { eq } = await import("drizzle-orm");
+    return { db, users, auditLogs, shopSettings, eq };
+}
 
 export class UnauthorizedError extends Error {
     constructor(message = "Accès non autorisé") {
@@ -19,6 +23,7 @@ export class UnauthorizedError extends Error {
  * Cache shop settings for the duration of the request to avoid redundant DB queries.
  */
 export const getCachedSettings = cache(async () => {
+    const { db } = await getSecurityDeps();
     return await db.query.shopSettings.findFirst();
 });
 
@@ -27,25 +32,31 @@ export const getCachedSettings = cache(async () => {
  * Ensures the role and existence are verified at the time of the action call.
  */
 export async function getAuthenticatedUser() {
-    const session = await getSession();
-    if (!session || !session.userId) {
+    try {
+        const session = await getSession();
+        if (!session || !session.userId) {
+            return null;
+        }
+
+        const { db, users, eq } = await getSecurityDeps();
+
+        const [user] = await db.select({
+            id: users.id,
+            nom: users.nom,
+            email: users.email,
+            role: users.role,
+            lastActiveAt: users.lastActiveAt,
+        })
+            .from(users)
+            .where(eq(users.id, session.userId))
+            .limit(1);
+
+        if (!user) return null;
+
+        return user;
+    } catch (error) {
         return null;
     }
-
-    const [user] = await db.select({
-        id: users.id,
-        nom: users.nom,
-        email: users.email,
-        role: users.role,
-        lastActiveAt: users.lastActiveAt,
-    })
-        .from(users)
-        .where(eq(users.id, session.userId))
-        .limit(1);
-
-    if (!user) return null;
-
-    return user;
 }
 
 export const getCurrentUser = getAuthenticatedUser;
@@ -84,6 +95,7 @@ export async function logSecurityAction(params: {
     const userAgent = headerList.get("user-agent") || "unknown";
 
     try {
+        const { db, auditLogs } = await getSecurityDeps();
         await db.insert(auditLogs).values({
             userId: params.userId,
             action: params.action,
@@ -207,6 +219,7 @@ export function withAuth<T extends z.ZodType, R>(
 
             // 5. Update Activity Timestamp
             try {
+                const { db, users, eq } = await getSecurityDeps();
                 await db.update(users)
                     .set({ lastActiveAt: new Date() })
                     .where(eq(users.id, user.id));
