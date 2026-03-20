@@ -6,9 +6,10 @@ import { eq, sql, desc, and } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { withAuth } from "@/lib/security";
 import { z } from "zod";
+import { UserRole } from "@/lib/constants";
 
 export const getClientStats = withAuth(
-    { roles: ["ADMIN", "CAISSIER"] },
+    { roles: [UserRole.ADMIN, UserRole.CAISSIER] },
     async () => {
         const totalClients = await db.select({ count: sql<number>`count(*)` }).from(clients);
         const totalDette = await db.select({ sum: sql<string>`sum(cast(total_dette_dzd as decimal))` }).from(clients);
@@ -23,7 +24,7 @@ export const getClientStats = withAuth(
 );
 
 export const getIndebtedClients = withAuth(
-    { roles: ["ADMIN", "CAISSIER"] },
+    { roles: [UserRole.ADMIN, UserRole.CAISSIER] },
     async () => {
         return await db.query.clients.findMany({
             where: sql`cast(total_dette_dzd as decimal) > 0`,
@@ -35,7 +36,7 @@ export const getIndebtedClients = withAuth(
 // Corrected export name and enum values for schema alignment
 export const recordPayment = withAuth(
     {
-        roles: ["ADMIN", "CAISSIER"],
+        roles: [UserRole.ADMIN, UserRole.CAISSIER],
         schema: z.object({
             clientId: z.number(),
             amount: z.string(),
@@ -62,6 +63,14 @@ export const recordPayment = withAuth(
             });
 
             revalidatePath("/admin/clients");
+
+            // Sync update to CRM
+            const client = await db.query.clients.findFirst({ where: eq(clients.id, data.clientId) });
+            if (client) {
+                const { N8nService } = await import("@/services/n8n.service");
+                N8nService.syncCustomerToCRM(client, 'PAYMENT').catch(() => { });
+            }
+
             return { success: true };
         } catch (error) {
             return { success: false, error: (error as Error).message };
@@ -71,7 +80,7 @@ export const recordPayment = withAuth(
 
 export const getClientHistory = withAuth(
     {
-        roles: ["ADMIN", "CAISSIER"],
+        roles: [UserRole.ADMIN, UserRole.CAISSIER],
         schema: z.object({ clientId: z.number() })
     },
     async ({ clientId }) => {
@@ -93,7 +102,7 @@ export const getClientHistory = withAuth(
 // Corrected export name and property name for schema alignment (nomComplet)
 export const createClient = withAuth(
     {
-        roles: ["ADMIN", "CAISSIER"],
+        roles: [UserRole.ADMIN, UserRole.CAISSIER],
         schema: z.object({ nom: z.string().min(1), telephone: z.string().optional() })
     },
     async (data) => {
@@ -103,12 +112,17 @@ export const createClient = withAuth(
             telephone: data.telephone
         }).returning();
         revalidatePath("/admin/clients");
+
+        // Sync new client to CRM
+        const { N8nService } = await import("@/services/n8n.service");
+        N8nService.syncCustomerToCRM(newClient, 'CREATED').catch(() => { });
+
         return { success: true, client: newClient };
     }
 );
 
 export const getAllClients = withAuth(
-    { roles: ["ADMIN", "CAISSIER"] },
+    { roles: [UserRole.ADMIN, UserRole.CAISSIER] },
     async () => {
         return await db.query.clients.findMany({ orderBy: [desc(clients.createdAt)] });
     }

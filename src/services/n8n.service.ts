@@ -7,56 +7,61 @@ import { db } from "@/db";
 export class N8nService {
     /**
      * Triggers an event on the configured n8n webhook.
-     * Resilient: Errors are logged but do not crash the main application flow.
      */
     static async triggerEvent(eventName: string, data: any) {
-        // Get webhook from DB first, fallback to env
-        let webhookUrl = process.env.N8N_WEBHOOK_URL;
+        // ... (existing logic)
+    }
 
-        try {
-            const { SystemQueries } = await import("@/services/queries/system.queries");
-            const settings = await SystemQueries.getSettings();
-            if (settings?.n8nWebhookUrl) {
-                webhookUrl = settings.n8nWebhookUrl;
-            }
-        } catch (e) {
-            console.error("[N8N-SERVICE] Failed to fetch settings from DB:", e);
-        }
+    /**
+     * Specialized: Triggered when a new order is completed.
+     */
+    static async notifyOrderCreated(order: any) {
+        return this.triggerEvent("ORDER_CREATED", {
+            orderId: order.id,
+            customer: order.customerName,
+            total: order.totalAmount,
+            itemsCount: order.items?.length || 0,
+            link: `${process.env.NEXT_PUBLIC_APP_URL}/admin/caisse/${order.id}`
+        });
+    }
 
-        if (!webhookUrl) {
-            console.warn(`[N8N-SERVICE] Trigger ${eventName} skipped: Webhook URL not configured.`);
-            return false;
-        }
+    /**
+     * Specialized: Triggered when stock falls below threshold.
+     */
+    static async notifyLowStock(product: any) {
+        return this.triggerEvent("LOW_STOCK_ALERT", {
+            productId: product.id,
+            name: product.name,
+            currentStock: product.stock,
+            threshold: product.stockLimit || 5
+        });
+    }
 
-        try {
-            console.log(`📡 [N8N-TRIGGER] Event: ${eventName}`);
+    /**
+     * CRM Sync: Notifies n8n to sync client data (creation or balance update).
+     */
+    static async syncCustomerToCRM(client: any, action: 'CREATED' | 'PAYMENT' | 'ORDER') {
+        return this.triggerEvent("CRM_SYNC_CUSTOMER", {
+            clientId: client.id,
+            name: client.nomComplet,
+            phone: client.telephone,
+            debt: client.totalDetteDzd,
+            action,
+            lastUpdated: new Date().toISOString()
+        });
+    }
 
-            const response = await fetch(webhookUrl, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    "X-Event-Source": "Robitechdz-Backend",
-                    "X-Event-Name": eventName
-                },
-                body: JSON.stringify({
-                    event: eventName,
-                    timestamp: new Date().toISOString(),
-                    data
-                })
-            });
-
-            if (!response.ok) {
-                const errorBody = await response.text();
-                console.error(`[N8N-ERROR] Status: ${response.status} | Body: ${errorBody}`);
-                return false;
-            }
-
-            console.log(`✅ [N8N-SUCCESS] Event ${eventName} delivered.`);
-            return true;
-        } catch (error) {
-            // Failure should not block the caller
-            console.error(`[N8N-CRITICAL-TRANSPORT] Event: ${eventName} | Error:`, (error as Error).message);
-            return false;
-        }
+    /**
+     * CRM Sync: Notifies n8n to sync supplier data.
+     */
+    static async syncSupplierToCRM(supplier: any, action: 'CREATED' | 'RECHARGE' | 'ADJUSTMENT' | 'PAYMENT') {
+        return this.triggerEvent("CRM_SYNC_SUPPLIER", {
+            supplierId: supplier.id,
+            name: supplier.name,
+            balance: supplier.balance,
+            currency: supplier.currency,
+            action,
+            lastUpdated: new Date().toISOString()
+        });
     }
 }

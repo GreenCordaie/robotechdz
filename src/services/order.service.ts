@@ -121,13 +121,7 @@ export class OrderService {
             }).catch(() => { });
 
             // Delegate all customer notifications and external automation to n8n
-            N8nService.triggerEvent('ORDER_COMPLETED', {
-                orderId: result.id,
-                orderNumber: result.orderNumber,
-                customerPhone: (result as any).client?.telephone || (result as any).reseller?.telephone,
-                total: result.totalAmount,
-                items: result.items
-            }).catch(err => console.error("[N8N-TRIGGER-ERROR] ORDER_COMPLETED:", err));
+            N8nService.notifyOrderCreated(result).catch(err => console.error("[N8N-TRIGGER-ERROR] notifyOrderCreated:", err));
         }
 
         triggerOrderDelivery(id).catch(err => {

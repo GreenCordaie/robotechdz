@@ -59,6 +59,10 @@ export async function checkStockAndAlert(variantId: number) {
                 `_Veuillez réapprovisionner rapidement._`;
 
             await sendTelegramNotification(message, ['ADMIN']);
+
+            // Also trigger n8n for expanded automation (WhatsApp, CRM Log, etc.)
+            const { N8nService } = await import("@/services/n8n.service");
+            N8nService.notifyLowStock(variant).catch(err => console.error("[N8N-STOCK-ALERT-ERROR]:", err));
         }
     } catch (error) {
         console.error("Error in checkStockAndAlert:", error);

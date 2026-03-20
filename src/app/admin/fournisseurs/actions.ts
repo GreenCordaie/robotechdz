@@ -75,6 +75,14 @@ export const rechargeSupplierAction = withAuth(
                 });
             });
             revalidatePath("/admin/fournisseurs");
+
+            // Sync update to CRM
+            const supplier = await db.query.suppliers.findFirst({ where: eq(suppliers.id, data.supplierId) });
+            if (supplier) {
+                const { N8nService } = await import("@/services/n8n.service");
+                N8nService.syncSupplierToCRM(supplier, 'RECHARGE').catch(() => { });
+            }
+
             return { success: true };
         } catch (error) {
             return { success: false, error: (error as Error).message };
@@ -108,6 +116,14 @@ export const addSupplierAction = withAuth(
     async (data) => {
         await db.insert(suppliers).values({ name: data.name, currency: data.currency, balance: data.initialBalance || "0" });
         revalidatePath("/admin/fournisseurs");
+
+        // Sync new supplier to CRM
+        const supplier = await db.query.suppliers.findFirst({ where: eq(suppliers.name, data.name) });
+        if (supplier) {
+            const { N8nService } = await import("@/services/n8n.service");
+            N8nService.syncSupplierToCRM(supplier, 'CREATED').catch(() => { });
+        }
+
         return { success: true };
     }
 );
@@ -178,6 +194,14 @@ export const adjustSupplierAction = withAuth(
             });
 
             revalidatePath("/admin/fournisseurs");
+
+            // Sync update to CRM
+            const supplier = await db.query.suppliers.findFirst({ where: eq(suppliers.id, id) });
+            if (supplier) {
+                const { N8nService } = await import("@/services/n8n.service");
+                N8nService.syncSupplierToCRM(supplier, 'ADJUSTMENT').catch(() => { });
+            }
+
             return { success: true };
         } catch (error) {
             return { success: false, error: (error as Error).message };
@@ -209,6 +233,14 @@ export const paySupplierAction = withAuth(
                 exchangeRate: data.exchangeRate
             });
             revalidatePath("/admin/fournisseurs");
+
+            // Sync update to CRM
+            const supplier = await db.query.suppliers.findFirst({ where: eq(suppliers.id, data.supplierId) });
+            if (supplier) {
+                const { N8nService } = await import("@/services/n8n.service");
+                N8nService.syncSupplierToCRM(supplier, 'PAYMENT').catch(() => { });
+            }
+
             return { success: true };
         } catch (error) {
             return { success: false, error: (error as Error).message };
