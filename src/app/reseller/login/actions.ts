@@ -28,9 +28,9 @@ export async function loginResellerAction(email: string, pin: string, honeypot?:
 
     try {
         // 0. Rate Limit Check
-        const limit = checkRateLimit(email);
+        const limit = await checkRateLimit(email);
         if (limit.isBlocked) {
-            return { success: false, error: `Trop de tentatives. Réessayez dans ${Math.ceil((limit.blockedUntil! - Date.now()) / 60000)} minutes.` };
+            return { success: false, error: `Trop de tentatives. Réessayez dans ${Math.ceil((limit.blockedUntil!.getTime() - Date.now()) / 60000)} minutes.` };
         }
 
         // Find user by email and role RESELLER
@@ -42,7 +42,7 @@ export async function loginResellerAction(email: string, pin: string, honeypot?:
         });
 
         if (!user) {
-            recordFailure(email);
+            await recordFailure(email);
             await logSecurityAction({
                 userId: null,
                 action: "AUTH_FAILED_USER_NOT_FOUND",
@@ -56,7 +56,7 @@ export async function loginResellerAction(email: string, pin: string, honeypot?:
         const isPinValid = await bcrypt.compare(pin, user.pinCode);
 
         if (!isPinValid) {
-            recordFailure(email);
+            await recordFailure(email);
             await logSecurityAction({
                 userId: user.id,
                 action: "AUTH_FAILED_WRONG_PASSWORD",
@@ -67,7 +67,7 @@ export async function loginResellerAction(email: string, pin: string, honeypot?:
         }
 
         // Reset on success
-        resetRateLimit(email);
+        await resetRateLimit(email);
 
         // 2FA CHECK
         if (user.twoFactorSecret) {
@@ -81,7 +81,8 @@ export async function loginResellerAction(email: string, pin: string, honeypot?:
         // Create secure session
         await createSession({
             id: user.id,
-            role: user.role
+            role: user.role,
+            tokenVersion: user.tokenVersion
         });
 
         // Audit Success
@@ -111,11 +112,11 @@ export async function verifyResellerMfaAction(userId: number, code: string) {
         if (!user || user.role !== "RESELLER") return { success: false, error: "Utilisateur introuvable" };
         if (!user.twoFactorSecret) return { success: false, error: "2FA non configuré" };
 
-        let isValid: any = verify({ token: code, secret: decrypt(user.twoFactorSecret) });
+        let isValid: any = verify({ token: code, secret: decrypt(user.twoFactorSecret) as string });
         let isBackupCode = false;
 
         if (!isValid && user.mfaBackupCodes) {
-            const backupCodes: string[] = JSON.parse(decrypt(user.mfaBackupCodes));
+            const backupCodes: string[] = JSON.parse(decrypt(user.mfaBackupCodes) as string);
             const codeIndex = backupCodes.indexOf(code.toUpperCase());
 
             if (codeIndex !== -1) {
@@ -141,7 +142,8 @@ export async function verifyResellerMfaAction(userId: number, code: string) {
 
         await createSession({
             id: user.id,
-            role: user.role
+            role: user.role,
+            tokenVersion: user.tokenVersion
         });
 
         await logSecurityAction({

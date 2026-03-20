@@ -5,7 +5,7 @@ import { allocateOrderStock } from "@/lib/orders";
 import { decrypt } from "@/lib/encryption";
 import { triggerOrderDelivery } from "@/lib/delivery";
 import { sendPushToRoleAction, sendPushToUserAction } from "@/app/admin/push/actions";
-import { OrderStatus, UserRole, ClientActionType, DigitalCodeStatus } from "@/lib/constants";
+import { OrderStatus, UserRole, ClientActionType, DigitalCodeStatus, OrderSource } from "@/lib/constants";
 
 export class OrderService {
     /**
@@ -239,5 +239,40 @@ export class OrderService {
         });
 
         return { insertedCount };
+    }
+
+    /**
+     * Illustrative function for IDOR prevention (Absolute Ownership rule).
+     * Enforces that the resource ID and owner ID (or management context) are checked together.
+     */
+    static async getSecureOrderById(id: number, user: { id: number; role: string }) {
+        const { and, eq, or } = await import("drizzle-orm");
+
+        return await db.query.orders.findFirst({
+            where: (table) => {
+                const baseCondition = eq(table.id, id);
+
+                // 1. Admin bypass
+                if (user.role === UserRole.ADMIN) return baseCondition;
+
+                // 2. Reseller check: Must be linked to their own orders
+                if (user.role === UserRole.RESELLER) {
+                    return and(
+                        baseCondition,
+                        eq(table.resellerId, user.id)
+                    );
+                }
+
+                // 3. Employee check: Access Kiosk orders or orders they handled
+                return and(
+                    baseCondition,
+                    or(eq(table.userId, user.id), eq(table.source, OrderSource.KIOSK))
+                );
+            },
+            with: {
+                items: { with: { variant: true } },
+                client: true
+            }
+        });
     }
 }

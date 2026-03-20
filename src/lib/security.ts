@@ -45,6 +45,7 @@ export async function getAuthenticatedUser() {
             nom: users.nom,
             email: users.email,
             role: users.role,
+            tokenVersion: users.tokenVersion,
             lastActiveAt: users.lastActiveAt,
         })
             .from(users)
@@ -52,6 +53,12 @@ export async function getAuthenticatedUser() {
             .limit(1);
 
         if (!user) return null;
+
+        // JWT Revocation check: compare version in token with version in DB
+        if (session.tokenVersion !== undefined && user.tokenVersion !== session.tokenVersion) {
+            console.warn(`🔐 Revocation: Token version mismatch for user ${user.id} (Session: ${session.tokenVersion}, DB: ${user.tokenVersion})`);
+            return null;
+        }
 
         return user;
     } catch (error) {

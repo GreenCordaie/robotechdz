@@ -165,6 +165,7 @@ export const users = pgTable("users", {
     avatarUrl: text("avatar_url"),
     twoFactorSecret: text("two_factor_secret"),
     mfaBackupCodes: text("mfa_backup_codes"), // Store as encrypted JSON array
+    tokenVersion: integer("token_version").default(1).notNull(),
     lastActiveAt: timestamp("last_active_at", { mode: 'date' }).defaultNow(),
     createdAt: timestamp("created_at", { mode: 'date' }).defaultNow(),
 });
@@ -340,6 +341,13 @@ export const webhookEvents = pgTable("webhook_events", {
     return {
         providerExternalIdIdx: index("webhook_provider_external_id_idx").on(table.provider, table.externalId),
     };
+});
+
+export const rateLimits = pgTable("rate_limits", {
+    id: serial("id").primaryKey(),
+    key: text("key").notNull().unique(), // ex: 'login:{email}' or 'mfa:{userId}'
+    points: integer("points").default(0).notNull(),
+    expiresAt: timestamp("expires_at", { mode: 'date' }).notNull(),
 });
 
 // Relations

@@ -8,9 +8,9 @@ async function getAuthDeps() {
     return { db, users, eq };
 }
 
-export async function createSession(user: { id: number; role: string }) {
+export async function createSession(user: { id: number; role: string; tokenVersion: number }) {
     const expires = new Date(Date.now() + 12 * 60 * 60 * 1000);
-    const session = await encrypt({ userId: user.id, userRole: user.role, expires });
+    const session = await encrypt({ userId: user.id, userRole: user.role, tokenVersion: user.tokenVersion, expires });
 
     // Initial activity tracking
     const { db, users, eq } = await getAuthDeps();

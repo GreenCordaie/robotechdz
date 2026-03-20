@@ -11,42 +11,21 @@ export async function POST(req: NextRequest) {
     try {
         const body = await req.json();
         // console.log("Full Webhook Body:", JSON.stringify(body, null, 2));
+        const { verifyWebhookSignature, isEventProcessed } = await import("@/lib/webhook-security");
 
-        // 0. Secret Token Validation (Timing-safe comparison & no fallbacks)
-        const expectedToken = process.env.TELEGRAM_SECRET_TOKEN;
-        const receivedToken = req.headers.get("x-telegram-bot-api-secret-token");
-
-        if (!expectedToken) {
-            console.error("Critical: TELEGRAM_SECRET_TOKEN is not configured in environment.");
-            return NextResponse.json({ ok: false, error: "Internal Server Error" }, { status: 500 });
-        }
-
-        if (!receivedToken) {
-            return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
-        }
-
-        const expectedBuffer = Buffer.from(expectedToken);
-        const receivedBuffer = Buffer.from(receivedToken);
-
-        if (expectedBuffer.length !== receivedBuffer.length || !crypto.timingSafeEqual(expectedBuffer, receivedBuffer)) {
+        // 0. Signature Validation
+        const isValid = await verifyWebhookSignature(req.headers, "telegram");
+        if (!isValid) {
             return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
         }
 
         // 0.5. Idempotence Check (Deduplication)
         const updateId = body.update_id?.toString();
         if (updateId) {
-            const alreadyProcessed = await db.query.webhookEvents.findFirst({
-                where: and(eq(webhookEvents.provider, "telegram"), eq(webhookEvents.externalId, updateId))
-            });
-
+            const alreadyProcessed = await isEventProcessed("telegram", updateId);
             if (alreadyProcessed) {
                 return NextResponse.json({ ok: true });
             }
-
-            await db.insert(webhookEvents).values({
-                provider: "telegram",
-                externalId: updateId
-            });
         }
 
         // 1. Basic structure validation

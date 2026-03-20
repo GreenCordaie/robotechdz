@@ -1,0 +1,67 @@
+import crypto from "crypto";
+
+/**
+ * Validates incoming webhook requests from external providers.
+ * Uses timing-safe comparisons to prevent information leakage.
+ */
+export async function verifyWebhookSignature(headers: Headers, provider: "telegram" | "whatsapp") {
+    if (provider === "telegram") {
+        const expectedToken = process.env.TELEGRAM_SECRET_TOKEN;
+        const receivedToken = headers.get("x-telegram-bot-api-secret-token");
+
+        if (!expectedToken || !receivedToken) return false;
+
+        try {
+            const expectedBuffer = Buffer.from(expectedToken);
+            const receivedBuffer = Buffer.from(receivedToken);
+
+            if (expectedBuffer.length !== receivedBuffer.length) return false;
+            return crypto.timingSafeEqual(expectedBuffer, receivedBuffer);
+        } catch (e) {
+            return false;
+        }
+    }
+
+    if (provider === "whatsapp") {
+        // Evolution API uses 'apikey' header for internal security
+        const expectedKey = process.env.WHATSAPP_WEBHOOK_SECRET;
+        const receivedKey = headers.get("apikey");
+
+        if (!expectedKey || !receivedKey) return false;
+
+        try {
+            const expectedBuffer = Buffer.from(expectedKey);
+            const receivedBuffer = Buffer.from(receivedKey);
+
+            if (expectedBuffer.length !== receivedBuffer.length) return false;
+            return crypto.timingSafeEqual(expectedBuffer, receivedBuffer);
+        } catch (e) {
+            return false;
+        }
+    }
+
+    return false;
+}
+
+/**
+ * Checks for event idempotence in the database.
+ */
+export async function isEventProcessed(provider: "telegram" | "whatsapp", externalId: string) {
+    const { db } = await import("@/db");
+    const { webhookEvents } = await import("@/db/schema");
+    const { and, eq } = await import("drizzle-orm");
+
+    const alreadyProcessed = await db.query.webhookEvents.findFirst({
+        where: and(eq(webhookEvents.provider, provider), eq(webhookEvents.externalId, externalId))
+    });
+
+    if (alreadyProcessed) return true;
+
+    // Insert to mark as processed (atomic check-and-set happens at the application level here)
+    await db.insert(webhookEvents).values({
+        provider,
+        externalId
+    });
+
+    return false;
+}

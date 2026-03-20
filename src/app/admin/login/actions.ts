@@ -40,15 +40,15 @@ export async function loginAction(formData: FormData) {
 
     try {
         // 0. Rate Limit Check
-        const limit = checkRateLimit(email);
+        const limit = await checkRateLimit(email);
         if (limit.isBlocked) {
-            return { success: false, error: `Trop de tentatives. Réessayez dans ${Math.ceil((limit.blockedUntil! - Date.now()) / 60000)} minutes.` };
+            return { success: false, error: `Trop de tentatives. Réessayez dans ${Math.ceil((limit.blockedUntil!.getTime() - Date.now()) / 60000)} minutes.` };
         }
 
         const userList = await db.select().from(users).where(eq(users.email, email)).limit(1);
 
         if (userList.length === 0) {
-            recordFailure(email);
+            await recordFailure(email);
             await logSecurityAction({
                 userId: null,
                 action: "AUTH_FAILED_USER_NOT_FOUND",
@@ -63,7 +63,7 @@ export async function loginAction(formData: FormData) {
         const isPasswordValid = await bcrypt.compare(password, user.passwordHash);
 
         if (!isPasswordValid) {
-            recordFailure(email);
+            await recordFailure(email);
             await logSecurityAction({
                 userId: user.id,
                 action: "AUTH_FAILED_WRONG_PASSWORD",
@@ -73,8 +73,8 @@ export async function loginAction(formData: FormData) {
             return { success: false, error: "Identifiants invalides" };
         }
 
-        // Reset on success (before 2FA as 2FA is another step)
-        resetRateLimit(email);
+        // Reset on success
+        await resetRateLimit(email);
 
         // 2FA CHECK
         if (user.twoFactorSecret) {
@@ -85,8 +85,8 @@ export async function loginAction(formData: FormData) {
             };
         }
 
-        const { id, role, nom, pinCode } = user;
-        await createSession({ id, role });
+        const { id, role, nom, pinCode, tokenVersion } = user;
+        await createSession({ id, role, tokenVersion });
 
         // Audit Success
         await logSecurityAction({
@@ -111,7 +111,11 @@ export async function loginAction(formData: FormData) {
 
 export async function verifyMfaAction(userId: number, code: string) {
     try {
-        const { db, users, eq, createSession, logSecurityAction, encrypt, decrypt } = await getDeps();
+        const { db, users, eq, createSession, logSecurityAction, encrypt, decrypt, checkRateLimit, recordFailure, resetRateLimit } = await getDeps();
+
+        // 0. Rate Limit Check (MFA)
+        const limit = await checkRateLimit(`mfa:${userId}`);
+        if (limit.isBlocked) return { success: false, error: "Trop de tentatives MFA (15m)." };
 
         const userList = await db.select().from(users).where(eq(users.id, userId)).limit(1);
         if (userList.length === 0) return { success: false, error: "Utilisateur introuvable" };
@@ -144,11 +148,13 @@ export async function verifyMfaAction(userId: number, code: string) {
                 entityType: "AUTH",
                 newData: { code }
             });
+            await recordFailure(`mfa:${user.id}`);
             return { success: false, error: "Code invalide" };
         }
 
-        const { id, role, email, nom, pinCode } = user;
-        await createSession({ id, role });
+        const { id, role, email, nom, pinCode, tokenVersion } = user;
+        await resetRateLimit(`mfa:${user.id}`);
+        await createSession({ id, role, tokenVersion });
 
         await logSecurityAction({
             userId: id,

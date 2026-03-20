@@ -51,6 +51,14 @@ import { formatOrderItemsText } from "@/lib/delivery";
 
 export async function POST(req: NextRequest) {
     try {
+        const { verifyWebhookSignature, isEventProcessed } = await import("@/lib/webhook-security");
+
+        // 0. Signature Validation
+        const isValid = await verifyWebhookSignature(req.headers, "whatsapp");
+        if (!isValid) {
+            return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+        }
+
         const body = await req.json();
 
         // Evolution API payload parsing
@@ -62,15 +70,8 @@ export async function POST(req: NextRequest) {
 
         // --- IDEMPOTENCE CHECK ---
         if (messageId) {
-            const alreadyProcessed = await db.query.webhookEvents.findFirst({
-                where: and(eq(webhookEvents.provider, "whatsapp"), eq(webhookEvents.externalId, messageId))
-            });
+            const alreadyProcessed = await isEventProcessed("whatsapp", messageId);
             if (alreadyProcessed) return NextResponse.json({ success: true });
-
-            await db.insert(webhookEvents).values({
-                provider: "whatsapp",
-                externalId: messageId
-            });
         }
 
         const senderPhone = messageData.key.remoteJid.split('@')[0];
