@@ -1,3 +1,4 @@
+import "server-only";
 import { db } from "@/db";
 import { orders, orderItems, products, digitalCodes, shopSettings, supportTickets } from "@/db/schema";
 import { eq, sql, and, gte, lte, desc, count } from "drizzle-orm";

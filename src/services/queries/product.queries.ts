@@ -1,3 +1,4 @@
+import "server-only";
 import { db } from "@/db";
 import { categories, products, productVariants, productVariantSuppliers } from "@/db/schema";
 import { eq, and, ilike, count } from "drizzle-orm";

@@ -1,3 +1,4 @@
+import "server-only";
 import { db } from "@/db";
 import { shopSettings, users, whatsappFaqs, auditLogs } from "@/db/schema";
 import { eq, desc, sql, not } from "drizzle-orm";

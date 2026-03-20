@@ -1,3 +1,4 @@
+import "server-only";
 import { db } from "@/db";
 import { resellers } from "@/db/schema";
 import { desc, eq } from "drizzle-orm";

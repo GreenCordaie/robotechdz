@@ -1,3 +1,4 @@
+import "server-only";
 import { db } from "@/db";
 import { supportTickets } from "@/db/schema";
 import { desc, eq, count } from "drizzle-orm";
