@@ -1,4 +1,3 @@
-import "server-only";
 import { getSession } from "./auth";
 import { db } from "@/db";
 import { users, auditLogs, shopSettings } from "@/db/schema";

@@ -1,4 +1,3 @@
-import "server-only";
 import { cookies, headers } from "next/headers";
 import { db } from "@/db";
 import { users } from "@/db/schema";

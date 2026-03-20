@@ -12,7 +12,12 @@ import { allocateOrderStock } from "@/lib/orders";
 import { sendPushToRoleAction, sendPushToUserAction } from "../push/actions";
 import { decrypt } from "@/lib/encryption";
 import { OrderService } from "@/services/order.service";
-import { OrderQueries } from "@/services/queries/order.queries";
+// Dynamic Query loader to prevent client-side leakage
+const getQueries = async () => {
+    const { OrderQueries } = await import("@/services/queries/order.queries");
+    return OrderQueries;
+};
+
 import { UserRole, OrderStatus, SupplierTransactionType, DigitalCodeStatus, DigitalCodeSlotStatus, ClientActionType } from "@/lib/constants";
 
 export const findOrderByNumber = withAuth(
@@ -22,6 +27,7 @@ export const findOrderByNumber = withAuth(
         schema: z.object({ orderNumber: z.string() })
     },
     async ({ orderNumber }) => {
+        const OrderQueries = await getQueries();
         return OrderQueries.findByNumber(orderNumber);
     }
 );
@@ -29,6 +35,7 @@ export const findOrderByNumber = withAuth(
 export const getPendingOrders = withAuth(
     { roles: [UserRole.ADMIN, UserRole.CAISSIER] },
     async () => {
+        const OrderQueries = await getQueries();
         return OrderQueries.getPending();
     }
 );
@@ -75,6 +82,7 @@ export const updateOrderStatus = withAuth(
 export const getPaidOrders = withAuth(
     { roles: [UserRole.ADMIN, UserRole.CAISSIER, UserRole.TRAITEUR] },
     async () => {
+        const OrderQueries = await getQueries();
         return OrderQueries.getPaid();
     }
 );
@@ -101,6 +109,7 @@ export const processOrder = withAuth(
 export const getTodayOrders = withAuth(
     { roles: [UserRole.ADMIN, UserRole.CAISSIER] },
     async () => {
+        const OrderQueries = await getQueries();
         return OrderQueries.getToday();
     }
 );
@@ -142,6 +151,7 @@ export const markOrderAsTermine = withAuth(
 export const getFinishedOrders = withAuth(
     { roles: [UserRole.ADMIN, UserRole.CAISSIER, UserRole.TRAITEUR] },
     async () => {
+        const OrderQueries = await getQueries();
         return OrderQueries.getFinished();
     }
 );
@@ -369,6 +379,7 @@ export const cancelOrderAction = withAuth(
 export const getPendingOrdersCount = withAuth(
     { roles: [UserRole.ADMIN, UserRole.CAISSIER, UserRole.TRAITEUR] },
     async () => {
+        const OrderQueries = await getQueries();
         return OrderQueries.getPendingCount();
     }
 );

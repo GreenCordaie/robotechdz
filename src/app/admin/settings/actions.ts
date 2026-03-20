@@ -14,13 +14,13 @@ import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import { generateSecret, generateURI, verify } from "otplib";
 import { encrypt } from "@/lib/encryption";
-import { SystemQueries } from "@/services/queries/system.queries";
-import { ResellerQueries } from "@/services/queries/reseller.queries";
+// Dynamic Query imports are handled inside actions to prevent client-side leakage
 import { UserRole } from "@/lib/constants";
 
 export const getShopSettingsAction = withAuth(
     { roles: [UserRole.ADMIN] },
     async () => {
+        const { SystemQueries } = await import("@/services/queries/system.queries");
         const settings = await SystemQueries.getSettings();
         return { success: true, data: settings };
     }
@@ -28,6 +28,7 @@ export const getShopSettingsAction = withAuth(
 
 export async function getPublicSettingsAction() {
     try {
+        const { SystemQueries } = await import("@/services/queries/system.queries");
         const data = await SystemQueries.getPublicSettings();
         return { success: true, data };
     } catch (error) {
@@ -80,6 +81,7 @@ export const saveShopSettingsAction = withAuth(
         })
     },
     async (data, user) => {
+        const { SystemQueries } = await import("@/services/queries/system.queries");
         const settings = await SystemQueries.getSettings();
         const oldData = { ...settings };
 
@@ -179,6 +181,7 @@ export const addUserAction = withAuth(
 export const getUsersAction = withAuth(
     { roles: [UserRole.ADMIN] },
     async () => {
+        const { SystemQueries } = await import("@/services/queries/system.queries");
         const list = await SystemQueries.getUsers();
         return { success: true, data: list };
     }
@@ -253,6 +256,7 @@ export const deleteUserAction = withAuth(
 export const getResellersAction = withAuth(
     { roles: [UserRole.ADMIN] },
     async () => {
+        const { ResellerQueries } = await import("@/services/queries/reseller.queries");
         const list = await ResellerQueries.getAll();
         return { success: true, data: list };
     }
@@ -338,6 +342,7 @@ export const testTelegramBotAction = withAuth(
 export const testWhatsAppAction = withAuth(
     { roles: [UserRole.ADMIN], schema: z.object({ number: z.string() }) },
     async ({ number }) => {
+        const { SystemQueries } = await import("@/services/queries/system.queries");
         const settings = await SystemQueries.getSettings();
         const { sendWhatsAppMessage } = await import("@/lib/whatsapp");
 
@@ -355,6 +360,7 @@ export const saveWhatsAppWebhookAction = withAuth(
         schema: z.object({ url: z.string().nullable() })
     },
     async ({ url }) => {
+        const { SystemQueries } = await import("@/services/queries/system.queries");
         const settings = await SystemQueries.getSettings();
         await db.update(shopSettings).set({ whatsappWebhookUrl: url }).where(eq(shopSettings.id, settings.id));
         revalidatePath("/admin/settings");
@@ -368,6 +374,7 @@ export const setWhatsAppWebhookAction = withAuth({ roles: [UserRole.ADMIN] }, as
 export const getWhatsAppFaqsAction = withAuth(
     { roles: [UserRole.ADMIN] },
     async () => {
+        const { SystemQueries } = await import("@/services/queries/system.queries");
         const list = await SystemQueries.getWhatsAppFaqs();
         return { success: true, data: list };
     }
@@ -412,6 +419,7 @@ export const getAuditLogsAction = withAuth(
     { roles: [UserRole.ADMIN] },
     async () => {
         try {
+            const { SystemQueries } = await import("@/services/queries/system.queries");
             const logs = await SystemQueries.getAuditLogs(100);
             return { success: true, data: logs };
         } catch (error) {
@@ -425,6 +433,7 @@ export const exportAuditLogsAction = withAuth(
     { roles: [UserRole.ADMIN] },
     async () => {
         try {
+            const { SystemQueries } = await import("@/services/queries/system.queries");
             const logs = await SystemQueries.getAuditLogs(10000); // Higher limit for export
             return { success: true, data: logs };
         } catch (error) {

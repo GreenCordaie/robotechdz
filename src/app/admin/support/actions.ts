@@ -6,7 +6,6 @@ import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { withAuth } from "@/lib/security";
 import { z } from "zod";
-import { SupportQueries } from "@/services/queries/support.queries";
 import { UserRole } from "@/lib/constants";
 
 export const getSupportTickets = withAuth(
@@ -15,6 +14,7 @@ export const getSupportTickets = withAuth(
         schema: z.string().optional().transform(val => (val || "OUVERT") as "OUVERT" | "RESOLU")
     },
     async (status) => {
+        const { SupportQueries } = await import("@/services/queries/support.queries");
         return await SupportQueries.getTickets(status);
     }
 );
@@ -22,6 +22,7 @@ export const getSupportTickets = withAuth(
 export const getSupportCounts = withAuth(
     { roles: [UserRole.ADMIN, UserRole.TRAITEUR] },
     async () => {
+        const { SupportQueries } = await import("@/services/queries/support.queries");
         return await SupportQueries.getOpenCount();
     }
 );
