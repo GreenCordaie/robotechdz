@@ -6,11 +6,14 @@ import { Providers } from "@/components/shared/Providers";
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 const publicSans = Public_Sans({ subsets: ["latin"], variable: "--font-public-sans" });
 
+export const viewport = {
+    themeColor: "#ec5b13",
+};
+
 export const metadata: Metadata = {
     title: "100% PC IA - Admin",
     description: "Premium Admin Module for 100% PC IA",
     manifest: "/manifest.json",
-    themeColor: "#ec5b13",
     appleWebApp: {
         capable: true,
         statusBarStyle: "default",
