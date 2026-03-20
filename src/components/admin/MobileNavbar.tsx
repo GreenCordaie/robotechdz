@@ -16,14 +16,13 @@ import { useAuthStore } from "@/store/useAuthStore";
 
 export const MobileNavbar = () => {
     const pathname = usePathname();
-    /*
     const [pendingOrders, setPendingOrders] = React.useState(0);
 
     const refreshCounts = React.useCallback(async () => {
         try {
             const ordersRes = await getPendingOrdersCount({});
-            if (ordersRes && 'count' in ordersRes) {
-                setPendingOrders(ordersRes.count || 0);
+            if (ordersRes && 'success' in ordersRes && ordersRes.success && typeof ordersRes.count === 'number') {
+                setPendingOrders(ordersRes.count);
             }
         } catch (error) {
             console.error("Error refreshing mobile counts:", error);
@@ -35,9 +34,6 @@ export const MobileNavbar = () => {
         const interval = setInterval(refreshCounts, 10000);
         return () => clearInterval(interval);
     }, [refreshCounts]);
-    */
-
-    const pendingOrders = 0;
 
     const { user } = useAuthStore();
     const navItems = [

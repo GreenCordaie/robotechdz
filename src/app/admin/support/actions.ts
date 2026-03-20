@@ -20,10 +20,15 @@ export const getSupportTickets = withAuth(
 );
 
 export const getSupportCounts = withAuth(
-    { roles: [UserRole.ADMIN, UserRole.TRAITEUR] },
+    { roles: [UserRole.ADMIN, UserRole.TRAITEUR], schema: z.any().optional() },
     async () => {
-        const { SupportQueries } = await import("@/services/queries/support.queries");
-        return await SupportQueries.getOpenCount();
+        try {
+            const { SupportQueries } = await import("@/services/queries/support.queries");
+            const res = await SupportQueries.getOpenCount();
+            return { success: true, count: res.open };
+        } catch (error) {
+            return { success: false, error: "Failed to fetch counts" };
+        }
     }
 );
 

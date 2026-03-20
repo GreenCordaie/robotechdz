@@ -28,19 +28,21 @@ export const AdminSidebar = () => {
     const user = useAuthStore((state) => state.user);
     const { shopName, dashboardLogoUrl, isB2bEnabled, fetchSettings } = useSettingsStore();
 
-    /*
     const [openTickets, setOpenTickets] = React.useState(0);
     const [pendingOrders, setPendingOrders] = React.useState(0);
 
     const refreshCounts = React.useCallback(async () => {
         try {
-            const [tickets, ordersRes] = await Promise.all([
-                getSupportCounts(),
+            const [ticketsRes, ordersRes] = await Promise.all([
+                getSupportCounts({}),
                 getPendingOrdersCount({})
             ]);
-            setOpenTickets(tickets.open || 0);
-            if ('count' in ordersRes) {
-                setPendingOrders(ordersRes.count || 0);
+
+            if ('success' in ticketsRes && ticketsRes.success && typeof ticketsRes.count === 'number') {
+                setOpenTickets(ticketsRes.count);
+            }
+            if ('success' in ordersRes && ordersRes.success && typeof ordersRes.count === 'number') {
+                setPendingOrders(ordersRes.count);
             }
         } catch (error) {
             console.error("Error refreshing sidebar counts:", error);
@@ -53,15 +55,6 @@ export const AdminSidebar = () => {
         const interval = setInterval(refreshCounts, 10000); // Pulse every 10s
         return () => clearInterval(interval);
     }, [fetchSettings, refreshCounts]);
-    */
-
-    // Minimal replacement to avoid breaking layout
-    React.useEffect(() => {
-        fetchSettings();
-    }, [fetchSettings]);
-
-    const openTickets = 0;
-    const pendingOrders = 0;
 
     const handleLogout = async () => {
         await logoutAction();

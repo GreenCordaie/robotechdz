@@ -377,10 +377,15 @@ export const cancelOrderAction = withAuth(
 );
 
 export const getPendingOrdersCount = withAuth(
-    { roles: [UserRole.ADMIN, UserRole.CAISSIER, UserRole.TRAITEUR] },
+    { roles: [UserRole.ADMIN, UserRole.CAISSIER, UserRole.TRAITEUR], schema: z.any().optional() },
     async () => {
-        const OrderQueries = await getQueries();
-        return OrderQueries.getPendingCount();
+        try {
+            const OrderQueries = await getQueries();
+            const res = await OrderQueries.getPendingCount();
+            return { success: true, count: res.count };
+        } catch (error) {
+            return { success: false, error: "Failed to fetch pending count" };
+        }
     }
 );
 export const resendWhatsAppAction = withAuth(
