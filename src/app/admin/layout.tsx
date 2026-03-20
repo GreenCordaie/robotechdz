@@ -1,12 +1,14 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { AdminSidebar } from "@/components/admin/AdminSidebar";
-import { MobileNavbar } from "@/components/admin/MobileNavbar";
+import dynamic from "next/dynamic";
 import { useAuthStore } from "@/store/useAuthStore";
 import { usePathname, useRouter } from "next/navigation";
 import { useSettingsStore } from "@/store/useSettingsStore";
 import { useIsMobile } from "@/hooks/useIsMobile";
+
+const AdminSidebar = dynamic(() => import("@/components/admin/AdminSidebar").then(mod => mod.AdminSidebar), { ssr: false });
+const MobileNavbar = dynamic(() => import("@/components/admin/MobileNavbar").then(mod => mod.MobileNavbar), { ssr: false });
 
 export default function AdminLayout({
     children,

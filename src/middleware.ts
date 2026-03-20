@@ -9,8 +9,10 @@ export async function middleware(request: NextRequest) {
     const response = NextResponse.next();
 
     // 1. Security Headers
+    const isDev = process.env.NODE_ENV === "development";
+
     const securityHeaders = {
-        'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com https://r2cdn.perplexity.ai; img-src 'self' data: https:; connect-src 'self' https:;",
+        'Content-Security-Policy': `default-src 'self'; script-src 'self' ${isDev ? "'unsafe-inline' 'unsafe-eval'" : ""}; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com https://r2cdn.perplexity.ai; img-src 'self' data: https:; connect-src 'self' https:;`,
         'Strict-Transport-Security': 'max-age=31536000; includeSubDomains; preload',
         'X-Frame-Options': 'DENY',
         'X-Content-Type-Options': 'nosniff',
