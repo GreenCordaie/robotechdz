@@ -17,6 +17,7 @@ export const getPaginatedProducts = withAuth(
             page: z.number(),
             limit: z.number(),
             categoryId: z.string().optional(),
+            type: z.string().optional(),
             search: z.string().optional(),
             status: z.enum(["ACTIVE", "ARCHIVED"]).optional()
         })

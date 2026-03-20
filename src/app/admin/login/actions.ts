@@ -104,7 +104,7 @@ export async function loginAction(formData: FormData) {
             user: { id, role, email, nom, pinCode }
         };
     } catch (error) {
-        console.error("Login error:", error);
+        console.error("🔥 LOGIN ACTION CRITICAL ERROR:", error);
         return { success: false, error: "Une erreur est survenue" };
     }
 }

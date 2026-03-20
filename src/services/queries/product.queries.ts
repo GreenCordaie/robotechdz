@@ -1,7 +1,7 @@
 import "server-only";
 import { db } from "@/db";
 import { categories, products, productVariants, productVariantSuppliers } from "@/db/schema";
-import { eq, and, ilike, count } from "drizzle-orm";
+import { eq, and, ilike, count, sql } from "drizzle-orm";
 import { cache } from "react";
 import { ProductStatus } from "@/lib/constants";
 
@@ -14,6 +14,7 @@ export class ProductQueries {
         page: number;
         limit: number;
         categoryId?: string;
+        type?: string;
         search?: string;
         status?: ProductStatus;
     }) => {
@@ -25,6 +26,19 @@ export class ProductQueries {
 
         if (categoryId && categoryId !== "all") {
             whereClauses.push(eq(products.categoryId, parseInt(categoryId)));
+        }
+        if (params.type && params.type !== "all") {
+            // Check if it's "CARTE" or "ABONNEMENT"
+            // We use the category name or product type if added, 
+            // but since schema only has name and categoryId, we filter by category name
+            const { categories } = await import("@/db/schema");
+            const catMatches = await db.select({ id: categories.id }).from(categories)
+                .where(ilike(categories.name, `%${params.type}%`));
+
+            if (catMatches.length > 0) {
+                const catIds = catMatches.map(c => c.id);
+                whereClauses.push(sql`${products.categoryId} IN ${catIds}`);
+            }
         }
         if (search) {
             whereClauses.push(ilike(products.name, `%${search}%`));

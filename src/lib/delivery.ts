@@ -1,8 +1,8 @@
-import { sendWhatsAppMessage } from "@/lib/whatsapp";
 import { db } from "@/db";
-import { decrypt } from "@/lib/encryption";
 import { orders } from "@/db/schema";
 import { eq } from "drizzle-orm";
+import { N8nService } from "@/services/n8n.service";
+import { decrypt } from "@/lib/encryption";
 
 export function formatOrderItemsText(items: any[]) {
     let itemsText = "";
@@ -43,68 +43,30 @@ export async function triggerOrderDelivery(orderId: number) {
     const order = await db.query.orders.findFirst({
         where: (orders, { eq }) => eq(orders.id, orderId),
         with: {
+            client: true,
+            reseller: true,
             items: {
                 with: {
                     codes: true,
-                    slots: {
-                        with: {
-                            digitalCode: true
-                        }
-                    }
+                    slots: { with: { digitalCode: true } }
                 }
             }
         }
     });
 
     if (!order) {
-        console.warn(`[WA-DELIVERY] Order #${orderId} not found in DB`);
+        console.warn(`[DELIVERY] Order #${orderId} not found`);
         return;
     }
 
-    if (order.deliveryMethod !== 'WHATSAPP') {
-        console.log(`[WA-DELIVERY] Order #${orderId} skipped: delivery method is ${order.deliveryMethod}`);
-        return;
-    }
+    // Delegate to n8n: n8n will handle formatting and sending (WhatsApp, Email, etc.)
+    await N8nService.triggerEvent('ORDER_DELIVERY', {
+        orderId: (order as any).id,
+        orderNumber: (order as any).orderNumber,
+        customerPhone: (order as any).client?.telephone || (order as any).reseller?.telephone,
+        deliveryMethod: (order as any).deliveryMethod,
+        items: (order as any).items
+    });
 
-    if (!order.customerPhone) {
-        console.warn(`[WA-DELIVERY] Order #${orderId} skipped: no customer phone`);
-        return;
-    }
-
-    const settings = await db.query.shopSettings.findFirst();
-    if (!settings?.whatsappApiUrl || !settings?.whatsappApiKey || !settings?.whatsappInstanceName) {
-        console.warn(`[WA-DELIVERY] WhatsApp Evolution Credentials missing in settings`);
-        return;
-    }
-
-    const itemsText = formatOrderItemsText((order as any).items);
-
-    const fallbackTemplate = `*FLEXBOX DIRECT - Livraison Automatique*\nMerci pour votre confiance {{customer}} !\n\nVoici vos accès :\n{{items}}\n\n_Service client : t.me/FlexboxDirect_`;
-
-    let messageBody = settings.whatsappMessageTemplate || fallbackTemplate;
-
-    // Template Replacements
-    messageBody = messageBody.replace(/{{items}}/g, itemsText.trim());
-    messageBody = messageBody.replace(/{{orderId}}/g, order.orderNumber);
-    messageBody = messageBody.replace(/{{customer}}/g, order.customerPhone || "Client");
-    messageBody = messageBody.replace(/{{shopName}}/g, settings.shopName || "FLEXBOX DIRECT");
-
-    try {
-        const res = await sendWhatsAppMessage(order.customerPhone, messageBody, {
-            whatsappApiUrl: settings.whatsappApiUrl || "",
-            whatsappApiKey: settings.whatsappApiKey || "",
-            whatsappInstanceName: settings.whatsappInstanceName || ""
-        });
-
-        if (res.success) {
-            await db.update(orders)
-                .set({ whatsappSentAt: new Date() })
-                .where(eq(orders.id, orderId));
-        }
-
-        return res;
-    } catch (error) {
-        console.error("WhatsApp Delivery Failed:", error);
-        return { success: false, error };
-    }
+    // Mark as triggered locally if needed, or wait for webhook callback from n8n
 }

@@ -12,12 +12,22 @@ self.addEventListener('install', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
+    // CRITICAL: Force bypass Service Worker for POST requests (Server Actions)
+    // This fixed the "Une erreur est survenue" / "Failed to fetch" issue during login.
+    if (event.request.method === 'POST') {
+        return;
+    }
+
     event.respondWith(
         caches.match(event.request).then((response) => {
             return response || fetch(event.request);
+        }).catch(() => {
+            // Fallback to network if cache search fails
+            return fetch(event.request);
         })
     );
 });
+
 self.addEventListener('push', (event) => {
     if (!event.data) return;
 

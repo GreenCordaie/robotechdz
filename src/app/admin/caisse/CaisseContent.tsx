@@ -75,7 +75,7 @@ export default function CaisseContent() {
             handlePrint(printData);
             setPrintData(null);
         }
-    }, [printData]);
+    }, [printData, handlePrint]);
 
     const loadOrders = async (silent = false) => {
         if (!silent) setIsLoading(true);

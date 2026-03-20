@@ -6,6 +6,7 @@ import { decrypt } from "@/lib/encryption";
 import { triggerOrderDelivery } from "@/lib/delivery";
 import { sendPushToRoleAction, sendPushToUserAction } from "@/app/admin/push/actions";
 import { OrderStatus, UserRole, ClientActionType, DigitalCodeStatus, OrderSource } from "@/lib/constants";
+import { N8nService } from "./n8n.service";
 
 export class OrderService {
     /**
@@ -81,6 +82,8 @@ export class OrderService {
             const finalOrder = await tx.query.orders.findFirst({
                 where: eq(orders.id, id),
                 with: {
+                    client: true,
+                    reseller: true,
                     items: {
                         with: {
                             codes: true,
@@ -108,13 +111,23 @@ export class OrderService {
             return { ...finalOrder, items: mappedItems };
         });
 
-        // 5. Post-Process Triggers (Push & Background Delivery)
+        // 5. Post-Process Triggers (Push & n8n)
         if (result?.status === OrderStatus.PAYE) {
+            // Admin/Traiteur Push
             sendPushToRoleAction(UserRole.TRAITEUR, {
                 title: "🔔 Nouvelle Commande",
                 body: `Commande #${result.orderNumber} payée. À préparer !`,
                 url: "/admin/traitement"
-            }).catch(err => console.error("Push trigger error:", err));
+            }).catch(() => { });
+
+            // Delegate all customer notifications and external automation to n8n
+            N8nService.triggerEvent('ORDER_COMPLETED', {
+                orderId: result.id,
+                orderNumber: result.orderNumber,
+                customerPhone: (result as any).client?.telephone || (result as any).reseller?.telephone,
+                total: result.totalAmount,
+                items: result.items
+            }).catch(err => console.error("[N8N-TRIGGER-ERROR] ORDER_COMPLETED:", err));
         }
 
         triggerOrderDelivery(id).catch(err => {

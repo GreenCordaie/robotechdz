@@ -28,7 +28,7 @@ export default function CaisseMobile() {
     const [isUpdating, setIsUpdating] = useState(false);
     const [allTodayOrders, setAllTodayOrders] = useState<any[]>([]);
     const [isLoading, setIsLoading] = useState(true);
-    const [filterStatus, setFilterStatus] = useState<string>("Toutes");
+    const [filterStatus, setFilterStatus] = useState<string>("Tous");
     const [remise, setRemise] = useState<number>(0);
     const [montantRecu, setMontantRecu] = useState<number | string>("");
     const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
@@ -75,7 +75,7 @@ export default function CaisseMobile() {
             handlePrint(printData);
             setPrintData(null);
         }
-    }, [printData]);
+    }, [printData, handlePrint]);
 
     const loadOrders = async (silent = false) => {
         if (!silent) setIsLoading(true);
@@ -180,17 +180,34 @@ export default function CaisseMobile() {
         }
     };
 
+    const orderStatusList = ["TOUT", "EN_ATTENTE", "PAYE", "NON_PAYE", "LIVRE", "TERMINE", "PARTIEL", "REMBOURSE"];
+    const orderStatusDisplayMap: Record<string, string> = {
+        TOUT: "Tous",
+        EN_ATTENTE: "Attente",
+        PAYE: "Payées",
+        NON_PAYE: "Dettes",
+        LIVRE: "Livrées",
+        TERMINE: "Finies",
+        PARTIEL: "Partiel",
+        REMBOURSE: "Remboursés"
+    };
+
     const statusMap: Record<string, string> = {
-        "Toutes": "ALL",
-        "En attente": "EN_ATTENTE",
+        "Tous": "ALL",
+        "Attente": "EN_ATTENTE",
         "Payées": "PAYE",
-        "Dettes": "NON_PAYE"
+        "Dettes": "NON_PAYE",
+        "Livrées": "LIVRE",
+        "Finies": "TERMINE",
+        "Partiel": "PARTIEL",
+        "Remboursés": "REMBOURSE"
     };
 
     const filteredOrders = allTodayOrders.filter(o => {
-        const matchesSearch = o.orderNumber.toLowerCase().includes(searchQuery.toLowerCase());
+        const matchesSearch = o.orderNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            o.id.toString().includes(searchQuery);
         if (!matchesSearch) return false;
-        if (filterStatus === "Toutes") return true;
+        if (filterStatus === "Tous") return true;
         return o.status === statusMap[filterStatus];
     });
 
@@ -198,7 +215,11 @@ export default function CaisseMobile() {
         switch (status) {
             case "EN_ATTENTE": return "text-amber-500 bg-amber-500/10";
             case "PAYE": return "text-emerald-500 bg-emerald-500/10";
+            case "LIVRE": return "text-blue-500 bg-blue-500/10";
+            case "TERMINE": return "text-emerald-400 bg-emerald-400/10";
             case "NON_PAYE": return "text-red-500 bg-red-500/10";
+            case "PARTIEL": return "text-purple-500 bg-purple-500/10";
+            case "REMBOURSE": return "text-slate-400 bg-slate-400/10";
             default: return "text-slate-500 bg-slate-500/10";
         }
     };
@@ -370,14 +391,14 @@ export default function CaisseMobile() {
                         </div>
 
                         <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
-                            {["Toutes", "En attente", "Payées", "Dettes"].map((s) => (
+                            {orderStatusList.map((s) => (
                                 <button
                                     key={s}
-                                    onClick={() => setFilterStatus(s)}
-                                    className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-tighter transition-all whitespace-nowrap ${filterStatus === s ? "bg-[#ec5b13] text-white shadow-lg shadow-[#ec5b13]/20" : "bg-white/5 text-slate-500"
+                                    onClick={() => setFilterStatus(orderStatusDisplayMap[s])} // Assuming filterStatus uses the display name
+                                    className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-tighter transition-all whitespace-nowrap ${filterStatus === orderStatusDisplayMap[s] ? "bg-[#ec5b13] text-white shadow-lg shadow-[#ec5b13]/20" : "bg-white/5 text-slate-500"
                                         }`}
                                 >
-                                    {s}
+                                    {orderStatusDisplayMap[s]}
                                 </button>
                             ))}
                         </div>
@@ -396,7 +417,7 @@ export default function CaisseMobile() {
                                     <div className="flex items-center gap-2">
                                         <span className="font-black text-lg">#{o.orderNumber}</span>
                                         <span className={`px-2 py-0.5 rounded-full text-[8px] font-bold uppercase ${getStatusColor(o.status)}`}>
-                                            {o.status === "EN_ATTENTE" ? "À Encaisser" : o.status}
+                                            {orderStatusDisplayMap[o.status] || o.status}
                                         </span>
                                     </div>
                                     <p className="text-[10px] text-slate-500 font-bold uppercase">

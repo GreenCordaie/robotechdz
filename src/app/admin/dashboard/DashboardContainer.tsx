@@ -26,6 +26,6 @@ export function DashboardContainer({ initialStats }: DashboardContainerProps) {
         }
     };
 
-    if (isMobile) return <DashboardMobile stats={stats} />;
-    return <DashboardContent stats={stats} />;
+    if (isMobile) return <DashboardMobile key="dashboard-mobile" stats={stats} />;
+    return <DashboardContent key="dashboard-desktop" stats={stats} />;
 }

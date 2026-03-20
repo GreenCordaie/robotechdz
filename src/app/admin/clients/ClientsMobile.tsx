@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import { Button, Card, CardBody, Chip, Spinner, Input, Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, useDisclosure } from "@heroui/react";
-import { ShoppingCart, Wallet as WalletIcon, X, CheckCircle, Search, UserPlus, Phone, Calendar, ArrowUpRight, ArrowDownRight, Users } from "lucide-react";
+import { ShoppingCart, Wallet as WalletIcon, X, CheckCircle, Search, UserPlus, Phone, Calendar, ArrowUpRight, ArrowDownRight, Users, TrendingUp } from "lucide-react";
 import { getIndebtedClients, recordPayment, getClientHistory, createClient } from "@/app/admin/clients/actions";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
@@ -46,7 +46,7 @@ export default function ClientsMobile({ initialStats, initialClients }: any) {
         if (!selectedClient || !repaymentAmount) return;
         setIsSubmitting(true);
         try {
-            const res = await recordPayment({ clientId: selectedClient.id, amount: repaymentAmount, typeAction: "ACOMPTE" });
+            const res = await recordPayment({ clientId: selectedClient.id, amount: repaymentAmount, typeAction: "ACOMPTE" }) as { success: boolean; error?: string };
             if (res.success) {
                 toast.success("Enregistré");
                 setRepaymentAmount("");
@@ -61,8 +61,8 @@ export default function ClientsMobile({ initialStats, initialClients }: any) {
     const handleSaveClient = async () => {
         if (!newName) return;
         setIsCreatingNew(true);
-        const res = await createClient({ nom: newName, telephone: newTel });
-        if ('success' in res && res.success) {
+        const res = await createClient({ nom: newName, telephone: newTel }) as { success: boolean; error?: string };
+        if (res.success) {
             toast.success("Client créé");
             onNewClose();
             setNewName("");
@@ -104,10 +104,14 @@ export default function ClientsMobile({ initialStats, initialClients }: any) {
                     </h1>
                 </div>
 
-                <div className="flex gap-4 mt-8">
-                    <div className="px-4 py-2 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl flex items-center gap-2">
+                <div className="flex gap-4 mt-8 overflow-x-auto pb-2 -mx-2 px-2 no-scrollbar">
+                    <div className="px-4 py-2 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl flex items-center gap-2 shrink-0">
                         <CheckCircle size={12} className="text-emerald-500" />
                         <span className="text-[10px] font-black text-emerald-500 uppercase">{initialStats.indebtedCount} Actifs</span>
+                    </div>
+                    <div className="px-4 py-2 bg-[#ec5b13]/10 border border-[#ec5b13]/20 rounded-2xl flex items-center gap-2 shrink-0">
+                        <TrendingUp size={12} className="text-[#ec5b13]" />
+                        <span className="text-[10px] font-black text-[#ec5b13] uppercase">Récupéré: {formatCurrency(initialStats.recoveredThisMonth, 'DZD')}</span>
                     </div>
                 </div>
             </header>

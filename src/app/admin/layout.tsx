@@ -6,6 +6,9 @@ import { useAuthStore } from "@/store/useAuthStore";
 import { usePathname, useRouter } from "next/navigation";
 import { useSettingsStore } from "@/store/useSettingsStore";
 import { useIsMobile } from "@/hooks/useIsMobile";
+import { Avatar, Dropdown, DropdownTrigger, DropdownMenu, DropdownItem } from "@heroui/react";
+import { logoutAction } from "./login/actions";
+import { LogOut, User as UserIcon } from "lucide-react";
 
 const AdminSidebar = dynamic(() => import("@/components/admin/AdminSidebar").then(mod => mod.AdminSidebar), { ssr: false });
 const MobileNavbar = dynamic(() => import("@/components/admin/MobileNavbar").then(mod => mod.MobileNavbar), { ssr: false });
@@ -16,6 +19,7 @@ export default function AdminLayout({
     children: React.ReactNode;
 }) {
     const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+    const user = useAuthStore((state) => state.user);
     const pathname = usePathname();
     const router = useRouter();
     const [isMounted, setIsMounted] = useState(false);
@@ -46,8 +50,13 @@ export default function AdminLayout({
     }, [shopName, faviconUrl]);
 
     useEffect(() => {
+        // Only redirect if fully mounted and we are certain bout session state
+        // This avoids "Router" component update conflict during hydration
         if (isMounted && !isAuthenticated && pathname !== "/admin/login") {
-            router.push("/admin/login");
+            const timer = setTimeout(() => {
+                router.push("/admin/login");
+            }, 100);
+            return () => clearTimeout(timer);
         }
     }, [isMounted, isAuthenticated, pathname, router]);
 
@@ -65,9 +74,47 @@ export default function AdminLayout({
             {isMobile && (
                 <header className="h-14 border-b border-white/5 bg-[#0a0a0a]/80 backdrop-blur-md flex items-center justify-between px-6 shrink-0 z-50">
                     <div className="font-black text-[#ec5b13] uppercase tracking-tighter text-sm">{shopName}</div>
-                    <div className="flex items-center gap-3">
-                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                        <span className="text-[10px] font-bold text-slate-500 uppercase">Live</span>
+                    <div className="flex items-center gap-4">
+                        <div className="hidden sm:flex items-center gap-2">
+                            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                            <span className="text-[10px] font-bold text-slate-500 uppercase">Live</span>
+                        </div>
+
+                        <Dropdown placement="bottom-end" classNames={{ content: "bg-[#161616] border border-[#262626]" }}>
+                            <DropdownTrigger>
+                                <div className="size-8 rounded-full border border-white/10 overflow-hidden relative cursor-pointer active:scale-95 transition-transform">
+                                    <Avatar
+                                        src={user?.avatarUrl || ""}
+                                        className="size-full"
+                                        showFallback
+                                        name={user?.nom || "A"}
+                                    />
+                                </div>
+                            </DropdownTrigger>
+                            <DropdownMenu aria-label="Menu profil mobile" variant="flat">
+                                <DropdownItem
+                                    key="profile"
+                                    startContent={<UserIcon size={14} />}
+                                    className="text-slate-300"
+                                    onPress={() => router.push("/admin/settings")}
+                                >
+                                    Mon Profil
+                                </DropdownItem>
+                                <DropdownItem
+                                    key="logout"
+                                    className="text-danger"
+                                    color="danger"
+                                    startContent={<LogOut size={14} />}
+                                    onPress={async () => {
+                                        await logoutAction();
+                                        useAuthStore.getState().clearAuth();
+                                        router.push("/admin/login");
+                                    }}
+                                >
+                                    Se déconnecter
+                                </DropdownItem>
+                            </DropdownMenu>
+                        </Dropdown>
                     </div>
                 </header>
             )}
@@ -80,3 +127,5 @@ export default function AdminLayout({
         </div>
     );
 }
+
+

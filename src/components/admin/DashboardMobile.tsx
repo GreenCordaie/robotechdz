@@ -57,6 +57,7 @@ interface DashboardMobileProps {
 export default function DashboardMobile({ stats }: DashboardMobileProps) {
     const router = useRouter();
     const [searchTerm, setSearchTerm] = React.useState("");
+    const [chartPeriod, setChartPeriod] = React.useState("7");
     const [selectedOrder, setSelectedOrder] = React.useState<any>(null);
     const [isDetailModalOpen, setIsDetailModalOpen] = React.useState(false);
     const { printToIframe } = useThermalPrinter();
@@ -157,6 +158,28 @@ export default function DashboardMobile({ stats }: DashboardMobileProps) {
                             <span className="text-[10px] font-bold">Ventes</span>
                         </div>
                     </div>
+
+                    <div className="flex bg-[#0a0a0a] p-1 rounded-xl border border-white/5 w-fit ml-auto">
+                        <button
+                            onClick={async () => {
+                                setChartPeriod("7");
+                                router.refresh();
+                            }}
+                            className={`px-4 py-1.5 text-[10px] font-bold rounded-lg transition-all ${chartPeriod === "7" ? "bg-[#262626] text-white" : "text-slate-500"}`}
+                        >
+                            7J
+                        </button>
+                        <button
+                            onClick={async () => {
+                                setChartPeriod("30");
+                                router.refresh();
+                            }}
+                            className={`px-4 py-1.5 text-[10px] font-bold rounded-lg transition-all ${chartPeriod === "30" ? "bg-[#262626] text-white" : "text-slate-500"}`}
+                        >
+                            30J
+                        </button>
+                    </div>
+
                     <div className="h-40 w-full">
                         <ResponsiveContainer width="100%" height="100%">
                             <AreaChart data={stats.revenueData}>

@@ -111,7 +111,7 @@ export default function CatalogueContent({
     useEffect(() => {
         const interval = setInterval(() => {
             router.refresh();
-        }, 3000);
+        }, 30000); // Sustainable 30s interval
         return () => clearInterval(interval);
     }, [router]);
 
@@ -305,8 +305,8 @@ export default function CatalogueContent({
                         </button>
                     </div>
                 </div>
-                <div className="flex items-center gap-4">
-                    <div className="relative w-64">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 w-full md:w-auto overflow-x-auto pb-2 md:pb-0">
+                    <div className="relative w-full max-w-xs md:w-64 shrink-0">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 w-4 h-4 shrink-0" />
                         <Input
                             classNames={{
@@ -319,7 +319,7 @@ export default function CatalogueContent({
                         />
                     </div>
                     <Select
-                        className="w-48"
+                        className="w-full sm:w-48 shrink-0"
                         classNames={{
                             trigger: "bg-[#161616] border border-[#262626] rounded-xl h-10 min-h-10",
                             value: "text-white text-sm"
@@ -425,26 +425,28 @@ export default function CatalogueContent({
                         <Package className="text-primary w-5 h-5 shrink-0" />
                         Catalogue Produits
                     </h3>
-                    <div className="flex gap-3">
+                    <div className="flex flex-wrap md:flex-nowrap gap-3">
                         <Button
                             onPress={() => setIsAddCategoryOpen(true)}
                             variant="flat"
-                            className="flex items-center gap-2 px-6 py-2.5 bg-blue-500/10 text-blue-500 rounded-xl text-sm font-black hover:bg-blue-500/20 transition-all active:scale-95"
+                            className="flex-1 md:flex-none flex items-center gap-2 px-6 py-2.5 bg-blue-500/10 text-blue-500 rounded-xl text-sm font-black hover:bg-blue-500/20 transition-all active:scale-95"
                             startContent={<PlusCircle className="w-5 h-5 shrink-0" />}
                         >
-                            Ajouter une Catégorie
+                            <span className="hidden sm:inline">Ajouter une Catégorie</span>
+                            <span className="sm:hidden">+ Cat</span>
                         </Button>
                         <Button
                             onPress={() => setIsManageCategoriesOpen(true)}
                             variant="flat"
-                            className="flex items-center gap-2 px-6 py-2.5 bg-[#ec5b13]/10 text-[#ec5b13] rounded-xl text-sm font-black hover:bg-[#ec5b13]/20 transition-all active:scale-95"
+                            className="flex-1 md:flex-none flex items-center gap-2 px-6 py-2.5 bg-[#ec5b13]/10 text-[#ec5b13] rounded-xl text-sm font-black hover:bg-[#ec5b13]/20 transition-all active:scale-95"
                             startContent={<Settings className="w-5 h-5 shrink-0" />}
                         >
-                            Gérer les Catégories
+                            <span className="hidden sm:inline">Gérer les Catégories</span>
+                            <span className="sm:hidden">Gérer</span>
                         </Button>
                         <Button
                             onPress={() => setIsAddProductOpen(true)}
-                            className="flex items-center gap-2 px-6 py-2.5 bg-primary text-white rounded-xl text-sm font-black shadow-lg shadow-primary/20 hover:scale-[1.02] transition-transform active:scale-95"
+                            className="w-full md:w-auto flex items-center gap-2 px-6 py-2.5 bg-primary text-white rounded-xl text-sm font-black shadow-lg shadow-primary/20 hover:scale-[1.02] transition-transform active:scale-95"
                             startContent={<Plus className="w-5 h-5 shrink-0" />}
                         >
                             Ajouter un Produit

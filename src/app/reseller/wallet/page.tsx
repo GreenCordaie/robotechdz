@@ -57,8 +57,10 @@ export default function ResellerWallet() {
 
     const copyToClipboard = (text: string) => {
         navigator.clipboard.writeText(text);
-        toast.success("ID Compte copié !");
+        toast.success("Identifiant copié !");
     };
+
+    const accountToken = reseller ? `WLT-${reseller.id.toString().padStart(4, '0')}-X${reseller.userId}` : "WLT-0000-X0";
 
     return (
         <div className="space-y-10 animate-in fade-in duration-500 max-w-7xl">
@@ -103,9 +105,9 @@ export default function ResellerWallet() {
                                     <div className="flex items-center justify-between p-4 bg-black/40 rounded-2xl border border-white/5">
                                         <div className="flex flex-col">
                                             <span className="text-[9px] font-black text-slate-600 uppercase">Token Compte</span>
-                                            <span className="text-xs font-mono text-slate-300">WLT-4491-X2</span>
+                                            <span className="text-xs font-mono text-slate-300">{accountToken}</span>
                                         </div>
-                                        <button onClick={() => copyToClipboard("WLT-4491-X2")} className="p-2 hover:bg-white/5 rounded-lg text-slate-500">
+                                        <button onClick={() => copyToClipboard(accountToken)} className="p-2 hover:bg-white/5 rounded-lg text-slate-500">
                                             <Copy size={14} />
                                         </button>
                                     </div>

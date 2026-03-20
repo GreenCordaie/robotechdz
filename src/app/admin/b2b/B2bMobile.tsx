@@ -119,6 +119,7 @@ export default function B2bMobile({ initialResellers = [] }: B2bMobileProps) {
                                 </div>
                                 <div className="space-y-1">
                                     <p className="text-base font-black uppercase tracking-tight italic">{reseller.companyName}</p>
+                                    <p className="text-[10px] text-slate-500 font-medium lowercase">{reseller.user?.email || 'N/A'}</p>
                                     <div className="flex items-center gap-2">
                                         <div className={`size-1.5 rounded-full ${reseller.status === 'ACTIVE' ? 'bg-emerald-500' : 'bg-red-500'}`} />
                                         <span className="text-[10px] font-black uppercase text-slate-500">{reseller.status}</span>

@@ -102,13 +102,13 @@ export default function ClientsContent({ initialStats, initialClients }: Clients
         } else {
             toast.error("Erreur lors de la récupération des clients");
         }
-    }, [search]);
+    }, []);
 
 
     React.useEffect(() => {
-        const timeout = setTimeout(() => refreshData(), 300);
+        const timeout = setTimeout(() => refreshData(), 30000); // Sustainable 30s interval
         return () => clearTimeout(timeout);
-    }, [refreshData]);
+    }, [refreshData, stats]); // Add stats as dependency if it changes
 
 
     const handleViewClient = async (client: Client) => {
@@ -127,11 +127,11 @@ export default function ClientsContent({ initialStats, initialClients }: Clients
         if (!selectedClient || !repaymentAmount || Number(repaymentAmount) <= 0) return;
         setIsSubmitting(true);
         try {
-            const res = await recordPayment({
+            const res = (await recordPayment({
                 clientId: selectedClient.id,
                 amount: repaymentAmount,
                 typeAction: "ACOMPTE" // Default for manual settle
-            });
+            })) as { success: boolean; error?: string };
             if (res.success) {
                 toast.success("Paiement enregistré avec succès");
                 setRepaymentAmount("");
@@ -207,10 +207,10 @@ export default function ClientsContent({ initialStats, initialClients }: Clients
                 <div className="p-6 border-b border-[#262626] flex justify-between items-center">
                     <h3 className="font-bold text-lg text-white">Liste des clients endettés</h3>
 
-                    <div className="relative w-64">
+                    <div className="relative w-full max-w-xs md:w-64">
                         <Input
                             placeholder="Rechercher un client..."
-                            startContent={<Search className="text-slate-400 w-4 h-4" />}
+                            startContent={<Search className="text-slate-400 w-4 h-4 shrink-0" />}
                             value={search}
                             onValueChange={setSearch}
                             classNames={{
@@ -309,7 +309,7 @@ export default function ClientsContent({ initialStats, initialClients }: Clients
                                 {/* Repayment Section */}
                                 <div className="p-6 bg-[#262626]/10">
                                     <label className="block text-slate-400 text-sm font-medium mb-2">Montant reçu (DZD)</label>
-                                    <div className="flex gap-3">
+                                    <div className="flex flex-col sm:flex-row gap-3">
                                         <Input
                                             placeholder="0.00"
                                             type="number"
@@ -318,11 +318,12 @@ export default function ClientsContent({ initialStats, initialClients }: Clients
                                             classNames={{
                                                 inputWrapper: "bg-[#0a0a0a] border-[#262626] h-12"
                                             }}
+                                            className="flex-1"
                                         />
                                         <Button
                                             isLoading={isSubmitting}
                                             onPress={handleSettle}
-                                            className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold h-12 px-6 rounded-xl transition-all shadow-lg shadow-emerald-900/20 whitespace-nowrap"
+                                            className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold h-12 px-6 rounded-xl transition-all shadow-lg shadow-emerald-900/20 whitespace-nowrap w-full sm:w-auto"
                                         >
                                             Valider le remboursement
                                         </Button>
@@ -397,15 +398,15 @@ export default function ClientsContent({ initialStats, initialClients }: Clients
                         const handleSave = async () => {
                             if (!newName) return;
                             setIsCreatingNew(true);
-                            const res = await createClient({ nom: newName, telephone: newTel });
-                            if ('success' in res && res.success) {
+                            const res = (await createClient({ nom: newName, telephone: newTel })) as { success: boolean; error?: string };
+                            if (res.success) {
                                 toast.success("Client créé");
                                 onClose();
                                 refreshData();
                                 setNewName("");
                                 setNewTel("");
                             } else {
-                                toast.error((res as any).error || "Erreur création client");
+                                toast.error(res.error || "Erreur création client");
                             }
                             setIsCreatingNew(false);
                         };

@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Spinner, Button } from "@heroui/react";
 import { toast } from "react-hot-toast";
-import { getPaidOrders, getFinishedOrders, processOrder, markOrderAsTermine, cancelOrderAction } from "../caisse/actions";
+import { getPaidOrders, getFinishedOrders, processOrder, markOrderAsTermine, cancelOrderAction, resendWhatsAppAction } from "../caisse/actions";
 import { formatCurrency } from "@/lib/formatters";
 import { useThermalPrinter } from "@/hooks/useThermalPrinter";
 import { useWebUSBPrinter } from "@/hooks/useWebUSBPrinter";
@@ -209,6 +209,16 @@ export default function TraitementMobile({ initialOrders = [], initialFinished =
         }
     };
 
+    const handleResendWhatsApp = async (orderId: number) => {
+        try {
+            const res: any = await resendWhatsAppAction({ orderId });
+            if (res.success) toast.success("WhatsApp renvoyé");
+            else toast.error(res.error || "Erreur WhatsApp");
+        } catch (e) {
+            toast.error("Erreur de connexion");
+        }
+    };
+
     const filteredOrders = orders.filter(o =>
         o.orderNumber.toLowerCase().includes(searchTerm.toLowerCase())
     );
@@ -309,11 +319,11 @@ export default function TraitementMobile({ initialOrders = [], initialFinished =
                             ))}
                         </div>
 
-                        {view === 'pending' && (
+                        <div className="flex gap-2">
                             <button
                                 disabled={!isOrderReady() || isProcessing}
                                 onClick={handleProcess}
-                                className={`w-full py-4 rounded-2xl font-black uppercase text-sm shadow-xl transition-all flex items-center justify-center gap-3 ${isOrderReady() ? 'bg-gradient-to-r from-emerald-500 to-emerald-600 text-white shadow-emerald-500/20 active:scale-95' : 'bg-white/5 text-slate-600 opacity-50'
+                                className={`flex-1 py-4 rounded-2xl font-black uppercase text-sm shadow-xl transition-all flex items-center justify-center gap-3 ${isOrderReady() ? 'bg-gradient-to-r from-emerald-500 to-emerald-600 text-white shadow-emerald-500/20 active:scale-95' : 'bg-white/5 text-slate-600 opacity-50'
                                     }`}
                             >
                                 {isProcessing ? <Spinner size="sm" color="white" /> : (
@@ -323,7 +333,13 @@ export default function TraitementMobile({ initialOrders = [], initialFinished =
                                     </>
                                 )}
                             </button>
-                        )}
+                            <button
+                                onClick={() => handleResendWhatsApp(selectedOrder.id)}
+                                className="p-4 bg-emerald-500/10 text-emerald-500 rounded-2xl border border-emerald-500/20 hover:bg-emerald-500 hover:text-white transition-all"
+                            >
+                                <MessageSquare size={20} />
+                            </button>
+                        </div>
                     </div>
                 </main>
             ) : (
@@ -360,8 +376,17 @@ export default function TraitementMobile({ initialOrders = [], initialFinished =
                                     <div className="space-y-1">
                                         <div className="flex items-center gap-2">
                                             <span className="font-black text-lg">#{order.orderNumber}</span>
+                                            {order.source === 'B2B_WEB' && (
+                                                <span className="bg-orange-500/10 text-orange-400 text-[8px] font-black uppercase px-2 py-0.5 rounded border border-orange-500/20">Client B2B</span>
+                                            )}
+                                            {order.source === 'API' && (
+                                                <span className="bg-purple-500/10 text-purple-400 text-[8px] font-black uppercase px-2 py-0.5 rounded border border-purple-500/20">API</span>
+                                            )}
                                             {order.items.some((it: any) => it.codes?.length > 0) && (
                                                 <span className="bg-blue-500/10 text-blue-400 text-[8px] font-black uppercase px-2 py-0.5 rounded border border-blue-500/20">Auto</span>
+                                            )}
+                                            {order.deliveryMethod === 'WHATSAPP' && (
+                                                <MessageSquare size={12} className="text-emerald-500" />
                                             )}
                                         </div>
                                         <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wide">

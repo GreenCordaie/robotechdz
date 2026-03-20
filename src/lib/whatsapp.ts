@@ -1,6 +1,7 @@
 /**
- * WhatsApp Evolution API Library
+ * Low-level WhatsApp Evolution API Library
  * Reverted to Evolution API as per user preference.
+ * Business logic and formatting moved to n8n.
  */
 export async function sendWhatsAppMessage(
     recipientPhone: string,
@@ -12,7 +13,6 @@ export async function sendWhatsAppMessage(
     }
 ) {
     if (!settings.whatsappApiUrl || !settings.whatsappApiKey || !settings.whatsappInstanceName) {
-        console.error("❌ Evolution API Credentials Missing");
         return { success: false, error: "Settings incomplete" };
     }
 
@@ -23,8 +23,6 @@ export async function sendWhatsAppMessage(
     const url = `${settings.whatsappApiUrl}/message/sendText/${settings.whatsappInstanceName}`;
 
     try {
-        console.log(`📤 [EVOLUTION-SEND] To: ${remoteJid}`);
-
         const response = await fetch(url, {
             method: 'POST',
             headers: {
@@ -44,17 +42,12 @@ export async function sendWhatsAppMessage(
             })
         });
 
-        const data = await response.json();
-
         if (!response.ok) {
-            console.error("❌ EVOLUTION API ERROR:", JSON.stringify(data));
-            return { success: false, error: data.message || "Unknown Evolution Error" };
+            return { success: false, error: "Transport Failure" };
         }
 
-        console.log(`✅ [SENT-EVOLUTION] Status: ${data.status}`);
-        return { success: true, data };
+        return { success: true };
     } catch (error) {
-        console.error("Critical Transport Failure:", (error as Error).message);
         return { success: false, error: (error as Error).message };
     }
 }

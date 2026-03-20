@@ -29,9 +29,9 @@ export default function RootLayout({
     return (
         <html lang="fr" className="dark" suppressHydrationWarning>
             <head>
-                <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet" />
+                <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
             </head>
-            <body className={`${publicSans.variable} font-sans antialiased`}>
+            <body className={`${inter.variable} ${publicSans.variable} font-sans antialiased`}>
                 <Providers>{children}</Providers>
             </body>
         </html>

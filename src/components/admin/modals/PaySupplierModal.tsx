@@ -212,7 +212,7 @@ export const PaySupplierModal = ({
                                 <div className="mt-6 p-4 bg-blue-500/5 border border-blue-500/10 rounded-xl">
                                     <p className="text-blue-400 text-[10px] font-bold uppercase leading-relaxed">
                                         <span className="material-symbols-outlined text-[14px] align-middle mr-1">info</span>
-                                        Ce paiement sera enregistré dans l'historique et déduira le montant des dettes affichées. Il n'affecte pas le solde des cartes.
+                                        Ce paiement sera enregistré dans l&apos;historique et déduira le montant des dettes affichées. Il n&apos;affecte pas le solde des cartes.
                                     </p>
                                 </div>
                             </div>

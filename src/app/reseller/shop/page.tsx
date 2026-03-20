@@ -70,7 +70,7 @@ export default function ResellerShop() {
                     page: 1,
                     limit: 48,
                     search: searchTerm,
-                    categoryId: selectedCategory === 'all' ? undefined : selectedCategory
+                    type: selectedCategory === 'all' ? undefined : selectedCategory
                 });
                 if (res && res.success === false) {
                     toast.error("Erreur: " + res.error);

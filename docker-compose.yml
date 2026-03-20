@@ -19,7 +19,21 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
-# WhatsApp Engine removed - Switching to Official Cloud API (Cloud-hosted)
+  n8n:
+    image: n8nio/n8n:latest
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_HOST=0.0.0.0
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - WEBHOOK_URL=http://localhost:5678/
+      - GENERIC_TIMEZONE=Africa/Algiers
+      - TZ=Africa/Algiers
+    volumes:
+      - n8n_data:/home/node/.n8n
 
 volumes:
   postgres_data:
+  n8n_data:

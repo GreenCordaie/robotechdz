@@ -1,0 +1,100 @@
+﻿
+> 100-pc-ia@0.1.0 lint
+> next lint
+
+node.exe : 
+Au caractère Ligne:1 : 1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program 
+Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (:String)  
+   [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+./src/app/admin/caisse/CaisseContent.tsx
+78:8  Warning: React Hook useEffect has a missing 
+dependency: 'handlePrint'. Either include it or remove 
+the dependency array.  react-hooks/exhaustive-deps
+
+./src/app/admin/caisse/CaisseMobile.tsx
+78:8  Warning: React Hook useEffect has a missing 
+dependency: 'handlePrint'. Either include it or remove 
+the dependency array.  react-hooks/exhaustive-deps
+
+./src/app/admin/catalogue/CatalogueMobile.tsx
+281:45  Warning: Using `<img>` could result in slower 
+LCP and higher bandwidth. Consider using `<Image />` 
+from `next/image` to automatically optimize images. 
+This may incur additional usage or cost from your 
+provider. See: 
+https://nextjs.org/docs/messages/no-img-element  
+@next/next/no-img-element
+
+./src/app/admin/settings/SettingsMobile.tsx
+520:49  Warning: Using `<img>` could result in slower 
+LCP and higher bandwidth. Consider using `<Image />` 
+from `next/image` to automatically optimize images. 
+This may incur additional usage or cost from your 
+provider. See: 
+https://nextjs.org/docs/messages/no-img-element  
+@next/next/no-img-element
+948:49  Warning: Using `<img>` could result in slower 
+LCP and higher bandwidth. Consider using `<Image />` 
+from `next/image` to automatically optimize images. 
+This may incur additional usage or cost from your 
+provider. See: 
+https://nextjs.org/docs/messages/no-img-element  
+@next/next/no-img-element
+
+./src/app/layout.tsx
+32:17  Warning: Custom fonts not added in 
+`pages/_document.js` will only load for a single page. 
+This is discouraged. See: 
+https://nextjs.org/docs/messages/no-page-custom-font  
+@next/next/no-page-custom-font
+
+./src/components/admin/ClientsContent.tsx
+105:8  Warning: React Hook React.useCallback has an 
+unnecessary dependency: 'search'. Either exclude it or 
+remove the dependency array.  
+react-hooks/exhaustive-deps
+
+./src/components/admin/modals/AddResellerModal.tsx
+101:109  Error: `'` can be escaped with `&apos;`, 
+`&lsquo;`, `&#39;`, `&rsquo;`.  
+react/no-unescaped-entities
+
+./src/components/admin/modals/PaySupplierModal.tsx
+215:75  Error: `'` can be escaped with `&apos;`, 
+`&lsquo;`, `&#39;`, `&rsquo;`.  
+react/no-unescaped-entities
+215:135  Error: `'` can be escaped with `&apos;`, 
+`&lsquo;`, `&#39;`, `&rsquo;`.  
+react/no-unescaped-entities
+
+./src/components/admin/receipt/ThermalReceiptV2.tsx
+196:25  Warning: Using `<img>` could result in slower 
+LCP and higher bandwidth. Consider using `<Image />` 
+from `next/image` to automatically optimize images. 
+This may incur additional usage or cost from your 
+provider. See: 
+https://nextjs.org/docs/messages/no-img-element  
+@next/next/no-img-element
+
+./src/components/admin/settings/ApiBotSettings.tsx
+157:79  Error: `'` can be escaped with `&apos;`, 
+`&lsquo;`, `&#39;`, `&rsquo;`.  
+react/no-unescaped-entities
+
+./src/components/admin/settings/ReceiptSettings.tsx
+115:122  Error: `'` can be escaped with `&apos;`, 
+`&lsquo;`, `&#39;`, `&rsquo;`.  
+react/no-unescaped-entities
+240:38  Error: `'` can be escaped with `&apos;`, 
+`&lsquo;`, `&#39;`, `&rsquo;`.  
+react/no-unescaped-entities
+
+info  - Need to disable some ESLint rules? Learn more 
+here: https://nextjs.org/docs/basic-features/eslint#dis
+abling-rules

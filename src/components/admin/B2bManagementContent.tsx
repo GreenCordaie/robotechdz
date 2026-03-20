@@ -1,14 +1,8 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import {
-    Plus,
-    Building2,
-    Wallet,
-    Trash2,
-    ArrowLeft
-} from "lucide-react";
-import { useDisclosure, Button, Spinner } from "@heroui/react";
+import { Plus, Building2, Wallet, Trash2, ArrowLeft, Search } from "lucide-react";
+import { useDisclosure, Button, Spinner, Input } from "@heroui/react";
 import { toast } from "react-hot-toast";
 import {
     getResellersAction,
@@ -27,6 +21,7 @@ export default function B2bManagementContent({ initialResellers = [] }: B2bManag
 
     const [resellersList, setResellersList] = useState<any[]>(initialResellers);
     const [isResellersLoading, setIsResellersLoading] = useState(false);
+    const [searchTerm, setSearchTerm] = useState("");
     const defaultResellerDiscount = "5.00";
 
     useEffect(() => {
@@ -62,6 +57,11 @@ export default function B2bManagementContent({ initialResellers = [] }: B2bManag
         }
     };
 
+    const filteredResellers = resellersList.filter(r =>
+        r.companyName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        r.user?.email?.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+
     return (
         <div className="p-4 md:p-8 space-y-8 animate-in fade-in duration-500">
             {/* Header */}
@@ -81,13 +81,25 @@ export default function B2bManagementContent({ initialResellers = [] }: B2bManag
                     <p className="text-slate-400 font-medium">Contrôlez vos partenaires revendeurs et leurs accès.</p>
                 </div>
 
-                <Button
-                    onPress={onB2bModalOpen}
-                    className="h-14 px-8 bg-[#ec5b13] text-white font-black rounded-2xl shadow-xl shadow-orange-950/20 hover:scale-105 transition-all uppercase tracking-tight"
-                    startContent={<Plus size={20} />}
-                >
-                    Nouveau Partenaire
-                </Button>
+                <div className="flex items-center gap-4">
+                    <div className="relative group w-72">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 w-4 h-4 shrink-0 pointer-events-none group-focus-within:text-[#ec5b13] transition-colors" />
+                        <input
+                            className="w-full bg-[#161616] border border-[#262626] rounded-xl pl-10 pr-4 py-3 text-sm focus:outline-none focus:ring-1 focus:ring-[#ec5b13] transition-all text-white placeholder:text-slate-600 font-medium"
+                            placeholder="Rechercher partenaire / email..."
+                            type="text"
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                        />
+                    </div>
+                    <Button
+                        onPress={onB2bModalOpen}
+                        className="h-12 px-8 bg-[#ec5b13] text-white font-black rounded-2xl shadow-xl shadow-orange-950/20 hover:scale-105 transition-all uppercase tracking-tight"
+                        startContent={<Plus size={20} />}
+                    >
+                        Nouveau Partenaire
+                    </Button>
+                </div>
             </div>
 
             {/* Main Content */}
@@ -115,7 +127,7 @@ export default function B2bManagementContent({ initialResellers = [] }: B2bManag
                 </div>
             ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {resellersList.map((reseller) => (
+                    {filteredResellers.map((reseller) => (
                         <div key={reseller.id} className="bg-[#161616] border border-[#262626] rounded-[32px] p-6 space-y-6 hover:border-[#ec5b13]/30 transition-all group relative overflow-hidden">
                             {/* Abstract shadow */}
                             <div className="absolute -top-24 -right-24 size-48 bg-[#ec5b13]/5 blur-[60px] rounded-full group-hover:bg-[#ec5b13]/10 transition-colors"></div>

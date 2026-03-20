@@ -147,8 +147,8 @@ export default function DashboardContent({ stats }: DashboardContentProps) {
                 <div className="flex items-center gap-4">
                     <h2 className="text-xl font-bold text-white tracking-tight">Dashboard Overview</h2>
                 </div>
-                <div className="flex items-center gap-3">
-                    <div className="relative w-64">
+                <div className="flex items-center gap-3 w-full md:w-auto overflow-x-auto pb-2 md:pb-0 scrollbar-hide">
+                    <div className="relative w-full max-w-xs md:w-64 shrink-0">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 w-4 h-4" />
                         <Input
                             classNames={{
@@ -174,7 +174,7 @@ export default function DashboardContent({ stats }: DashboardContentProps) {
                         </DropdownTrigger>
                         <DropdownMenu
                             aria-label="Notifications systeme"
-                            className="w-80 p-2"
+                            className="w-[calc(100vw-2rem)] md:w-80 p-2"
                             emptyContent="Aucune notification"
                         >
                             {stats.notifications.map((notif: any) => (
@@ -307,13 +307,23 @@ export default function DashboardContent({ stats }: DashboardContentProps) {
                         </div>
                         <div className="flex bg-[#0a0a0a] p-1 rounded-xl border border-[#262626]">
                             <button
-                                onClick={() => setChartPeriod("7")}
+                                onClick={async () => {
+                                    setChartPeriod("7");
+                                    // Map "7" to "week" for the server action
+                                    const res = await getDashboardStats({ period: "week" });
+                                    if (res) router.refresh();
+                                }}
                                 className={`px-4 py-1.5 text-[11px] font-bold rounded-lg shadow-sm transition-all ${chartPeriod === "7" ? "bg-[#262626] text-white" : "text-slate-500 hover:text-white"}`}
                             >
                                 7 Jours
                             </button>
                             <button
-                                onClick={() => setChartPeriod("30")}
+                                onClick={async () => {
+                                    setChartPeriod("30");
+                                    // Map "30" to "month" for the server action
+                                    const res = await getDashboardStats({ period: "month" });
+                                    if (res) router.refresh();
+                                }}
                                 className={`px-4 py-1.5 text-[11px] font-bold rounded-lg shadow-sm transition-all ${chartPeriod === "30" ? "bg-[#262626] text-white" : "text-slate-500 hover:text-white"}`}
                             >
                                 30 Jours

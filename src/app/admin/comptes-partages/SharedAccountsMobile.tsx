@@ -15,7 +15,8 @@ import {
     Edit3,
     Trash2,
     Calendar,
-    AlertCircle
+    AlertCircle,
+    ExternalLink
 } from "lucide-react";
 import {
     Button,
@@ -38,12 +39,16 @@ import {
     getSharingVariants,
     addSharedAccount,
     updateSharedAccount,
-    deleteSharedAccount
+    deleteSharedAccount,
+    getAvailableVariantsForLinking,
+    linkProductToSharing
 } from "./actions";
 import { formatCurrency } from "@/lib/formatters";
 import toast from "react-hot-toast";
+import { useRouter } from "next/navigation";
 
 export default function SharedAccountsMobile() {
+    const router = useRouter();
     const [inventory, setInventory] = useState<any[]>([]);
     const [sharingVariants, setSharingVariants] = useState<any[]>([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -59,23 +64,33 @@ export default function SharedAccountsMobile() {
     const [password, setPassword] = useState("");
     const [slotsData, setSlotsData] = useState<{ id?: number, profileName: string, pinCode: string }[]>([]);
 
+    const { isOpen: isLinkOpen, onOpen: onLinkOpen, onClose: onLinkClose } = useDisclosure();
+    const [linkableVariants, setLinkableVariants] = useState<any[]>([]);
+    const [selectedLinkVariantId, setSelectedLinkVariantId] = useState<string>("");
+    const [linkTotalSlots, setLinkTotalSlots] = useState<string>("5");
+    const [isLinking, setIsLinking] = useState(false);
+
     const loadInventory = async (silent = false) => {
         if (!silent) setIsLoading(true);
         try {
-            const [invData, varData] = await Promise.all([
+            const [invData, varData, linkData] = await Promise.all([
                 getSharedAccountsInventory() as Promise<any>,
-                getSharingVariants() as Promise<any>
+                getSharingVariants({}) as Promise<any>,
+                getAvailableVariantsForLinking({}) as Promise<any>
             ]);
 
-            // Ensure we handle arrays being returned or error objects
             if (Array.isArray(invData)) {
                 setInventory(invData);
             } else if (invData && typeof invData === 'object' && 'error' in invData) {
-                toast.error(invData.error || "Erreur de chargement");
+                toast.error((invData as any).error || "Erreur de chargement");
             }
 
             if (Array.isArray(varData)) {
                 setSharingVariants(varData);
+            }
+
+            if (Array.isArray(linkData)) {
+                setLinkableVariants(linkData);
             }
         } catch (error) {
             toast.error("Erreur de chargement");
@@ -139,7 +154,7 @@ export default function SharedAccountsMobile() {
 
     const handleDeleteClick = async (id: number) => {
         if (confirm("Supprimer ce compte ?")) {
-            const res = await deleteSharedAccount({ id });
+            const res = await deleteSharedAccount({ id }) as { success: boolean; error?: string };
             if (res.success) {
                 toast.success("Supprimé");
                 loadInventory();
@@ -147,18 +162,47 @@ export default function SharedAccountsMobile() {
         }
     };
 
+    const handleLinkClick = async () => {
+        try {
+            const data = await getAvailableVariantsForLinking({}) as any[];
+            if (Array.isArray(data)) {
+                setLinkableVariants(data);
+                onLinkOpen();
+            }
+        } catch (error) {
+            toast.error("Erreur de chargement");
+        }
+    };
+
+    const handleLinkSubmit = async () => {
+        if (!selectedLinkVariantId) return toast.error("Sélectionnez un produit");
+        setIsLinking(true);
+        try {
+            const res = await linkProductToSharing({
+                variantId: parseInt(selectedLinkVariantId),
+                totalSlots: parseInt(linkTotalSlots)
+            }) as { success: boolean; error?: string };
+            if (res.success) {
+                toast.success("Succès");
+                onLinkClose();
+                loadInventory();
+            } else toast.error(res.error || "Erreur");
+        } catch (e) { toast.error("Erreur technique"); }
+        finally { setIsLinking(false); }
+    };
+
     const handleSubmit = async () => {
         if (!email || !password) return toast.error("Identifiants requis");
         setIsSubmitting(true);
         try {
-            let res;
+            let res: { success: boolean; error?: string };
             if (modalMode === "ADD") {
-                res = await addSharedAccount({ variantId: parseInt(selectedVariantId), email, password, slots: slotsData });
+                res = await addSharedAccount({ variantId: parseInt(selectedVariantId), email, password, slots: slotsData }) as { success: boolean; error?: string };
             } else {
                 res = await updateSharedAccount({
                     id: editingAccount.id, email, password,
-                    slots: slotsData.map(s => ({ id: s.id!, profileName: s.profileName, pinCode: s.pinCode }))
-                });
+                    slots: slotsData.map((s: any) => ({ id: s.id!, profileName: s.profileName, pinCode: s.pinCode }))
+                }) as { success: boolean; error?: string };
             }
             if (res.success) {
                 toast.success("Succès");
@@ -205,9 +249,20 @@ export default function SharedAccountsMobile() {
             <header className="p-4 border-b border-white/5 space-y-4">
                 <div className="flex justify-between items-center">
                     <h1 className="text-xl font-black italic uppercase tracking-tighter">Flux Partagé</h1>
-                    <Button isIconOnly size="sm" color="primary" className="rounded-full" onPress={handleAddClick}>
-                        <Plus size={18} />
-                    </Button>
+                    <div className="flex gap-2">
+                        <Button
+                            isIconOnly
+                            size="sm"
+                            variant="flat"
+                            className="rounded-full bg-white/5 border border-white/10"
+                            onPress={handleLinkClick}
+                        >
+                            <ExternalLink size={18} className="text-secondary" />
+                        </Button>
+                        <Button isIconOnly size="sm" color="primary" className="rounded-full" onPress={handleAddClick}>
+                            <Plus size={18} />
+                        </Button>
+                    </div>
                 </div>
 
                 <div className="relative">
@@ -333,8 +388,8 @@ export default function SharedAccountsMobile() {
                                         >
                                             {sharingVariants.map(v => (
                                                 <SelectItem key={v.id.toString()} textValue={`${v.product.name} - ${v.name}`}>
-                                                    <div className="text-left">
-                                                        <p className="text-xs font-black text-white">{v.product.name}</p>
+                                                    <div className="text-left font-bold">
+                                                        <p className="text-xs text-white">{v.product.name}</p>
                                                         <p className="text-[10px] text-primary">{v.name}</p>
                                                     </div>
                                                 </SelectItem>
@@ -408,6 +463,67 @@ export default function SharedAccountsMobile() {
                                     isLoading={isSubmitting}
                                 >
                                     Confirmer
+                                </Button>
+                            </ModalFooter>
+                        </>
+                    )}
+                </ModalContent>
+            </Modal>
+
+            {/* Link Product Modal */}
+            <Modal
+                isOpen={isLinkOpen}
+                onClose={onLinkClose}
+                className="dark bg-[#161616] text-white border border-white/5"
+                size="full"
+                scrollBehavior="inside"
+            >
+                <ModalContent>
+                    {(onClose) => (
+                        <>
+                            <ModalHeader className="flex flex-col gap-1">
+                                <h2 className="text-xl font-black uppercase italic">Lier Produit</h2>
+                                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest leading-none">Activer Mode Partagé</p>
+                            </ModalHeader>
+                            <ModalBody className="space-y-6">
+                                <div className="space-y-2">
+                                    <p className="text-[10px] font-black text-slate-500 uppercase ml-1">Variante Catalogue</p>
+                                    <Select
+                                        placeholder="Choisir SKU..."
+                                        selectedKeys={selectedLinkVariantId ? [selectedLinkVariantId] : []}
+                                        onChange={(e) => setSelectedLinkVariantId(e.target.value)}
+                                        classNames={{ trigger: "bg-white/5 border border-white/10 rounded-2xl h-14" }}
+                                    >
+                                        {linkableVariants.map(v => (
+                                            <SelectItem key={v.id.toString()} textValue={`${v.product.name} - ${v.name}`}>
+                                                <div className="text-left font-bold">
+                                                    <p className="text-xs text-white">{v.product.name}</p>
+                                                    <p className="text-[10px] text-primary">{v.name}</p>
+                                                </div>
+                                            </SelectItem>
+                                        ))}
+                                    </Select>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <p className="text-[10px] font-black text-slate-500 uppercase ml-1">Nombre de Slots</p>
+                                    <Input
+                                        type="number"
+                                        placeholder="Ex: 5"
+                                        value={linkTotalSlots}
+                                        onValueChange={setLinkTotalSlots}
+                                        classNames={{ inputWrapper: "bg-white/5 border border-white/10 rounded-2xl h-14" }}
+                                    />
+                                </div>
+                            </ModalBody>
+                            <ModalFooter className="bg-black/50 backdrop-blur-xl border-t border-white/5">
+                                <Button variant="flat" onPress={onClose} className="rounded-xl font-bold uppercase text-[10px]">Annuler</Button>
+                                <Button
+                                    className="bg-secondary text-white font-black uppercase text-[10px] rounded-xl px-10 h-12 shadow-xl shadow-secondary/20"
+                                    onPress={handleLinkSubmit}
+                                    isLoading={isLinking}
+                                >
+                                    Activer Partage
                                 </Button>
                             </ModalFooter>
                         </>

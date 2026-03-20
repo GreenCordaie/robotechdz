@@ -9,7 +9,17 @@ import {
     Truck,
     Package,
     User,
-    LogOut
+    LogOut,
+    Eye,
+    Users,
+    RefreshCw,
+    LayoutGrid,
+    ClipboardCheck,
+    Contact,
+    TruckIcon,
+    Building2,
+    Headset,
+    Settings2
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -62,16 +72,16 @@ export const AdminSidebar = () => {
     };
 
     const navItems = [
-        { name: "Dashboard", icon: "dashboard", href: "/admin", roles: ["ADMIN", "CAISSIER", "TRAITEUR"] },
-        { name: "Catalogue", icon: "inventory_2", href: "/admin/catalogue", roles: ["ADMIN", "CAISSIER"] },
-        { name: "Caisse", icon: "account_balance_wallet", href: "/admin/caisse", badge: pendingOrders, roles: ["ADMIN", "CAISSIER"] },
-        { name: "Comptes Partagés", icon: "group_work", href: "/admin/comptes-partages", roles: ["ADMIN", "CAISSIER"] },
-        { name: "Traitement", icon: "sync_alt", href: "/admin/traitement", roles: ["ADMIN", "CAISSIER", "TRAITEUR"] },
-        { name: "Clients & Crédits", icon: "person", href: "/admin/clients", roles: ["ADMIN", "CAISSIER"] },
-        { name: "Fournisseurs", icon: "group", href: "/admin/fournisseurs", roles: ["ADMIN"] },
-        ...(isB2bEnabled ? [{ name: "B2B & Revendeurs", icon: "corporate_fare", href: "/admin/b2b", roles: ["ADMIN"] }] : []),
-        { name: "Tickets Support", icon: "support_agent", href: "/admin/support", badge: openTickets, roles: ["ADMIN", "CAISSIER", "TRAITEUR"] },
-        { name: "Paramètres", icon: "settings", href: "/admin/settings", roles: ["ADMIN"] },
+        { name: "Dashboard", icon: LayoutDashboard, href: "/admin", roles: ["ADMIN", "CAISSIER", "TRAITEUR"] },
+        { name: "Catalogue", icon: Package, href: "/admin/catalogue", roles: ["ADMIN", "CAISSIER"] },
+        { name: "Caisse", icon: Wallet, href: "/admin/caisse", badge: pendingOrders, roles: ["ADMIN", "CAISSIER"] },
+        { name: "Comptes Partagés", icon: LayoutGrid, href: "/admin/comptes-partages", roles: ["ADMIN", "CAISSIER"] },
+        { name: "Traitement", icon: RefreshCw, href: "/admin/traitement", roles: ["ADMIN", "CAISSIER", "TRAITEUR"] },
+        { name: "Clients & Crédits", icon: Contact, href: "/admin/clients", roles: ["ADMIN", "CAISSIER"] },
+        { name: "Fournisseurs", icon: Users, href: "/admin/fournisseurs", roles: ["ADMIN"] },
+        ...(isB2bEnabled ? [{ name: "B2B & Revendeurs", icon: Building2, href: "/admin/b2b", roles: ["ADMIN"] }] : []),
+        { name: "Tickets Support", icon: Headset, href: "/admin/support", badge: openTickets, roles: ["ADMIN", "CAISSIER", "TRAITEUR"] },
+        { name: "Paramètres", icon: Settings2, href: "/admin/settings", roles: ["ADMIN"] },
     ];
 
     const visibleItems = navItems.filter(item => {
@@ -96,9 +106,9 @@ export const AdminSidebar = () => {
                         <Link
                             href="/kiosk"
                             target="_blank"
-                            className="text-[10px] text-slate-500 hover:text-primary flex items-center gap-1 font-bold transition-colors w-fit"
+                            className="text-[11px] text-slate-500 hover:text-[#ec5b13] flex items-center gap-1.5 font-bold transition-colors w-fit mt-1.5 px-0.5"
                         >
-                            <span className="material-symbols-outlined text-[14px]">visibility</span>
+                            <Eye className="size-3.5" />
                             Ouvrir le Kiosque
                         </Link>
                     </div>
@@ -117,12 +127,9 @@ export const AdminSidebar = () => {
                                 : "text-slate-400 hover:bg-white/5 hover:text-white"
                                 }`}
                         >
-                            <span
-                                className="material-symbols-outlined text-[20px] shrink-0 transition-transform group-hover:scale-110"
-                                style={isActive || (item as any).fill ? { fontVariationSettings: "'FILL' 1" } : {}}
-                            >
-                                {item.icon}
-                            </span>
+                            <item.icon
+                                className={`size-5 shrink-0 transition-transform group-hover:scale-110 ${isActive ? "text-white" : "text-slate-400"}`}
+                            />
                             <span className={`text-sm tracking-wide flex-1 ${isActive ? "font-bold" : "font-medium"}`}>
                                 {item.name}
                             </span>
@@ -153,9 +160,10 @@ export const AdminSidebar = () => {
                     </div>
                     <button
                         onClick={handleLogout}
-                        className="text-slate-400 hover:text-[#ec5b13] transition-colors p-1.5 rounded-lg hover:bg-white/5"
+                        className="text-slate-400 hover:text-[#ec5b13] transition-colors p-1.5 rounded-lg hover:bg-white/5 flex items-center justify-center transition-transform active:scale-95"
+                        title="Déconnexion"
                     >
-                        <span className="material-symbols-outlined text-[18px]">logout</span>
+                        <LogOut className="size-5" />
                     </button>
                 </div>
             </div>

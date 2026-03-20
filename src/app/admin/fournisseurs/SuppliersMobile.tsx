@@ -12,23 +12,11 @@ import {
     Tab
 } from "@heroui/react";
 import { useRouter } from "next/navigation";
-import {
-    Search,
-    Plus,
-    Landmark,
-    AlertTriangle,
-    Settings,
-    History,
-    LayoutDashboard,
-    ArrowUpCircle,
-    ArrowDownCircle,
-    Download,
-    DollarSign,
-    RefreshCcw
-} from "lucide-react";
+import { Banknote, Search, Plus, Landmark, AlertTriangle, Settings, History, LayoutDashboard, ArrowUpCircle, ArrowDownCircle, Download, DollarSign, RefreshCcw } from "lucide-react";
 import { formatCurrency } from "@/lib/formatters";
 import { AddSupplierModal } from "@/components/admin/modals/AddSupplierModal";
 import { RechargeBalanceModal } from "@/components/admin/modals/RechargeBalanceModal";
+import { PaySupplierModal } from "@/components/admin/modals/PaySupplierModal";
 import { SupplierSettingsModal } from "@/components/admin/modals/SupplierSettingsModal";
 
 import { markTransactionAsPaidAction } from "./actions";
@@ -44,12 +32,15 @@ export default function SuppliersMobile({ initialSuppliers, initialHistory, init
 
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
     const [isRechargeModalOpen, setIsRechargeModalOpen] = useState(false);
+    const [isPayModalOpen, setIsPayModalOpen] = useState(false);
     const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
     const [selectedSupplier, setSelectedSupplier] = useState<any>(null);
 
     // History Filters
     const [searchHist, setSearchHist] = useState("");
     const [filterSupp, setFilterSupp] = useState("all");
+    const [filterDate, setFilterDate] = useState("all");
+    const [filterAmount, setFilterAmount] = useState("all");
 
     const stats = initialStats || { totalPaidDzd: "0", totalUnpaidDzd: "0", netProfit: "0", exchangeRate: "245" };
     const EXCHANGE_RATE_USD_DZD = parseFloat(stats.exchangeRate || "245");
@@ -100,9 +91,24 @@ export default function SuppliersMobile({ initialSuppliers, initialHistory, init
         return history.filter((h: any) => {
             const matchesSearch = !searchHist || (h.reason?.toLowerCase().includes(searchHist.toLowerCase()) || h.type.toLowerCase().includes(searchHist.toLowerCase()));
             const matchesSupp = filterSupp === "all" || h.supplier.id === parseInt(filterSupp);
-            return matchesSearch && matchesSupp;
+
+            let matchesDate = true;
+            if (filterDate === "today") {
+                const today = new Date();
+                const hDate = new Date(h.createdAt);
+                matchesDate = today.toDateString() === hDate.toDateString();
+            }
+
+            let matchesAmount = true;
+            if (filterAmount === "high") {
+                matchesAmount = parseFloat(h.amount) > 1000;
+            } else if (filterAmount === "low") {
+                matchesAmount = parseFloat(h.amount) <= 1000;
+            }
+
+            return matchesSearch && matchesSupp && matchesDate && matchesAmount;
         });
-    }, [history, searchHist, filterSupp]);
+    }, [history, searchHist, filterSupp, filterDate, filterAmount]);
 
     const handleExportCSV = () => {
         const headers = ["Date", "Motif", "Fournisseur", "Montant", "Devise"];
@@ -130,6 +136,11 @@ export default function SuppliersMobile({ initialSuppliers, initialHistory, init
     const handleOpenSettings = (supplier: any) => {
         setSelectedSupplier(supplier);
         setIsSettingsModalOpen(true);
+    };
+
+    const handleOpenPay = (supplier: any) => {
+        setSelectedSupplier(supplier);
+        setIsPayModalOpen(true);
     };
 
     return (
@@ -231,12 +242,19 @@ export default function SuppliersMobile({ initialSuppliers, initialHistory, init
                                             </div>
                                         </div>
 
-                                        <div className="flex gap-2">
+                                        <div className="flex gap-2 mt-4 pt-4 border-t border-white/5">
                                             <Button
-                                                className="flex-1 bg-white/5 hover:bg-primary hover:text-white transition-all font-black text-[10px] uppercase rounded-2xl h-12"
+                                                className="flex-1 bg-white/5 hover:bg-[#ec5b13] hover:text-white transition-all font-black text-[10px] uppercase rounded-2xl h-11"
                                                 onPress={() => handleOpenRecharge(s)}
                                             >
-                                                Injecter Fonds
+                                                Plus de Fonds
+                                            </Button>
+                                            <Button
+                                                className="flex-1 bg-blue-500/5 hover:bg-blue-500 text-blue-500 hover:text-white transition-all font-black text-[10px] uppercase rounded-2xl h-11 border border-blue-500/10"
+                                                onPress={() => handleOpenPay(s)}
+                                                startContent={<Banknote size={14} />}
+                                            >
+                                                Payer Dette
                                             </Button>
                                         </div>
                                     </div>
@@ -261,14 +279,33 @@ export default function SuppliersMobile({ initialSuppliers, initialHistory, init
                                         <Download size={14} />
                                     </Button>
                                 </div>
-                                <select
-                                    className="w-full bg-[#161616] border border-white/10 rounded-xl py-2 px-3 text-xs outline-none font-bold text-white appearance-none"
-                                    value={filterSupp}
-                                    onChange={(e) => setFilterSupp(e.target.value)}
-                                >
-                                    <option value="all">Tous les Fournisseurs</option>
-                                    {suppliers.map((s: any) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                                </select>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <select
+                                        className="bg-[#161616] border border-white/10 rounded-xl py-2 px-3 text-xs outline-none font-bold text-white appearance-none"
+                                        value={filterSupp}
+                                        onChange={(e) => setFilterSupp(e.target.value)}
+                                    >
+                                        <option value="all">Tous Fournisseurs</option>
+                                        {suppliers.map((s: any) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                                    </select>
+                                    <select
+                                        className="bg-[#161616] border border-white/10 rounded-xl py-2 px-3 text-xs outline-none font-bold text-white appearance-none"
+                                        value={filterDate}
+                                        onChange={(e) => setFilterDate(e.target.value)}
+                                    >
+                                        <option value="all">Toutes Dates</option>
+                                        <option value="today">Aujourd&apos;hui</option>
+                                    </select>
+                                    <select
+                                        className="bg-[#161616] border border-white/10 rounded-xl py-2 px-3 text-xs outline-none font-bold text-white appearance-none col-span-2"
+                                        value={filterAmount}
+                                        onChange={(e) => setFilterAmount(e.target.value)}
+                                    >
+                                        <option value="all">Tous Montants</option>
+                                        <option value="high">Plus de 1000</option>
+                                        <option value="low">1000 ou moins</option>
+                                    </select>
+                                </div>
                             </div>
 
                             <div className="space-y-3">
@@ -345,6 +382,25 @@ export default function SuppliersMobile({ initialSuppliers, initialHistory, init
                 baseCurrency={selectedSupplier?.currency || 'USD'}
             />
             <SupplierSettingsModal isOpen={isSettingsModalOpen} onClose={() => setIsSettingsModalOpen(false)} supplier={selectedSupplier} />
+            <PaySupplierModal
+                isOpen={isPayModalOpen}
+                onClose={() => setIsPayModalOpen(false)}
+                supplierId={selectedSupplier?.id || 0}
+                supplierName={selectedSupplier?.name || ""}
+                currentDebt={useMemo(() => {
+                    if (!selectedSupplier) return 0;
+                    return history.filter((h: any) => h.supplier.id === selectedSupplier.id).reduce((acc: number, h: any) => {
+                        const amount = parseFloat(h.amount);
+                        const rate = h.exchangeRate ? parseFloat(h.exchangeRate) : EXCHANGE_RATE_USD_DZD;
+                        const dzd = h.currency === 'USD' ? amount * rate : amount;
+                        if (h.type === 'RECHARGE' && h.paymentStatus === 'UNPAID') return acc + dzd;
+                        if (h.type === 'PAYMENT') return acc - dzd;
+                        return acc;
+                    }, 0);
+                }, [selectedSupplier, history, EXCHANGE_RATE_USD_DZD])}
+                exchangeRate={EXCHANGE_RATE_USD_DZD.toString()}
+                baseCurrency={selectedSupplier?.currency || 'USD'}
+            />
         </div>
     );
 }

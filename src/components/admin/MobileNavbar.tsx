@@ -57,7 +57,7 @@ export const MobileNavbar = () => {
                     <Link
                         key={item.href}
                         href={item.href}
-                        className={`flex flex-col items-center gap-1.5 min-w-[64px] transition-all duration-300 relative ${isActive ? item.activeColor : "text-slate-500"
+                        className={`flex flex-col items-center gap-1.5 min-w-[54px] transition-all duration-300 relative ${isActive ? item.activeColor : "text-slate-500"
                             }`}
                     >
                         {isActive && (

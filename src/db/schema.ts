@@ -209,6 +209,7 @@ export const shopSettings = pgTable("shop_settings", {
     whatsappVerifyToken: text("whatsapp_verify_token").default("flexbox_direct_webhook_secret"),
     geminiApiKey: text("gemini_api_key"),
     chatbotRole: text("chatbot_role"),
+    n8nWebhookUrl: text("n8n_webhook_url"),
     usdExchangeRate: numeric("usd_exchange_rate", { precision: 10, scale: 2 }).default("245.00").notNull(),
     vapidPublicKey: text("vapid_public_key"),
     vapidPrivateKey: text("vapid_private_key"),

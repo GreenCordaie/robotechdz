@@ -3,7 +3,7 @@
 import { db } from "@/db";
 import {
     shopSettings, users, resellers, resellerWallets, resellerTransactions,
-    whatsappFaqs, supportTickets, digitalCodes, digitalCodeSlots, clients,
+    supportTickets, digitalCodes, digitalCodeSlots, clients,
     clientPayments, productVariantSuppliers, auditLogs, orderItems, orders, supplierTransactions, suppliers
 } from "@/db/schema";
 import { eq } from "drizzle-orm";
@@ -77,6 +77,7 @@ export const saveShopSettingsAction = withAuth(
             whatsappApiUrl: z.string().nullable().optional(),
             whatsappApiKey: z.string().nullable().optional(),
             whatsappInstanceName: z.string().nullable().optional(),
+            n8nWebhookUrl: z.string().nullable().optional(),
             usdExchangeRate: z.string().optional(),
         })
     },
@@ -334,84 +335,20 @@ export const createResellerAction = withAuth(
     }
 );
 
-export const testTelegramBotAction = withAuth(
-    { roles: [UserRole.ADMIN], schema: z.object({ token: z.string(), chatId: z.string() }) },
-    async () => ({ success: true })
-);
-
-export const testWhatsAppAction = withAuth(
-    { roles: [UserRole.ADMIN], schema: z.object({ number: z.string() }) },
-    async ({ number }) => {
-        const { SystemQueries } = await import("@/services/queries/system.queries");
-        const settings = await SystemQueries.getSettings();
-        const { sendWhatsAppMessage } = await import("@/lib/whatsapp");
-
-        return await sendWhatsAppMessage(number, "✅ *TEST RÉUSSI* - Configuration Evolution API validée sur FLEXBOX DIRECT.", {
-            whatsappApiUrl: settings.whatsappApiUrl || undefined,
-            whatsappApiKey: settings.whatsappApiKey || undefined,
-            whatsappInstanceName: settings.whatsappInstanceName || undefined
-        });
-    }
-);
-
-export const saveWhatsAppWebhookAction = withAuth(
-    {
-        roles: [UserRole.ADMIN],
-        schema: z.object({ url: z.string().nullable() })
-    },
-    async ({ url }) => {
-        const { SystemQueries } = await import("@/services/queries/system.queries");
-        const settings = await SystemQueries.getSettings();
-        await db.update(shopSettings).set({ whatsappWebhookUrl: url }).where(eq(shopSettings.id, settings.id));
-        revalidatePath("/admin/settings");
-        return { success: true };
-    }
-);
-
-export const getWhatsAppStatusAction = withAuth({ roles: [UserRole.ADMIN] }, async () => ({ success: true, state: 'open', number: 'Meta API' }));
-export const setWhatsAppWebhookAction = withAuth({ roles: [UserRole.ADMIN] }, async () => ({ success: true }));
-
-export const getWhatsAppFaqsAction = withAuth(
+export const testN8nAction = withAuth(
     { roles: [UserRole.ADMIN] },
     async () => {
-        const { SystemQueries } = await import("@/services/queries/system.queries");
-        const list = await SystemQueries.getWhatsAppFaqs();
-        return { success: true, data: list };
-    }
-);
+        const { N8nService } = await import("@/services/n8n.service");
+        const success = await N8nService.triggerEvent("INTEGRATION_TEST", {
+            message: "Test depuis l'interface d'administration FLEXBOX DIRECT.",
+            sender: "Admin UI",
+        });
 
-export const upsertWhatsAppFaqAction = withAuth(
-    {
-        roles: [UserRole.ADMIN],
-        schema: z.object({
-            id: z.number().optional(),
-            question: z.string().min(1),
-            answer: z.string().min(1),
-        })
-    },
-    async (data) => {
-        if (data.id) {
-            await db.update(whatsappFaqs).set({
-                question: data.question,
-                answer: data.answer
-            }).where(eq(whatsappFaqs.id, data.id));
+        if (success) {
+            return { success: true, message: "Événement de test envoyé avec succès à n8n !" };
         } else {
-            await db.insert(whatsappFaqs).values({
-                question: data.question,
-                answer: data.answer
-            });
+            return { success: false, error: "Échec de l'envoi à n8n. Vérifiez l'URL du Webhook." };
         }
-        revalidatePath("/admin/settings");
-        return { success: true };
-    }
-);
-
-export const deleteWhatsAppFaqAction = withAuth(
-    { roles: [UserRole.ADMIN], schema: z.object({ id: z.number() }) },
-    async ({ id }) => {
-        await db.delete(whatsappFaqs).where(eq(whatsappFaqs.id, id));
-        revalidatePath("/admin/settings");
-        return { success: true };
     }
 );
 

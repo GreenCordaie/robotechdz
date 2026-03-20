@@ -5,6 +5,8 @@ import { formatCurrency } from "@/lib/formatters";
 import { useSettingsStore } from "@/store/useSettingsStore";
 import { useAuthStore } from "@/store/useAuthStore";
 
+import Image from "next/image";
+
 interface ReceiptItem {
     name: string;
     quantity: number;
@@ -193,9 +195,12 @@ export const ThermalReceiptV2 = ({
             <header className="receipt-v2-header">
                 {showLogo && logoUrl && (
                     <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '2mm' }}>
-                        <img
+                        <Image
                             src={logoUrl}
                             alt="Logo"
+                            width={100}
+                            height={45}
+                            unoptimized
                             style={{
                                 height: '12mm',
                                 width: 'auto',

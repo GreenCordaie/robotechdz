@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import {
     Search,
     Plus,
@@ -10,9 +10,10 @@ import {
     Wallet,
     PlusCircle,
     Settings,
-    Landmark
+    Landmark,
+    Download
 } from "lucide-react";
-import { Button, Card, CardBody, Chip, Spinner, Dropdown, DropdownTrigger, DropdownMenu, DropdownItem } from "@heroui/react";
+import { Button, Card, CardBody, Chip, Spinner, Dropdown, DropdownTrigger, DropdownMenu, DropdownItem, Pagination } from "@heroui/react";
 import { formatCurrency } from "@/lib/formatters";
 import NextImage from "next/image";
 import { AddProductModal } from "@/components/admin/modals/AddProductModal";
@@ -39,6 +40,8 @@ export default function CatalogueMobile({
     const searchParams = useSearchParams();
     const pathname = usePathname();
 
+    const [activeTab, setActiveTab] = useState<string>(initialCategoryId || "all");
+    const [filterStatus, setFilterStatus] = useState<string>(initialStatus || "all");
     const [searchTerm, setSearchTerm] = useState(initialSearch);
     const [isAddProductOpen, setIsAddProductOpen] = useState(false);
     const [productToEdit, setProductToEdit] = useState<any>(null);
@@ -92,9 +95,59 @@ export default function CatalogueMobile({
         setIsAddCategoryOpen(true);
     };
 
-    const filteredProducts = initialProducts.filter((p: any) =>
-        p.name.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    const handleExportCSV = () => {
+        const headers = ["Produit", "Catégorie", "Prix d'achat (Moyen)", "Prix de vente", "Marge", "Statut"];
+        const rows = filteredVariants.map((v: any) => [
+            `${v.product.name} - ${v.name}`,
+            v.product.category?.name || "N/A",
+            parseFloat(v.purchasePrice).toFixed(2),
+            parseFloat(v.salePriceDzd).toFixed(2),
+            (parseFloat(v.salePriceDzd) - parseFloat(v.purchasePrice)).toFixed(2),
+            v.product.status
+        ]);
+
+        const csvContent = [headers, ...rows].map(e => e.join(",")).join("\n");
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement("a");
+        const url = URL.createObjectURL(blob);
+        link.setAttribute("href", url);
+        link.setAttribute("download", `catalogue_export_${new Date().toISOString().split('T')[0]}.csv`);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
+    const allVariants = useMemo(() => {
+        return initialProducts.flatMap((p: any) =>
+            p.variants.map((v: any) => ({ ...v, product: p }))
+        );
+    }, [initialProducts]);
+
+    const filteredVariants = useMemo(() => {
+        return allVariants.filter((v: any) => {
+            const matchesSearch = v.product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                v.name.toLowerCase().includes(searchTerm.toLowerCase());
+            const matchesCatalog = activeTab === "all" || v.product.categoryId === parseInt(activeTab);
+            const matchesStatus = filterStatus === "all" || v.product.status === filterStatus; // Assuming status is on product
+            return matchesSearch && matchesCatalog && matchesStatus;
+        });
+    }, [allVariants, searchTerm, activeTab, filterStatus]);
+
+    const avgProfit = useMemo(() => {
+        const valid = filteredVariants.filter((v: any) => parseFloat(v.purchasePrice) > 0);
+        if (valid.length === 0) return 0;
+        return valid.reduce((acc: number, v: any) => acc + (parseFloat(v.salePriceDzd) - parseFloat(v.purchasePrice)), 0) / valid.length;
+    }, [filteredVariants]);
+
+    const filteredProducts = useMemo(() => {
+        return initialProducts.filter((p: any) => {
+            const matchesSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase());
+            const matchesCategory = activeTab === "all" || p.categoryId === parseInt(activeTab);
+            const matchesStatus = filterStatus === "all" || p.status === filterStatus;
+            return matchesSearch && matchesCategory && matchesStatus;
+        });
+    }, [initialProducts, searchTerm, activeTab, filterStatus]);
 
     return (
         <div className="flex flex-col gap-6 pb-20 bg-[#0a0a0a] text-white min-h-screen">
@@ -112,15 +165,20 @@ export default function CatalogueMobile({
                     </div>
                 </div>
 
-                <div className="relative">
-                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
-                    <input
-                        type="text"
-                        placeholder="Chercher un produit..."
-                        className="w-full bg-white/5 border border-white/10 rounded-2xl py-3 pl-12 pr-4 outline-none focus:border-primary/50 transition-all font-bold placeholder:text-slate-600"
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                    />
+                <div className="flex gap-2">
+                    <div className="relative flex-1">
+                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
+                        <input
+                            type="text"
+                            placeholder="Chercher un produit..."
+                            className="w-full bg-white/5 border border-white/10 rounded-2xl py-3 pl-12 pr-4 outline-none focus:border-primary/50 transition-all font-bold placeholder:text-slate-600"
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                        />
+                    </div>
+                    <Button isIconOnly variant="flat" className="bg-white/5 text-slate-400" onPress={handleExportCSV}>
+                        <Download size={18} />
+                    </Button>
                 </div>
             </header>
 
@@ -131,6 +189,14 @@ export default function CatalogueMobile({
                     <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-500">Soldes Fournisseurs</h3>
                 </div>
                 <div className="flex gap-3 overflow-x-auto pb-4 no-scrollbar">
+                    {/* Profit Summary Card */}
+                    <div className="min-w-[140px] p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-3xl space-y-1">
+                        <p className="text-[9px] font-bold text-emerald-500 uppercase">Marge Moyenne</p>
+                        <p className="text-sm font-black text-emerald-400">
+                            {formatCurrency(avgProfit, 'DZD')}
+                        </p>
+                    </div>
+
                     {suppliers.map((s: any) => {
                         const bal = parseFloat(s.balance || "0");
                         const isLow = bal < 100 && s.currency === 'USD';
@@ -153,14 +219,14 @@ export default function CatalogueMobile({
                 </div>
             </section>
 
-            {/* Category Filter */}
-            <section className="px-4">
+            {/* Filters Section */}
+            <section className="px-4 space-y-4">
                 <div className="flex gap-2 overflow-x-auto no-scrollbar">
                     <button
                         onClick={() => updateParams({ categoryId: "all" })}
                         className={`px-4 py-2 rounded-full text-[10px] font-black uppercase whitespace-nowrap transition-all ${initialCategoryId === "all" || !initialCategoryId ? "bg-primary text-white shadow-lg shadow-primary/20" : "bg-white/5 text-slate-400"}`}
                     >
-                        Tout
+                        Tout Categories
                     </button>
                     {categories.map((c: any) => (
                         <button
@@ -171,6 +237,27 @@ export default function CatalogueMobile({
                             {c.name}
                         </button>
                     ))}
+                </div>
+
+                <div className="flex gap-2 overflow-x-auto no-scrollbar">
+                    <button
+                        onClick={() => updateParams({ status: "all" })}
+                        className={`px-4 py-2 rounded-full text-[10px] font-black uppercase whitespace-nowrap transition-all ${initialStatus === "all" || !initialStatus ? "bg-[#ec5b13]/20 text-[#ec5b13] border border-[#ec5b13]/30" : "bg-white/5 text-slate-500"}`}
+                    >
+                        Tous Statuts
+                    </button>
+                    <button
+                        onClick={() => updateParams({ status: "ACTIVE" })}
+                        className={`px-4 py-2 rounded-full text-[10px] font-black uppercase whitespace-nowrap transition-all ${initialStatus === "ACTIVE" ? "bg-emerald-500/20 text-emerald-500 border border-emerald-500/30" : "bg-white/5 text-slate-500"}`}
+                    >
+                        En Vente
+                    </button>
+                    <button
+                        onClick={() => updateParams({ status: "ARCHIVED" })}
+                        className={`px-4 py-2 rounded-full text-[10px] font-black uppercase whitespace-nowrap transition-all ${initialStatus === "ARCHIVED" ? "bg-red-500/20 text-red-500 border border-red-500/30" : "bg-white/5 text-slate-500"}`}
+                    >
+                        Archivés
+                    </button>
                 </div>
             </section>
 
@@ -191,13 +278,25 @@ export default function CatalogueMobile({
                                 <div className="flex items-center gap-4">
                                     <div className="size-14 rounded-2xl bg-white/5 overflow-hidden flex items-center justify-center border border-white/5">
                                         {p.imageUrl ? (
-                                            <img src={p.imageUrl} alt={p.name} className="w-full h-full object-cover" />
+                                            <NextImage
+                                                src={p.imageUrl}
+                                                alt={p.name}
+                                                width={56}
+                                                height={56}
+                                                unoptimized
+                                                className="w-full h-full object-cover"
+                                            />
                                         ) : (
                                             <Package size={24} className="text-slate-700" />
                                         )}
                                     </div>
                                     <div className="space-y-1">
-                                        <p className="text-sm font-black text-white">{p.name}</p>
+                                        <div className="flex items-center gap-2">
+                                            <p className="text-sm font-black text-white">{p.name}</p>
+                                            <Chip size="sm" variant="dot" color={p.status === 'ACTIVE' ? 'success' : 'danger'} className="text-[8px] h-4 border-none p-0 capitalize">
+                                                {p.status}
+                                            </Chip>
+                                        </div>
                                         <p className="text-xs font-bold text-primary">{formatCurrency(minPrice, 'DZD')}</p>
                                     </div>
                                 </div>
@@ -220,6 +319,24 @@ export default function CatalogueMobile({
                         );
                     })}
                 </div>
+
+                {initialTotalPages > 1 && (
+                    <div className="flex flex-col items-center gap-4 pt-6 pb-4">
+                        <Pagination
+                            total={initialTotalPages}
+                            page={initialPage}
+                            onChange={(page) => updateParams({ page })}
+                            classNames={{
+                                wrapper: "gap-1",
+                                item: "bg-white/5 text-slate-400 font-bold border-none",
+                                cursor: "bg-primary text-white font-black",
+                            }}
+                        />
+                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-600">
+                            Page {initialPage} sur {initialTotalPages}
+                        </p>
+                    </div>
+                )}
             </section>
 
             <AddProductModal

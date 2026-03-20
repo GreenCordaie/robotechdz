@@ -112,7 +112,7 @@ export function ReceiptSettings() {
                         </div>
                         <div>
                             <h2 className="text-xl font-black text-white uppercase tracking-tight">Configuration du Reçu</h2>
-                            <p className="text-slate-500 text-xs font-bold uppercase tracking-wider mt-1">Personnalisez l'identité de vos tickets</p>
+                            <p className="text-slate-500 text-xs font-bold uppercase tracking-wider mt-1">Personnalisez l&apos;identité de vos tickets</p>
                         </div>
                     </div>
 
@@ -237,7 +237,7 @@ export function ReceiptSettings() {
                             <div>
                                 <h4 className="text-[10px] font-black text-white uppercase tracking-widest mb-1">Calibration WYSIWYG</h4>
                                 <p className="text-[11px] text-slate-500 leading-relaxed font-medium italic">
-                                    L'aperçu à droite utilise le moteur de rendu réel de votre imprimante 80mm.
+                                    L&apos;aperçu à droite utilise le moteur de rendu réel de votre imprimante 80mm.
                                     Tout changement dans le formulaire réagit instantanément ici.
                                 </p>
                             </div>
