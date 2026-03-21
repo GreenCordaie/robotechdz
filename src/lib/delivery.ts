@@ -64,8 +64,9 @@ export async function triggerOrderDelivery(orderId: number) {
     await N8nService.triggerEvent('CUSTOMER_DELIVERY', {
         orderId: (order as any).id,
         orderNumber: (order as any).orderNumber,
-        customerPhone: (order as any).client?.telephone || (order as any).reseller?.telephone,
+        customerPhone: (order as any).customerPhone || (order as any).client?.telephone || (order as any).reseller?.telephone,
         deliveryMethod: (order as any).deliveryMethod,
+        appUrl: process.env.NEXT_PUBLIC_APP_URL || 'https://idea-lake-samuel-dog.trycloudflare.com',
         items: (order as any).items,
         formattedItemsText: formattedText
     });
