@@ -60,12 +60,14 @@ export async function triggerOrderDelivery(orderId: number) {
     }
 
     // Delegate to n8n: n8n will handle formatting and sending (WhatsApp, Email, etc.)
-    await N8nService.triggerEvent('ORDER_DELIVERY', {
+    const formattedText = formatOrderItemsText((order as any).items);
+    await N8nService.triggerEvent('CUSTOMER_DELIVERY', {
         orderId: (order as any).id,
         orderNumber: (order as any).orderNumber,
         customerPhone: (order as any).client?.telephone || (order as any).reseller?.telephone,
         deliveryMethod: (order as any).deliveryMethod,
-        items: (order as any).items
+        items: (order as any).items,
+        formattedItemsText: formattedText
     });
 
     // Mark as triggered locally if needed, or wait for webhook callback from n8n

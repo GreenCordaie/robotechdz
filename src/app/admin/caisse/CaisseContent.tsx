@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { Spinner, Button, Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, Tooltip } from "@heroui/react";
 import { useOrderStore } from "@/store/useOrderStore";
-import { payOrder, getTodayOrders, cancelOrderAction, replaceOrderItemCode, refundOrderItem, refundFullOrder } from "./actions";
+import { payOrder, getTodayOrders, cancelOrderAction, replaceOrderItemCode, refundOrderItem, refundFullOrder, notifyTraiteurAction } from "./actions";
 import { useAuthStore } from "@/store/useAuthStore";
 import { toast } from "react-hot-toast";
 import OrderDetailModal from "@/components/admin/modals/OrderDetailModal";
@@ -198,6 +198,23 @@ export default function CaisseContent() {
         } finally {
             setIsUpdating(false);
             if (clientIdOverride) setIsCreatingClient(false);
+        }
+    };
+
+    const handleNotifyTraiteur = async () => {
+        if (!currentOrder) return;
+        setIsUpdating(true);
+        try {
+            const res = await notifyTraiteurAction({ orderId: currentOrder.id });
+            if (res.success) {
+                toast.success("Notification envoyée au traiteur !");
+            } else {
+                toast.error("Erreur : " + res.error);
+            }
+        } catch (error) {
+            toast.error("Erreur technique");
+        } finally {
+            setIsUpdating(false);
         }
     };
 
@@ -655,6 +672,20 @@ export default function CaisseContent() {
                                         <>
                                             <span className="material-symbols-outlined text-3xl">payments</span>
                                             <span className="text-xs font-bold uppercase tracking-tighter">Encaisser Espèces</span>
+                                        </>
+                                    )}
+                                </button>
+
+                                {/* Traiteur Notification Button */}
+                                <button
+                                    onClick={() => handleNotifyTraiteur()}
+                                    disabled={isUpdating}
+                                    className="flex items-center justify-center gap-2 p-4 rounded-xl bg-orange-500/10 text-orange-500 border border-orange-500/20 hover:bg-orange-500/20 active:scale-95 transition-all disabled:opacity-50"
+                                >
+                                    {isUpdating ? <Spinner size="sm" color="warning" /> : (
+                                        <>
+                                            <span className="material-symbols-outlined">chef_hat</span>
+                                            <span className="text-[10px] font-black uppercase">Envoyer au Traiteur</span>
                                         </>
                                     )}
                                 </button>

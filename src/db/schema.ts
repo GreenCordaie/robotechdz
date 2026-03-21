@@ -62,6 +62,8 @@ export const clients = pgTable("clients", {
     nomComplet: text("nom_complet").notNull(),
     telephone: text("telephone"),
     totalDetteDzd: numeric("total_dette_dzd", { precision: 12, scale: 2 }).default("0"),
+    totalSpentDzd: numeric("total_spent_dzd", { precision: 12, scale: 2 }).default("0"),
+    loyaltyPoints: integer("loyalty_points").default(0).notNull(),
     createdAt: timestamp("created_at", { mode: 'date' }).defaultNow(),
 });
 
@@ -81,6 +83,7 @@ export const orders = pgTable("orders", {
     customerPhone: text("customer_phone"),
     isDelivered: boolean("is_delivered").default(false),
     whatsappSentAt: timestamp("whatsapp_sent_at", { mode: 'date' }),
+    pointsEarned: integer("points_earned").default(0).notNull(),
     createdAt: timestamp("created_at", { mode: 'date' }).defaultNow(),
 }, (table) => {
     return {
@@ -116,6 +119,7 @@ export const digitalCodes = pgTable("digital_codes", {
     isDebitCompleted: boolean("is_debit_completed").default(false).notNull(),
     orderItemId: integer("order_item_id").references(() => orderItems.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at", { mode: 'date' }).defaultNow(),
+    expiresAt: timestamp("expires_at", { mode: 'date' }),
 }, (table) => {
     return {
         variantIdIdx: index("dc_variant_id_idx").on(table.variantId),
@@ -133,6 +137,7 @@ export const digitalCodeSlots = pgTable("digital_code_slots", {
     status: digitalCodeSlotStatusEnum("status").default("DISPONIBLE").notNull(),
     orderItemId: integer("order_item_id").references(() => orderItems.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at", { mode: 'date' }).defaultNow(),
+    expiresAt: timestamp("expires_at", { mode: 'date' }),
 }, (table) => {
     return {
         digitalCodeIdIdx: index("dcs_digital_code_id_idx").on(table.digitalCodeId),
@@ -337,10 +342,13 @@ export const webhookEvents = pgTable("webhook_events", {
     id: serial("id").primaryKey(),
     provider: text("provider").notNull(), // 'telegram' or 'whatsapp'
     externalId: text("external_id").notNull(), // update_id or message_id
+    customerPhone: text("customer_phone"), // Added for conversation history tracking
+    payload: jsonb("payload"), // Added to store message content/metadata
     processedAt: timestamp("processed_at", { mode: 'date' }).defaultNow().notNull(),
 }, (table) => {
     return {
         providerExternalIdIdx: index("webhook_provider_external_id_idx").on(table.provider, table.externalId),
+        customerPhoneIdx: index("webhook_customer_phone_idx").on(table.customerPhone),
     };
 });
 

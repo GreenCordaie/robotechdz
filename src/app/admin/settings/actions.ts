@@ -481,3 +481,40 @@ export const exportDatabaseAction = withAuth(
         }
     }
 );
+
+export const getWhatsAppQrAction = withAuth(
+    { roles: [UserRole.ADMIN] },
+    async () => {
+        try {
+            const { SystemQueries } = await import("@/services/queries/system.queries");
+            const settings = await SystemQueries.getSettings();
+
+            if (!settings.whatsappApiUrl || !settings.whatsappApiKey || !settings.whatsappInstanceName) {
+                return { success: false, error: "Configuration WhatsApp incomplète dans les paramètres." };
+            }
+
+            const apiUrl = settings.whatsappApiUrl.replace(/\/$/, "");
+            const url = `${apiUrl}/instance/connect/${settings.whatsappInstanceName}`;
+
+            const response = await fetch(url, {
+                method: "GET",
+                headers: {
+                    "apikey": settings.whatsappApiKey,
+                },
+                cache: "no-store"
+            });
+
+            const result = await response.json();
+
+            if (response.ok) {
+                // Renvoyer les données, qui peuvent contenir 'qrcode.base64' ou l'état de l'instance
+                return { success: true, data: result };
+            } else {
+                return { success: false, error: result?.message || result?.error || "Erreur de récupération du QR Code ou de l'état" };
+            }
+        } catch (error: any) {
+            console.error("Erreur getWhatsAppQrAction:", error);
+            return { success: false, error: error.message };
+        }
+    }
+);

@@ -13,11 +13,13 @@ import {
 import { eq, desc, and, inArray, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { withAuth } from "@/lib/security";
+import { UserRole } from "@/lib/constants";
 import { z } from "zod";
 import { allocateOrderStock } from "@/lib/orders";
+import { OrderService } from "@/services/order.service";
 
 export const getCurrentResellerAction = withAuth(
-    { roles: ["RESELLER"] },
+    { roles: [UserRole.RESELLER] },
     async (_, user) => {
         try {
             const reseller = await db.query.resellers.findFirst({
@@ -34,7 +36,7 @@ export const getCurrentResellerAction = withAuth(
 );
 
 export const getResellerOrdersAction = withAuth(
-    { roles: ["RESELLER"] },
+    { roles: [UserRole.RESELLER] },
     async (_, user) => {
         try {
             const reseller = await db.query.resellers.findFirst({ where: eq(resellers.userId, user.id) });
@@ -53,7 +55,7 @@ export const getResellerOrdersAction = withAuth(
 );
 
 export const getResellerTransactionsAction = withAuth(
-    { roles: ["RESELLER"] },
+    { roles: [UserRole.RESELLER] },
     async (_, user) => {
         try {
             const reseller = await db.query.resellers.findFirst({
@@ -75,7 +77,7 @@ export const getResellerTransactionsAction = withAuth(
 
 export const checkoutResellerAction = withAuth(
     {
-        roles: ["RESELLER"],
+        roles: [UserRole.RESELLER],
         schema: z.object({
             resellerId: z.number(),
             cart: z.array(z.object({
@@ -128,7 +130,7 @@ export const checkoutResellerAction = withAuth(
             const orderNumber = `B2B-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
             const userId = user.id;
 
-            return await db.transaction(async (tx) => {
+            const res = await db.transaction(async (tx) => {
                 // 1. RE-FETCH Wallet inside transaction with FOR UPDATE lock
                 const lockedReseller = await tx.query.resellers.findFirst({
                     where: and(eq(resellers.id, resellerId), eq(resellers.userId, userId)),
@@ -184,7 +186,7 @@ export const checkoutResellerAction = withAuth(
                     })
                     .where(eq(resellerWallets.id, lockedReseller.wallet.id));
 
-                await tx.insert(resellerTransactions).values({
+                const finalResult = await tx.insert(resellerTransactions).values({
                     walletId: lockedReseller.wallet.id,
                     type: "PURCHASE",
                     amount: totalAmount.toString(),
@@ -192,8 +194,13 @@ export const checkoutResellerAction = withAuth(
                     description: `Achat B2B - ${orderNumber}`
                 });
 
-                return { success: true, orderNumber };
+                return { id: newOrder.id, orderNumber };
             });
+
+            // 6. Post-Process Triggers (Push, n8n, Instant Delivery)
+            await OrderService.finalizeOrderAfterPayment(res.id);
+
+            return { success: true, orderNumber: res.orderNumber };
         } catch (error) {
             console.error("Checkout error:", error);
             return { success: false, error: "Erreur lors du traitement de la commande" };

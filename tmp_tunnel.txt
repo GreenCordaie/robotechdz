@@ -1,0 +1,126 @@
+﻿node.exe : 2026-03-16T01:22:58Z INF Thank you 
+for trying Cloudflare Tunnel. Doing so, without 
+a Cloudflare account, is a quick way to 
+experiment and try it out. However, be aware 
+that these account-less Tunnels have no uptime 
+guarantee, are subject to the Cloudflare Online 
+Services Terms of Use 
+(https://www.cloudflare.com/website-terms/), and 
+Cloudflare reserves the right to investigate 
+your use of Tunnels for violations of such 
+terms. If you intend to use Tunnels in 
+production you should use a pre-created named 
+tunnel by following: https://developers.cloudflar
+e.com/cloudflare-one/connections/connect-apps
+Au caractère Ligne:1 : 1
++ & "C:\Program Files\nodejs/node.exe" 
+"C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (202 
+   6-03-16T01:2...ns/connect-apps:String) [], R  
+  emoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+2026-03-16T01:22:58Z INF Requesting new quick 
+Tunnel on trycloudflare.com...
+2026-03-16T01:23:03Z INF +-----------------------
+-------------------------------------------------
+--------------------+
+2026-03-16T01:23:03Z INF |  Your quick Tunnel 
+has been created! Visit it at (it may take some 
+time to be reachable):  |
+2026-03-16T01:23:03Z INF |  https://bullet-assess
+ments-sponsored-thy.trycloudflare.com            
+                    |
+2026-03-16T01:23:03Z INF +-----------------------
+-------------------------------------------------
+--------------------+
+2026-03-16T01:23:03Z INF Cannot determine 
+default configuration path. No file [config.yml 
+config.yaml] in [~/.cloudflared 
+~/.cloudflare-warp ~/cloudflare-warp]
+2026-03-16T01:23:03Z INF Version 2026.2.0 
+(Checksum b3279f2186a1c3c438ad5865e802bbbec26090c
+5d3fdb4ac1113f1143a94837a)
+2026-03-16T01:23:03Z INF GOOS: windows, 
+GOVersion: go1.24.13, GoArch: amd64
+2026-03-16T01:23:03Z INF Settings: 
+map[ha-connections:1 protocol:quic 
+url:http://localhost:1556]
+2026-03-16T01:23:03Z INF cloudflared will not 
+automatically update on Windows systems.
+2026-03-16T01:23:03Z INF Generated Connector ID: 
+725165b4-01b4-4271-b62b-e33be630c5db
+2026-03-16T01:23:03Z INF Initial protocol quic
+2026-03-16T01:23:03Z INF ICMP proxy will use 
+192.168.100.12 as source for IPv4
+2026-03-16T01:23:03Z INF ICMP proxy will use 
+fe80::f17f:d953:6f4c:141d in zone Ethernet as 
+source for IPv6
+2026-03-16T01:23:03Z INF cloudflared does not 
+support loading the system root certificate pool 
+on Windows. Please use --origin-ca-pool <PATH> 
+to specify the path to the certificate pool
+2026-03-16T01:23:03Z INF ICMP proxy will use 
+192.168.100.12 as source for IPv4
+2026-03-16T01:23:03Z INF Tunnel connection curve 
+preferences: [X25519MLKEM768 CurveP256] 
+connIndex=0 event=0 ip=198.41.192.7
+2026-03-16T01:23:03Z INF ICMP proxy will use 
+fe80::f17f:d953:6f4c:141d in zone Ethernet as 
+source for IPv6
+2026-03-16T01:23:03Z INF Starting metrics server 
+on 127.0.0.1:20241/metrics
+2026-03-16T01:23:03Z INF Registered tunnel 
+connection connIndex=0 
+connection=b997766f-9e7a-4edc-b2d0-1efa36ab2f4a 
+event=0 ip=198.41.192.7 location=aae01 
+protocol=quic
+2026-03-16T01:54:41Z ERR failed to accept 
+incoming stream requests error="failed to accept 
+QUIC stream: timeout: no recent network 
+activity" connIndex=0 event=0 ip=198.41.192.7
+2026-03-16T01:54:41Z ERR failed to run the 
+datagram handler error="timeout: no recent 
+network activity" connIndex=0 event=0 
+ip=198.41.192.7
+2026-03-16T01:54:41Z ERR failed to serve tunnel 
+connection error="accept stream listener 
+encountered a failure while serving" connIndex=0 
+event=0 ip=198.41.192.7
+2026-03-16T01:54:41Z ERR Serve tunnel error 
+error="accept stream listener encountered a 
+failure while serving" connIndex=0 event=0 
+ip=198.41.192.7
+2026-03-16T01:54:41Z INF Retrying connection in 
+up to 1s connIndex=0 event=0 ip=198.41.192.7
+2026-03-16T01:54:41Z INF Tunnel connection curve 
+preferences: [X25519MLKEM768 CurveP256] 
+connIndex=0 event=0 ip=198.41.192.7
+2026-03-16T01:54:42Z INF Registered tunnel 
+connection connIndex=0 
+connection=4c746f10-3b4c-4411-b849-ed6a18052c9b 
+event=0 ip=198.41.192.7 location=mad06 
+protocol=quic
+2026-03-16T12:37:27Z INF Initiating graceful 
+shutdown due to signal terminated ...
+2026-03-16T12:37:27Z ERR failed to run the 
+datagram handler error="context canceled" 
+connIndex=0 event=0 ip=198.41.192.7
+2026-03-16T12:37:27Z ERR failed to serve tunnel 
+connection error="accept stream listener 
+encountered a failure while serving" connIndex=0 
+event=0 ip=198.41.192.7
+2026-03-16T12:37:27Z ERR Serve tunnel error 
+error="accept stream listener encountered a 
+failure while serving" connIndex=0 event=0 
+ip=198.41.192.7
+2026-03-16T12:37:27Z INF Retrying connection in 
+up to 1s connIndex=0 event=0 ip=198.41.192.7
+2026-03-16T12:37:27Z ERR Connection terminated 
+connIndex=0
+2026-03-16T12:37:27Z ERR no more connections 
+active and exiting
+2026-03-16T12:37:27Z INF Tunnel server stopped
+2026-03-16T12:37:27Z INF Metrics server stopped

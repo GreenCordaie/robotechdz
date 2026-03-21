@@ -111,24 +111,103 @@ export class OrderService {
             return { ...finalOrder, items: mappedItems };
         });
 
-        // 5. Post-Process Triggers (Push & n8n)
-        if (result?.status === OrderStatus.PAYE) {
-            // Admin/Traiteur Push
-            sendPushToRoleAction(UserRole.TRAITEUR, {
-                title: "🔔 Nouvelle Commande",
-                body: `Commande #${result.orderNumber} payée. À préparer !`,
-                url: "/admin/traitement"
-            }).catch(() => { });
+        return await this.finalizeOrderAfterPayment(id);
+    }
 
-            // Delegate all customer notifications and external automation to n8n
-            N8nService.notifyOrderCreated(result).catch(err => console.error("[N8N-TRIGGER-ERROR] notifyOrderCreated:", err));
-        }
-
-        triggerOrderDelivery(id).catch(err => {
-            console.error(`[Background Delivery Error] Order #${id}:`, err);
+    /**
+     * Executes all post-payment triggers: push notifications, n8n alerts, 
+     * and instant delivery for automatic products.
+     */
+    static async finalizeOrderAfterPayment(orderId: number) {
+        // Fetch fresh order with all relations
+        const order = await db.query.orders.findFirst({
+            where: eq(orders.id, orderId),
+            with: {
+                client: true,
+                reseller: true,
+                items: {
+                    with: {
+                        codes: true,
+                        slots: { with: { digitalCode: true } },
+                        variant: { with: { product: true } }
+                    }
+                }
+            }
         });
 
-        return result;
+        if (!order) return null;
+
+        const isFullyAuto = order.status === OrderStatus.TERMINE;
+
+        // --- NEW: TOULOULOU LOYALTY LOGIC ---
+        const totalAmount = parseFloat(order.totalAmount);
+        const points = Math.floor(totalAmount / 100);
+
+        if (order.status === OrderStatus.PAYE || isFullyAuto) {
+            await db.transaction(async (tx) => {
+                await tx.update(orders)
+                    .set({ pointsEarned: points })
+                    .where(eq(orders.id, orderId));
+
+                if (order.clientId) {
+                    const currentClient = await tx.query.clients.findFirst({
+                        where: eq(clients.id, order.clientId)
+                    });
+
+                    if (currentClient) {
+                        const newTotalSpent = (parseFloat(currentClient.totalSpentDzd || "0") + totalAmount).toString();
+                        const newPoints = currentClient.loyaltyPoints + points;
+
+                        await tx.update(clients)
+                            .set({
+                                totalSpentDzd: newTotalSpent,
+                                loyaltyPoints: newPoints
+                            })
+                            .where(eq(clients.id, order.clientId));
+                    }
+                }
+            });
+        }
+        // ------------------------------------
+
+        if (order.status === OrderStatus.PAYE || isFullyAuto) {
+            // Admin/Traiteur Push (Only if NOT fully auto)
+            if (!isFullyAuto) {
+                sendPushToRoleAction(UserRole.TRAITEUR, {
+                    title: "🔔 Nouvelle Commande",
+                    body: `Commande #${order.orderNumber} payée. À préparer !`,
+                    url: "/admin/traitement"
+                }).catch(() => { });
+            }
+
+            // Internal Alert (Always)
+            N8nService.notifyOrderCreated({
+                ...order,
+                pointsEarned: points,
+                loyaltyPointsTotal: (order as any).client ? ((order as any).client.loyaltyPoints + points) : points,
+                isFullyAuto
+            }).catch(err => console.error("[N8N-TRIGGER-ERROR] notifyOrderCreated:", err));
+        }
+
+        // Instant Delivery Trigger (Customer Notification)
+        triggerOrderDelivery(order.id).catch(err => {
+            console.error(`[Background Delivery Error] Order #${order.id}:`, err);
+        });
+
+        // Map items for return (legacy UI support)
+        const mappedItems = (order as any).items.map((item: any) => {
+            const standardCodes = (item.codes || []).map((c: any) => decrypt(c.code) || "[ERREUR DÉCRYPTAGE]");
+            const slotCodes = (item.slots || []).map((s: any) => {
+                const decryptedParent = decrypt(s.digitalCode.code) || "[ERREUR COMPTE]";
+                const decryptedSlotPin = s.code ? decrypt(s.code) : null;
+                let slotInfo = `${decryptedParent} | Profil ${s.slotNumber}`;
+                if (s.code) slotInfo += ` | PIN: ${decryptedSlotPin || "[ERREUR PIN]"}`;
+                return slotInfo;
+            });
+            return { ...item, codes: [...standardCodes, ...slotCodes] };
+        });
+
+        return { ...order, items: mappedItems };
     }
 
     /**
@@ -191,6 +270,11 @@ export class OrderService {
             return { ...order, items: mappedItems };
         });
 
+        // Post-process triggers
+        if (result?.status === OrderStatus.TERMINE) {
+            N8nService.notifyOrderArchival(result).catch(err => console.error("[N8N-ARCHIVAL-ERROR]:", err));
+        }
+
         // Post-process delivery
         triggerOrderDelivery(id).catch(err => {
             console.error(`[Background Delivery Error] Order #${id}:`, err);
@@ -206,7 +290,7 @@ export class OrderService {
     static async deliverManualCodes(orderId: number, codesFound: string[]) {
         const order = await db.query.orders.findFirst({
             where: (o, { eq }) => eq(o.id, orderId),
-            with: { items: true }
+            with: { items: true, client: true }
         });
 
         if (!order) throw new Error("Commande introuvable");
@@ -214,7 +298,7 @@ export class OrderService {
         let codeIndex = 0;
         let insertedCount = 0;
 
-        await db.transaction(async (tx) => {
+        const result = await db.transaction(async (tx) => {
             for (const item of (order as any).items || []) {
                 const needed = item.quantity;
                 const forThisItem = codesFound.slice(codeIndex, codeIndex + needed);
@@ -232,9 +316,12 @@ export class OrderService {
             }
 
             if (insertedCount > 0) {
+                const nextStatus = order.status === OrderStatus.PAYE ? OrderStatus.TERMINE : order.status;
                 await tx.update(orders)
-                    .set({ status: OrderStatus.LIVRE })
+                    .set({ status: nextStatus, isDelivered: true })
                     .where(eq(orders.id, order.id));
+
+                return { success: true, nextStatus };
             } else {
                 throw new Error("Aucun code mappé");
             }
@@ -244,6 +331,11 @@ export class OrderService {
         triggerOrderDelivery(order.id).catch(err => {
             console.error(`[Background Delivery Error] Order #${order.id}:`, err);
         });
+
+        // Trigger Archival if status is TERMINE
+        if (result.nextStatus === OrderStatus.TERMINE) {
+            N8nService.notifyOrderArchival(order as any).catch(err => console.error("[N8N-ARCHIVAL-ERROR]:", err));
+        }
 
         return { insertedCount };
     }

@@ -8,7 +8,8 @@ export async function getGeminiResponse(
     message: string,
     customerPhone: string,
     apiKey: string,
-    systemInstruction?: string
+    systemInstruction?: string,
+    history?: { role: "user" | "model"; parts: { text: string }[] }[]
 ) {
     if (!apiKey) return "⚠️ Clé IA manquante. Vérifiez vos réglages.";
 
@@ -25,17 +26,25 @@ export async function getGeminiResponse(
 
     for (const trial of trials) {
         try {
-            console.log(`📡 [AI-HANDSHAKE] Model: ${trial.m} | Version: ${trial.v}`);
+            console.log(`📡 [AI-HANDSHAKE] Model: ${trial.m} | Version: ${trial.v} | Hist: ${history?.length || 0}`);
 
             // Force specific version via request options
             const model = genAI.getGenerativeModel(
-                { model: trial.m },
+                { model: trial.m, systemInstruction: systemInstruction || "Tu es l'assistant de FLEXBOX DIRECT." },
                 { apiVersion: trial.v as any }
             );
 
-            const sys = systemInstruction || "Tu es l'assistant de FLEXBOX DIRECT.";
-
-            const result = await model.generateContent(`[SYS]\n${sys}\n\n[USER]\n${message}`);
+            // Use Chat Session if history is provided, otherwise simple content generation
+            let result;
+            if (history && history.length > 0) {
+                const chat = model.startChat({
+                    history: history,
+                    generationConfig: { maxOutputTokens: 500 }
+                });
+                result = await chat.sendMessage(message);
+            } else {
+                result = await model.generateContent(message);
+            }
 
             const response = await result.response;
             const text = response.text();

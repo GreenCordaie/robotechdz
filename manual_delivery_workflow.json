@@ -1,0 +1,914 @@
+{
+  "updatedAt": "2026-03-21T01:02:21.756Z",
+  "createdAt": "2026-03-20T17:27:16.144Z",
+  "id": "2BjUu0xqxlfXjX4n",
+  "name": "Robotech Notification Gateway",
+  "description": null,
+  "active": true,
+  "isArchived": false,
+  "nodes": [
+    {
+      "id": "WebhookTrigger_1",
+      "name": "WebhookTrigger",
+      "parameters": {
+        "httpMethod": "POST",
+        "options": {},
+        "path": "flexbox-gateway",
+        "responseMode": "lastNode"
+      },
+      "position": [
+        112,
+        512
+      ],
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "webhookId": "d1f55724-b1f5-4feb-ab75-71a78fde15cc"
+    },
+    {
+      "id": "31c6d96e-634e-4ac2-bff7-7dd611309d05",
+      "name": "ExecuteWorkflowTrigger",
+      "parameters": {},
+      "position": [
+        -96,
+        512
+      ],
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1
+    },
+    {
+      "id": "EventTypeSwitch_1",
+      "name": "EventTypeSwitch",
+      "parameters": {
+        "options": {
+          "fallbackOutput": "none"
+        },
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.body.eventName }}",
+                    "operator": {
+                      "operation": "equals",
+                      "type": "string"
+                    },
+                    "rightValue": "ORDER_CREATED"
+                  }
+                ],
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                }
+              },
+              "outputKey": "ORDER_CREATED",
+              "renameOutput": true
+            },
+            {
+              "conditions": {
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.body.eventName }}",
+                    "operator": {
+                      "operation": "equals",
+                      "type": "string"
+                    },
+                    "rightValue": "LOW_STOCK_ALERT"
+                  }
+                ],
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                }
+              },
+              "outputKey": "LOW_STOCK",
+              "renameOutput": true
+            },
+            {
+              "conditions": {
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.body.eventName }}",
+                    "operator": {
+                      "operation": "equals",
+                      "type": "string"
+                    },
+                    "rightValue": "TRAITEUR_NOTIFY"
+                  }
+                ],
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                }
+              },
+              "outputKey": "TRAITEUR",
+              "renameOutput": true
+            },
+            {
+              "conditions": {
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.body.eventName }}",
+                    "operator": {
+                      "operation": "equals",
+                      "type": "string"
+                    },
+                    "rightValue": "CUSTOMER_DELIVERY"
+                  }
+                ],
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                }
+              },
+              "outputKey": "DELIVERY",
+              "renameOutput": true
+            },
+            {
+              "conditions": {
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.body.eventName }}",
+                    "operator": {
+                      "operation": "equals",
+                      "type": "string"
+                    },
+                    "rightValue": "INTEGRATION_TEST"
+                  }
+                ],
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                }
+              },
+              "outputKey": "TEST",
+              "renameOutput": true
+            }
+          ]
+        }
+      },
+      "position": [
+        352,
+        512
+      ],
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3
+    },
+    {
+      "id": "TG_Caisse_NewOrder_1",
+      "name": "TG_Caisse_NewOrder",
+      "parameters": {
+        "jsonBody": "={\n  \"chat_id\": \"{{ $json.body.config.tg_caisse }}\",\n  \"text\": \"📋 *Commande à traiter #{{ $json.body.data.orderNumber }}*\\n\\n👤 Client: {{ $json.body.data.customerPhone }}\\n💰 Total: {{ $json.body.data.totalAmount || $json.body.data.total }} DZD\\n\\n📦 *Articles à livrer :*\\n{{ $json.body.data.itemsCount || $json.body.data.items?.length }} article(s)\\n\\n---------------------------\\n👉 *Répondez à ce message* avec les codes l'un après l'autre (un code par ligne).\\n---------------------------\\nREF: {{ $json.body.data.orderId }}\\nURL: {{ $json.body.data.appUrl }}\",\n  \"parse_mode\": \"Markdown\"\n}",
+        "method": "POST",
+        "options": {},
+        "sendBody": true,
+        "specifyBody": "json",
+        "url": "=https://api.telegram.org/bot{{ $json.body.config.tg_token }}/sendMessage"
+      },
+      "position": [
+        608,
+        208
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1
+    },
+    {
+      "id": "TG_Admin_LowStock_1",
+      "name": "TG_Admin_LowStock",
+      "parameters": {
+        "jsonBody": "={\n  \"chat_id\": \"{{ $json.body.config.tg_caisse }}\",\n  \"text\": \"⚠️ *ALERTE STOCK BAS*\\n\\n📦 Produit: {{ $json.body.data.name }}\\n📉 Stock actuel: {{ $json.body.data.currentStock }}\\n🔻 Seuil: {{ $json.body.data.threshold }}\",\n  \"parse_mode\": \"Markdown\"\n}",
+        "method": "POST",
+        "options": {},
+        "sendBody": true,
+        "specifyBody": "json",
+        "url": "=https://api.telegram.org/bot{{ $json.body.config.tg_token }}/sendMessage"
+      },
+      "position": [
+        608,
+        464
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1
+    },
+    {
+      "id": "CallbackSwitch_1",
+      "name": "CallbackSwitch",
+      "parameters": {},
+      "position": [
+        560,
+        656
+      ],
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 1
+    },
+    {
+      "id": "tg_caisse_NewOrder_1",
+      "name": "tg_caisse_NewOrder",
+      "parameters": {
+        "jsonBody": "={\n  \"chat_id\": \"{{ $json.body.config.tg_caisse }}\",\n  \"text\": \"📋 *Commande à traiter #{{ $json.body.data.orderNumber }}*\\n\\n📱 Client: {{ $json.body.data.customerPhone }}\\n💰 Total: {{ $json.body.data.totalAmount }} DZD\",\n  \"parse_mode\": \"Markdown\",\n  \"reply_markup\": {\n    \"inline_keyboard\": [\n      [\n        { \"text\": \"✅ Valider & Livrer\", \"callback_data\": \"VALIDATE_{{ $json.body.data.orderId }}\" },\n        { \"text\": \"❌ Annuler\", \"callback_data\": \"CANCEL_{{ $json.body.data.orderId }}\" }\n      ]\n    ]\n  }\n}",
+        "method": "POST",
+        "options": {},
+        "sendBody": true,
+        "specifyBody": "json",
+        "url": "=https://api.telegram.org/bot{{ $json.body.config.tg_token }}/sendMessage"
+      },
+      "position": [
+        800,
+        608
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1
+    },
+    {
+      "id": "App_Callback_1",
+      "name": "App_Callback",
+      "parameters": {
+        "method": "POST",
+        "options": {},
+        "url": "={{ $json.appUrl }}/api/admin/n8n/callback",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"event\": \"{{ $json.event }}\",\n  \"orderId\": {{ $json.orderId }},\n  \"data\": {{ JSON.stringify($json.data) }},\n  \"secret\": \"8654979494:AAFkggRLkgWcNB3tcsXyzFsbPOXRPdlpm7Q\"\n}"
+      },
+      "position": [
+        800,
+        800
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1
+    },
+    {
+      "id": "tg_caisse_ConfirmAttrib_1",
+      "name": "tg_caisse_ConfirmAttrib",
+      "parameters": {
+        "method": "POST",
+        "options": {},
+        "url": "https://api.telegram.org/bot8654979494:AAFkggRLkgWcNB3tcsXyzFsbPOXRPdlpm7Q/sendMessage",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"chat_id\": \"{{ $('Telegram_Reply_Trigger').first().json.body.message.chat.id }}\",\n  \"text\": \"✅ *Réponse reçue de l'app* : {{ $json.message }}\",\n  \"parse_mode\": \"Markdown\"\n}"
+      },
+      "position": [
+        1008,
+        800
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1
+    },
+    {
+      "id": "WA_Customer_Delivery_1",
+      "name": "WA_Customer_Delivery",
+      "parameters": {
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $json.body.config.wa_key }}"
+            }
+          ]
+        },
+        "jsonBody": "={\n  \"number\": \"213{{ $json.body.data.customerPhone.replace(/^0/, '') }}\",\n  \"text\": \"✅ Votre commande #{{ $json.body.data.orderNumber }} est prête !\\n\\nVoici vos accès :\\n{{ $json.body.data.formattedItemsText }}\\n\\nMerci pour votre achat. Vous pouvez suivre votre commande sur {{ $json.appUrl }}/suivi/{{ $json.body.data.orderNumber }}\"\n}",
+        "method": "POST",
+        "options": {},
+        "sendBody": true,
+        "sendHeaders": true,
+        "specifyBody": "json",
+        "url": "={{ $json.body.config.wa_url }}/message/sendText/{{ $json.body.config.wa_instance }}"
+      },
+      "position": [
+        608,
+        800
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1
+    },
+    {
+      "id": "f46dea8a-65cf-4c8d-ae2d-717aa2b5a5ab",
+      "name": "TG_Integration_Test",
+      "parameters": {
+        "jsonBody": "={\n  \"chat_id\": \"{{ $json.body.config.tg_caisse }}\",\n  \"text\": \"✅ *Test d'intégration réussi !*\\n\\n🤖 Flexbox ↔ n8n : Connecté\\n⏰ {{ $now.toISO() }}\",\n  \"parse_mode\": \"Markdown\"\n}",
+        "method": "POST",
+        "options": {},
+        "sendBody": true,
+        "specifyBody": "json",
+        "url": "=https://api.telegram.org/bot{{ $json.body.config.tg_token }}/sendMessage"
+      },
+      "position": [
+        608,
+        1056
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1
+    },
+    {
+      "id": "TG_Reply_Trigger",
+      "name": "Telegram_Reply_Trigger",
+      "parameters": {
+        "httpMethod": "POST",
+        "options": {},
+        "path": "telegram-reply-webhook",
+        "responseMode": "lastNode"
+      },
+      "position": [
+        112,
+        800
+      ],
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "webhookId": "tg-reply-webhook-flexbox"
+    },
+    {
+      "id": "Parse_Telegram_Reply",
+      "name": "Parse_Telegram_Reply",
+      "parameters": {
+        "jsCode": "const message = items[0].json.body?.message || items[0].json.message;\nif (!message || !message.reply_to_message || !message.reply_to_message.text) return [];\n\nconst replyText = message.reply_to_message.text;\nconst orderIdMatch = replyText.match(/REF:\\s*(\\d+)/);\nconst appUrlMatch = replyText.match(/URL:\\s*(https?:\\/\\/[^\\s\\n]+)/);\n\nif (!orderIdMatch) return [];\n\nconst orderId = parseInt(orderIdMatch[1]);\n// Extracting appUrl if present, otherwise using a placeholder\nlet appUrl = 'http://localhost:3000';\nif (appUrlMatch && appUrlMatch[1]) {\n    appUrl = appUrlMatch[1];\n} else if (message.text.includes('trycloudflare.com')) {\n    const urlMatch = message.text.match(/(https?:\\/\\/[^\\s\\n]+)/);\n    if (urlMatch) appUrl = urlMatch[1];\n}\n\nconst codes = message.text.split(/\\r?\\n/).map(s => s.trim()).filter(s => s !== \"\");\n\nreturn [{\n    json: {\n        event: \"ATTRIBUER_SLOT\",\n        orderId: orderId,\n        appUrl: appUrl,\n        data: { codes: codes }\n    }\n}];"
+      },
+      "position": [
+        352,
+        800
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    }
+  ],
+  "connections": {
+    "App_Callback": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "tg_caisse_ConfirmAttrib",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "CallbackSwitch": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "tg_caisse_NewOrder",
+            "type": "main"
+          }
+        ],
+        [
+          {
+            "index": 0,
+            "node": "App_Callback",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "EventTypeSwitch": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "TG_Caisse_NewOrder",
+            "type": "main"
+          }
+        ],
+        [
+          {
+            "index": 0,
+            "node": "TG_Admin_LowStock",
+            "type": "main"
+          }
+        ],
+        [
+          {
+            "index": 0,
+            "node": "tg_caisse_NewOrder",
+            "type": "main"
+          }
+        ],
+        [
+          {
+            "index": 0,
+            "node": "WA_Customer_Delivery",
+            "type": "main"
+          }
+        ],
+        [
+          {
+            "index": 0,
+            "node": "TG_Integration_Test",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "ExecuteWorkflowTrigger": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "EventTypeSwitch",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "WebhookTrigger": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "EventTypeSwitch",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Telegram_Reply_Trigger": {
+      "main": [
+        [
+          {
+            "node": "Parse_Telegram_Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse_Telegram_Reply": {
+      "main": [
+        [
+          {
+            "node": "App_Callback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "saveManualExecutions": true,
+    "saveExecutionProgress": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false,
+    "binaryMode": "separate"
+  },
+  "staticData": null,
+  "meta": null,
+  "pinData": {},
+  "versionId": "7353d1b1-bde7-41ef-94a6-7c65058d1b1a",
+  "activeVersionId": "7353d1b1-bde7-41ef-94a6-7c65058d1b1a",
+  "versionCounter": 68,
+  "triggerCount": 1,
+  "shared": [
+    {
+      "updatedAt": "2026-03-20T17:27:16.148Z",
+      "createdAt": "2026-03-20T17:27:16.148Z",
+      "role": "workflow:owner",
+      "workflowId": "2BjUu0xqxlfXjX4n",
+      "projectId": "4SLEV9UOuoIn4w1E",
+      "project": {
+        "updatedAt": "2026-03-20T10:23:22.973Z",
+        "createdAt": "2026-03-20T10:17:25.629Z",
+        "id": "4SLEV9UOuoIn4w1E",
+        "name": "naguim sali <royalery@gmail.com>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "creatorId": "024601e7-448a-411f-ae00-72be717ea922"
+      }
+    }
+  ],
+  "tags": [],
+  "activeVersion": {
+    "updatedAt": "2026-03-21T01:02:21.758Z",
+    "createdAt": "2026-03-21T01:02:21.758Z",
+    "versionId": "7353d1b1-bde7-41ef-94a6-7c65058d1b1a",
+    "workflowId": "2BjUu0xqxlfXjX4n",
+    "nodes": [
+      {
+        "id": "WebhookTrigger_1",
+        "name": "WebhookTrigger",
+        "parameters": {
+          "httpMethod": "POST",
+          "options": {},
+          "path": "flexbox-gateway",
+          "responseMode": "lastNode"
+        },
+        "position": [
+          112,
+          512
+        ],
+        "type": "n8n-nodes-base.webhook",
+        "typeVersion": 2.1,
+        "webhookId": "d1f55724-b1f5-4feb-ab75-71a78fde15cc"
+      },
+      {
+        "id": "31c6d96e-634e-4ac2-bff7-7dd611309d05",
+        "name": "ExecuteWorkflowTrigger",
+        "parameters": {},
+        "position": [
+          -96,
+          512
+        ],
+        "type": "n8n-nodes-base.executeWorkflowTrigger",
+        "typeVersion": 1
+      },
+      {
+        "id": "EventTypeSwitch_1",
+        "name": "EventTypeSwitch",
+        "parameters": {
+          "options": {
+            "fallbackOutput": "none"
+          },
+          "rules": {
+            "values": [
+              {
+                "conditions": {
+                  "combinator": "and",
+                  "conditions": [
+                    {
+                      "leftValue": "={{ $json.body.eventName }}",
+                      "operator": {
+                        "operation": "equals",
+                        "type": "string"
+                      },
+                      "rightValue": "ORDER_CREATED"
+                    }
+                  ],
+                  "options": {
+                    "caseSensitive": true,
+                    "leftValue": "",
+                    "typeValidation": "strict"
+                  }
+                },
+                "outputKey": "ORDER_CREATED",
+                "renameOutput": true
+              },
+              {
+                "conditions": {
+                  "combinator": "and",
+                  "conditions": [
+                    {
+                      "leftValue": "={{ $json.body.eventName }}",
+                      "operator": {
+                        "operation": "equals",
+                        "type": "string"
+                      },
+                      "rightValue": "LOW_STOCK_ALERT"
+                    }
+                  ],
+                  "options": {
+                    "caseSensitive": true,
+                    "leftValue": "",
+                    "typeValidation": "strict"
+                  }
+                },
+                "outputKey": "LOW_STOCK",
+                "renameOutput": true
+              },
+              {
+                "conditions": {
+                  "combinator": "and",
+                  "conditions": [
+                    {
+                      "leftValue": "={{ $json.body.eventName }}",
+                      "operator": {
+                        "operation": "equals",
+                        "type": "string"
+                      },
+                      "rightValue": "TRAITEUR_NOTIFY"
+                    }
+                  ],
+                  "options": {
+                    "caseSensitive": true,
+                    "leftValue": "",
+                    "typeValidation": "strict"
+                  }
+                },
+                "outputKey": "TRAITEUR",
+                "renameOutput": true
+              },
+              {
+                "conditions": {
+                  "combinator": "and",
+                  "conditions": [
+                    {
+                      "leftValue": "={{ $json.body.eventName }}",
+                      "operator": {
+                        "operation": "equals",
+                        "type": "string"
+                      },
+                      "rightValue": "CUSTOMER_DELIVERY"
+                    }
+                  ],
+                  "options": {
+                    "caseSensitive": true,
+                    "leftValue": "",
+                    "typeValidation": "strict"
+                  }
+                },
+                "outputKey": "DELIVERY",
+                "renameOutput": true
+              },
+              {
+                "conditions": {
+                  "combinator": "and",
+                  "conditions": [
+                    {
+                      "leftValue": "={{ $json.body.eventName }}",
+                      "operator": {
+                        "operation": "equals",
+                        "type": "string"
+                      },
+                      "rightValue": "INTEGRATION_TEST"
+                    }
+                  ],
+                  "options": {
+                    "caseSensitive": true,
+                    "leftValue": "",
+                    "typeValidation": "strict"
+                  }
+                },
+                "outputKey": "TEST",
+                "renameOutput": true
+              }
+            ]
+          }
+        },
+        "position": [
+          352,
+          512
+        ],
+        "type": "n8n-nodes-base.switch",
+        "typeVersion": 3
+      },
+      {
+        "id": "TG_Caisse_NewOrder_1",
+        "name": "TG_Caisse_NewOrder",
+        "parameters": {
+          "jsonBody": "={\n  \"chat_id\": \"{{ $json.body.config.tg_caisse }}\",\n  \"text\": \"🛒 *Nouvelle Commande #{{ $json.body.data.orderNumber }}*\\n\\n👤 Client: {{ $json.body.data.customer }}\\n📱 Tél: {{ $json.body.data.customerPhone }}\\n💰 Total: {{ $json.body.data.total }} DZD\\n📦 Articles: {{ $json.body.data.itemsCount }}\\n🔗 {{ $json.body.data.link }}\",\n  \"parse_mode\": \"Markdown\"\n}",
+          "method": "POST",
+          "options": {},
+          "sendBody": true,
+          "specifyBody": "json",
+          "url": "=https://api.telegram.org/bot{{ $json.body.config.tg_token }}/sendMessage"
+        },
+        "position": [
+          608,
+          208
+        ],
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.1
+      },
+      {
+        "id": "TG_Admin_LowStock_1",
+        "name": "TG_Admin_LowStock",
+        "parameters": {
+          "jsonBody": "={\n  \"chat_id\": \"{{ $json.body.config.tg_caisse }}\",\n  \"text\": \"⚠️ *ALERTE STOCK BAS*\\n\\n📦 Produit: {{ $json.body.data.name }}\\n📉 Stock actuel: {{ $json.body.data.currentStock }}\\n🔻 Seuil: {{ $json.body.data.threshold }}\",\n  \"parse_mode\": \"Markdown\"\n}",
+          "method": "POST",
+          "options": {},
+          "sendBody": true,
+          "specifyBody": "json",
+          "url": "=https://api.telegram.org/bot{{ $json.body.config.tg_token }}/sendMessage"
+        },
+        "position": [
+          608,
+          464
+        ],
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.1
+      },
+      {
+        "id": "CallbackSwitch_1",
+        "name": "CallbackSwitch",
+        "parameters": {},
+        "position": [
+          560,
+          656
+        ],
+        "type": "n8n-nodes-base.switch",
+        "typeVersion": 1
+      },
+      {
+        "id": "tg_caisse_NewOrder_1",
+        "name": "tg_caisse_NewOrder",
+        "parameters": {
+          "jsonBody": "={\n  \"chat_id\": \"{{ $json.body.config.tg_caisse }}\",\n  \"text\": \"📋 *Commande à traiter #{{ $json.body.data.orderNumber }}*\\n\\n📱 Client: {{ $json.body.data.customerPhone }}\\n💰 Total: {{ $json.body.data.totalAmount }} DZD\",\n  \"parse_mode\": \"Markdown\"\n}",
+          "method": "POST",
+          "options": {},
+          "sendBody": true,
+          "specifyBody": "json",
+          "url": "=https://api.telegram.org/bot{{ $json.body.config.tg_token }}/sendMessage"
+        },
+        "position": [
+          800,
+          608
+        ],
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.1
+      },
+      {
+        "id": "App_Callback_1",
+        "name": "App_Callback",
+        "parameters": {
+          "method": "POST",
+          "options": {},
+          "url": "={{ $json.body.data.appUrl || 'http://localhost:3000' }}/api/admin/n8n/callback"
+        },
+        "position": [
+          800,
+          800
+        ],
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.1
+      },
+      {
+        "id": "tg_caisse_ConfirmAttrib_1",
+        "name": "tg_caisse_ConfirmAttrib",
+        "parameters": {
+          "method": "POST",
+          "options": {},
+          "url": "=https://api.telegram.org/bot{{ $json.body.config.tg_token }}/sendMessage"
+        },
+        "position": [
+          1008,
+          800
+        ],
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.1
+      },
+      {
+        "id": "WA_Customer_Delivery_1",
+        "name": "WA_Customer_Delivery",
+        "parameters": {
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "apikey",
+                "value": "={{ $json.body.config.wa_key }}"
+              }
+            ]
+          },
+          "jsonBody": "={\n  \"number\": \"213{{ $json.body.data.customerPhone }}\",\n  \"text\": \"✅ Votre commande #{{ $json.body.data.orderNumber }} est prête ! Merci pour votre achat.\"\n}",
+          "method": "POST",
+          "options": {},
+          "sendBody": true,
+          "sendHeaders": true,
+          "specifyBody": "json",
+          "url": "={{ $json.body.config.wa_url }}/message/sendText/{{ $json.body.config.wa_instance }}"
+        },
+        "position": [
+          608,
+          800
+        ],
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.1
+      },
+      {
+        "id": "f46dea8a-65cf-4c8d-ae2d-717aa2b5a5ab",
+        "name": "TG_Integration_Test",
+        "parameters": {
+          "jsonBody": "={\n  \"chat_id\": \"{{ $json.body.config.tg_caisse }}\",\n  \"text\": \"✅ *Test d'intégration réussi !*\\n\\n🤖 Flexbox ↔ n8n : Connecté\\n⏰ {{ $now.toISO() }}\",\n  \"parse_mode\": \"Markdown\"\n}",
+          "method": "POST",
+          "options": {},
+          "sendBody": true,
+          "specifyBody": "json",
+          "url": "=https://api.telegram.org/bot{{ $json.body.config.tg_token }}/sendMessage"
+        },
+        "position": [
+          608,
+          1056
+        ],
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.1
+      }
+    ],
+    "connections": {
+      "App_Callback": {
+        "main": [
+          [
+            {
+              "index": 0,
+              "node": "tg_caisse_ConfirmAttrib",
+              "type": "main"
+            }
+          ]
+        ]
+      },
+      "CallbackSwitch": {
+        "main": [
+          [
+            {
+              "index": 0,
+              "node": "tg_caisse_NewOrder",
+              "type": "main"
+            }
+          ],
+          [
+            {
+              "index": 0,
+              "node": "App_Callback",
+              "type": "main"
+            }
+          ]
+        ]
+      },
+      "EventTypeSwitch": {
+        "main": [
+          [
+            {
+              "index": 0,
+              "node": "TG_Caisse_NewOrder",
+              "type": "main"
+            }
+          ],
+          [
+            {
+              "index": 0,
+              "node": "TG_Admin_LowStock",
+              "type": "main"
+            }
+          ],
+          [
+            {
+              "index": 0,
+              "node": "tg_caisse_NewOrder",
+              "type": "main"
+            }
+          ],
+          [
+            {
+              "index": 0,
+              "node": "WA_Customer_Delivery",
+              "type": "main"
+            }
+          ],
+          [
+            {
+              "index": 0,
+              "node": "TG_Integration_Test",
+              "type": "main"
+            }
+          ]
+        ]
+      },
+      "ExecuteWorkflowTrigger": {
+        "main": [
+          [
+            {
+              "index": 0,
+              "node": "EventTypeSwitch",
+              "type": "main"
+            }
+          ]
+        ]
+      },
+      "WebhookTrigger": {
+        "main": [
+          [
+            {
+              "index": 0,
+              "node": "EventTypeSwitch",
+              "type": "main"
+            }
+          ]
+        ]
+      }
+    },
+    "authors": "naguim sali",
+    "name": null,
+    "description": null,
+    "autosaved": false,
+    "workflowPublishHistory": [
+      {
+        "createdAt": "2026-03-21T01:02:21.845Z",
+        "id": 58,
+        "workflowId": "2BjUu0xqxlfXjX4n",
+        "versionId": "7353d1b1-bde7-41ef-94a6-7c65058d1b1a",
+        "event": "activated",
+        "userId": "024601e7-448a-411f-ae00-72be717ea922"
+      },
+      {
+        "createdAt": "2026-03-21T01:02:21.811Z",
+        "id": 57,
+        "workflowId": "2BjUu0xqxlfXjX4n",
+        "versionId": "7353d1b1-bde7-41ef-94a6-7c65058d1b1a",
+        "event": "deactivated",
+        "userId": "024601e7-448a-411f-ae00-72be717ea922"
+      }
+    ]
+  }
+}

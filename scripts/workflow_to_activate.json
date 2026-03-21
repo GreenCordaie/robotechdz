@@ -1,0 +1,299 @@
+{
+  "updatedAt": "2026-03-20T17:50:41.181Z",
+  "createdAt": "2026-03-20T17:47:09.215Z",
+  "id": "9pU0eXQsuLHzzv6a",
+  "name": "Robotech AI Assistant (Gemini)",
+  "description": null,
+  "active": true,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "robotech-ai-assistant-gemini",
+        "options": {}
+      },
+      "id": "11",
+      "name": "Webhook",
+      "position": [
+        0,
+        240
+      ],
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "webhookId": "cc32cd42-60e9-4119-b674-43cada0dab5f"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "mode": "id",
+          "value": "models/gemini-1.5-flash"
+        },
+        "messages": {
+          "values": [
+            {}
+          ]
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "id": "22",
+      "name": "Classifier",
+      "position": [
+        208,
+        240
+      ],
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1.1,
+      "credentials": {
+        "googlePalmApi": {
+          "id": "a5jVc4hVdzDthxKI",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.text }}",
+                    "operator": {
+                      "operation": "equals",
+                      "type": "string"
+                    },
+                    "rightValue": "PRODUCTS"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "products"
+            },
+            {
+              "conditions": {
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.text }}",
+                    "operator": {
+                      "operation": "equals",
+                      "type": "string"
+                    },
+                    "rightValue": "ORDERS"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "orders"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "33",
+      "name": "Router",
+      "position": [
+        432,
+        240
+      ],
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT name, sale_price_dzd FROM products JOIN product_variants ON products.id = product_variants.product_id WHERE status = 'ACTIVE' LIMIT 15",
+        "options": {}
+      },
+      "id": "44",
+      "name": "ProductLookup",
+      "position": [
+        640,
+        80
+      ],
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT order_number, status FROM orders WHERE customer_phone = '{{ $node[\"Webhook\"].json[\"body\"][\"sender\"] }}' ORDER BY created_at DESC LIMIT 1",
+        "options": {}
+      },
+      "id": "55",
+      "name": "OrderLookup",
+      "position": [
+        640,
+        240
+      ],
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "mode": "id",
+          "value": "models/gemini-1.5-flash"
+        },
+        "messages": {
+          "values": [
+            {}
+          ]
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "id": "66",
+      "name": "Responder",
+      "position": [
+        912,
+        240
+      ],
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1.1,
+      "credentials": {
+        "googlePalmApi": {
+          "id": "a5jVc4hVdzDthxKI",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://your-evolution-instance.com/message/sendText",
+        "options": {}
+      },
+      "id": "77",
+      "name": "WhatsApp",
+      "position": [
+        1120,
+        240
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2
+    }
+  ],
+  "connections": {
+    "Classifier": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Router",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "OrderLookup": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Responder",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "ProductLookup": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Responder",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Responder": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "WhatsApp",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Router": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "ProductLookup",
+            "type": "main"
+          }
+        ],
+        [
+          {
+            "index": 0,
+            "node": "OrderLookup",
+            "type": "main"
+          }
+        ],
+        [
+          {
+            "index": 0,
+            "node": "Responder",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Webhook": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Classifier",
+            "type": "main"
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "saveManualExecutions": true,
+    "saveExecutionProgress": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false,
+    "binaryMode": "separate"
+  },
+  "staticData": null,
+  "meta": null,
+  "pinData": {},
+  "versionId": "5c6e27c9-c61b-4470-81ff-30391b7032db",
+  "activeVersionId": null,
+  "versionCounter": 2,
+  "triggerCount": 0,
+  "shared": [
+    {
+      "updatedAt": "2026-03-20T17:47:09.219Z",
+      "createdAt": "2026-03-20T17:47:09.219Z",
+      "role": "workflow:owner",
+      "workflowId": "9pU0eXQsuLHzzv6a",
+      "projectId": "4SLEV9UOuoIn4w1E",
+      "project": {
+        "updatedAt": "2026-03-20T10:23:22.973Z",
+        "createdAt": "2026-03-20T10:17:25.629Z",
+        "id": "4SLEV9UOuoIn4w1E",
+        "name": "naguim sali <royalery@gmail.com>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "creatorId": "024601e7-448a-411f-ae00-72be717ea922"
+      }
+    }
+  ],
+  "tags": [],
+  "activeVersion": null
+}

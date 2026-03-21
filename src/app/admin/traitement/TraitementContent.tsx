@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { Spinner } from "@heroui/react";
 import { toast } from "react-hot-toast";
 import { getPaidOrders, getFinishedOrders, processOrder, markOrderAsTermine, cancelOrderAction, resendWhatsAppAction } from "../caisse/actions";
+import { attribuerSlotAutomatiqueAction } from "../comptes-partages/actions";
 import { ThermalReceiptV2 } from "@/components/admin/receipt/ThermalReceiptV2";
 import OrderDetailModal from "@/components/admin/modals/OrderDetailModal";
 import { Eye } from "lucide-react";
@@ -40,13 +41,33 @@ export default function TraitementContent({ initialOrders = [], initialFinished 
     const settings = useSettingsStore();
     const { user } = useAuthStore();
 
+    const [isAssigning, setIsAssigning] = useState<Record<string, boolean>>({});
+
+    const handleAutoAssign = async (orderItemId: number, variantId: number, slotIndex: number) => {
+        const key = `${orderItemId}-${slotIndex}`;
+        setIsAssigning(prev => ({ ...prev, [key]: true }));
+        try {
+            const res = await attribuerSlotAutomatiqueAction({ orderItemId, variantId }) as any;
+            if (res.success) {
+                toast.success("Slot attribué avec succès !");
+                loadOrders();
+            } else {
+                toast.error(res.error || "Erreur d'attribution");
+            }
+        } catch (error) {
+            toast.error("Erreur technique");
+        } finally {
+            setIsAssigning(prev => ({ ...prev, [key]: false }));
+        }
+    };
+
     const loadOrders = useCallback(async () => {
         // Optimization: Don't set loading if we already have initial data for the current view
         if (view === "pending" && orders.length === 0) setIsLoading(true);
         if (view === "finished" && orders.length === 0) setIsLoading(true);
 
         try {
-            const res: any = view === "pending" ? await getPaidOrders({}) : await getFinishedOrders({});
+            const res = (view === "pending" ? await getPaidOrders({}) : await getFinishedOrders({})) as any;
             if (res && res.success === false) {
                 toast.error("Erreur de sécurité : " + res.error);
                 setOrders([]);
@@ -504,17 +525,37 @@ export default function TraitementContent({ initialOrders = [], initialFinished 
                                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pl-18">
                                                     {Array.from({ length: item.quantity }).map((_, i) => {
                                                         const isPreassigned = item.codes && item.codes[i];
+                                                        const isSharing = item.variant?.isSharing;
+                                                        const isAssigningKey = `${item.id}-${i}`;
+
                                                         return (
-                                                            <div key={i} className="relative">
-                                                                <div className={`absolute inset-y-0 left-0 w-1 ${isPreassigned ? 'bg-emerald-500' : 'bg-[#ec5b13]/40'} rounded-full`}></div>
-                                                                <input
-                                                                    className={`w-full bg-[#2a1b15] border-white/5 rounded-xl px-4 py-3 text-sm focus:ring-1 focus:ring-[#ec5b13] focus:border-[#ec5b13] outline-none text-white placeholder:text-slate-600 transition-all ${isPreassigned ? 'opacity-60 cursor-not-allowed border-emerald-500/30' : ''}`}
-                                                                    placeholder={isPreassigned ? "Code automatique assigné" : `Entrez le code #${i + 1} pour ${item.name}...`}
-                                                                    type="text"
-                                                                    value={codes[`${item.id}-${i}`] || ""}
-                                                                    onChange={(e) => handleCodeChange(item.id, i, e.target.value)}
-                                                                    disabled={view === "finished" || isPreassigned}
-                                                                />
+                                                            <div key={i} className="flex flex-col gap-2">
+                                                                <div className="relative">
+                                                                    <div className={`absolute inset-y-0 left-0 w-1 ${isPreassigned ? 'bg-emerald-500' : 'bg-[#ec5b13]/40'} rounded-full`}></div>
+                                                                    <input
+                                                                        className={`w-full bg-[#2a1b15] border-white/5 rounded-xl px-4 py-3 text-sm focus:ring-1 focus:ring-[#ec5b13] focus:border-[#ec5b13] outline-none text-white placeholder:text-slate-600 transition-all ${isPreassigned ? 'opacity-60 cursor-not-allowed border-emerald-500/30' : ''}`}
+                                                                        placeholder={isPreassigned ? "Code automatique assigné" : `Entrez le code #${i + 1} pour ${item.name}...`}
+                                                                        type="text"
+                                                                        value={codes[`${item.id}-${i}`] || ""}
+                                                                        onChange={(e) => handleCodeChange(item.id, i, e.target.value)}
+                                                                        disabled={view === "finished" || isPreassigned}
+                                                                    />
+                                                                </div>
+
+                                                                {isSharing && !isPreassigned && view === "pending" && (
+                                                                    <button
+                                                                        onClick={() => handleAutoAssign(item.id, item.variantId, i)}
+                                                                        disabled={isAssigning[isAssigningKey]}
+                                                                        className="flex items-center justify-center gap-2 py-2 px-4 rounded-xl bg-orange-500/10 border border-orange-500/20 text-orange-400 hover:bg-orange-500/20 text-xs font-black transition-all group active:scale-95"
+                                                                    >
+                                                                        {isAssigning[isAssigningKey] ? (
+                                                                            <Loader2 className="size-3 animate-spin" />
+                                                                        ) : (
+                                                                            <span className="material-symbols-outlined text-sm group-hover:rotate-12 transition-transform">pyscript</span>
+                                                                        )}
+                                                                        <span>🧠 ATTRIBUER SLOT AUTO</span>
+                                                                    </button>
+                                                                )}
                                                             </div>
                                                         );
                                                     })}

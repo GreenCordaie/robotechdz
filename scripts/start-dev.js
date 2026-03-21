@@ -3,177 +3,155 @@ const fs = require('fs');
 const postgres = require('postgres');
 const path = require('path');
 
-// 1. Check if cloudflared is installed
+/** 
+ * ROBOTECH ORCHESTRATOR PRO v3.0
+ * Automates: Next.js + n8n + 2x Cloudflare Tunnels + Config Sync
+ */
+
+// 1. Dependency Check
 try {
     execSync('cloudflared --version', { stdio: 'ignore' });
 } catch (e) {
     console.error("❌ ERREUR: 'cloudflared' n'est pas installé ou n'est pas dans le PATH.");
-    console.log("👉 Veuillez installer Cloudflare Tunnel : https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/");
     process.exit(1);
 }
 
-// 2. Parse .env file
+// 2. Load Config from .env
 const envPath = path.join(__dirname, '..', '.env');
 const envConfig = {};
-try {
-    const envContent = fs.readFileSync(envPath, 'utf-8');
-    envContent.split('\n').forEach(line => {
-        const cleanLine = line.replace(/\r/g, '').trim();
-        const match = cleanLine.match(/^([^=]+)=(.*)$/);
-        if (match) {
-            envConfig[match[1].trim()] = match[2].trim().replace(/^["']|["']$/g, '').trim();
-        }
-    });
-} catch (e) {
-    console.error("❌ ERREUR: Impossible de lire le fichier .env");
-    process.exit(1);
+function readEnv() {
+    try {
+        const content = fs.readFileSync(envPath, 'utf-8');
+        content.split('\n').forEach(line => {
+            const m = line.trim().match(/^([^=]+)=(.*)$/);
+            if (m) envConfig[m[1].trim()] = m[2].trim().replace(/^["']|["']$/g, '');
+        });
+    } catch (e) { }
+}
+readEnv();
+
+function updateEnv(key, value) {
+    let content = fs.readFileSync(envPath, 'utf-8');
+    const regex = new RegExp(`^${key}=.*`, 'm');
+    if (content.match(regex)) {
+        content = content.replace(regex, `${key}="${value}"`);
+    } else {
+        content += `\n${key}="${value}"`;
+    }
+    fs.writeFileSync(envPath, content, 'utf-8');
+    process.stdout.write(`📝 .env updated: ${key}\n`);
 }
 
 const DATABASE_URL = envConfig['DATABASE_URL'] || process.env.DATABASE_URL;
-const TELEGRAM_SECRET_TOKEN = envConfig['TELEGRAM_SECRET_TOKEN'] || process.env.TELEGRAM_SECRET_TOKEN || "flexbox_secure_token_2026";
+const TELEGRAM_SECRET_TOKEN = envConfig['TELEGRAM_SECRET_TOKEN'] || "flexbox_secure_token_2026";
 
 if (!DATABASE_URL) {
-    console.error("❌ ERREUR: DATABASE_URL est manquant dans le fichier .env !");
+    console.error("❌ ERREUR: DATABASE_URL manquant.");
     process.exit(1);
 }
 
-// 3. Start Next.js Server
-console.log("🚀 [1/3] Lancement du serveur Next.js (Port 1556)...");
+// 3. Start Processes
+console.log("🚀 [1/3] Lancement des services...");
+
 const isWindows = process.platform === 'win32';
 const npmCmd = isWindows ? 'npm.cmd' : 'npm';
+
+// A. Next.js
 const nextProcess = spawn(npmCmd, ['run', 'dev'], { stdio: 'inherit', shell: true });
 
-// 4. Start Cloudflared Tunnel
-console.log("🌐 [2/3] Lancement du tunnel Cloudflare...");
-const cloudflaredProcess = spawn('cloudflared', ['tunnel', '--url', 'http://localhost:1556'], { shell: true });
+// B. Cloudflared App Tunnel
+console.log("🌐 [2/3] Initialisation des tunnels Cloudflare...");
+const appTunnel = spawn('cloudflared', ['tunnel', '--url', 'http://localhost:1556'], { shell: true });
 
-let publicUrl = null;
+// C. Cloudflared n8n Tunnel (Optional but recommended)
+const n8nTunnel = spawn('cloudflared', ['tunnel', '--url', 'http://localhost:5678'], { shell: true });
 
-cloudflaredProcess.stdout.on('data', (data) => processCloudflaredLog(data.toString()));
-cloudflaredProcess.stderr.on('data', (data) => processCloudflaredLog(data.toString()));
+let appUrl = null;
+let n8nUrl = null;
 
-cloudflaredProcess.on('error', (err) => {
-    console.error("❌ Erreur lors du lancement de cloudflared:", err.message);
-});
-
-async function processCloudflaredLog(text) {
-    // Cloudflared logs everything to stderr usually. Print relevant parts visually.
-    if (text.includes("ERR") || text.includes("error")) {
-        process.stdout.write(text);
-    }
-
-    if (publicUrl) return; // Once found, ignore further logs
-
-    const urlMatch = text.match(/https:\/\/[a-zA-Z0-9-]+\.trycloudflare\.com/);
-    if (urlMatch) {
-        publicUrl = urlMatch[0];
-        console.log(`\n✅ URL Publique détectée : ${publicUrl}`);
-        console.log("🤖 [3/3] Paramétrage automatique de Telegram en cours...");
-        await updateConfigAndTelegram(publicUrl);
-    }
+async function onAppUrlDetected(url) {
+    appUrl = url;
+    console.log(`\n✅ APP URL : ${url}`);
+    updateEnv('NEXT_PUBLIC_APP_URL', url);
+    await syncSystem();
 }
 
-async function updateConfigAndTelegram(url) {
+async function onN8nUrlDetected(url) {
+    n8nUrl = url;
+    console.log(`✅ n8n URL : ${url}`);
+    updateEnv('N8N_WEBHOOK_URL', `${url}/webhook/flexbox`);
+    await syncSystem();
+}
+
+appTunnel.stderr.on('data', (d) => {
+    const text = d.toString();
+    if (text.includes("ERR")) process.stdout.write(`[AppTunnel ERROR] ${text}`);
+    const m = text.match(/https:\/\/[a-zA-Z0-9-]+\.trycloudflare\.com/);
+    if (m && !appUrl) onAppUrlDetected(m[0]);
+});
+
+n8nTunnel.stderr.on('data', (d) => {
+    const text = d.toString();
+    const m = text.match(/https:\/\/[a-zA-Z0-9-]+\.trycloudflare\.com/);
+    if (m && !n8nUrl) onN8nUrlDetected(m[0]);
+});
+
+async function syncSystem() {
+    if (!appUrl) return; // We need at least the app URL
+
     const sql = postgres(DATABASE_URL);
     try {
         const settings = await sql`SELECT * FROM shop_settings LIMIT 1`;
-        if (settings.length === 0) {
-            console.log("⚠️ Aucune configuration 'shop_settings' trouvée. Webhook ignoré.");
-            return;
+        if (settings.length === 0) return;
+        const current = settings[0];
+
+        // 1. Update Database URLs
+        const updates = {
+            webhook_url: appUrl,
+            whatsapp_webhook_url: `${appUrl}/api/webhooks/whatsapp`
+        };
+        if (n8nUrl) {
+            updates.n8n_webhook_url = `${n8nUrl}/webhook/flexbox`;
         }
 
-        const currentSettings = settings[0];
+        await sql`UPDATE shop_settings SET ${sql(updates)} WHERE id = ${current.id}`;
+        console.log("✅ Base de données synchronisée.");
 
-        // Update URL and WhatsApp Webhook in DB
-        await sql`UPDATE shop_settings SET webhook_url = ${url}, whatsapp_webhook_url = ${url + '/api/webhooks/whatsapp'} WHERE id = ${currentSettings.id}`;
-        console.log("✅ URLs enregistrées dans la base de données (shop_settings).");
+        // 2. Telegram Webhook sync
+        if (current.telegram_bot_token) {
+            const webhookEndpoint = `${appUrl}/api/telegram/webhook`;
+            await fetch(`https://api.telegram.org/bot${current.telegram_bot_token}/setWebhook?url=${webhookEndpoint}&secret_token=${TELEGRAM_SECRET_TOKEN}`);
+            console.log("✅ Webhook Telegram mis à jour.");
+        }
 
-        // Format dates correctly for Telegram
-        const now = new Date().toLocaleString('fr-FR');
+        // 3. Evolution API Webhook sync
+        const waUrl = (current.whatsapp_api_url || "http://127.0.0.1:3001").replace(/\/$/, '');
+        const waKey = current.whatsapp_api_key || "abc";
+        const waInstance = current.whatsapp_instance_name || "FLEXBOX_APP";
 
-        const telegramToken = currentSettings.telegram_bot_token;
-        const telegramChatId = currentSettings.telegram_chat_id;
-
-        if (telegramToken && telegramChatId) {
-            // A. Set Webhook
-            const webhookEndpoint = `${url}/api/telegram/webhook`;
-            console.log(`🔗 Configuration du Webhook : ${webhookEndpoint}`);
-            const webhookRes = await fetch(`https://api.telegram.org/bot${telegramToken}/setWebhook?url=${webhookEndpoint}&secret_token=${TELEGRAM_SECRET_TOKEN}`, { method: 'POST' });
-            const webhookData = await webhookRes.json();
-
-            if (webhookData.ok) {
-                console.log("✅ Webhook Telegram configuré et sécurisé avec succès !");
-            } else {
-                console.error("❌ Erreur Webhook:", webhookData.description);
-            }
-
-            // B. Send Notification Message
-            const message = `🚀 *FLEXBOX DIRECT - MODE DEV*\n\nLe serveur local a redémarré à ${now} !\n\n🔗 *Nouvelle URL d'accès global / Webhook* :\n${url}\n\n_Le bot est de nouveau prêt à recevoir et imprimer des codes._`;
-            const msgRes = await fetch(`https://api.telegram.org/bot${telegramToken}/sendMessage`, {
+        try {
+            const waReq = waUrl.includes('localhost') ? waUrl.replace('localhost', '127.0.0.1') : waUrl;
+            await fetch(`${waReq}/webhook/instance/${waInstance}`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'apikey': waKey, 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    chat_id: telegramChatId,
-                    text: message,
-                    parse_mode: 'Markdown'
+                    url: `${appUrl}/api/webhooks/whatsapp`,
+                    enabled: true,
+                    events: ["MESSAGES_UPSERT"]
                 })
             });
-
-            if (msgRes.ok) {
-                console.log("✅ Message d'alerte envoyé sur le groupe Telegram de l'équipe !");
-            }
-        } else {
-            console.log("⚠️ Token ou Chat ID Telegram manquants. Configuration ignorée.");
-        }
-
-        // 🤖 C. WhatsApp Webhook (Evolution API)
-        const waUrl = (currentSettings.whatsapp_api_url || "http://127.0.0.1:3001").replace(/\/$/, '');
-        const waKey = currentSettings.whatsapp_api_key || "abc";
-        const waInstance = currentSettings.whatsapp_instance_name || "FLEXBOX_APP";
-        const waWebhook = `${url}/api/webhooks/whatsapp`;
-
-        if (waUrl && waInstance) {
-            console.log(`📡 Configuration WhatsApp : ${waInstance} -> ${waWebhook}`);
-            try {
-                // Windows fix: if local, use 127.0.0.1
-                const waRequestUrl = waUrl.includes('localhost') ? waUrl.replace('localhost', '127.0.0.1') : waUrl;
-
-                const waRes = await fetch(`${waRequestUrl}/webhook/instance/${waInstance}`, {
-                    method: 'POST',
-                    headers: { 'apikey': waKey, 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        url: waWebhook,
-                        enabled: true,
-                        webhook_by_events: false,
-                        events: ["MESSAGES_UPSERT"]
-                    })
-                });
-
-                if (waRes.ok) {
-                    console.log("✅ Webhook WhatsApp (Evolution API) configuré avec succès !");
-                } else {
-                    const err = await waRes.json();
-                    console.error("❌ Erreur Webhook WhatsApp:", err);
-                }
-            } catch (waErr) {
-                console.error("❌ Impossible de joindre Evolution API pour le Webhook:", waErr.message);
-            }
-        }
+            console.log("✅ Webhook WhatsApp synchronisé.");
+        } catch (e) { }
 
     } catch (e) {
-        console.error("❌ Erreur DB/API :", e);
+        console.error("❌ Erreur Sync:", e.message);
     } finally {
         await sql.end();
-        console.log("\n🎉 SYSTÈME OPÉRATIONNEL ! Laissez cette fenêtre ouverte.");
-        console.log("👉 Accès local : http://localhost:1556");
-        console.log(`👉 Accès distant : ${url}\n`);
     }
 }
 
-// Nettoyage à l'arrêt (Ctrl+C)
 process.on('SIGINT', () => {
-    console.log("\nArrêt des processus...");
-    if (nextProcess) nextProcess.kill();
-    if (cloudflaredProcess) cloudflaredProcess.kill();
+    console.log("\nArrêt...");
+    [nextProcess, appTunnel, n8nTunnel].forEach(p => p && p.kill());
     process.exit();
 });

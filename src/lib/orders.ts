@@ -188,7 +188,15 @@ export async function allocateOrderStock(
                         newData: { amount: cost, currency: supplier.currency, orderId }
                     });
                 }
-                await tx.update(orderItems).set({ supplierId }).where(eq(orderItems.id, item.id));
+
+                // Persist historical cost for margin analytics
+                await tx.update(orderItems)
+                    .set({
+                        supplierId,
+                        purchasePrice,
+                        purchaseCurrency: currency
+                    })
+                    .where(eq(orderItems.id, item.id));
             }
         }
 

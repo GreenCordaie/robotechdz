@@ -15,7 +15,8 @@ import { toast } from "react-hot-toast";
 import {
     getShopSettingsAction,
     saveShopSettingsAction,
-    testN8nAction
+    testN8nAction,
+    getWhatsAppQrAction
 } from "@/app/admin/settings/actions";
 
 export function ApiBotSettings() {
@@ -29,6 +30,19 @@ export function ApiBotSettings() {
     const [geminiKey, setGeminiKey] = useState("");
     const [chatbotRole, setChatbotRole] = useState("");
     const [usdRate, setUsdRate] = useState("245.00");
+
+    // Telegram States
+    const [tgToken, setTgToken] = useState("");
+    const [tgChatIdCaisse, setTgChatIdCaisse] = useState("");
+    const [tgChatIdTraiteur, setTgChatIdTraiteur] = useState("");
+
+    // WhatsApp States
+    const [waApiUrl, setWaApiUrl] = useState("");
+    const [waApiKey, setWaApiKey] = useState("");
+    const [waInstanceName, setWaInstanceName] = useState("");
+
+    const [qrCodeParams, setQrCodeParams] = useState<any>(null);
+    const [isFetchingQr, setIsFetchingQr] = useState(false);
 
     useEffect(() => {
         loadSettings();
@@ -45,6 +59,16 @@ export function ApiBotSettings() {
                 setChatbotRole(s.chatbotRole || "");
                 setUsdRate(s.usdExchangeRate || "245.00");
                 setN8nWebhookUrl(s.n8nWebhookUrl || "");
+
+                // Telegram
+                setTgToken(s.telegramBotToken || "");
+                setTgChatIdCaisse(s.telegramChatIdCaisse || "");
+                setTgChatIdTraiteur(s.telegramChatIdTraiteur || "");
+
+                // WhatsApp
+                setWaApiUrl(s.whatsappApiUrl || "");
+                setWaApiKey(s.whatsappApiKey || "");
+                setWaInstanceName(s.whatsappInstanceName || "");
             }
         } catch (err) {
             toast.error("Erreur chargement paramètres");
@@ -64,6 +88,12 @@ export function ApiBotSettings() {
                 chatbotRole,
                 usdExchangeRate: usdRate,
                 n8nWebhookUrl,
+                telegramBotToken: tgToken,
+                telegramChatIdCaisse: tgChatIdCaisse,
+                telegramChatIdTraiteur: tgChatIdTraiteur,
+                whatsappApiUrl: waApiUrl,
+                whatsappApiKey: waApiKey,
+                whatsappInstanceName: waInstanceName,
                 shopName: "FLEXBOX DIRECT",
             } as any);
 
@@ -92,6 +122,30 @@ export function ApiBotSettings() {
             toast.error("Erreur technique n8n");
         } finally {
             setIsTestingN8n(false);
+        }
+    };
+
+    const handleFetchQr = async () => {
+        setIsFetchingQr(true);
+        setQrCodeParams(null);
+        try {
+            const res: any = await getWhatsAppQrAction({});
+            if (res.success && res.data) {
+                setQrCodeParams(res.data);
+                if (res.data?.instance?.state === 'open') {
+                    toast.success("Instance WhatsApp déjà connectée !");
+                } else if (res.data?.base64) {
+                    toast.success("QR Code récupéré ! Scannez-le rapidement.");
+                } else if (res.data?.qrcode?.base64) {
+                    toast.success("QR Code récupéré ! Scannez-le rapidement."); // Fallback for other versions
+                }
+            } else {
+                toast.error(res.error || "Erreur de récupération du QR Code");
+            }
+        } catch (err) {
+            toast.error("Erreur technique lors de la requête QR");
+        } finally {
+            setIsFetchingQr(false);
         }
     };
 
@@ -141,6 +195,143 @@ export function ApiBotSettings() {
                                 startContent={<Save size={14} />}
                             >
                                 Enregistrer les Paramètres
+                            </Button>
+                        </div>
+                    </div>
+                </section>
+
+                {/* Telegram Configuration Section */}
+                <section className="space-y-8">
+                    <div>
+                        <h3 className="text-xl font-black text-white uppercase tracking-tight flex items-center gap-2">
+                            <Zap className="text-[#0088cc]" size={24} />
+                            Configuration Telegram
+                        </h3>
+                        <p className="text-sm text-slate-400 mt-1">Gérez vos notifications et interactions Telegram.</p>
+                    </div>
+
+                    <div className="bg-[#1a1614] p-8 rounded-[32px] border border-white/5 shadow-2xl">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div className="space-y-2 md:col-span-2">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Bot Token (@BotFather)</label>
+                                <Input
+                                    value={tgToken}
+                                    onValueChange={setTgToken}
+                                    type="password"
+                                    placeholder="123456789:ABCDE..."
+                                    variant="bordered"
+                                    className="dark"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">ID Chat Caisse</label>
+                                <Input
+                                    value={tgChatIdCaisse}
+                                    onValueChange={setTgChatIdCaisse}
+                                    placeholder="-100..."
+                                    variant="bordered"
+                                    className="dark"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">ID Chat Traiteur</label>
+                                <Input
+                                    value={tgChatIdTraiteur}
+                                    onValueChange={setTgChatIdTraiteur}
+                                    placeholder="-100..."
+                                    variant="bordered"
+                                    className="dark"
+                                />
+                            </div>
+                        </div>
+                        <div className="mt-6 pt-6 border-t border-white/5 flex justify-end">
+                            <Button
+                                onPress={handleSave}
+                                isLoading={isSaving}
+                                className="bg-[#0088cc] text-white font-black uppercase tracking-widest text-[10px] px-10 py-6 rounded-2xl shadow-xl shadow-[#0088cc]/20"
+                                startContent={<Save size={14} />}
+                            >
+                                Enregistrer Telegram
+                            </Button>
+                        </div>
+                    </div>
+                </section>
+
+                {/* WhatsApp Configuration Section */}
+                <section className="space-y-8">
+                    <div>
+                        <h3 className="text-xl font-black text-white uppercase tracking-tight flex items-center gap-2">
+                            <Zap className="text-[#25D366]" size={24} />
+                            Configuration WhatsApp (Evolution API)
+                        </h3>
+                        <p className="text-sm text-slate-400 mt-1">Connectez votre automate de livraison WhatsApp.</p>
+                    </div>
+
+                    <div className="bg-[#1a1614] p-8 rounded-[32px] border border-white/5 shadow-2xl">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div className="space-y-2 md:col-span-2">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">URL de l&apos;API WhatsApp</label>
+                                <Input
+                                    value={waApiUrl}
+                                    onValueChange={setWaApiUrl}
+                                    placeholder="https://votre-instance-wa.com"
+                                    variant="bordered"
+                                    className="dark"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Clé API (Global Key)</label>
+                                <Input
+                                    value={waApiKey}
+                                    onValueChange={setWaApiKey}
+                                    type="password"
+                                    placeholder="votre_cle_secrete"
+                                    variant="bordered"
+                                    className="dark"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Nom de l&apos;Instance</label>
+                                <Input
+                                    value={waInstanceName}
+                                    onValueChange={setWaInstanceName}
+                                    placeholder="FLEXBOX_APP"
+                                    variant="bordered"
+                                    className="dark"
+                                />
+                            </div>
+                        </div>
+                        <div className="mt-6 pt-6 border-t border-white/5 flex flex-col md:flex-row justify-between items-center gap-4">
+                            <div className="flex flex-col items-center">
+                                {qrCodeParams?.instance?.state === 'open' ? (
+                                    <div className="text-center p-4 bg-green-500/10 rounded-xl border border-green-500/20">
+                                        <p className="text-green-500 font-bold px-2">Instance Connectée ✅</p>
+                                    </div>
+                                ) : (qrCodeParams?.base64 || qrCodeParams?.qrcode?.base64) ? (
+                                    <div className="text-center space-y-2">
+                                        <div className="bg-white p-2 rounded-xl">
+                                            <img src={qrCodeParams.base64 || qrCodeParams.qrcode.base64} alt="WhatsApp QR Code" className="w-48 h-48" />
+                                        </div>
+                                        <p className="text-[10px] text-slate-400">Scannez ce code avec WhatsApp</p>
+                                    </div>
+                                ) : (
+                                    <Button
+                                        onPress={handleFetchQr}
+                                        isLoading={isFetchingQr}
+                                        variant="flat"
+                                        className="bg-[#25D366]/10 text-[#25D366] font-black uppercase tracking-widest text-[10px] px-6 py-6 rounded-2xl border border-[#25D366]/20"
+                                    >
+                                        Générer / Voir QR Code
+                                    </Button>
+                                )}
+                            </div>
+                            <Button
+                                onPress={handleSave}
+                                isLoading={isSaving}
+                                className="bg-[#25D366] text-white font-black uppercase tracking-widest text-[10px] px-10 py-6 rounded-2xl shadow-xl shadow-[#25D366]/20"
+                                startContent={<Save size={14} />}
+                            >
+                                Enregistrer WhatsApp
                             </Button>
                         </div>
                     </div>

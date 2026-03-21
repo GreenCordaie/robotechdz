@@ -28,7 +28,18 @@ export async function POST(req: NextRequest) {
             }
         }
 
-        // 1. Basic structure validation
+        // 1. Handle Callback Query (Buttons)
+        if (body.callback_query) {
+            const { N8nService } = await import("@/services/n8n.service");
+            await N8nService.triggerEvent("TELEGRAM_CALLBACK", {
+                callback_data: body.callback_query.data,
+                from: body.callback_query.from,
+                message: body.callback_query.message,
+            });
+            return NextResponse.json({ ok: true });
+        }
+
+        // 2. Basic structure validation (Messages)
         if (!body.message || !body.message.reply_to_message) {
             return NextResponse.json({ ok: true });
         }

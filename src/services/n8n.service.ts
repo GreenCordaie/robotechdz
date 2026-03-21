@@ -1,4 +1,7 @@
 import { db } from "@/db";
+import { digitalCodes, digitalCodeSlots, orderItems, orders, clients, productVariants } from "@/db/schema";
+import { eq, and, lte, gte, isNotNull, ne } from "drizzle-orm";
+import { DigitalCodeStatus, DigitalCodeSlotStatus } from "@/lib/constants";
 
 /**
  * N8n Centralized Service
@@ -9,18 +12,38 @@ export class N8nService {
      * Triggers an event on the configured n8n webhook.
      */
     static async triggerEvent(eventName: string, data: any) {
-        const webhookUrl = process.env.N8N_WEBHOOK_URL || "http://localhost:5678/webhook/flexbox";
         try {
-            console.log(`[N8nService] Triggering event: ${eventName}`);
+            // Fetch credentials and URLs dynamically from DB
+            const settings = await db.query.shopSettings.findFirst();
+
+            const webhookUrl = settings?.n8nWebhookUrl || process.env.N8N_WEBHOOK_URL || "http://localhost:5678/webhook/flexbox";
+
+            const config = {
+                tg_token: settings?.telegramBotToken,
+                tg_caisse: settings?.telegramChatIdCaisse,
+                tg_traiteur: settings?.telegramChatIdTraiteur,
+                wa_url: settings?.whatsappApiUrl,
+                wa_key: settings?.whatsappApiKey,
+                wa_instance: settings?.whatsappInstanceName,
+            };
+
+            console.log(`[N8nService] Triggering event: ${eventName} at URL: ${webhookUrl}`);
             const response = await fetch(webhookUrl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ eventName, ...data })
+                body: JSON.stringify({
+                    eventName,
+                    config, // Dynamic credentials
+                    data: data // Business data
+                })
             });
-            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`HTTP error! status: ${response.status}, body: ${errorText}`);
+            }
             return await response.json();
-        } catch (error) {
-            console.error(`[N8nService] Error triggering event ${eventName}:`, error);
+        } catch (error: any) {
+            console.error(`[N8nService] Error triggering event ${eventName}:`, error.message || error);
             return null;
         }
     }
@@ -31,8 +54,12 @@ export class N8nService {
     static async notifyOrderCreated(order: any) {
         return this.triggerEvent("ORDER_CREATED", {
             orderId: order.id,
+            orderNumber: order.orderNumber,
             customer: order.customerName,
+            customerPhone: order.customerPhone, // Essential for automated WhatsApp delivery
             total: order.totalAmount,
+            status: order.status,
+            isFullyAuto: !!order.isFullyAuto,
             itemsCount: order.items?.length || 0,
             link: `${process.env.NEXT_PUBLIC_APP_URL}/admin/caisse/${order.id}`
         });
@@ -76,5 +103,153 @@ export class N8nService {
             action,
             lastUpdated: new Date().toISOString()
         });
+    }
+
+    /**
+     * Notion Sync: Pushes a new shared account to Notion database.
+     */
+    static async syncSharedAccountToNotion(accountData: {
+        productName: string;
+        email: string;
+        pass: string;
+        variantName: string;
+        slotsCount: number;
+    }) {
+        return this.triggerEvent("NOTION_SYNC_ACCOUNT", {
+            ...accountData,
+            timestamp: new Date().toISOString()
+        });
+    }
+
+    /**
+     * Notifies the "Traiteur" (Processor) that an order is ready for manual handling.
+     */
+    static async notifyTraiteur(order: any) {
+        return this.triggerEvent("TRAITEUR_NOTIFY", {
+            orderId: order.id,
+            orderNumber: order.orderNumber,
+            customerPhone: order.customerPhone,
+            totalAmount: order.totalAmount,
+            items: order.items.map((it: any) => ({
+                name: it.name,
+                quantity: it.quantity,
+                customData: it.customData
+            }))
+        });
+    }
+
+    static async notifyOrderArchival(order: any) {
+        return this.triggerEvent("ORDER_ARCHIVAL", {
+            orderId: order.id,
+            orderNumber: order.orderNumber,
+            clientName: order.client?.nom || "Client",
+            clientPhone: order.client?.telephone || "",
+            totalAmount: order.totalAmount,
+            items: order.items.map((i: any) => ({
+                name: i.variant?.product?.name || i.name,
+                variant: i.variant?.name,
+                quantity: i.quantity,
+                price: i.price
+            })),
+            source: order.source,
+            date: new Date().toISOString()
+        });
+    }
+
+    /**
+     * Notifies about an approaching expiry (usually 3 days before).
+     */
+    static async notifyApproachingExpiry(data: {
+        type: 'CODE' | 'SLOT';
+        itemName: string;
+        expiresAt: Date;
+        clientPhone: string;
+        clientName: string;
+    }) {
+        return this.triggerEvent("EXPIRY_ALERT", {
+            ...data,
+            expiresAt: data.expiresAt.toISOString()
+        });
+    }
+
+    /**
+     * Scans the database for expiring items and updates status of expired ones.
+     */
+    static async runDailyExpirationScan() {
+        const now = new Date();
+        const threeDaysFromNow = new Date(now.getTime() + (3 * 24 * 60 * 60 * 1000));
+        const twoDaysFromNow = new Date(now.getTime() + (2 * 24 * 60 * 60 * 1000));
+
+        console.log(`[Expiration Scan] Started at ${now.toISOString()}`);
+
+        const results = { notified: 0, expired: 0 };
+
+        try {
+            // 1. Find SLOTs expiring in 3 days
+            const approachingSlots = await db
+                .select({
+                    id: digitalCodeSlots.id,
+                    expiresAt: digitalCodeSlots.expiresAt,
+                    phone: orders.customerPhone,
+                    clientName: clients.nomComplet,
+                    variantName: productVariants.name
+                })
+                .from(digitalCodeSlots)
+                .innerJoin(orderItems, eq(digitalCodeSlots.orderItemId, orderItems.id))
+                .innerJoin(orders, eq(orderItems.orderId, orders.id))
+                .leftJoin(clients, eq(orders.clientId, clients.id))
+                .innerJoin(productVariants, eq(orderItems.variantId, productVariants.id))
+                .where(
+                    and(
+                        eq(digitalCodeSlots.status, DigitalCodeSlotStatus.VENDU),
+                        isNotNull(digitalCodeSlots.expiresAt),
+                        gte(digitalCodeSlots.expiresAt, twoDaysFromNow),
+                        lte(digitalCodeSlots.expiresAt, threeDaysFromNow)
+                    )
+                );
+
+            for (const slot of approachingSlots) {
+                if (slot.phone && slot.expiresAt) {
+                    await this.notifyApproachingExpiry({
+                        type: 'SLOT',
+                        itemName: slot.variantName,
+                        expiresAt: slot.expiresAt,
+                        clientPhone: slot.phone,
+                        clientName: slot.clientName || "Client"
+                    });
+                    results.notified++;
+                }
+            }
+
+            // 2. Mark SLOTs as EXPIRED
+            const expiredSlots = await db
+                .update(digitalCodeSlots)
+                .set({ status: DigitalCodeSlotStatus.EXPIRE })
+                .where(
+                    and(
+                        ne(digitalCodeSlots.status, DigitalCodeSlotStatus.EXPIRE),
+                        isNotNull(digitalCodeSlots.expiresAt),
+                        lte(digitalCodeSlots.expiresAt, now)
+                    )
+                );
+
+            // 3. Mark CODEs as EXPIRED
+            const expiredCodes = await db
+                .update(digitalCodes)
+                .set({ status: DigitalCodeStatus.EXPIRE })
+                .where(
+                    and(
+                        ne(digitalCodes.status, DigitalCodeStatus.EXPIRE),
+                        isNotNull(digitalCodes.expiresAt),
+                        lte(digitalCodes.expiresAt, now)
+                    )
+                );
+
+        } catch (error) {
+            console.error("[Expiration Scan Error]", error);
+        }
+
+        console.log(`[Expiration Scan] Finished. Notified: ${results.notified}`);
+        return results;
     }
 }

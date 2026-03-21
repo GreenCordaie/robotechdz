@@ -1,0 +1,429 @@
+{
+  "name": "Robotech Notification Gateway",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "flexbox-gateway",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "WebhookTrigger_1",
+      "name": "WebhookTrigger",
+      "position": [
+        112,
+        512
+      ],
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "webhookId": "d1f55724-b1f5-4feb-ab75-71a78fde15cc"
+    },
+    {
+      "parameters": {},
+      "id": "31c6d96e-634e-4ac2-bff7-7dd611309d05",
+      "name": "ExecuteWorkflowTrigger",
+      "position": [
+        -96,
+        512
+      ],
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.body.eventName }}",
+                    "operator": {
+                      "operation": "equals",
+                      "type": "string"
+                    },
+                    "rightValue": "ORDER_CREATED"
+                  }
+                ],
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                }
+              },
+              "renameOutput": true,
+              "outputKey": "ORDER_CREATED"
+            },
+            {
+              "conditions": {
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.body.eventName }}",
+                    "operator": {
+                      "operation": "equals",
+                      "type": "string"
+                    },
+                    "rightValue": "LOW_STOCK_ALERT"
+                  }
+                ],
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                }
+              },
+              "renameOutput": true,
+              "outputKey": "LOW_STOCK"
+            },
+            {
+              "conditions": {
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.body.eventName }}",
+                    "operator": {
+                      "operation": "equals",
+                      "type": "string"
+                    },
+                    "rightValue": "TRAITEUR_NOTIFY"
+                  }
+                ],
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                }
+              },
+              "renameOutput": true,
+              "outputKey": "TRAITEUR"
+            },
+            {
+              "conditions": {
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.body.eventName }}",
+                    "operator": {
+                      "operation": "equals",
+                      "type": "string"
+                    },
+                    "rightValue": "CUSTOMER_DELIVERY"
+                  }
+                ],
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                }
+              },
+              "renameOutput": true,
+              "outputKey": "DELIVERY"
+            },
+            {
+              "conditions": {
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.body.eventName }}",
+                    "operator": {
+                      "operation": "equals",
+                      "type": "string"
+                    },
+                    "rightValue": "INTEGRATION_TEST"
+                  }
+                ],
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                }
+              },
+              "renameOutput": true,
+              "outputKey": "TEST"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "none"
+        }
+      },
+      "id": "EventTypeSwitch_1",
+      "name": "EventTypeSwitch",
+      "position": [
+        352,
+        512
+      ],
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $json.body.config.tg_token }}/sendMessage",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"chat_id\": \"{{ $json.body.config.tg_caisse }}\",\n  \"text\": \"🛒 *Nouvelle Commande #{{ $json.body.data.orderNumber }}*\\n\\n👤 Client: {{ $json.body.data.customer }}\\n📱 Tél: {{ $json.body.data.customerPhone }}\\n💰 Total: {{ $json.body.data.total }} DZD\\n📦 Articles: {{ $json.body.data.itemsCount }}\\n🔗 {{ $json.body.data.link }}\",\n  \"parse_mode\": \"Markdown\"\n}",
+        "options": {}
+      },
+      "id": "TG_Caisse_NewOrder_1",
+      "name": "TG_Caisse_NewOrder",
+      "position": [
+        608,
+        208
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $json.body.config.tg_token }}/sendMessage",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"chat_id\": \"{{ $json.body.config.tg_caisse }}\",\n  \"text\": \"⚠️ *ALERTE STOCK BAS*\\n\\n📦 Produit: {{ $json.body.data.name }}\\n📉 Stock actuel: {{ $json.body.data.currentStock }}\\n🔻 Seuil: {{ $json.body.data.threshold }}\",\n  \"parse_mode\": \"Markdown\"\n}",
+        "options": {}
+      },
+      "id": "TG_Admin_LowStock_1",
+      "name": "TG_Admin_LowStock",
+      "position": [
+        608,
+        464
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1
+    },
+    {
+      "parameters": {},
+      "id": "CallbackSwitch_1",
+      "name": "CallbackSwitch",
+      "position": [
+        560,
+        656
+      ],
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $json.body.config.tg_token }}/sendMessage",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"chat_id\": \"{{ $json.body.config.tg_caisse }}\",\n  \"text\": \"📋 *Commande à traiter #{{ $json.body.data.orderNumber }}*\\n\\n📱 Client: {{ $json.body.data.customerPhone }}\\n💰 Total: {{ $json.body.data.totalAmount }} DZD\",\n  \"parse_mode\": \"Markdown\",\n  \"reply_markup\": {\n    \"inline_keyboard\": [\n      [\n        { \"text\": \"✅ Valider & Livrer\", \"callback_data\": \"VALIDATE_{{ $json.body.data.orderId }}\" },\n        { \"text\": \"❌ Annuler\", \"callback_data\": \"CANCEL_{{ $json.body.data.orderId }}\" }\n      ]\n    ]\n  }\n}",
+        "options": {}
+      },
+      "id": "tg_caisse_NewOrder_1",
+      "name": "tg_caisse_NewOrder",
+      "position": [
+        800,
+        608
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.body.data.appUrl || 'http://localhost:3000' }}/api/admin/n8n/callback",
+        "options": {}
+      },
+      "id": "App_Callback_1",
+      "name": "App_Callback",
+      "position": [
+        800,
+        800
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $json.body.config.tg_token }}/sendMessage",
+        "options": {}
+      },
+      "id": "tg_caisse_ConfirmAttrib_1",
+      "name": "tg_caisse_ConfirmAttrib",
+      "position": [
+        1008,
+        800
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.body.config.wa_url }}/message/sendText/{{ $json.body.config.wa_instance }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $json.body.config.wa_key }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"number\": \"213{{ $json.body.data.customerPhone.replace(/^0/, '') }}\",\n  \"text\": \"✅ Votre commande #{{ $json.body.data.orderNumber }} est prête !\\n\\nVoici vos accès :\\n{{ $json.body.data.formattedItemsText }}\\n\\nMerci pour votre achat. Vous pouvez suivre votre commande sur {{ $json.body.data.appUrl }}/suivi/{{ $json.body.data.orderNumber }}\"\n}",
+        "options": {}
+      },
+      "id": "WA_Customer_Delivery_1",
+      "name": "WA_Customer_Delivery",
+      "position": [
+        608,
+        800
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $json.body.config.tg_token }}/sendMessage",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"chat_id\": \"{{ $json.body.config.tg_caisse }}\",\n  \"text\": \"✅ *Test d'intégration réussi !*\\n\\n🤖 Flexbox ↔ n8n : Connecté\\n⏰ {{ $now.toISO() }}\",\n  \"parse_mode\": \"Markdown\"\n}",
+        "options": {}
+      },
+      "id": "f46dea8a-65cf-4c8d-ae2d-717aa2b5a5ab",
+      "name": "TG_Integration_Test",
+      "position": [
+        608,
+        1056
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1
+    },
+    {
+      "parameters": {
+        "fileSelector": "/tmp/manual_delivery_workflow.json",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1.1,
+      "position": [
+        960,
+        944
+      ],
+      "id": "96a6ab1b-00f1-45da-a235-7d8865567812",
+      "name": "Read/Write Files from Disk"
+    }
+  ],
+  "connections": {
+    "App_Callback": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "tg_caisse_ConfirmAttrib",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "CallbackSwitch": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "tg_caisse_NewOrder",
+            "type": "main"
+          }
+        ],
+        [
+          {
+            "index": 0,
+            "node": "App_Callback",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "EventTypeSwitch": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "TG_Caisse_NewOrder",
+            "type": "main"
+          }
+        ],
+        [
+          {
+            "index": 0,
+            "node": "TG_Admin_LowStock",
+            "type": "main"
+          }
+        ],
+        [
+          {
+            "index": 0,
+            "node": "tg_caisse_NewOrder",
+            "type": "main"
+          }
+        ],
+        [
+          {
+            "index": 0,
+            "node": "WA_Customer_Delivery",
+            "type": "main"
+          }
+        ],
+        [
+          {
+            "index": 0,
+            "node": "TG_Integration_Test",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "ExecuteWorkflowTrigger": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "EventTypeSwitch",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "WebhookTrigger": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "EventTypeSwitch",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "WA_Customer_Delivery": {
+      "main": [
+        [
+          {
+            "node": "Read/Write Files from Disk",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "saveManualExecutions": true,
+    "saveExecutionProgress": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false,
+    "binaryMode": "separate"
+  }
+}

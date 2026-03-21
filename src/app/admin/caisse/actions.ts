@@ -12,6 +12,7 @@ import { allocateOrderStock } from "@/lib/orders";
 import { sendPushToRoleAction, sendPushToUserAction } from "../push/actions";
 import { decrypt } from "@/lib/encryption";
 import { OrderService } from "@/services/order.service";
+import { N8nService } from "@/services/n8n.service";
 // Dynamic Query loader to prevent client-side leakage
 const getQueries = async () => {
     const { OrderQueries } = await import("@/services/queries/order.queries");
@@ -120,17 +121,20 @@ export const markOrderAsTermine = withAuth(
         schema: z.object({ id: z.number() })
     },
     async ({ id }) => {
-        const order = await db.query.orders.findFirst({
-            where: eq(orders.id, id),
-            columns: { orderNumber: true, userId: true, resellerId: true }
-        });
+        const OrderQueries = await getQueries();
+        const order = await OrderQueries.getById(id);
+
+        if (!order) throw new Error("Commande introuvable");
 
         await db.update(orders).set({ status: OrderStatus.TERMINE, isDelivered: true }).where(eq(orders.id, id));
         revalidatePath("/admin/traitement");
         revalidatePath("/admin/caisse");
 
+        // trigger archival to Google Sheets via n8n
+        N8nService.notifyOrderArchival(order).catch(err => console.error("Archival failed:", err));
+
         // Notify Reseller if applicable
-        if (order?.resellerId) {
+        if (order.resellerId) {
             const reseller = await db.query.resellers.findFirst({
                 where: eq(resellers.id, order.resellerId),
                 columns: { userId: true }
@@ -396,6 +400,34 @@ export const resendWhatsAppAction = withAuth(
     async ({ orderId }) => {
         try {
             await triggerOrderDelivery(orderId);
+            return { success: true };
+        } catch (error) {
+            return { success: false, error: (error as Error).message };
+        }
+    }
+);
+export const notifyTraiteurAction = withAuth(
+    {
+        roles: [UserRole.ADMIN, UserRole.CAISSIER],
+        schema: z.object({ orderId: z.number() })
+    },
+    async ({ orderId }) => {
+        try {
+            const OrderQueries = await getQueries();
+            const order = await OrderQueries.getById(orderId);
+
+            if (!order) throw new Error("Commande introuvable");
+
+            // Notify Processor via n8n
+            await N8nService.notifyTraiteur(order);
+
+            // Also send Push notification
+            await sendPushToRoleAction(UserRole.TRAITEUR, {
+                title: "🛎️ Commande à Traiter",
+                body: `La commande #${order.orderNumber} est prête pour traitement manuel.`,
+                url: "/admin/traitement"
+            });
+
             return { success: true };
         } catch (error) {
             return { success: false, error: (error as Error).message };

@@ -61,6 +61,42 @@ export class OrderQueries {
     });
 
     /**
+     * Gets an order by ID with all relations.
+     */
+    static getById = cache(async (id: number) => {
+        const result = await db.query.orders.findFirst({
+            where: (orders, { eq }) => eq(orders.id, id),
+            with: {
+                items: {
+                    with: {
+                        codes: true,
+                        slots: { with: { digitalCode: true } },
+                        variant: { with: { product: true } }
+                    }
+                },
+                client: true,
+                reseller: true
+            }
+        });
+
+        if (!result) return null;
+
+        const mappedItems = (result as any).items.map((item: any) => {
+            const standardCodes = (item.codes || []).map((c: any) => decrypt(c.code) || "[ERREUR DÉCRYPTAGE]");
+            const slotCodes = (item.slots || []).map((s: any) => {
+                const decryptedParent = decrypt(s.digitalCode.code) || "[ERREUR COMPTE]";
+                const decryptedSlotPin = s.code ? decrypt(s.code) : null;
+                let slotInfo = `${decryptedParent} | Profil ${s.slotNumber}`;
+                if (s.code) slotInfo += ` | PIN: ${decryptedSlotPin || "[ERREUR PIN]"}`;
+                return slotInfo;
+            });
+            return { ...item, codes: [...standardCodes, ...slotCodes] };
+        });
+
+        return { ...result, items: mappedItems };
+    });
+
+    /**
      * Gets all pending orders.
      */
     static getPending = cache(async () => {

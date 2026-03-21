@@ -46,7 +46,7 @@ export async function verifyWebhookSignature(headers: Headers, provider: "telegr
 /**
  * Checks for event idempotence in the database.
  */
-export async function isEventProcessed(provider: "telegram" | "whatsapp", externalId: string) {
+export async function isEventProcessed(provider: "telegram" | "whatsapp", externalId: string, customerPhone?: string, payload?: any) {
     const { db } = await import("@/db");
     const { webhookEvents } = await import("@/db/schema");
     const { and, eq } = await import("drizzle-orm");
@@ -57,10 +57,12 @@ export async function isEventProcessed(provider: "telegram" | "whatsapp", extern
 
     if (alreadyProcessed) return true;
 
-    // Insert to mark as processed (atomic check-and-set happens at the application level here)
+    // Insert to mark as processed with payload and phone
     await db.insert(webhookEvents).values({
         provider,
-        externalId
+        externalId,
+        customerPhone,
+        payload
     });
 
     return false;

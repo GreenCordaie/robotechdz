@@ -31,13 +31,15 @@ export enum DigitalCodeStatus {
     DISPONIBLE = "DISPONIBLE",
     VENDU = "VENDU",
     UTILISE = "UTILISE",
-    DEFECTUEUX = "DEFECTUEUX"
+    DEFECTUEUX = "DEFECTUEUX",
+    EXPIRE = "EXPIRE"
 }
 
 export enum DigitalCodeSlotStatus {
     DISPONIBLE = "DISPONIBLE",
     VENDU = "VENDU",
-    DEFECTUEUX = "DEFECTUEUX"
+    DEFECTUEUX = "DEFECTUEUX",
+    EXPIRE = "EXPIRE"
 }
 
 export enum SupplierTransactionType {
