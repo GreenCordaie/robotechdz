@@ -4,7 +4,8 @@ import React, { useState } from "react";
 import { useKioskStore } from "@/store/useKioskStore";
 import { useSettingsStore } from "@/store/useSettingsStore";
 import SupportModal from "../components/SupportModal";
-import { LifeBuoy } from "lucide-react";
+import { LifeBuoy, PackageSearch } from "lucide-react";
+import Link from "next/link";
 
 export default function IdleView() {
     const { setStep } = useKioskStore();
@@ -72,7 +73,7 @@ export default function IdleView() {
                 {/* Logo & Visual */}
                 <div className="mb-10 animate-float">
                     <div className="size-40 md:size-48 bg-black rounded-[2.5rem] flex items-center justify-center shadow-2xl relative">
-                        <svg className="text-white drop-shadow-lg" fill="none" height="100" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24" width="100" xmlns="http://www.w3.org/2000/svg">
+                        <svg className="text-white drop-shadow-lg" fill="none" height="100" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" width="100" xmlns="http://www.w3.org/2000/svg">
                             <line x1="6" x2="10" y1="11" y2="11"></line>
                             <line x1="8" x2="8" y1="9" y2="13"></line>
                             <line x1="15" x2="15.01" y1="12" y2="12"></line>
@@ -86,7 +87,7 @@ export default function IdleView() {
 
                 {/* Text Content */}
                 <div className="mb-16">
-                    <h1 className="text-6xl md:text-8xl font-black tracking-tighter text-black leading-[0.9] uppercase">
+                    <h1 className="text-5xl sm:text-6xl md:text-8xl font-black tracking-tighter text-black leading-[0.9] uppercase">
                         Bienvenue chez <br />
                         <span className="text-[#ec5b13] inline-block mt-2 relative">
                             {shopName}
@@ -106,7 +107,7 @@ export default function IdleView() {
                     >
                         <span>COMMENCER</span>
                         <div className="bg-white/10 p-2 rounded-xl group-hover:bg-[#ec5b13] transition-colors">
-                            <svg className="transition-transform group-hover:translate-x-1" fill="none" height="32" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="4" viewBox="0 0 24 24" width="32" xmlns="http://www.w3.org/2000/svg">
+                            <svg className="transition-transform group-hover:translate-x-1" fill="none" height="32" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="4" viewBox="0 0 24 24" width="32" xmlns="http://www.w3.org/2000/svg">
                                 <path d="m12 5 7 7-7 7"></path>
                                 <path d="M5 12h14"></path>
                             </svg>
@@ -132,6 +133,14 @@ export default function IdleView() {
                     <LifeBuoy className="w-4 h-4 text-black/40 group-hover:text-[#ec5b13] transition-colors" />
                     <span className="text-black/40 font-black tracking-widest text-[10px] uppercase group-hover:text-black transition-colors">Besoin d&apos;aide ?</span>
                 </button>
+                <Link
+                    href="/suivi"
+                    onClick={(e) => e.stopPropagation()}
+                    className="flex items-center gap-3 px-6 py-3 bg-black/5 hover:bg-black/10 backdrop-blur-xl rounded-2xl border border-black/5 transition-all active:scale-95 group"
+                >
+                    <PackageSearch className="w-4 h-4 text-black/40 group-hover:text-[#ec5b13] transition-colors" />
+                    <span className="text-black/40 font-black tracking-widest text-[10px] uppercase group-hover:text-black transition-colors">Suivre ma commande</span>
+                </Link>
             </div>
 
             <div className="absolute bottom-10 right-10 z-20">

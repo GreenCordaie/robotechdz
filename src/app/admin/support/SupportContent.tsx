@@ -23,9 +23,8 @@ export default function SupportContent({ initialTickets = [] }: SupportContentPr
     const loadTickets = useCallback(async () => {
         setIsLoading(true);
         try {
-            // Fix: the action expects an object with status
             const data = await getSupportTickets(statusFilter);
-            setTickets(data);
+            if (Array.isArray(data)) setTickets(data);
         } catch (error) {
             toast.error("Échec du chargement des tickets");
         } finally {

@@ -143,11 +143,11 @@ export default function ClientsMobile({ initialStats, initialClients }: any) {
                                 <div className="size-12 rounded-2xl bg-red-500/10 flex items-center justify-center font-black text-red-500 border border-red-500/20 shadow-lg shadow-red-500/5">
                                     {client.nomComplet.substring(0, 1).toUpperCase()}
                                 </div>
-                                <div className="space-y-1">
-                                    <p className="text-sm font-black text-white">{client.nomComplet}</p>
+                                <div className="space-y-1 min-w-0">
+                                    <p className="text-sm font-black text-white truncate max-w-[150px]">{client.nomComplet}</p>
                                     <div className="flex items-center gap-2 opacity-60">
-                                        <Phone size={10} className="text-slate-400" />
-                                        <span className="text-[10px] font-bold text-slate-400">{client.telephone || "Aucun tel"}</span>
+                                        <Phone size={10} className="text-slate-400 shrink-0" />
+                                        <span className="text-[10px] font-bold text-slate-400 truncate">{client.telephone || "Aucun tel"}</span>
                                     </div>
                                 </div>
                             </div>

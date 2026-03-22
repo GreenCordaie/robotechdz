@@ -13,10 +13,12 @@ export class N8nService {
      */
     static async triggerEvent(eventName: string, data: any) {
         try {
-            // Fetch credentials and URLs dynamically from DB
             const settings = await db.query.shopSettings.findFirst();
 
-            const webhookUrl = settings?.n8nWebhookUrl || process.env.N8N_WEBHOOK_URL || "http://localhost:5678/webhook/flexbox";
+            // Strip /webhook/... suffix to prevent URL doubling when settings store full path
+            let baseUrl = settings?.n8nWebhookUrl || process.env.N8N_WEBHOOK_URL || "http://localhost:5678";
+            baseUrl = baseUrl.replace(/\/webhook\/.*$/, '');
+            const webhookUrl = `${baseUrl}/webhook/robotech-events-debug`;
 
             const config = {
                 tg_token: settings?.telegramBotToken,
@@ -25,26 +27,34 @@ export class N8nService {
                 wa_url: settings?.whatsappApiUrl,
                 wa_key: settings?.whatsappApiKey,
                 wa_instance: settings?.whatsappInstanceName,
+                prompt: settings?.chatbotRole,
+                greeting: settings?.chatbotGreeting,
             };
 
             console.log(`[N8nService] Triggering event: ${eventName} at URL: ${webhookUrl}`);
             const response = await fetch(webhookUrl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    eventName,
-                    config, // Dynamic credentials
-                    data: data // Business data
-                })
+                body: JSON.stringify({ eventName, config, data }),
+                signal: AbortSignal.timeout(8_000)
             });
+
+            const responseStatus = response.status;
+            const responseText = await response.text();
+
             if (!response.ok) {
-                const errorText = await response.text();
-                throw new Error(`HTTP error! status: ${response.status}, body: ${errorText}`);
+                console.error(`[N8nService] n8n error ${responseStatus}: ${responseText}`);
+                return { error: true, status: responseStatus, message: responseText };
             }
-            return await response.json();
+
+            try {
+                return JSON.parse(responseText);
+            } catch {
+                return { success: true, raw: responseText };
+            }
         } catch (error: any) {
             console.error(`[N8nService] Error triggering event ${eventName}:`, error.message || error);
-            return null;
+            return { error: true, message: error.message || String(error) };
         }
     }
 
@@ -182,7 +192,7 @@ export class N8nService {
 
         console.log(`[Expiration Scan] Started at ${now.toISOString()}`);
 
-        const results = { notified: 0, expired: 0 };
+        const results = { notified: 0 };
 
         try {
             // 1. Find SLOTs expiring in 3 days
@@ -208,42 +218,34 @@ export class N8nService {
                     )
                 );
 
-            for (const slot of approachingSlots) {
-                if (slot.phone && slot.expiresAt) {
-                    await this.notifyApproachingExpiry({
-                        type: 'SLOT',
-                        itemName: slot.variantName,
-                        expiresAt: slot.expiresAt,
-                        clientPhone: slot.phone,
-                        clientName: slot.clientName || "Client"
-                    });
-                    results.notified++;
-                }
-            }
+            await Promise.all(approachingSlots
+                .filter(slot => slot.phone && slot.expiresAt)
+                .map(slot => this.notifyApproachingExpiry({
+                    type: 'SLOT',
+                    itemName: slot.variantName,
+                    expiresAt: slot.expiresAt!,
+                    clientPhone: slot.phone!,
+                    clientName: slot.clientName || "Client"
+                }).then(() => { results.notified++; })
+            ));
 
-            // 2. Mark SLOTs as EXPIRED
-            const expiredSlots = await db
-                .update(digitalCodeSlots)
-                .set({ status: DigitalCodeSlotStatus.EXPIRE })
-                .where(
-                    and(
+            // Mark SLOTs and CODEs as EXPIRED in parallel
+            await Promise.all([
+                db.update(digitalCodeSlots)
+                    .set({ status: DigitalCodeSlotStatus.EXPIRE })
+                    .where(and(
                         ne(digitalCodeSlots.status, DigitalCodeSlotStatus.EXPIRE),
                         isNotNull(digitalCodeSlots.expiresAt),
                         lte(digitalCodeSlots.expiresAt, now)
-                    )
-                );
-
-            // 3. Mark CODEs as EXPIRED
-            const expiredCodes = await db
-                .update(digitalCodes)
-                .set({ status: DigitalCodeStatus.EXPIRE })
-                .where(
-                    and(
+                    )),
+                db.update(digitalCodes)
+                    .set({ status: DigitalCodeStatus.EXPIRE })
+                    .where(and(
                         ne(digitalCodes.status, DigitalCodeStatus.EXPIRE),
                         isNotNull(digitalCodes.expiresAt),
                         lte(digitalCodes.expiresAt, now)
-                    )
-                );
+                    ))
+            ]);
 
         } catch (error) {
             console.error("[Expiration Scan Error]", error);
@@ -251,5 +253,55 @@ export class N8nService {
 
         console.log(`[Expiration Scan] Finished. Notified: ${results.notified}`);
         return results;
+    }
+
+    /**
+     * Forwards an incoming WhatsApp message to n8n for AI support processing.
+     * Delegates 100% of the logic to the "Robotech AI Assistant" n8n workflow.
+     * Routes directly to the AI Assistant webhook (not the gateway) since
+     * the gateway switch does not handle WHATSAPP_SUPPORT events.
+     */
+    static async handleWhatsAppSupport(payload: any) {
+        try {
+            const settings = await db.query.shopSettings.findFirst();
+            let baseUrl = settings?.n8nWebhookUrl || process.env.N8N_WEBHOOK_URL || "http://localhost:5678";
+            baseUrl = baseUrl.replace(/\/webhook\/.*$/, '');
+            const webhookUrl = `${baseUrl}/webhook/robotech-ai-assistant-gemini`;
+
+            // Wrap with config so the n8n workflow can read credentials and prompts
+            const wrappedPayload = {
+                config: {
+                    wa_url: settings?.whatsappApiUrl,
+                    wa_key: settings?.whatsappApiKey,
+                    wa_instance: settings?.whatsappInstanceName,
+                    prompt: settings?.chatbotRole,
+                    greeting: settings?.chatbotGreeting,
+                },
+                ...payload
+            };
+
+            console.log(`[N8nService] Forwarding WhatsApp to AI Assistant: ${webhookUrl}`);
+            const response = await fetch(webhookUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(wrappedPayload),
+                signal: AbortSignal.timeout(8_000)
+            });
+
+            const responseText = await response.text();
+            if (!response.ok) {
+                console.error(`[N8nService] AI Assistant error ${response.status}: ${responseText}`);
+                return { error: true, status: response.status, message: responseText };
+            }
+
+            try {
+                return JSON.parse(responseText);
+            } catch {
+                return { success: true, raw: responseText };
+            }
+        } catch (error: any) {
+            console.error(`[N8nService] Error forwarding WhatsApp to AI Assistant:`, error.message || error);
+            return { error: true, message: error.message || String(error) };
+        }
     }
 }

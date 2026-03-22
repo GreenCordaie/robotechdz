@@ -1,0 +1,6 @@
+{
+  "scripts": ["server.js", "ticket.js"],
+  "assets": ["config.json"],
+  "targets": ["node18-win-x64"],
+  "outputPath": "dist"
+}

@@ -241,9 +241,9 @@ export default function ClientsContent({ initialStats, initialClients }: Clients
                                                 <div className="size-10 rounded-full bg-[#ec5b13]/20 flex items-center justify-center text-[#ec5b13] font-bold">
                                                     {client.nomComplet.substring(0, 2).toUpperCase()}
                                                 </div>
-                                                <div className="flex flex-col">
-                                                    <span className="text-white font-semibold">{client.nomComplet}</span>
-                                                    <span className="text-slate-500 text-xs">{client.telephone}</span>
+                                                <div className="flex flex-col min-w-0">
+                                                    <span className="text-white font-semibold truncate">{client.nomComplet}</span>
+                                                    <span className="text-slate-500 text-xs truncate">{client.telephone}</span>
                                                 </div>
                                             </div>
                                         </td>

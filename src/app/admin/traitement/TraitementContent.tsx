@@ -261,7 +261,8 @@ export default function TraitementContent({ initialOrders = [], initialFinished 
     };
 
     const handleCancelOrder = async (orderId: number) => {
-        if (!confirm("Êtes-vous sûr de vouloir annuler/rembourser cette commande ? Cette action est irréversible et libérera les codes digitaux associés.")) return;
+        // TODO: Replace window.confirm with a proper modal dialog for better UX
+        if (!window.confirm("Êtes-vous sûr de vouloir annuler/rembourser cette commande ? Cette action est irréversible et libérera les codes digitaux associés.")) return;
 
         try {
             const res = await cancelOrderAction({ orderId });
@@ -432,6 +433,7 @@ export default function TraitementContent({ initialOrders = [], initialFinished 
                                             )}
                                             {order.status === "TERMINE" && (
                                                 <button
+                                                    aria-label="Voir les détails de la commande"
                                                     onClick={(e) => {
                                                         e.stopPropagation();
                                                         setOrderForDetail(order);
@@ -456,7 +458,7 @@ export default function TraitementContent({ initialOrders = [], initialFinished 
                                 <div className="flex-1 flex flex-col min-w-0">
                                     <div className="p-8 border-b border-white/5 shrink-0 flex justify-between items-center">
                                         <div>
-                                            <h4 className="text-2xl font-bold tracking-tight mb-1">Détails de la Commande {selectedOrder.orderNumber}</h4>
+                                            <h4 className="text-2xl font-bold tracking-tight mb-1 truncate">Détails de la Commande {selectedOrder.orderNumber}</h4>
                                             <p className="text-slate-500 text-sm flex items-center gap-2">
                                                 <span className="material-symbols-outlined text-sm">calendar_today</span>
                                                 {new Date(selectedOrder.createdAt).toLocaleDateString("fr-FR", { day: 'numeric', month: 'long', year: 'numeric' })} • {new Date(selectedOrder.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -465,6 +467,7 @@ export default function TraitementContent({ initialOrders = [], initialFinished 
                                         <div className="flex gap-2">
                                             {selectedOrder.deliveryMethod === "whatsapp" && (
                                                 <button
+                                                    aria-label="Renvoyer par WhatsApp"
                                                     onClick={() => handleResendWhatsApp(selectedOrder.id)}
                                                     disabled={isResending}
                                                     title="Renvoyer par WhatsApp"
@@ -474,6 +477,7 @@ export default function TraitementContent({ initialOrders = [], initialFinished 
                                                 </button>
                                             )}
                                             <button
+                                                aria-label="Réimprimer le ticket"
                                                 onClick={async () => {
                                                     // Robust Reprint Logic
                                                     if (webusb.connected) {
@@ -493,7 +497,7 @@ export default function TraitementContent({ initialOrders = [], initialFinished 
                                             >
                                                 <span className="material-symbols-outlined">print</span>
                                             </button>
-                                            <button className="p-2.5 rounded-xl bg-[#2a1b15] border border-white/5 text-slate-400 hover:text-red-400 transition-colors" onClick={() => setSelectedOrder(null)}>
+                                            <button aria-label="Désélectionner la commande" className="p-2.5 rounded-xl bg-[#2a1b15] border border-white/5 text-slate-400 hover:text-red-400 transition-colors" onClick={() => setSelectedOrder(null)}>
                                                 <span className="material-symbols-outlined">block</span>
                                             </button>
                                         </div>
@@ -508,7 +512,7 @@ export default function TraitementContent({ initialOrders = [], initialFinished 
                                                             <span className="material-symbols-outlined text-3xl">{getProductIcon(item.name)}</span>
                                                         </div>
                                                         <div>
-                                                            <h5 className="font-bold text-lg">{item.name}</h5>
+                                                            <h5 className="font-bold text-lg truncate">{item.name}</h5>
                                                             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-0.5">
                                                                 <p className="text-slate-500 text-sm">Quantité: <span className="text-white font-medium">{item.quantity}</span></p>
                                                                 {item.customData && (
@@ -553,7 +557,7 @@ export default function TraitementContent({ initialOrders = [], initialFinished 
                                                                         ) : (
                                                                             <span className="material-symbols-outlined text-sm group-hover:rotate-12 transition-transform">pyscript</span>
                                                                         )}
-                                                                        <span>🧠 ATTRIBUER SLOT AUTO</span>
+                                                                        <span>ATTRIBUER SLOT AUTO</span>
                                                                     </button>
                                                                 )}
                                                             </div>

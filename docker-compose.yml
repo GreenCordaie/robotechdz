@@ -6,9 +6,13 @@ services:
       - POSTGRES_PASSWORD=password
       - POSTGRES_DB=flexbox
     ports:
-      - "5435:5432"
+      - "127.0.0.1:5435:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    networks:
+      default:
+        aliases:
+          - postgres
 
   n8n:
     image: n8nio/n8n:latest
@@ -29,26 +33,28 @@ services:
     image: redis:7-alpine
     restart: always
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
 
   mongo:
     image: mongo:6
     restart: always
     ports:
-      - "27017:27017"
+      - "127.0.0.1:27017:27017"
 
   whatsapp:
-    image: atendai/evolution-api:v1.8.2
+    image: devlikeapro/waha:latest
     restart: always
-    user: root
     ports:
-      - "3001:8080"
-    env_file:
-      - .env.evolution
-    depends_on:
-      - redis
-      - mongo
+      - "3001:3000"
+    environment:
+      - WHATSAPP_DEFAULT_ENGINE=WEBJS
+      - WHATSAPP_API_KEY=abc
+      - WHATSAPP_HOOK_EVENTS=message
+      - WAHA_LOG_LEVEL=info
+    volumes:
+      - waha_data:/app/.sessions
 
 volumes:
   postgres_data:
   n8n_data:
+  waha_data:

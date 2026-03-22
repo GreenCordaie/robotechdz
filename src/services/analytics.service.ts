@@ -3,10 +3,10 @@ import { orderItems, orders, products, productVariants, clients } from "@/db/sch
 import { desc, sql, and, gte, lte } from "drizzle-orm";
 import { subDays, startOfMonth, endOfMonth } from "date-fns";
 
+// Orders that count as revenue: paid, delivered, or completed
+const PAID_STATUSES = `('PAYE', 'LIVRE', 'TERMINE')`;
+
 export class AnalyticsService {
-    /**
-     * Get financial KPIs and summaries
-     */
     static async getFinancialOverview(startDate?: Date, endDate?: Date) {
         const start = startDate || startOfMonth(new Date());
         const end = endDate || endOfMonth(new Date());
@@ -21,7 +21,7 @@ export class AnalyticsService {
             .innerJoin(orders, sql`${orderItems.orderId} = ${orders.id}`)
             .where(
                 and(
-                    sql`${orders.status} = 'completed'`,
+                    sql`${orders.status} IN ${sql.raw(PAID_STATUSES)}`,
                     gte(orders.createdAt, start),
                     lte(orders.createdAt, end)
                 )
@@ -42,15 +42,12 @@ export class AnalyticsService {
         };
     }
 
-    /**
-     * Get top contributing clients
-     */
     static async getTopClients(limit = 10) {
         return await db
             .select({
                 clientId: clients.id,
-                name: clients.name,
-                phone: clients.phone,
+                name: clients.nomComplet,
+                phone: clients.telephone,
                 totalSpent: sql<number>`SUM(${orderItems.price} * ${orderItems.quantity})`,
                 orderCount: sql<number>`COUNT(DISTINCT ${orders.id})`,
                 points: clients.loyaltyPoints,
@@ -58,15 +55,12 @@ export class AnalyticsService {
             .from(orderItems)
             .innerJoin(orders, sql`${orderItems.orderId} = ${orders.id}`)
             .innerJoin(clients, sql`${orders.clientId} = ${clients.id}`)
-            .where(sql`${orders.status} = 'completed'`)
+            .where(sql`${orders.status} IN ${sql.raw(PAID_STATUSES)}`)
             .groupBy(clients.id)
             .orderBy(desc(sql`SUM(${orderItems.price} * ${orderItems.quantity})`))
             .limit(limit);
     }
 
-    /**
-     * Get top selling products/variants
-     */
     static async getTopProducts(limit = 10) {
         return await db
             .select({
@@ -80,19 +74,16 @@ export class AnalyticsService {
             .innerJoin(productVariants, sql`${orderItems.variantId} = ${productVariants.id}`)
             .innerJoin(products, sql`${productVariants.productId} = ${products.id}`)
             .innerJoin(orders, sql`${orderItems.orderId} = ${orders.id}`)
-            .where(sql`${orders.status} = 'completed'`)
+            .where(sql`${orders.status} IN ${sql.raw(PAID_STATUSES)}`)
             .groupBy(products.id, productVariants.id)
             .orderBy(desc(sql`SUM(${orderItems.quantity})`))
             .limit(limit);
     }
 
-    /**
-     * Get revenue/profit trend for the last 30 days
-     */
     static async getProfitTrend() {
         const thirtyDaysAgo = subDays(new Date(), 30);
 
-        const dailyStats = await db
+        return await db
             .select({
                 date: sql<string>`DATE(${orders.createdAt})`,
                 revenue: sql<number>`SUM(${orderItems.price} * ${orderItems.quantity})`,
@@ -102,19 +93,14 @@ export class AnalyticsService {
             .innerJoin(orders, sql`${orderItems.orderId} = ${orders.id}`)
             .where(
                 and(
-                    sql`${orders.status} = 'completed'`,
+                    sql`${orders.status} IN ${sql.raw(PAID_STATUSES)}`,
                     gte(orders.createdAt, thirtyDaysAgo)
                 )
             )
             .groupBy(sql`DATE(${orders.createdAt})`)
             .orderBy(sql`DATE(${orders.createdAt})`);
-
-        return dailyStats;
     }
 
-    /**
-     * Get high-level marketing insights
-     */
     static async getMarketingInsights() {
         const [topClients, topProducts] = await Promise.all([
             this.getTopClients(5),

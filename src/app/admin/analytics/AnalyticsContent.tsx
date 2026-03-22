@@ -167,7 +167,7 @@ export default function AnalyticsContent({ initialOverview, initialRankings }: A
                 {kpis.map((kpi, i) => (
                     <Card key={i} className="border-none bg-default-50/50 shadow-sm">
                         <CardBody className="flex flex-row items-center gap-4 p-5">
-                            <div className={`p-3 rounded-xl bg-${kpi.color}/10`}>
+                            <div className="p-3 rounded-xl bg-white/5">
                                 {kpi.icon}
                             </div>
                             <div className="flex flex-col">

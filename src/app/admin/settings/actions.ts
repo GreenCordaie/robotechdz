@@ -489,29 +489,34 @@ export const getWhatsAppQrAction = withAuth(
             const { SystemQueries } = await import("@/services/queries/system.queries");
             const settings = await SystemQueries.getSettings();
 
-            if (!settings.whatsappApiUrl || !settings.whatsappApiKey || !settings.whatsappInstanceName) {
-                return { success: false, error: "Configuration WhatsApp incomplète dans les paramètres." };
+            const wahaUrl = (settings.whatsappApiUrl || "http://localhost:3001").replace(/\/$/, "");
+            const wahaKey = settings.whatsappApiKey || "abc";
+            const session = settings.whatsappInstanceName || "default";
+            const headers = { "X-Api-Key": wahaKey };
+
+            // 1. Vérifier le statut de la session Waha
+            const sessionRes = await fetch(`${wahaUrl}/api/sessions/${session}`, { headers, cache: "no-store" });
+            if (!sessionRes.ok) {
+                return { success: false, error: `Waha inaccessible (${sessionRes.status}). Vérifiez que Docker est démarré.` };
+            }
+            const sessionData = await sessionRes.json();
+            const status = sessionData.status as string;
+
+            if (status === "WORKING") {
+                return { success: true, data: { status: "WORKING", phone: sessionData.me?.id || null } };
             }
 
-            const apiUrl = settings.whatsappApiUrl.replace(/\/$/, "");
-            const url = `${apiUrl}/instance/connect/${settings.whatsappInstanceName}`;
-
-            const response = await fetch(url, {
-                method: "GET",
-                headers: {
-                    "apikey": settings.whatsappApiKey,
-                },
-                cache: "no-store"
-            });
-
-            const result = await response.json();
-
-            if (response.ok) {
-                // Renvoyer les données, qui peuvent contenir 'qrcode.base64' ou l'état de l'instance
-                return { success: true, data: result };
-            } else {
-                return { success: false, error: result?.message || result?.error || "Erreur de récupération du QR Code ou de l'état" };
+            if (status === "SCAN_QR_CODE") {
+                // Récupérer le screenshot du QR depuis Waha
+                const qrRes = await fetch(`${wahaUrl}/api/screenshot?session=${session}`, { headers, cache: "no-store" });
+                if (qrRes.ok) {
+                    const buf = await qrRes.arrayBuffer();
+                    const base64 = `data:image/png;base64,${Buffer.from(buf).toString("base64")}`;
+                    return { success: true, data: { status: "SCAN_QR_CODE", qrBase64: base64 } };
+                }
             }
+
+            return { success: true, data: { status } };
         } catch (error: any) {
             console.error("Erreur getWhatsAppQrAction:", error);
             return { success: false, error: error.message };

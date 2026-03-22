@@ -285,7 +285,7 @@ export const supportTickets = pgTable("support_tickets", {
     subject: text("subject").notNull(),
     message: text("message").notNull(),
     customerPhone: text("customer_phone"),
-    status: text("status").default("OUVERT").notNull(), // 'OUVERT', 'TRAITE', 'FERME'
+    status: text("status").default("OUVERT").notNull(), // 'OUVERT', 'RESOLU'
     createdAt: timestamp("created_at", { mode: 'date' }).defaultNow(),
     updatedAt: timestamp("updated_at", { mode: 'date' }).defaultNow(),
 }, (table) => {
@@ -407,6 +407,10 @@ export const ordersRelations = relations(orders, ({ one, many }) => ({
         fields: [orders.clientId],
         references: [clients.id],
     }),
+    reseller: one(resellers, {
+        fields: [orders.resellerId],
+        references: [resellers.id],
+    }),
     items: many(orderItems),
     payments: many(clientPayments),
     tickets: many(supportTickets),
@@ -514,12 +518,7 @@ export const resellerTransactionsRelations = relations(resellerTransactions, ({ 
     }),
 }));
 
-export const ordersRelationsB2b = relations(orders, ({ one }) => ({
-    reseller: one(resellers, {
-        fields: [orders.resellerId],
-        references: [resellers.id],
-    }),
-}));
+// Removed split ordersRelationsB2b to merge with ordersRelations
 
 export const auditLogsRelations = relations(auditLogs, ({ one }) => ({
     user: one(users, {

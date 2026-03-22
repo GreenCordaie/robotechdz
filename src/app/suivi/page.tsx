@@ -18,30 +18,30 @@ export default function TrackOrderPage() {
     };
 
     return (
-        <div className="min-h-screen bg-gray-50 flex flex-col items-center pt-24 px-4">
-            <div className="w-full max-w-md bg-white rounded-2xl shadow-xl overflow-hidden">
-                <div className="bg-indigo-600 px-6 py-8 text-center">
-                    <div className="mx-auto bg-indigo-500/50 h-16 w-16 rounded-full flex items-center justify-center mb-4 ring-4 ring-indigo-400">
+        <div className="min-h-screen bg-[#0a0a0a] flex flex-col items-center pt-24 px-4">
+            <div className="w-full max-w-md bg-[#161616] rounded-2xl shadow-xl overflow-hidden border border-white/5">
+                <div className="bg-[#ec5b13] px-6 py-8 text-center">
+                    <div className="mx-auto bg-white/20 h-16 w-16 rounded-full flex items-center justify-center mb-4 ring-4 ring-white/30">
                         <ShoppingBag className="w-8 h-8 text-white" />
                     </div>
                     <h1 className="text-2xl font-bold text-white">Suivi de Commande</h1>
-                    <p className="text-indigo-100 mt-2 text-sm">Entrez votre numéro de commande pour voir son statut actuel.</p>
+                    <p className="text-white/80 mt-2 text-sm">Entrez votre numéro de commande pour voir son statut actuel.</p>
                 </div>
 
                 <div className="px-6 py-8">
                     <form onSubmit={handleSubmit} className="space-y-6">
                         <div>
-                            <label htmlFor="orderNumber" className="block text-sm font-medium text-gray-700">
+                            <label htmlFor="orderNumber" className="block text-sm font-medium text-slate-400">
                                 Numéro de commande
                             </label>
                             <div className="mt-2 relative rounded-md shadow-sm">
                                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                    <span className="text-gray-500 sm:text-sm font-bold">#</span>
+                                    <span className="text-slate-500 sm:text-sm font-bold">#</span>
                                 </div>
                                 <input
                                     type="text"
                                     id="orderNumber"
-                                    className="focus:ring-indigo-500 focus:border-indigo-500 block w-full pl-8 pr-12 sm:text-lg border-gray-300 rounded-lg py-3 bg-gray-50 uppercase placeholder:text-md placeholder:normal-case font-mono"
+                                    className="block w-full pl-8 pr-12 sm:text-lg border border-white/10 rounded-xl py-3 bg-[#1a1a1a] text-white uppercase placeholder:text-slate-600 placeholder:normal-case font-mono focus:outline-none focus:border-[#ec5b13]/50 transition-all"
                                     placeholder="Ex: C5-842"
                                     value={orderNumber.replace('#', '')}
                                     onChange={(e) => setOrderNumber('#' + e.target.value.replace('#', ''))}
@@ -54,7 +54,7 @@ export default function TrackOrderPage() {
                         <button
                             type="submit"
                             disabled={isLoading || !orderNumber.trim()}
-                            className="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                            className="w-full flex justify-center py-3 px-4 border border-transparent rounded-xl shadow-sm text-sm font-bold text-white bg-[#ec5b13] hover:bg-[#d44f0f] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#ec5b13] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                         >
                             {isLoading ? (
                                 <span className="flex items-center">
@@ -75,8 +75,8 @@ export default function TrackOrderPage() {
                 </div>
             </div>
 
-            <div className="mt-8 text-center text-sm text-gray-500">
-                <p>Besoin d'aide ? Contactez notre support.</p>
+            <div className="mt-8 text-center text-sm text-slate-600">
+                <p>Besoin d&apos;aide ? Contactez notre support.</p>
             </div>
         </div>
     );

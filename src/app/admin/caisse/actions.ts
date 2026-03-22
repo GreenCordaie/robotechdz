@@ -167,10 +167,10 @@ export const replaceOrderItemCode = withAuth(
             orderItemId: z.number(),
             oldCodeId: z.number().optional(),
             oldSlotId: z.number().optional(),
-            reason: z.string()
+            reason: z.string().optional()
         })
     },
-    async ({ orderItemId, oldCodeId, oldSlotId, reason }) => {
+    async ({ orderItemId, oldCodeId, oldSlotId }) => {
         try {
             return await db.transaction(async (tx) => {
                 const item = await tx.query.orderItems.findFirst({
@@ -335,11 +335,11 @@ export const cancelOrderAction = withAuth(
                     }
                     if (item.slots && item.slots.length > 0) {
                         const slotIds = item.slots.map((s: any) => s.id);
-                        await tx.update(digitalCodeSlots).set({ status: DigitalCodeSlotStatus.DISPONIBLE, orderItemId: null }).where(inArray(digitalCodeSlots.id, slotIds));
-                        const parentIds = Array.from(new Set(item.slots.map((s: any) => s.digitalCodeId)));
-                        for (const pid of parentIds) {
-                            await tx.update(digitalCodes).set({ status: DigitalCodeStatus.DISPONIBLE, isDebitCompleted: false }).where(eq(digitalCodes.id, pid as any as number));
-                        }
+                        const parentIds = Array.from(new Set<number>(item.slots.map((s: any) => s.digitalCodeId)));
+                        await Promise.all([
+                            tx.update(digitalCodeSlots).set({ status: DigitalCodeSlotStatus.DISPONIBLE, orderItemId: null }).where(inArray(digitalCodeSlots.id, slotIds)),
+                            tx.update(digitalCodes).set({ status: DigitalCodeStatus.DISPONIBLE, isDebitCompleted: false }).where(inArray(digitalCodes.id, parentIds))
+                        ]);
                     }
                 }
 
@@ -352,13 +352,10 @@ export const cancelOrderAction = withAuth(
                     )
                 });
 
-                for (const st of relatedTransactions) {
-                    // Credit the supplier back
+                await Promise.all(relatedTransactions.map(async (st) => {
                     await tx.update(suppliers)
                         .set({ balance: sql`${suppliers.balance} + ${sql.param(st.amount)}` })
                         .where(eq(suppliers.id, st.supplierId));
-
-                    // Log the reversal
                     await tx.insert(supplierTransactions).values({
                         supplierId: st.supplierId,
                         orderId: orderId,
@@ -369,7 +366,7 @@ export const cancelOrderAction = withAuth(
                         currency: st.currency,
                         reason: `Annulation Commande #${orderId} (Remboursement Auto)`
                     });
-                }
+                }));
             });
 
             revalidatePath("/admin/caisse");

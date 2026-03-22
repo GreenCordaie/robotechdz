@@ -3,9 +3,18 @@ import { db } from '@/db';
 import { eq } from 'drizzle-orm';
 import { orders } from '@/db/schema';
 import { decrypt } from '@/lib/encryption';
+import { RateLimitService } from '@/services/rate-limit.service';
 
 export async function GET(request: Request) {
     try {
+        const ip = request.headers.get('x-forwarded-for')?.split(',')[0] || 'unknown';
+        const rlKey = `track:${ip}`;
+
+        const rl = await RateLimitService.checkLimit(rlKey);
+        if (rl.isBlocked) {
+            return NextResponse.json({ error: 'Trop de tentatives. Réessayez plus tard.' }, { status: 429 });
+        }
+
         const { searchParams } = new URL(request.url);
         const orderNumber = searchParams.get('orderNumber');
         const phoneDigits = searchParams.get('phoneDigits');
@@ -21,7 +30,11 @@ export async function GET(request: Request) {
                 reseller: true,
                 items: {
                     with: {
-                        product: true,
+                        variant: {
+                            with: {
+                                product: true
+                            }
+                        },
                         codes: true,
                         slots: {
                             with: {
@@ -38,25 +51,38 @@ export async function GET(request: Request) {
         }
 
         // Determine the phone number to check against
-        const fullPhone = order.client?.telephone || order.reseller?.telephone;
+        const fullPhone = order.client?.telephone || order.reseller?.contactPhone;
         const last4 = fullPhone ? fullPhone.slice(-4) : null;
 
         const isPhoneValidated = !!(phoneDigits && last4 && phoneDigits === last4);
 
-        // Format the response
+        // If phone required but not yet validated, return minimal info only
+        if (last4 && !isPhoneValidated) {
+            if (phoneDigits) {
+                await RateLimitService.recordFailure(rlKey);
+            }
+            return NextResponse.json({
+                orderNumber: order.orderNumber,
+                status: order.status,
+                isPhoneValidated: false,
+                phoneRequired: true
+            });
+        }
+
+        // Format the response (phone validated or no phone required)
         const responseData = {
             orderNumber: order.orderNumber,
             status: order.status,
             totalAmount: order.totalAmount,
             createdAt: order.createdAt,
             deliveryMethod: order.deliveryMethod,
-            customerName: order.client?.name || order.reseller?.name || 'Client',
+            customerName: order.client?.nomComplet || order.reseller?.companyName || 'Client',
             isPhoneValidated,
-            phoneRequired: !!last4, // True if the order has a phone number
+            phoneRequired: !!last4,
             items: order.items.map(item => {
                 const itemData: any = {
                     id: item.id,
-                    productName: item.product?.name || 'Produit',
+                    productName: item.variant?.product?.name || 'Produit',
                     quantity: item.quantity,
                     price: item.price,
                 };

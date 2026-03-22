@@ -7,14 +7,14 @@ import { payOrder, getTodayOrders, cancelOrderAction, replaceOrderItemCode, refu
 import { useAuthStore } from "@/store/useAuthStore";
 import { toast } from "react-hot-toast";
 import OrderDetailModal from "@/components/admin/modals/OrderDetailModal";
-import { Eye, User as UserIcon, Plus, Usb, Loader2 } from "lucide-react";
+import { Eye, User as UserIcon, Plus } from "lucide-react";
 import { getAllClients, createClient } from "../clients/actions";
 import { formatCurrency } from "@/lib/formatters";
 import { ThermalReceiptV2 } from "@/components/admin/receipt/ThermalReceiptV2";
 import { useThermalPrinter } from "@/hooks/useThermalPrinter";
-import { useWebUSBPrinter } from "@/hooks/useWebUSBPrinter";
-import { generateOrderEscPos } from "@/lib/escpos";
 import { useSettingsStore } from "@/store/useSettingsStore";
+import { isPrintServiceAvailable, printReceipt } from "@/lib/printer";
+import type { PrintData } from "@/lib/printer";
 
 export default function CaisseContent() {
     const {
@@ -44,23 +44,49 @@ export default function CaisseContent() {
     const { printToIframe } = useThermalPrinter();
 
     const settings = useSettingsStore();
-    const webusb = useWebUSBPrinter();
-
     const handlePrint = async (data: any) => {
-        // High Performance: WebUSB Direct Print
-        if (webusb.connected) {
-            try {
-                const buffer = generateOrderEscPos(data, settings);
-                await webusb.print(buffer);
-                toast.success(`Impression USB : #${data.orderNumber}`);
-                return;
-            } catch (error) {
-                console.error("USB Print failed:", error);
-                toast.error("Échec USB, basculement en mode standard...");
+        // Priority 1: RobotechPrint.exe (127.0.0.1:6543)
+        try {
+            if (await isPrintServiceAvailable()) {
+                const appUrl = process.env.NEXT_PUBLIC_APP_URL || window.location.origin;
+                const now = new Date();
+                const printData: PrintData = {
+                    orderNumber:   data.orderNumber,
+                    date:          now.toLocaleDateString('fr-FR'),
+                    time:          now.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
+                    paymentMethod: data.paymentMethod,
+                    cashierName:   user?.nom,
+                    customer:      { name: data.customerName || "Client", phone: data.customerPhone || "" },
+                    trackingUrl:   `${appUrl}/suivi/${data.orderNumber}`,
+                    shop: {
+                        name:          settings.shopName        || "Ma Boutique",
+                        address:       settings.shopAddress     || undefined,
+                        tel:           settings.shopTel         || undefined,
+                        footerMessage: settings.footerMessage   || undefined,
+                        showDateTime:  settings.showDateTime    !== false,
+                        showCashier:   settings.showCashier     !== false,
+                    },
+                    items: (data.items || []).map((it: any) => ({
+                        productName:  it.name,
+                        quantity:     it.quantity,
+                        price:        Number(it.price),
+                        credentials:  (it.codes || []).map((c: any) => ({
+                            label: 'Code',
+                            value: typeof c === 'string' ? c : (c.code || '')
+                        }))
+                    }))
+                };
+                const result = await printReceipt(printData);
+                if (result.success) {
+                    toast.success(`Impression locale : #${data.orderNumber}`);
+                    return;
+                }
             }
+        } catch {
+            // Silent: fall through to iframe
         }
 
-        // Standard Fallback: hidden iframe rendering
+        // Priority 2: Browser iframe fallback (shows print dialog)
         setTimeout(() => {
             const printContent = document.getElementById('thermal-receipt-source');
             if (printContent) {
@@ -320,27 +346,6 @@ export default function CaisseContent() {
                             ))}
                         </div>
 
-                        {/* WebUSB Hardware UI */}
-                        <div className="flex items-center gap-2 pl-4 border-l border-[#ec5b13]/20">
-                            <div className={`hidden lg:flex items-center gap-1.5 px-2 py-1 rounded-md border text-[9px] font-bold uppercase tracking-tight transition-all ${webusb.connected
-                                ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
-                                : "bg-red-500/10 border-red-500/20 text-red-400"
-                                }`}>
-                                <div className={`size-1.5 rounded-full ${webusb.connected ? "bg-emerald-400 animate-pulse" : "bg-red-400"}`} />
-                                {webusb.connected ? "USB Prête" : "Hors ligne"}
-                            </div>
-                            <button
-                                onClick={webusb.connected ? webusb.disconnect : webusb.connect}
-                                disabled={webusb.isConnecting}
-                                className={`h-8 px-3 rounded-lg flex items-center gap-2 text-[10px] font-black uppercase transition-all shadow-sm active:scale-95 ${webusb.connected
-                                    ? "bg-zinc-800 text-zinc-400 hover:bg-zinc-700"
-                                    : "bg-[#ec5b13] text-white hover:bg-orange-600"
-                                    }`}
-                            >
-                                {webusb.isConnecting ? <Loader2 className="size-3 animate-spin" /> : <Usb className="size-3" />}
-                                {webusb.connected ? "Off" : "USB"}
-                            </button>
-                        </div>
                     </div>
                     <div className="relative">
                         <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">search</span>
@@ -748,22 +753,7 @@ export default function CaisseContent() {
                         cashier: user?.nom || "Admin"
                     };
 
-                    if (webusb.connected) {
-                        try {
-                            const buffer = generateOrderEscPos(dataToPrint, settings);
-                            await webusb.print(buffer);
-                            toast.success("Réimpression USB lancée");
-                        } catch (e) {
-                            console.error("Manual reprint fail:", e);
-                            toast.error("Erreur USB");
-                        }
-                    } else {
-                        const printContent = document.getElementById('thermal-receipt-source');
-                        if (printContent) {
-                            toast.loading("Lancement réimpression...", { duration: 2000 });
-                            printToIframe(orderForDetail.orderNumber, printContent.innerHTML);
-                        }
-                    }
+                    await handlePrint(dataToPrint);
                 }}
             />
 

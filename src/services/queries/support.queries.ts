@@ -3,12 +3,13 @@ import { db } from "@/db";
 import { supportTickets } from "@/db/schema";
 import { desc, eq, count } from "drizzle-orm";
 import { cache } from "react";
+import { decrypt } from "@/lib/encryption";
 
 export class SupportQueries {
 
     /**
      * Gets support tickets with optional status filter.
-     * Enriches order data if present.
+     * Enriches order data and decrypts credentials if present.
      */
     static getTickets = cache(async (status: "OUVERT" | "RESOLU" = "OUVERT") => {
         const results: any = await db.query.supportTickets.findMany({
@@ -16,6 +17,7 @@ export class SupportQueries {
             with: {
                 order: {
                     with: {
+                        client: true,
                         items: {
                             with: {
                                 codes: true,
@@ -33,13 +35,16 @@ export class SupportQueries {
 
             const enrichedItems = ticket.order.items.map((item: any) => ({
                 ...item,
-                fullCodes: (item.codes || []).map((c: any) => ({ id: c.id, code: c.code })),
+                fullCodes: (item.codes || []).map((c: any) => ({
+                    id: c.id,
+                    code: decrypt(c.code) || c.code
+                })),
                 fullSlots: (item.slots || []).map((s: any) => ({
                     id: s.id,
-                    code: s.code,
+                    code: s.code ? (decrypt(s.code) || s.code) : null,
                     slotNumber: s.slotNumber,
                     profileName: s.profileName,
-                    parentCode: s.digitalCode.code
+                    parentCode: s.digitalCode?.code ? (decrypt(s.digitalCode.code) || s.digitalCode.code) : null
                 }))
             }));
 
@@ -47,6 +52,7 @@ export class SupportQueries {
                 ...ticket,
                 order: {
                     ...ticket.order,
+                    customerPhone: ticket.order.customerPhone || ticket.order.client?.telephone,
                     items: enrichedItems
                 }
             };

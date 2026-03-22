@@ -148,7 +148,7 @@ export default function SuppliersMobile({ initialSuppliers, initialHistory, init
             <header className="p-4 border-b border-white/5 space-y-4">
                 <div className="flex justify-between items-center">
                     <h1 className="text-xl font-black italic uppercase tracking-tighter">Flux Devise</h1>
-                    <Button isIconOnly size="sm" color="primary" className="rounded-full" onPress={() => setIsAddModalOpen(true)}>
+                    <Button isIconOnly aria-label="Ajouter un fournisseur" size="sm" color="primary" className="rounded-full" onPress={() => setIsAddModalOpen(true)}>
                         <Plus size={18} />
                     </Button>
                 </div>
@@ -221,13 +221,13 @@ export default function SuppliersMobile({ initialSuppliers, initialHistory, init
                                                     {s.name.substring(0, 2)}
                                                 </div>
                                                 <div>
-                                                    <p className="text-sm font-black uppercase tracking-tight">{s.name}</p>
+                                                    <p className="text-sm font-black uppercase tracking-tight truncate max-w-[140px]">{s.name}</p>
                                                     <Chip size="sm" variant="dot" color={isLow ? "danger" : "success"} className="h-5 text-[8px] font-black uppercase border-none bg-transparent">
                                                         {isLow ? "Faible" : "Opérationnel"}
                                                     </Chip>
                                                 </div>
                                             </div>
-                                            <Button isIconOnly size="sm" variant="light" className="text-slate-600" onPress={() => handleOpenSettings(s)}>
+                                            <Button isIconOnly aria-label="Paramètres du fournisseur" size="sm" variant="light" className="text-slate-600" onPress={() => handleOpenSettings(s)}>
                                                 <Settings size={18} />
                                             </Button>
                                         </div>
@@ -275,7 +275,7 @@ export default function SuppliersMobile({ initialSuppliers, initialHistory, init
                                             onChange={(e) => setSearchHist(e.target.value)}
                                         />
                                     </div>
-                                    <Button isIconOnly size="sm" variant="flat" className="bg-white/5 text-slate-400" onPress={handleExportCSV}>
+                                    <Button isIconOnly aria-label="Exporter en CSV" size="sm" variant="flat" className="bg-white/5 text-slate-400" onPress={handleExportCSV}>
                                         <Download size={14} />
                                     </Button>
                                 </div>

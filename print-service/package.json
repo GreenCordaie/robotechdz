@@ -1,0 +1,14 @@
+{
+  "name": "robotech-print-service",
+  "version": "2.0.0",
+  "description": "Service d'impression local ESC/POS pour Robotech POS",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "setup": "node setup.js",
+    "build:exe": "npx pkg server.js --targets node18-win-x64 --output dist/RobotechPrint.exe --config pkg.json"
+  },
+  "dependencies": {
+    "express": "^4.18.2"
+  }
+}

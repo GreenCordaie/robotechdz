@@ -10,7 +10,7 @@ export default async function ClientsPage() {
 
     if (stats.success === false || indebtedClients.success === false) {
         if (stats.error?.includes("Session") || indebtedClients.error?.includes("Session")) {
-            return redirect("/login");
+            return redirect("/admin/login");
         }
         return (
             <div className="p-8 text-white bg-red-900/20 rounded-xl border border-red-500/50">

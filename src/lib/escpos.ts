@@ -215,10 +215,6 @@ export function generateOrderEscPos(orderData: any, shopSettings: any) {
 
     encoder.line();
     encoder.line();
-    encoder.center("**** FLEXBOX II - SYSTEM ****");
-    encoder.line();
-    encoder.line();
-    encoder.line();
 
     // Complete cutter sequence for Xprinter 80C
     encoder.cut();

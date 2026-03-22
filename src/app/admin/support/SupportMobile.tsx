@@ -40,7 +40,7 @@ export default function SupportMobile({ initialTickets = [] }: SupportMobileProp
     const loadTickets = useCallback(async () => {
         try {
             const data = await getSupportTickets(statusFilter);
-            setTickets(data);
+            if (Array.isArray(data)) setTickets(data);
         } catch (error) {
             toast.error("Chargement échoué");
         } finally {

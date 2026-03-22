@@ -56,9 +56,10 @@ export const recordPayment = withAuth(
                     typeAction: data.typeAction,
                 });
 
-                // ATOMIC Update: SQL-level decrement to prevent lost updates
+                const currentDette = parseFloat(client.totalDetteDzd || "0");
+                const newDette = Math.max(0, currentDette - parseFloat(data.amount)).toFixed(2);
                 await tx.update(clients)
-                    .set({ totalDetteDzd: sql`GREATEST(0, cast(total_dette_dzd as decimal) - ${data.amount})::text` })
+                    .set({ totalDetteDzd: newDette })
                     .where(eq(clients.id, data.clientId));
             });
 

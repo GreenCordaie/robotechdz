@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 export default async function FournisseursPage() {
     const user = await getCurrentUser();
     if (!user || user.role !== UserRole.ADMIN && user.role !== UserRole.SUPER_ADMIN) {
-        redirect("/auth/login");
+        redirect("/admin/login");
     }
 
     const [suppliers, history, settings, stats] = await Promise.all([

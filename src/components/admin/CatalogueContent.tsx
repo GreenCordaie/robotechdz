@@ -203,7 +203,8 @@ export default function CatalogueContent({
     };
 
     const handleDeleteProduct = async (id: number) => {
-        if (confirm("Êtes-vous sûr de vouloir supprimer ce produit ?")) {
+        // TODO: Replace window.confirm with a proper modal dialog for better UX
+        if (window.confirm("Êtes-vous sûr de vouloir supprimer ce produit ?")) {
             const res = await deleteProductAction({ id });
             if (res.success) {
                 toast.success("Produit supprimé");
@@ -220,7 +221,8 @@ export default function CatalogueContent({
             ? "Archiver ce produit ? Il ne sera plus visible sur le Kiosque."
             : "Réactiver ce produit ?";
 
-        if (confirm(msg)) {
+        // TODO: Replace window.confirm with a proper modal dialog for better UX
+        if (window.confirm(msg)) {
             const res = await toggleProductStatusAction({ id, status: newStatus });
             if (res.success) {
                 toast.success(newStatus === "ARCHIVED" ? "Produit archivé" : "Produit activé");
@@ -341,6 +343,7 @@ export default function CatalogueContent({
                     <div className="flex gap-2 border-l border-[#262626] pl-4">
                         <Button
                             isIconOnly
+                            aria-label="Exporter en CSV"
                             className="size-10 rounded-xl bg-[#161616] border border-[#262626] flex items-center justify-center hover:bg-[#262626] transition-colors"
                             onClick={handleExportCSV}
                         >
@@ -349,6 +352,7 @@ export default function CatalogueContent({
                     </div>
                     <Button
                         isIconOnly
+                        aria-label="Notifications"
                         className="size-10 rounded-xl bg-[#161616] border border-[#262626] flex items-center justify-center hover:bg-[#262626] transition-colors"
                         onClick={() => toast.success("Aucune nouvelle notification")}
                     >
@@ -356,6 +360,7 @@ export default function CatalogueContent({
                     </Button>
                     <Button
                         isIconOnly
+                        aria-label="Paramètres"
                         className="size-10 rounded-xl bg-[#161616] border border-[#262626] flex items-center justify-center hover:bg-[#262626] transition-colors"
                         as={Link}
                         href="/admin/settings"
@@ -508,7 +513,7 @@ export default function CatalogueContent({
                                                     </div>
                                                     <div className="min-w-0">
                                                         <div className="flex flex-col">
-                                                            <p className="text-slate-100 font-bold text-sm tracking-tight group-hover:text-primary transition-colors">{product.name}</p>
+                                                            <p className="text-slate-100 font-bold text-sm tracking-tight group-hover:text-primary transition-colors truncate">{product.name}</p>
                                                             {product.status === "ARCHIVED" && (
                                                                 <Chip size="sm" variant="flat" color="default" className="mt-1 h-4 text-[8px] border-none uppercase font-black">Archivé</Chip>
                                                             )}
@@ -535,6 +540,7 @@ export default function CatalogueContent({
                                                     <DropdownTrigger>
                                                         <Button
                                                             isIconOnly
+                                                            aria-label="Actions sur ce produit"
                                                             size="sm"
                                                             variant="light"
                                                             className="text-slate-500 hover:text-white transition-colors hover:bg-[#262626]"

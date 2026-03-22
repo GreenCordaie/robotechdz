@@ -13,7 +13,7 @@ export const metadata = {
 export default async function SupportPage() {
     const user = await getCurrentUser();
     if (!user || (user.role !== UserRole.ADMIN && user.role !== UserRole.SUPER_ADMIN && user.role !== UserRole.TRAITEUR)) {
-        redirect("/auth/login");
+        redirect("/admin/login");
     }
 
     const initialTickets = await SupportQueries.getTickets("OUVERT");

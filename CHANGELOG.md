@@ -2,6 +2,29 @@
 
 Toutes les modifications notables de ce projet seront documentées dans ce fichier.
 
+## [7.1.0] - 2026-03-22
+
+### 🛡️ Sécurité & API
+- **Hardening Webhook** : Nouveau middleware de validation HMAC et signatures de sécurité pour les webhooks entrants.
+- **Rate-Limiting v2** : Service de limitation de débit granulaire pour protéger les endpoints sensibles.
+- **Correction Tracking** : Résolution des erreurs de types TypeScript dans le module de suivi des commandes.
+
+### 🤖 Automation & Intelligence
+- **Intégration n8n Native** : Nouveau module de synchronisation bidirectionnelle (`n8n.service.ts`) pour automatiser les workflows complexes.
+- **Brain Integration** : Optimisation des routines de prompt IA pour les agents de support.
+
+### 🖥️ Expérience Kiosk & Client
+- **Kiosk Refresh** : Refonte visuelle majeure des vues `Catalogue`, `Confirmation` et `Idle` pour optimiser le parcours utilisateur.
+- **Suivi Temps Réel** : Amélioration de la page de suivi client avec mise à jour du statut en direct.
+
+### ⚙️ Admin & Écosystème
+- **Mobile First Admin** : Mise en conformité de la Sidebar et des paramètres Bot pour une expérience 100% fonctionnelle sur tablette et smartphone.
+- **Print Core** : Lancement du service `print-service` autonome pour une gestion robuste des impressions sans drivers locaux.
+
+### 🛠️ Améliorations Techniques
+- Déploiement d'une suite de 30+ scripts utilitaires pour le monitoring DB et les tests d'intégration.
+- Optimisation du `middleware.ts` pour une meilleure gestion des sessions et de la sécurité des routes.
+
 ## [7.0.0] - 2026-03-18
 
 ### 🚀 WhatsApp & Automatisation

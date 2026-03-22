@@ -1,66 +1,60 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
+const GROQ_MODELS = [
+    "llama-3.1-8b-instant",
+    "llama3-8b-8192",
+    "mixtral-8x7b-32768",
+];
 
-/**
- * ULTRA-ROBUST GEMINI PROVIDER
- * Designed to bypass regional 404/429 blocks by cycling through model strings and API versions.
- */
 export async function getGeminiResponse(
     message: string,
-    customerPhone: string,
+    _phone: string,
     apiKey: string,
     systemInstruction?: string,
     history?: { role: "user" | "model"; parts: { text: string }[] }[]
-) {
+): Promise<string> {
     if (!apiKey) return "⚠️ Clé IA manquante. Vérifiez vos réglages.";
 
-    // Combinations of models and versions that known to work for different regions/key types
-    const trials = [
-        { m: "gemini-1.5-flash", v: "v1" },
-        { m: "gemini-1.5-pro", v: "v1" },
-        { m: "gemini-1.5-flash-latest", v: "v1" },
-        { m: "gemini-2.0-flash", v: "v1" },
-        { m: "gemini-2.0-flash-exp", v: "v1beta" }
+    // Convert Gemini history format → OpenAI format
+    const historyMessages = (history || []).map(h => ({
+        role: h.role === "model" ? "assistant" : "user" as "assistant" | "user",
+        content: h.parts[0]?.text || ""
+    })).filter(m => m.content);
+
+    const messages = [
+        { role: "system" as const, content: systemInstruction || "Tu es l'assistant commercial de la boutique." },
+        ...historyMessages,
+        { role: "user" as const, content: message }
     ];
 
-    const genAI = new GoogleGenerativeAI(apiKey.trim());
-
-    for (const trial of trials) {
+    for (const model of GROQ_MODELS) {
         try {
-            console.log(`📡 [AI-HANDSHAKE] Model: ${trial.m} | Version: ${trial.v} | Hist: ${history?.length || 0}`);
+            console.log(`📡 [AI] Groq/${model}...`);
+            const res = await fetch(GROQ_API_URL, {
+                method: "POST",
+                headers: {
+                    "Authorization": `Bearer ${apiKey}`,
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({ model, messages, max_tokens: 500, temperature: 0.7 }),
+                signal: AbortSignal.timeout(10_000)
+            });
 
-            // Force specific version via request options
-            const model = genAI.getGenerativeModel(
-                { model: trial.m, systemInstruction: systemInstruction || "Tu es l'assistant de FLEXBOX DIRECT." },
-                { apiVersion: trial.v as any }
-            );
-
-            // Use Chat Session if history is provided, otherwise simple content generation
-            let result;
-            if (history && history.length > 0) {
-                const chat = model.startChat({
-                    history: history,
-                    generationConfig: { maxOutputTokens: 500 }
-                });
-                result = await chat.sendMessage(message);
-            } else {
-                result = await model.generateContent(message);
+            if (!res.ok) {
+                const err = await res.text();
+                console.warn(`⚠️ [AI] ${model} (${res.status}): ${err.slice(0, 100)}`);
+                continue;
             }
 
-            const response = await result.response;
-            const text = response.text();
-
+            const data = await res.json();
+            const text = data.choices?.[0]?.message?.content?.trim();
             if (text) {
-                console.log(`✅ [AI-READY] Resolved via ${trial.m}`);
+                console.log(`✅ [AI] Réponse via ${model}`);
                 return text;
             }
         } catch (err: any) {
-            const msg = err.message || "Unknown error";
-            console.warn(`⚠️ [AI-SKIP] ${trial.m} (${trial.v}) failed: ${msg.substring(0, 100)}`);
-
-            // If it's a structural error, keep trying. If it's a fatal key error, maybe stop?
-            // For now, we cycle everything.
+            console.warn(`⚠️ [AI] ${model} failed: ${err.message?.slice(0, 80)}`);
         }
     }
 
-    return "🤖 Je rencontre une difficulté technique avec l'IA. Tapez '1' pour votre solde, ou réessayez dans 1 minute.";
+    return "🤖 Je rencontre une difficulté technique. Réessayez dans un instant.";
 }

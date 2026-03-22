@@ -1,9 +1,5 @@
 import crypto from "crypto";
 
-/**
- * Validates incoming webhook requests from external providers.
- * Uses timing-safe comparisons to prevent information leakage.
- */
 export async function verifyWebhookSignature(headers: Headers, provider: "telegram" | "whatsapp") {
     if (provider === "telegram") {
         const expectedToken = process.env.TELEGRAM_SECRET_TOKEN;
@@ -23,16 +19,18 @@ export async function verifyWebhookSignature(headers: Headers, provider: "telegr
     }
 
     if (provider === "whatsapp") {
-        // Evolution API uses 'apikey' header for internal security
+        // Waha sends X-Api-Key header for authentication
         const expectedKey = process.env.WHATSAPP_WEBHOOK_SECRET;
-        const receivedKey = headers.get("apikey");
 
-        if (!expectedKey || !receivedKey) return false;
+        // No secret configured: allow in dev, block in production
+        if (!expectedKey) return process.env.NODE_ENV !== "production";
+
+        const receivedKey = headers.get("x-api-key") || headers.get("apikey");
+        if (!receivedKey) return false;
 
         try {
             const expectedBuffer = Buffer.from(expectedKey);
             const receivedBuffer = Buffer.from(receivedKey);
-
             if (expectedBuffer.length !== receivedBuffer.length) return false;
             return crypto.timingSafeEqual(expectedBuffer, receivedBuffer);
         } catch (e) {
@@ -43,9 +41,6 @@ export async function verifyWebhookSignature(headers: Headers, provider: "telegr
     return false;
 }
 
-/**
- * Checks for event idempotence in the database.
- */
 export async function isEventProcessed(provider: "telegram" | "whatsapp", externalId: string, customerPhone?: string, payload?: any) {
     const { db } = await import("@/db");
     const { webhookEvents } = await import("@/db/schema");

@@ -101,6 +101,7 @@ export const checkoutResellerAction = withAuth(
             const dbVariants = await db.query.productVariants.findMany({
                 where: inArray(productVariants.id, variantIds),
                 with: {
+                    product: true,
                     variantSuppliers: {
                         limit: 1
                     }
@@ -116,10 +117,12 @@ export const checkoutResellerAction = withAuth(
                 totalAmount += priceNum * item.quantity;
 
                 const supplierInfo = variant.variantSuppliers?.[0];
+                const productName = (variant as any).product?.name;
+                const fullName = productName ? `${productName} — ${variant.name}` : variant.name;
 
                 return {
                     ...item,
-                    name: variant.name,
+                    name: fullName,
                     price: priceNum,
                     supplierId: supplierInfo?.supplierId || null,
                     purchasePrice: supplierInfo?.purchasePrice || null,

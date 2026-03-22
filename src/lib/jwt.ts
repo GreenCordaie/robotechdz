@@ -7,7 +7,7 @@ export async function encrypt(payload: { userId: number; userRole: string; token
     return await new SignJWT(payload)
         .setProtectedHeader({ alg: "HS256" })
         .setIssuedAt()
-        .setExpirationTime("12h")
+        .setExpirationTime("2h")
         .sign(key);
 }
 

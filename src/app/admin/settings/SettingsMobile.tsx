@@ -34,7 +34,6 @@ import {
     RefreshCw,
     History,
     Zap,
-    Brain,
     FileJson,
     FileSpreadsheet,
     Loader2
@@ -64,6 +63,7 @@ import { AddMemberModal } from "@/components/admin/modals/AddMemberModal";
 import { EditMemberModal } from "@/components/admin/modals/EditMemberModal";
 import { Spinner, Button, Card, CardBody, Input, Textarea, Switch } from "@heroui/react";
 import { ReceiptSettings } from "@/components/admin/settings/ReceiptSettings";
+import { ApiBotSettings } from "@/components/admin/settings/ApiBotSettings";
 import { QRCodeSVG } from "qrcode.react";
 import PushNotificationManager from "@/components/admin/push/PushNotificationManager";
 
@@ -976,99 +976,17 @@ export default function SettingsMobile() {
 
             {/* API & Intelligence View Overlay */}
             {
-                view === "API" && shopData && (
+                view === "API" && (
                     <div className="fixed inset-0 z-50 bg-[#0a0a0a] flex flex-col pb-20 animate-in slide-in-from-right duration-300">
-                        <header className="p-4 border-b border-white/5 flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                                <button onClick={() => setView("HUB")} className="p-2 -ml-2 text-slate-500">
-                                    <ChevronRight className="rotate-180" size={24} />
-                                </button>
-                                <h1 className="text-xl font-black uppercase italic tracking-tighter leading-tight">Automation & IA</h1>
-                            </div>
-                            <Button
-                                size="sm"
-                                className="bg-primary text-white font-black uppercase text-[10px] rounded-full px-5"
-                                onPress={handleSaveShop}
-                                isLoading={isSavingShop}
-                            >
-                                Enregistrer
-                            </Button>
+                        <header className="p-4 border-b border-white/5 flex items-center gap-3">
+                            <button onClick={() => setView("HUB")} className="p-2 -ml-2 text-slate-500">
+                                <ChevronRight className="rotate-180" size={24} />
+                            </button>
+                            <h1 className="text-xl font-black uppercase italic tracking-tighter leading-tight">Automation & IA</h1>
                         </header>
-
-                        <main className="p-6 flex-1 overflow-y-auto space-y-8">
-                            <section className="space-y-4">
-                                <div className="flex items-center gap-2">
-                                    <Zap size={16} className="text-orange-500" />
-                                    <h3 className="text-xs font-black uppercase tracking-widest text-slate-400">Webhooks (n8n)</h3>
-                                </div>
-                                <div className="space-y-4 bg-[#161616] p-5 rounded-[2rem] border border-white/5">
-                                    <Input
-                                        label="n8n Webhook URL"
-                                        variant="bordered"
-                                        value={shopData.n8nWebhookUrl || ""}
-                                        onValueChange={(v) => setShopData({ ...shopData, n8nWebhookUrl: v })}
-                                        classNames={{ inputWrapper: "border-white/5 bg-black/20" }}
-                                    />
-                                    <Button
-                                        onPress={handleTestN8n}
-                                        isLoading={isTestingN8n}
-                                        className="w-full bg-orange-500/10 text-orange-500 font-black uppercase text-[10px] rounded-xl"
-                                        startContent={<RefreshCw size={14} />}
-                                    >
-                                        Tester la connexion
-                                    </Button>
-                                </div>
-                            </section>
-
-                            <section className="space-y-4">
-                                <div className="flex items-center justify-between">
-                                    <div className="flex items-center gap-2">
-                                        <Brain size={16} className="text-purple-500" />
-                                        <h3 className="text-xs font-black uppercase tracking-widest text-slate-400">Intelligence Gemini</h3>
-                                    </div>
-                                    <Switch
-                                        isSelected={!!shopData.chatbotEnabled}
-                                        onValueChange={(v) => setShopData({ ...shopData, chatbotEnabled: v })}
-                                        color="secondary"
-                                        size="sm"
-                                    />
-                                </div>
-                                <div className="space-y-4 bg-[#161616] p-5 rounded-[2rem] border border-white/5">
-                                    <Input
-                                        label="Clé API Gemini"
-                                        type="password"
-                                        variant="bordered"
-                                        value={shopData.geminiApiKey || ""}
-                                        onValueChange={(v) => setShopData({ ...shopData, geminiApiKey: v })}
-                                        classNames={{ inputWrapper: "border-white/5 bg-black/20" }}
-                                    />
-                                    <Textarea
-                                        label="Rôle du Chatbot (Prompt System)"
-                                        variant="bordered"
-                                        minRows={4}
-                                        value={shopData.chatbotRole || ""}
-                                        onValueChange={(v) => setShopData({ ...shopData, chatbotRole: v })}
-                                        classNames={{ inputWrapper: "border-white/5 bg-black/20" }}
-                                    />
-                                </div>
-                            </section>
-
-                            <section className="space-y-4">
-                                <div className="flex items-center gap-2">
-                                    <Smartphone size={16} className="text-emerald-500" />
-                                    <h3 className="text-xs font-black uppercase tracking-widest text-slate-400">Canal WhatsApp</h3>
-                                </div>
-                                <div className="bg-[#161616] p-5 rounded-[2rem] border border-white/5 italic">
-                                    <Input
-                                        label="Webhook Manuel WhatsApp"
-                                        variant="bordered"
-                                        value={shopData.whatsappWebhookUrl || ""}
-                                        onValueChange={(v) => setShopData({ ...shopData, whatsappWebhookUrl: v })}
-                                        classNames={{ inputWrapper: "border-white/5 bg-black/20", input: "text-[#ec5b13] font-mono text-[11px]" }}
-                                    />
-                                </div>
-                            </section>
-                        </main>
+                        <div className="flex-1 overflow-y-auto px-4">
+                            <ApiBotSettings />
+                        </div>
                     </div>
                 )
             }

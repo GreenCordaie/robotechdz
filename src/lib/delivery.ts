@@ -1,43 +1,130 @@
 import { db } from "@/db";
-import { orders } from "@/db/schema";
-import { eq } from "drizzle-orm";
 import { N8nService } from "@/services/n8n.service";
 import { decrypt } from "@/lib/encryption";
+import { sendWhatsAppMessage } from "@/lib/whatsapp";
 
-export function formatOrderItemsText(items: any[]) {
-    let itemsText = "";
-    items.forEach((item: any) => {
-        const standardCodes = (item.codes || []).map((c: any) => {
-            if (typeof c === 'string') return c;
-            try { return decrypt(c.code); } catch { return null; }
-        }).filter(Boolean);
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 
-        const slotCodes = (item.slots || []).map((s: any) => {
+function decryptCode(raw: any): string | null {
+    if (!raw) return null;
+    if (typeof raw === 'string') return raw;
+    try { return decrypt(raw.code) || raw.code || null; } catch { return null; }
+}
+
+function formatDate(date: string | Date): string {
+    return new Date(date).toLocaleDateString('fr-FR', {
+        day: '2-digit', month: 'short', year: 'numeric',
+        hour: '2-digit', minute: '2-digit'
+    });
+}
+
+function formatAmount(amount: any): string {
+    const num = parseFloat(amount) || 0;
+    return num.toLocaleString('fr-DZ') + ' DZD';
+}
+
+// ─── Legacy helper (used by n8n payload) ─────────────────────────────────────
+
+export function formatOrderItemsText(items: any[]): string {
+    let text = "";
+    for (const item of items) {
+        const codes = (item.codes || []).map(decryptCode).filter(Boolean);
+        const slots = (item.slots || []).map((s: any) => {
             try {
-                const parentCode = decrypt(s.digitalCode.code);
-                const slotPin = s.code ? decrypt(s.code) : null;
                 return {
-                    parentCode,
+                    parentCode: decrypt(s.digitalCode.code),
                     slotNumber: s.slotNumber,
-                    pin: slotPin
+                    pin: s.code ? decrypt(s.code) : null
                 };
             } catch { return null; }
         }).filter(Boolean);
 
-        if (standardCodes.length > 0) {
-            standardCodes.forEach((code: string) => {
-                itemsText += `Produit : ${item.name}\nAccès : *${code}*\n\n`;
-            });
+        for (const code of codes) {
+            text += `Produit : ${item.name}\nAccès : *${code}*\n\n`;
+        }
+        for (const slot of slots as any[]) {
+            text += `Produit : ${item.name}\nAccès : *${slot.parentCode}*\nProfil : ${slot.slotNumber}${slot.pin ? ` | PIN : ${slot.pin}` : ""}\n\n`;
+        }
+    }
+    return text.trim();
+}
+
+// ─── Message builder ─────────────────────────────────────────────────────────
+
+function buildWhatsAppMessage(order: any, shopName: string, appUrl: string): string {
+    const sep = "━━━━━━━━━━━━━━━━━━━━";
+    const lines: string[] = [];
+
+    // ── Header ──
+    lines.push(sep);
+    lines.push(`🏪 *${shopName}*`);
+    lines.push(sep);
+    lines.push(``);
+    lines.push(`✅ *Commande confirmée !*`);
+    lines.push(`Bonjour ! Votre commande a bien été traitée.`);
+    lines.push(``);
+
+    // ── Récapitulatif ──
+    lines.push(`📋 *Récapitulatif*`);
+    lines.push(`┌ Commande : *${order.orderNumber}*`);
+    lines.push(`├ Date : ${formatDate(order.createdAt)}`);
+    lines.push(`└ Total payé : *${formatAmount(order.totalAmount)}*`);
+    lines.push(``);
+
+    // ── Produits & codes ──
+    const items: any[] = order.items || [];
+    for (const item of items) {
+        const codes = (item.codes || []).map(decryptCode).filter(Boolean) as string[];
+        const slots = (item.slots || []).map((s: any) => {
+            try {
+                return {
+                    parentCode: decrypt(s.digitalCode.code),
+                    slotNumber: s.slotNumber,
+                    pin: s.code ? decrypt(s.code) : null
+                };
+            } catch { return null; }
+        }).filter(Boolean) as any[];
+
+        const totalAccess = codes.length + slots.length;
+        if (totalAccess === 0) continue;
+
+        lines.push(sep);
+        lines.push(`🎁 *${item.name}* × ${item.quantity}`);
+        lines.push(`_${totalAccess} accès reçu${totalAccess > 1 ? 's' : ''} · ${formatAmount(item.price * item.quantity)}_`);
+        lines.push(``);
+
+        if (codes.length > 0) {
+            lines.push(`🔑 *Code${codes.length > 1 ? 's' : ''} d'activation :*`);
+            for (const code of codes) {
+                lines.push(`• \`${code}\``);
+            }
         }
 
-        if (slotCodes.length > 0) {
-            slotCodes.forEach((slot: any) => {
-                itemsText += `Produit : ${item.name}\nAccès : *${slot.parentCode}*\nProfil : ${slot.slotNumber}${slot.pin ? ` | PIN : ${slot.pin}` : ""}\n\n`;
-            });
+        if (slots.length > 0) {
+            lines.push(`👤 *Profil${slots.length > 1 ? 's' : ''} :*`);
+            for (const slot of slots) {
+                lines.push(`• Profil N°${slot.slotNumber} — \`${slot.parentCode}\`${slot.pin ? `  |  PIN : *${slot.pin}*` : ''}`);
+            }
         }
-    });
-    return itemsText.trim();
+
+        lines.push(``);
+    }
+
+    // ── Footer ──
+    lines.push(sep);
+    lines.push(``);
+    lines.push(`📦 *Suivre ma commande :*`);
+    lines.push(`${appUrl}/suivi/${encodeURIComponent(order.orderNumber)}`);
+    lines.push(``);
+    lines.push(`💬 _Un problème ? Répondez à ce message, notre équipe vous aide 24h/24._`);
+    lines.push(``);
+    lines.push(`Merci pour votre confiance ! 🙏`);
+    lines.push(`_${shopName}_`);
+
+    return lines.join('\n');
 }
+
+// ─── Main trigger ─────────────────────────────────────────────────────────────
 
 export async function triggerOrderDelivery(orderId: number) {
     const order = await db.query.orders.findFirst({
@@ -59,17 +146,58 @@ export async function triggerOrderDelivery(orderId: number) {
         return;
     }
 
-    // Delegate to n8n: n8n will handle formatting and sending (WhatsApp, Email, etc.)
-    const formattedText = formatOrderItemsText((order as any).items);
-    await N8nService.triggerEvent('CUSTOMER_DELIVERY', {
-        orderId: (order as any).id,
-        orderNumber: (order as any).orderNumber,
-        customerPhone: (order as any).customerPhone || (order as any).client?.telephone || (order as any).reseller?.telephone,
-        deliveryMethod: (order as any).deliveryMethod,
-        appUrl: process.env.NEXT_PUBLIC_APP_URL || 'https://idea-lake-samuel-dog.trycloudflare.com',
-        items: (order as any).items,
-        formattedItemsText: formattedText
-    });
+    const customerPhone = (order as any).customerPhone
+        || (order as any).client?.telephone
+        || (order as any).reseller?.telephone;
 
-    // Mark as triggered locally if needed, or wait for webhook callback from n8n
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:1556';
+    const formattedText = formatOrderItemsText((order as any).items);
+
+    // 1. Try n8n first
+    try {
+        const n8nResult = await N8nService.triggerEvent('CUSTOMER_DELIVERY', {
+            orderId: (order as any).id,
+            orderNumber: (order as any).orderNumber,
+            customerPhone,
+            deliveryMethod: (order as any).deliveryMethod,
+            appUrl,
+            items: (order as any).items,
+            formattedItemsText: formattedText
+        });
+
+        if (!n8nResult?.error) {
+            console.log(`[DELIVERY] ✅ n8n handled delivery for order #${orderId}`);
+            return;
+        }
+
+        console.warn(`[DELIVERY] n8n failed (${n8nResult?.status || 'error'}), falling back to direct Waha`);
+    } catch (err: any) {
+        console.warn(`[DELIVERY] n8n unreachable, falling back to direct Waha:`, err.message);
+    }
+
+    // 2. Fallback: direct Waha
+    if (!customerPhone || (order as any).deliveryMethod !== 'WHATSAPP') {
+        console.log(`[DELIVERY] No phone or non-WhatsApp delivery, skipping fallback`);
+        return;
+    }
+
+    try {
+        const settings = await db.query.shopSettings.findFirst();
+        const shopName = settings?.shopName || 'FLEXBOX DIRECT';
+        const message = buildWhatsAppMessage(order, shopName, appUrl);
+
+        const result = await sendWhatsAppMessage(customerPhone, message, {
+            whatsappApiUrl: settings?.whatsappApiUrl ?? undefined,
+            whatsappApiKey: settings?.whatsappApiKey ?? undefined,
+            whatsappInstanceName: settings?.whatsappInstanceName ?? undefined,
+        });
+
+        if (result.success) {
+            console.log(`[DELIVERY] ✅ Waha sent to ${customerPhone} for order #${orderId}`);
+        } else {
+            console.error(`[DELIVERY] ❌ Waha failed: ${result.error}`);
+        }
+    } catch (err: any) {
+        console.error(`[DELIVERY] ❌ Waha error:`, err.message);
+    }
 }

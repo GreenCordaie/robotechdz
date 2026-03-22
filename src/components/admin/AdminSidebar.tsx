@@ -3,10 +3,8 @@
 import React from "react";
 import {
     LayoutDashboard,
-    BookOpen,
     Wallet,
     Settings,
-    Truck,
     Package,
     User,
     LogOut,
@@ -14,12 +12,12 @@ import {
     Users,
     RefreshCw,
     LayoutGrid,
-    ClipboardCheck,
     Contact,
     TruckIcon,
     Building2,
     Headset,
-    Settings2
+    Settings2,
+    BarChart3
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -82,6 +80,7 @@ export const AdminSidebar = () => {
         ...(isB2bEnabled ? [{ name: "B2B & Revendeurs", icon: Building2, href: "/admin/b2b", roles: ["ADMIN"] }] : []),
         { name: "Tickets Support", icon: Headset, href: "/admin/support", badge: openTickets, roles: ["ADMIN", "CAISSIER", "TRAITEUR"] },
         { name: "Paramètres", icon: Settings2, href: "/admin/settings", roles: ["ADMIN"] },
+        { name: "Analytics", icon: BarChart3, href: "/admin/analytics", roles: ["ADMIN"] },
     ];
 
     const visibleItems = navItems.filter(item => {

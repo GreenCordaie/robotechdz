@@ -384,6 +384,7 @@ export default function SuppliersContent({ initialSuppliers, initialHistory, ini
                                             </Button>
                                             <Button
                                                 isIconOnly
+                                                aria-label="Paramètres du fournisseur"
                                                 onPress={() => handleOpenSettings(s)}
                                                 className="bg-transparent border border-[#262626] hover:bg-[#262626] text-slate-400 transition-colors"
                                             >
@@ -463,6 +464,7 @@ export default function SuppliersContent({ initialSuppliers, initialHistory, ini
                                 <div className="flex items-center space-x-2">
                                     <Button
                                         isIconOnly
+                                        aria-label="Exporter en CSV"
                                         size="sm"
                                         variant="light"
                                         className="text-slate-500 hover:text-white transition-colors"
@@ -472,6 +474,7 @@ export default function SuppliersContent({ initialSuppliers, initialHistory, ini
                                     </Button>
                                     <Button
                                         isIconOnly
+                                        aria-label="Filtrage avancé"
                                         size="sm"
                                         variant="light"
                                         className="text-slate-500 hover:text-white transition-colors"
@@ -524,7 +527,7 @@ export default function SuppliersContent({ initialSuppliers, initialHistory, ini
                                                                 }`}>
                                                                 {h.supplier.name.substring(0, 1).toUpperCase()}
                                                             </div>
-                                                            <span className="text-xs font-bold text-slate-300 uppercase tracking-tight">{h.supplier.name}</span>
+                                                            <span className="text-xs font-bold text-slate-300 uppercase tracking-tight truncate max-w-[120px]">{h.supplier.name}</span>
                                                         </div>
                                                     </td>
                                                     <td className={`px-6 py-4 text-sm font-black text-right whitespace-nowrap ${isDebit ? 'text-red-500' : isPayment ? 'text-blue-500' : 'text-emerald-500'}`}>

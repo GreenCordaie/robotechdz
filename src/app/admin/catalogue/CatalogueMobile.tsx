@@ -71,7 +71,8 @@ export default function CatalogueMobile({
     };
 
     const handleDeleteProduct = async (id: number) => {
-        if (confirm("Supprimer ce produit ?")) {
+        // TODO: Replace window.confirm with a proper modal dialog for better UX
+        if (window.confirm("Supprimer ce produit ?")) {
             const res = await deleteProductAction({ id });
             if (res.success) {
                 toast.success("Supprimé");
@@ -156,10 +157,10 @@ export default function CatalogueMobile({
                 <div className="flex justify-between items-center">
                     <h1 className="text-xl font-black text-white">Catalogue</h1>
                     <div className="flex gap-2">
-                        <Button isIconOnly size="sm" variant="flat" className="bg-white/5" onPress={() => setIsManageCategoriesOpen(true)}>
+                        <Button isIconOnly aria-label="Gérer les catégories" size="sm" variant="flat" className="bg-white/5" onPress={() => setIsManageCategoriesOpen(true)}>
                             <Settings size={16} />
                         </Button>
-                        <Button isIconOnly size="sm" variant="flat" className="bg-primary/20 text-primary" onPress={() => setIsAddProductOpen(true)}>
+                        <Button isIconOnly aria-label="Ajouter un produit" size="sm" variant="flat" className="bg-primary/20 text-primary" onPress={() => setIsAddProductOpen(true)}>
                             <Plus size={16} />
                         </Button>
                     </div>
@@ -176,7 +177,7 @@ export default function CatalogueMobile({
                             onChange={(e) => setSearchTerm(e.target.value)}
                         />
                     </div>
-                    <Button isIconOnly variant="flat" className="bg-white/5 text-slate-400" onPress={handleExportCSV}>
+                    <Button isIconOnly aria-label="Exporter en CSV" variant="flat" className="bg-white/5 text-slate-400" onPress={handleExportCSV}>
                         <Download size={18} />
                     </Button>
                 </div>
@@ -292,7 +293,7 @@ export default function CatalogueMobile({
                                     </div>
                                     <div className="space-y-1">
                                         <div className="flex items-center gap-2">
-                                            <p className="text-sm font-black text-white">{p.name}</p>
+                                            <p className="text-sm font-black text-white truncate max-w-[160px]">{p.name}</p>
                                             <Chip size="sm" variant="dot" color={p.status === 'ACTIVE' ? 'success' : 'danger'} className="text-[8px] h-4 border-none p-0 capitalize">
                                                 {p.status}
                                             </Chip>
@@ -302,7 +303,7 @@ export default function CatalogueMobile({
                                 </div>
                                 <Dropdown classNames={{ content: "bg-[#161616] border border-[#262626]" }}>
                                     <DropdownTrigger>
-                                        <Button isIconOnly size="sm" variant="light" className="text-slate-600">
+                                        <Button isIconOnly aria-label="Actions sur ce produit" size="sm" variant="light" className="text-slate-600">
                                             <MoreVertical size={16} />
                                         </Button>
                                     </DropdownTrigger>

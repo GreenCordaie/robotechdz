@@ -1,28 +1,30 @@
 import { NextResponse } from "next/server";
 import { N8nService } from "@/services/n8n.service";
-import { db } from "@/db";
+import crypto from "crypto";
 
 export async function GET(req: Request) {
     try {
-        const { searchParams } = new URL(req.url);
-        const secret = searchParams.get("secret");
+        // Use dedicated CRON_SECRET from env, passed as Authorization header
+        const cronSecret = process.env.CRON_SECRET;
+        const authHeader = req.headers ? (req as any).headers?.get?.("authorization") : null;
+        const providedSecret = authHeader?.replace("Bearer ", "") ||
+            new URL(req.url).searchParams.get("secret");
 
-        // Verify secret matches Telegram Bot Token for basic security
-        const settings = await db.query.shopSettings.findFirst();
-        if (!settings || secret !== settings.telegramBotToken) {
+        if (!cronSecret || !providedSecret) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 
-        console.log("[CRON] Starting Expiration Scan...");
-        const results = await N8nService.runDailyExpirationScan();
+        const expectedBuffer = Buffer.from(cronSecret);
+        const receivedBuffer = Buffer.from(providedSecret);
+        if (expectedBuffer.length !== receivedBuffer.length ||
+            !crypto.timingSafeEqual(expectedBuffer, receivedBuffer)) {
+            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+        }
 
-        return NextResponse.json({
-            success: true,
-            message: "Scan terminé",
-            results
-        });
+        const results = await N8nService.runDailyExpirationScan();
+        return NextResponse.json({ success: true, results });
     } catch (error: any) {
         console.error("[CRON-ERROR]", error);
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        return NextResponse.json({ error: "Erreur interne" }, { status: 500 });
     }
 }

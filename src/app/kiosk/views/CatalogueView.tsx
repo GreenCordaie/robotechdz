@@ -49,7 +49,7 @@ export default function CatalogueView({ products, categories }: CatalogueViewPro
                 {/* Logo Section */}
                 <div className="flex-shrink-0">
                     {dashboardLogoUrl ? (
-                        <div className="h-20 flex items-center">
+                        <div className="h-14 md:h-20 flex items-center">
                             <NextImage src={dashboardLogoUrl} alt={shopName} width={200} height={80} className="h-full w-auto object-contain" />
                         </div>
                     ) : (
@@ -68,7 +68,7 @@ export default function CatalogueView({ products, categories }: CatalogueViewPro
                             </svg>
                         </div>
                         <input
-                            className="w-full h-20 pl-16 pr-8 text-2xl bg-white border-none rounded-full shadow-sm focus:ring-4 focus:ring-[#ec5b13]/20 transition-all placeholder:text-black/30 text-black font-bold outline-none"
+                            className="w-full h-14 md:h-20 pl-16 pr-8 text-2xl bg-white border-none rounded-full shadow-sm focus:ring-4 focus:ring-[#ec5b13]/20 transition-all placeholder:text-black/30 text-black font-bold outline-none"
                             placeholder="Rechercher un produit..."
                             type="text"
                             value={searchTerm}
@@ -81,7 +81,7 @@ export default function CatalogueView({ products, categories }: CatalogueViewPro
                 <div className="flex-shrink-0">
                     <button
                         onClick={() => setStep("CART")}
-                        className="relative bg-white h-20 px-10 rounded-full shadow-sm flex items-center justify-center gap-4 active:scale-95 transition-transform border border-gray-50 touch-target"
+                        className="relative bg-white h-14 md:h-20 px-10 rounded-full shadow-sm flex items-center justify-center gap-4 active:scale-95 transition-transform border border-gray-50 touch-target"
                     >
                         <svg className="w-10 h-10 text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5"></path>
@@ -102,7 +102,7 @@ export default function CatalogueView({ products, categories }: CatalogueViewPro
                     {/* Active Category */}
                     <button
                         onClick={() => setSelectedCategoryId(null)}
-                        className={`px-12 h-20 text-2xl font-black rounded-full flex items-center justify-center transition-colors touch-target ${selectedCategoryId === null ? 'bg-black text-white' : 'bg-white border-2 border-slate-200 text-black active:bg-gray-100'}`}
+                        className={`px-12 h-14 md:h-20 text-2xl font-black rounded-full flex items-center justify-center transition-colors touch-target ${selectedCategoryId === null ? 'bg-black text-white' : 'bg-white border-2 border-slate-200 text-black active:bg-gray-100'}`}
                     >
                         Tous
                     </button>
@@ -111,7 +111,7 @@ export default function CatalogueView({ products, categories }: CatalogueViewPro
                         <button
                             key={cat.id}
                             onClick={() => setSelectedCategoryId(cat.id)}
-                            className={`px-12 h-20 text-2xl font-black rounded-full flex items-center justify-center transition-colors touch-target ${selectedCategoryId === cat.id ? 'bg-black text-white' : 'bg-white border-2 border-slate-200 text-black active:bg-gray-100'}`}
+                            className={`px-12 h-14 md:h-20 text-2xl font-black rounded-full flex items-center justify-center transition-colors touch-target ${selectedCategoryId === cat.id ? 'bg-black text-white' : 'bg-white border-2 border-slate-200 text-black active:bg-gray-100'}`}
                         >
                             {cat.name}
                         </button>
@@ -140,7 +140,7 @@ export default function CatalogueView({ products, categories }: CatalogueViewPro
                                     )}
                                 </div>
                                 <div className="p-8 flex flex-col gap-2 relative">
-                                    <h3 className="text-2xl font-black text-black leading-tight uppercase tracking-tight">{product.name}</h3>
+                                    <h3 className="text-2xl font-black text-black leading-tight uppercase tracking-tight truncate">{product.name}</h3>
 
                                     <div className="flex items-center justify-between mt-1">
                                         <p className="text-[#ec5b13] text-xl font-black">

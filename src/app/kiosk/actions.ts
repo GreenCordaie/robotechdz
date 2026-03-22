@@ -27,6 +27,7 @@ export async function createKioskOrder(
                 const variant = await tx.query.productVariants.findFirst({
                     where: (v, { eq }) => eq(v.id, item.variantId),
                     with: {
+                        product: true,
                         variantSuppliers: {
                             limit: 1
                         }
@@ -39,10 +40,12 @@ export async function createKioskOrder(
                 realTotalAmount += itemTotal;
 
                 const supplierInfo = variant.variantSuppliers?.[0];
+                const productName = (variant as any).product?.name;
+                const fullName = productName ? `${productName} — ${variant.name}` : variant.name;
 
                 secureItems.push({
                     variantId: item.variantId,
-                    name: variant.name,
+                    name: fullName,
                     price: variant.salePriceDzd,
                     quantity: item.quantity,
                     supplierId: supplierInfo?.supplierId || null,

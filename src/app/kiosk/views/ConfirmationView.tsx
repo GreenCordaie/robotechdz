@@ -47,7 +47,7 @@ export default function ConfirmationView() {
                 {/* BEGIN: OrderNumberBlock */}
                 {/* Giant order number container for high visibility */}
                 <div className="bg-white border-8 border-black rounded-[48px] py-10 px-24 shadow-2xl mt-12 mb-16" data-purpose="order-id-display">
-                    <span className="text-[10rem] font-black text-black tracking-[0.1em] leading-none uppercase">
+                    <span className="text-[4rem] sm:text-[6rem] md:text-[8rem] lg:text-[10rem] font-black text-black tracking-[0.1em] leading-none uppercase">
                         {lastOrderNumber || "#---"}
                     </span>
                 </div>
