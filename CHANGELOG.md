@@ -2,6 +2,24 @@
 
 Toutes les modifications notables de ce projet seront documentées dans ce fichier.
 
+## [7.2.0] - 2026-03-22
+
+### 🏪 Module Caisse (POS)
+- **POS Overhaul** : Refonte complète de l'interface de caisse pour une saisie ultra-rapide des ventes.
+- **Support Mobile Caisse** : Adaptation du module de caisse pour les terminaux mobiles et tablettes.
+- **Server Actions POS** : Nouvelles actions pour la gestion des transactions, des tickets et des stocks en temps réel.
+
+### 🖨️ Écosystème d'Impression
+- **Print Service v2** : Amélioration du service Node.js pour une gestion plus fiable des files d'attente d'impression.
+- **Library Refactor** : Simplification de `src/lib/printer.ts` pour faciliter l'intégration de nouvelles imprimantes.
+
+### 📦 Services & Data
+- **Order Service Update** : Extension du service de commandes pour supporter les flux spécifiques à la vente directe.
+- **Database Alignment** : Mise à jour du schéma Drizzle pour la synchronisation des données de caisse.
+
+### 🛠️ Maintenance & Dev
+- **Start Scripts** : Optimisation finale des scripts de démarrage pour l'environnement de production locale.
+
 ## [7.1.1] - 2026-03-22
 
 ### 📊 Analytics & Insights

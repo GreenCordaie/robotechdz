@@ -18,6 +18,7 @@ export class OrderService {
         montantPaye: number;
         clientId?: number;
         itemSuppliers?: Record<string, number>;
+        paymentMethod?: string;
     }) {
         const remise = options.remise || 0;
         const montantPaye = options.montantPaye || 0;
@@ -46,7 +47,9 @@ export class OrderService {
                     remise: remise.toString(),
                     montantPaye: montantPaye.toString(),
                     resteAPayer: resteAPayer.toString(),
-                    clientId: clientId || null
+                    clientId: clientId || null,
+                    paymentMethod: options.paymentMethod || null,
+                    printStatus: "print_pending",
                 })
                 .where(eq(orders.id, id));
 

@@ -81,6 +81,8 @@ export const orders = pgTable("orders", {
     source: orderSourceEnum("source").default("KIOSK").notNull(),
     deliveryMethod: deliveryMethodEnum("delivery_method").default("TICKET").notNull(),
     customerPhone: text("customer_phone"),
+    paymentMethod: text("payment_method"),
+    printStatus: text("print_status").default("not_required"), // 'not_required' | 'print_pending' | 'printed' | 'failed'
     isDelivered: boolean("is_delivered").default(false),
     whatsappSentAt: timestamp("whatsapp_sent_at", { mode: 'date' }),
     pointsEarned: integer("points_earned").default(0).notNull(),

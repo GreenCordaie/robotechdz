@@ -224,24 +224,9 @@ try {
     console.log(`   ⚠️  Docker : ${e.message?.slice(0, 80)}`);
 }
 
-// 1. Print Service local (127.0.0.1:6543)
-const printServicePath = path.join(__dirname, '..', 'print-service', 'server.js');
+// 1. Print Service — tourne sur le PC caisse uniquement (poll /api/print-queue)
 let printProcess = null;
-if (fs.existsSync(printServicePath)) {
-    console.log(`\n🖨️  [1/5] Print Service local (port 6543)...`);
-    printProcess = spawn('node', ['server.js'], {
-        cwd: path.join(__dirname, '..', 'print-service'),
-        stdio: 'pipe',
-        shell: false
-    });
-    printProcess.stdout.on('data', d => process.stdout.write(`[Print] ${d}`));
-    printProcess.stderr.on('data', d => process.stdout.write(`[Print] ${d}`));
-    printProcess.on('exit', code => {
-        if (code !== 0) console.warn(`⚠️  Print Service arrêté (code ${code})`);
-    });
-} else {
-    console.log(`\n⚠️  [1/5] print-service/server.js introuvable, impression navigateur utilisée`);
-}
+console.log(`\n🖨️  [1/5] Print Service : géré par RobotechPrint.exe sur le PC caisse.`);
 
 // 2. Next.js
 console.log(`\n🚀 [2/5] Next.js dev sur le port ${APP_PORT}...`);

@@ -3,18 +3,15 @@
 import React, { useState, useEffect } from "react";
 import { Spinner, Button, Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, Tooltip } from "@heroui/react";
 import { useOrderStore } from "@/store/useOrderStore";
-import { payOrder, getTodayOrders, cancelOrderAction, replaceOrderItemCode, refundOrderItem, refundFullOrder, notifyTraiteurAction } from "./actions";
+import { payOrder, getTodayOrders, cancelOrderAction, replaceOrderItemCode, refundOrderItem, refundFullOrder, notifyTraiteurAction, requeueForPrint } from "./actions";
 import { useAuthStore } from "@/store/useAuthStore";
 import { toast } from "react-hot-toast";
 import OrderDetailModal from "@/components/admin/modals/OrderDetailModal";
-import { Eye, User as UserIcon, Plus } from "lucide-react";
+import { Eye, User as UserIcon, Plus, Printer } from "lucide-react";
 import { getAllClients, createClient } from "../clients/actions";
 import { formatCurrency } from "@/lib/formatters";
 import { ThermalReceiptV2 } from "@/components/admin/receipt/ThermalReceiptV2";
-import { useThermalPrinter } from "@/hooks/useThermalPrinter";
 import { useSettingsStore } from "@/store/useSettingsStore";
-import { isPrintServiceAvailable, printReceipt } from "@/lib/printer";
-import type { PrintData } from "@/lib/printer";
 
 export default function CaisseContent() {
     const {
@@ -39,69 +36,18 @@ export default function CaisseContent() {
     const [newClientName, setNewClientName] = useState("");
     const [newClientPhone, setNewClientPhone] = useState("");
     const [itemSuppliers, setItemSuppliers] = useState<Record<number, number>>({});
-    const [printData, setPrintData] = useState<any>(null);
     const [lastReloadTime, setLastReloadTime] = useState<Date>(new Date());
-    const { printToIframe } = useThermalPrinter();
-
     const settings = useSettingsStore();
+
     const handlePrint = async (data: any) => {
-        // Priority 1: RobotechPrint.exe (127.0.0.1:6543)
-        try {
-            if (await isPrintServiceAvailable()) {
-                const appUrl = process.env.NEXT_PUBLIC_APP_URL || window.location.origin;
-                const now = new Date();
-                const printData: PrintData = {
-                    orderNumber:   data.orderNumber,
-                    date:          now.toLocaleDateString('fr-FR'),
-                    time:          now.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
-                    paymentMethod: data.paymentMethod,
-                    cashierName:   user?.nom,
-                    customer:      { name: data.customerName || "Client", phone: data.customerPhone || "" },
-                    trackingUrl:   `${appUrl}/suivi/${data.orderNumber}`,
-                    shop: {
-                        name:          settings.shopName        || "Ma Boutique",
-                        address:       settings.shopAddress     || undefined,
-                        tel:           settings.shopTel         || undefined,
-                        footerMessage: settings.footerMessage   || undefined,
-                        showDateTime:  settings.showDateTime    !== false,
-                        showCashier:   settings.showCashier     !== false,
-                    },
-                    items: (data.items || []).map((it: any) => ({
-                        productName:  it.name,
-                        quantity:     it.quantity,
-                        price:        Number(it.price),
-                        credentials:  (it.codes || []).map((c: any) => ({
-                            label: 'Code',
-                            value: typeof c === 'string' ? c : (c.code || '')
-                        }))
-                    }))
-                };
-                const result = await printReceipt(printData);
-                if (result.success) {
-                    toast.success(`Impression locale : #${data.orderNumber}`);
-                    return;
-                }
-            }
-        } catch {
-            // Silent: fall through to iframe
+        if (!data?.id) return;
+        const res: any = await requeueForPrint({ orderId: data.id });
+        if (res?.success) {
+            toast.success(`🖨️ Ticket #${data.orderNumber} en file d'impression`);
+        } else {
+            toast.error(`🖨️ Erreur: ${res?.error || 'Impossible de mettre en file'}`);
         }
-
-        // Priority 2: Browser iframe fallback (shows print dialog)
-        setTimeout(() => {
-            const printContent = document.getElementById('thermal-receipt-source');
-            if (printContent) {
-                printToIframe(data.orderNumber, printContent.innerHTML);
-                toast.success(`Impression : #${data.orderNumber}`);
-            }
-        }, 500);
     };
-
-    useEffect(() => {
-        if (printData) {
-            handlePrint(printData);
-            setPrintData(null);
-        }
-    }, [printData, handlePrint]);
 
     const loadOrders = async (silent = false) => {
         if (!silent) setIsLoading(true);
@@ -173,13 +119,16 @@ export default function CaisseContent() {
 
         setIsUpdating(true);
         try {
+            const paymentMethodLabel = effectiveRecu >= (Number(currentOrder.totalAmount) - remise) ? "Espèces" : "Crédit / Partiel";
+
             const res: any = await payOrder({
                 id: currentOrder.id,
                 options: {
                     remise,
                     montantPaye: effectiveRecu,
                     clientId: finalClientId || undefined,
-                    itemSuppliers
+                    itemSuppliers,
+                    paymentMethod: paymentMethodLabel,
                 }
             });
             if (res.success && res.order) {
@@ -187,27 +136,11 @@ export default function CaisseContent() {
                     style: { background: '#052e16', color: '#4ade80', border: '1px solid #14532d' }
                 });
 
-                // Prepare and trigger Print ONLY if delivery method is TICKET
+                // Ticket mis en file d'impression automatiquement par payOrder (print_pending en DB)
                 if (res.order.deliveryMethod === "TICKET") {
                     const hasManual = res.order.items?.some((it: any) => it.variant?.product?.isManualDelivery);
-
-                    // If it has manual delivery, we might want to skip automatic printing of codes 
-                    // since they aren't generated yet. For now, we skip if the user specifically asked for "normal" manual flow.
                     if (!hasManual) {
-                        setPrintData({
-                            orderNumber: res.order.orderNumber,
-                            date: res.order.createdAt,
-                            items: (res.order.items || []).map((it: any) => ({
-                                name: it.name,
-                                quantity: it.quantity,
-                                price: it.price,
-                                codes: it.codes,
-                                customData: it.customData,
-                                playerNickname: it.playerNickname
-                            })),
-                            totalAmount: res.order.totalAmount,
-                            paymentMethod: effectiveRecu >= (Number(res.order.totalAmount) - Number(res.order.remise)) ? "Espèces" : "Crédit / Partiel"
-                        });
+                        toast.success(`🖨️ Ticket #${res.order.orderNumber} en file d'impression`, { duration: 3000 });
                     } else {
                         toast.success("Commande à livraison manuelle (Impression différée)");
                     }
@@ -317,6 +250,12 @@ export default function CaisseContent() {
                     <div className="flex items-center justify-between gap-4">
                         <div className="flex items-center gap-3">
                             <h2 className="text-lg font-bold tracking-tight shrink-0 text-[#ec5b13]">Commandes du jour</h2>
+                            <Tooltip content="Impression automatique via RobotechPrint.exe">
+                                <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg border text-[10px] font-bold uppercase cursor-default bg-emerald-500/10 border-emerald-500/20 text-emerald-400">
+                                    <Printer className="w-3 h-3" />
+                                    ESC/POS Auto
+                                </div>
+                            </Tooltip>
                             <div className="hidden sm:flex items-center gap-2 px-2 py-1 bg-slate-100 dark:bg-white/5 rounded-lg border border-slate-200 dark:border-white/10">
                                 <span className={`w-1.5 h-1.5 rounded-full ${isLoading ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500'}`}></span>
                                 <span className="text-[10px] font-bold text-slate-500 uppercase tracking-tighter">
@@ -745,12 +684,13 @@ export default function CaisseContent() {
                     });
 
                     const dataToPrint = {
-                        orderNumber: orderForDetail.orderNumber,
-                        date: orderForDetail.createdAt,
-                        items: enrichedItems,
-                        totalAmount: orderForDetail.totalAmount,
+                        id:            orderForDetail.id,
+                        orderNumber:   orderForDetail.orderNumber,
+                        date:          orderForDetail.createdAt,
+                        items:         enrichedItems,
+                        totalAmount:   orderForDetail.totalAmount,
                         paymentMethod: orderForDetail.paymentMethod || "Espèces",
-                        cashier: user?.nom || "Admin"
+                        cashier:       user?.nom || "Admin"
                     };
 
                     await handlePrint(dataToPrint);
@@ -839,7 +779,6 @@ export default function CaisseContent() {
                 className="fixed -top-[9999px] -left-[9999px] opacity-0 pointer-events-none text-black bg-white"
                 aria-hidden="true"
             >
-                {printData && <ThermalReceiptV2 {...printData} />}
             </div>
         </main>
     );

@@ -5,11 +5,9 @@ import { Spinner, Button, Modal, ModalContent, ModalHeader, ModalBody, ModalFoot
 import { useOrderStore } from "@/store/useOrderStore";
 import { useAuthStore } from "@/store/useAuthStore";
 import { toast } from "react-hot-toast";
-import { Eye, Search, Filter, ArrowLeft, RefreshCw, Smartphone, User as UserIcon, Plus } from "lucide-react";
+import { Eye, Search, Filter, ArrowLeft, RefreshCw, Smartphone, User as UserIcon, Plus, Printer } from "lucide-react";
 import { formatCurrency } from "@/lib/formatters";
-import { useThermalPrinter } from "@/hooks/useThermalPrinter";
-import { isPrintServiceAvailable, printReceipt } from "@/lib/printer";
-import type { PrintData } from "@/lib/printer";
+import { requeueForPrint } from "./actions";
 import { useSettingsStore } from "@/store/useSettingsStore";
 import { ThermalReceiptV2 } from "@/components/admin/receipt/ThermalReceiptV2";
 import OrderDetailModal from "@/components/admin/modals/OrderDetailModal";
@@ -39,70 +37,19 @@ export default function CaisseMobile() {
     const [allClients, setAllClients] = useState<any[]>([]);
     const [selectedClientId, setSelectedClientId] = useState<number | null>(null);
     const [itemSuppliers, setItemSuppliers] = useState<Record<number, number>>({});
-    const [printData, setPrintData] = useState<any>(null);
     const [lastReloadTime, setLastReloadTime] = useState<Date>(new Date());
-    const { printToIframe } = useThermalPrinter();
 
     const settings = useSettingsStore();
 
     const handlePrint = async (data: any) => {
-        // Strategy 1: RobotechPrint.exe (127.0.0.1:6543)
-        try {
-            if (await isPrintServiceAvailable()) {
-                const appUrl = process.env.NEXT_PUBLIC_APP_URL || window.location.origin;
-                const now = new Date();
-                const printData: PrintData = {
-                    orderNumber:   data.orderNumber,
-                    date:          now.toLocaleDateString('fr-FR'),
-                    time:          now.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
-                    paymentMethod: data.paymentMethod,
-                    cashierName:   user?.nom,
-                    customer:      { name: data.customerName || "Client", phone: data.customerPhone || "" },
-                    trackingUrl:   `${appUrl}/suivi/${data.orderNumber}`,
-                    shop: {
-                        name:          settings.shopName        || "Ma Boutique",
-                        address:       settings.shopAddress     || undefined,
-                        tel:           settings.shopTel         || undefined,
-                        footerMessage: settings.footerMessage   || undefined,
-                        showDateTime:  settings.showDateTime    !== false,
-                        showCashier:   settings.showCashier     !== false,
-                    },
-                    items: (data.items || []).map((it: any) => ({
-                        productName:  it.name,
-                        quantity:     it.quantity,
-                        price:        Number(it.price),
-                        credentials:  (it.codes || []).map((c: any) => ({
-                            label: 'Code',
-                            value: typeof c === 'string' ? c : (c.code || '')
-                        }))
-                    }))
-                };
-                const result = await printReceipt(printData);
-                if (result.success) {
-                    toast.success(`Ticket imprimé : #${data.orderNumber}`);
-                    return;
-                }
-            }
-        } catch {
-            // Silent: fall through to iframe
+        if (!data?.id) return;
+        const res: any = await requeueForPrint({ orderId: data.id });
+        if (res?.success) {
+            toast.success(`🖨️ Ticket #${data.orderNumber} en file d'impression`);
+        } else {
+            toast.error(`🖨️ Erreur: ${res?.error || 'Impossible de mettre en file'}`);
         }
-
-        // Strategy 2: Browser iframe fallback
-        setTimeout(() => {
-            const printContent = document.getElementById('thermal-receipt-source');
-            if (printContent) {
-                printToIframe(data.orderNumber, printContent.innerHTML);
-                toast.success(`Impression : #${data.orderNumber}`);
-            }
-        }, 500);
     };
-
-    useEffect(() => {
-        if (printData) {
-            handlePrint(printData);
-            setPrintData(null);
-        }
-    }, [printData, handlePrint]);
 
     const loadOrders = async (silent = false) => {
         if (!silent) setIsLoading(true);
@@ -162,13 +109,16 @@ export default function CaisseMobile() {
 
         setIsUpdating(true);
         try {
+        const paymentMethodLabel = effectiveRecu >= (Number(currentOrder.totalAmount) - remise) ? "Espèces" : "Crédit / Partiel";
+
             const res: any = await payOrder({
                 id: currentOrder.id,
                 options: {
                     remise,
                     montantPaye: effectiveRecu,
                     clientId: finalClientId || undefined,
-                    itemSuppliers
+                    itemSuppliers,
+                    paymentMethod: paymentMethodLabel,
                 }
             });
             if (res.success && res.order) {
@@ -177,20 +127,7 @@ export default function CaisseMobile() {
                 if (res.order.deliveryMethod === "TICKET") {
                     const hasManual = res.order.items?.some((it: any) => it.variant?.product?.isManualDelivery);
                     if (!hasManual) {
-                        setPrintData({
-                            orderNumber: res.order.orderNumber,
-                            date: res.order.createdAt,
-                            items: (res.order.items || []).map((it: any) => ({
-                                name: it.name,
-                                quantity: it.quantity,
-                                price: it.price,
-                                codes: it.codes,
-                                customData: it.customData,
-                                playerNickname: it.playerNickname
-                            })),
-                            totalAmount: res.order.totalAmount,
-                            paymentMethod: effectiveRecu >= (Number(res.order.totalAmount) - Number(res.order.remise)) ? "Espèces" : "Crédit / Partiel"
-                        });
+                        toast.success(`🖨️ Ticket #${res.order.orderNumber} en file d'impression`, { duration: 3000 });
                     }
                 }
 
@@ -260,6 +197,10 @@ export default function CaisseMobile() {
                     <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">{allTodayOrders.length} Commandes</p>
                 </div>
                 <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1 px-2 py-1 rounded-lg border text-[10px] font-bold uppercase bg-emerald-500/10 border-emerald-500/20 text-emerald-400">
+                        <Printer className="w-3 h-3" />
+                        ESC/POS
+                    </div>
                     <button onClick={() => loadOrders()} className="p-2 bg-white/5 rounded-full text-slate-400">
                         <RefreshCw size={18} className={isLoading ? "animate-spin" : ""} />
                     </button>
@@ -485,12 +426,13 @@ export default function CaisseMobile() {
                     });
 
                     const dataToPrint = {
-                        orderNumber: orderForDetail.orderNumber,
-                        date: orderForDetail.createdAt,
-                        items: enrichedItems,
-                        totalAmount: orderForDetail.totalAmount,
+                        id:            orderForDetail.id,
+                        orderNumber:   orderForDetail.orderNumber,
+                        date:          orderForDetail.createdAt,
+                        items:         enrichedItems,
+                        totalAmount:   orderForDetail.totalAmount,
                         paymentMethod: orderForDetail.paymentMethod || "Espèces",
-                        cashier: user?.nom || "Admin"
+                        cashier:       user?.nom || "Admin"
                     };
 
                     await handlePrint(dataToPrint);
@@ -556,7 +498,6 @@ export default function CaisseMobile() {
                 className="fixed -top-[9999px] -left-[9999px] opacity-0 pointer-events-none text-black bg-white"
                 aria-hidden="true"
             >
-                {printData && <ThermalReceiptV2 {...printData} />}
             </div>
         </div>
     );

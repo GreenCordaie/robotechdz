@@ -50,7 +50,8 @@ export const payOrder = withAuth(
                 remise: z.number().nonnegative().max(1000000),
                 montantPaye: z.number().nonnegative(),
                 clientId: z.number().optional(),
-                itemSuppliers: z.record(z.string(), z.number()).optional()
+                itemSuppliers: z.record(z.string(), z.number()).optional(),
+                paymentMethod: z.string().optional(),
             })
         })
     },
@@ -62,6 +63,21 @@ export const payOrder = withAuth(
             revalidatePath("/admin/traitement");
 
             return { success: true, order: result };
+        } catch (error) {
+            return { success: false, error: (error as Error).message };
+        }
+    }
+);
+
+export const requeueForPrint = withAuth(
+    {
+        roles: [UserRole.ADMIN, UserRole.CAISSIER],
+        schema: z.object({ orderId: z.number() })
+    },
+    async ({ orderId }) => {
+        try {
+            await db.update(orders).set({ printStatus: "print_pending" }).where(eq(orders.id, orderId));
+            return { success: true };
         } catch (error) {
             return { success: false, error: (error as Error).message };
         }

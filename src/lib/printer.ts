@@ -94,11 +94,17 @@ export async function printReceipt(data: PrintData): Promise<PrintResult> {
  */
 export async function isPrintServiceAvailable(): Promise<boolean> {
     try {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 3000);
         const res = await fetch(`${PRINT_SERVICE_URL}/health`, {
-            signal: AbortSignal.timeout(2000),
+            method: 'GET',
+            mode: 'cors',
+            signal: controller.signal,
         });
+        clearTimeout(timer);
         return res.ok;
-    } catch {
+    } catch (err: any) {
+        console.warn('[RobotechPrint] health check failed:', err?.message || err);
         return false;
     }
 }

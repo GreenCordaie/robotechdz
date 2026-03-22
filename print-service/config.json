@@ -1,6 +1,8 @@
 {
-  "printerPort": "USB001",
+  "printerIp": "192.168.0.237",
+  "printerPort": 9100,
   "secret": "robotech-print-secret-change-moi",
   "port": 6543,
-  "shopUrl": "https://robotechdz.com"
+  "serverUrl": "http://100.112.49.95:1556",
+  "pollIntervalMs": 5000
 }
