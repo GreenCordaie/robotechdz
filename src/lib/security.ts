@@ -217,7 +217,7 @@ export function withAuth<T extends z.ZodType, R>(
             // 4. Input Validation (Zod)
             let validatedInput = input;
             if (config.schema) {
-                const result = config.schema.safeParse(input);
+                const result = await config.schema.safeParseAsync(input);
                 if (!result.success) {
                     throw new Error(`Validation échouée: ${result.error.issues.map((e: any) => e.message).join(", ")}`);
                 }

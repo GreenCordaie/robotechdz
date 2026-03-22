@@ -28,6 +28,7 @@ import {
     RefreshCw,
     Sparkles,
     Lightbulb,
+    MessageSquare,
 } from "lucide-react";
 import {
     AreaChart,
@@ -104,7 +105,7 @@ export default function AnalyticsContent({ initialOverview, initialRankings }: A
         );
     }
 
-    const { overview: stats, chartData } = overview;
+    const { overview: stats, chartData, openTicketsCount = 0 } = overview;
     const { topClients, topProducts } = rankings;
 
     const formatCurrency = (val: number) =>
@@ -133,11 +134,11 @@ export default function AnalyticsContent({ initialOverview, initialRankings }: A
             color: "primary"
         },
         {
-            title: "Clients Actifs",
-            value: topClients.length,
-            subtitle: "Top contributeurs",
-            icon: <Users className="text-purple-500" />,
-            color: "secondary"
+            title: "Tickets Support",
+            value: openTicketsCount,
+            subtitle: openTicketsCount === 0 ? "Aucun ticket en attente" : `${openTicketsCount} ticket${openTicketsCount > 1 ? 's' : ''} ouvert${openTicketsCount > 1 ? 's' : ''}`,
+            icon: <MessageSquare className={openTicketsCount > 0 ? "text-red-500" : "text-emerald-500"} />,
+            color: openTicketsCount > 0 ? "danger" : "success"
         }
     ];
 

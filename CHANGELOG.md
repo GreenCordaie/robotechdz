@@ -2,6 +2,23 @@
 
 Toutes les modifications notables de ce projet seront documentées dans ce fichier.
 
+## [7.1.1] - 2026-03-22
+
+### 📊 Analytics & Insights
+- **Dashboard Booster** : Amélioration des graphiques et des indicateurs de performance clés (KPI) pour une meilleure visibilité des ventes.
+- **Actions Analytiques** : Optimisation des Server Actions dédiées au traitement des données statistiques.
+
+### ⚙️ Paramètres & FAQ
+- **Module FaqBot** : Intégration du composant `FaqBotSettings` permettant de configurer finement l'IA pour répondre aux questions fréquentes des clients.
+- **Settings Sync** : Meilleure synchronisation entre les versions Desktop et Mobile des paramètres.
+
+### 🛡️ Sécurité & Résilience
+- **Security Core Refresh** : Mise à jour du module `lib/security.ts` pour une protection accrue contre les injections et attaques par force brute.
+- **Optimization Rate-Limit** : Affinement des seuils de limitation de débit sur les routes critiques.
+
+### 🛠️ Maintenance & Dev
+- **Workflow Dev** : Mise à jour des scripts de démarrage (`scripts/start-dev.js`) pour un support multi-plateforme amélioré.
+
 ## [7.1.0] - 2026-03-22
 
 ### 🛡️ Sécurité & API

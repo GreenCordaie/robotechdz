@@ -36,7 +36,8 @@ import {
     Zap,
     FileJson,
     FileSpreadsheet,
-    Loader2
+    Loader2,
+    MessageCircleQuestion
 } from "lucide-react";
 import { useAuthStore } from "@/store/useAuthStore";
 import { useRouter } from "next/navigation";
@@ -64,6 +65,7 @@ import { EditMemberModal } from "@/components/admin/modals/EditMemberModal";
 import { Spinner, Button, Card, CardBody, Input, Textarea, Switch } from "@heroui/react";
 import { ReceiptSettings } from "@/components/admin/settings/ReceiptSettings";
 import { ApiBotSettings } from "@/components/admin/settings/ApiBotSettings";
+import { FaqBotSettings } from "@/components/admin/settings/FaqBotSettings";
 import { QRCodeSVG } from "qrcode.react";
 import PushNotificationManager from "@/components/admin/push/PushNotificationManager";
 
@@ -72,7 +74,7 @@ export default function SettingsMobile() {
     const user = useAuthStore((state) => state.user);
     const updateGlobalSettings = useSettingsStore((state) => state.updateSettings);
     const router = useRouter();
-    const [view, setView] = React.useState<"HUB" | "TEAM" | "SHOP" | "RECEIPT" | "SECURITY" | "API" | "APPEARANCE" | "AUDIT_LOGS">("HUB");
+    const [view, setView] = React.useState<"HUB" | "TEAM" | "SHOP" | "RECEIPT" | "SECURITY" | "API" | "FAQ" | "APPEARANCE" | "AUDIT_LOGS">("HUB");
     const [usersList, setUsersList] = React.useState<any[]>([]);
     const [isLoadingUsers, setIsLoadingUsers] = React.useState(false);
     const [isAddModalOpen, setIsAddModalOpen] = React.useState(false);
@@ -391,6 +393,7 @@ export default function SettingsMobile() {
             title: "Sécurité & Système",
             items: [
                 { name: "Automation & IA", icon: Zap, color: "text-orange-500", bg: "bg-orange-500/10", desc: "Webhooks (n8n) & Gemini", roles: ["ADMIN"] },
+                { name: "FAQ Bot", icon: MessageCircleQuestion, color: "text-purple-400", bg: "bg-purple-500/10", desc: "Fiches problèmes & solutions IA", roles: ["ADMIN"] },
                 { name: "Sécurité du Compte", icon: KeyRound, color: "text-cyan-500", bg: "bg-cyan-500/10", desc: "Mot de passe & 2FA", roles: ["ADMIN", "CAISSIER", "TRAITEUR"] },
                 { name: "Audit Logs", icon: History, color: "text-slate-400", bg: "bg-slate-400/10", desc: "Forensics & Historique", roles: ["ADMIN"] },
                 { name: "Mode Maintenance", icon: Shield, color: "text-red-500", bg: "bg-red-500/10", desc: "Backups, Système, Wipe", roles: ["ADMIN"] },
@@ -441,6 +444,8 @@ export default function SettingsMobile() {
                                             setView("APPEARANCE");
                                         } else if (item.name === "Automation & IA") {
                                             setView("API");
+                                        } else if (item.name === "FAQ Bot") {
+                                            setView("FAQ");
                                         } else if (item.name === "Audit Logs") {
                                             setView("AUDIT_LOGS");
                                         } else if (item.name === "Mode Maintenance") {
@@ -990,6 +995,21 @@ export default function SettingsMobile() {
                     </div>
                 )
             }
+
+            {/* FAQ Bot View Overlay */}
+            {view === "FAQ" && (
+                <div className="fixed inset-0 z-50 bg-[#0a0a0a] flex flex-col pb-20 animate-in slide-in-from-right duration-300">
+                    <header className="p-4 border-b border-white/5 flex items-center gap-3">
+                        <button onClick={() => setView("HUB")} className="p-2 -ml-2 text-slate-500">
+                            <ChevronRight className="rotate-180" size={24} />
+                        </button>
+                        <h1 className="text-xl font-black uppercase italic tracking-tighter leading-tight">FAQ Bot</h1>
+                    </header>
+                    <div className="flex-1 overflow-y-auto px-4 py-4">
+                        <FaqBotSettings />
+                    </div>
+                </div>
+            )}
 
             {/* Audit Logs View Overlay */}
             {

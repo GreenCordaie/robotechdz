@@ -57,9 +57,10 @@ import { useSettingsStore } from "@/store/useSettingsStore";
 import { formatCurrency } from "@/lib/formatters";
 import { ReceiptSettings } from "@/components/admin/settings/ReceiptSettings";
 import { ApiBotSettings } from "@/components/admin/settings/ApiBotSettings";
+import { FaqBotSettings } from "@/components/admin/settings/FaqBotSettings";
 
 export default function SettingsContent() {
-    const [activeTab, setActiveTab] = useState<"general" | "team" | "api" | "b2b" | "appearance" | "receipt" | "security">("general");
+    const [activeTab, setActiveTab] = useState<"general" | "team" | "api" | "faq" | "b2b" | "appearance" | "receipt" | "security">("general");
     const { isOpen, onOpen, onOpenChange } = useDisclosure();
     const updateGlobalSettings = useSettingsStore((state) => state.updateSettings);
 
@@ -496,6 +497,13 @@ export default function SettingsContent() {
                                 {activeTab === "api" && <span className="absolute bottom-0 left-0 w-full h-0.5 bg-[#ec5b13] rounded-full"></span>}
                             </button>
                             <button
+                                onClick={() => setActiveTab("faq")}
+                                className={`pb-4 border-b-2 text-sm transition-all relative whitespace-nowrap ${activeTab === "faq" ? "text-[#ec5b13] font-bold" : "text-slate-500 hover:text-slate-200 font-medium"}`}
+                            >
+                                FAQ Bot
+                                {activeTab === "faq" && <span className="absolute bottom-0 left-0 w-full h-0.5 bg-[#ec5b13] rounded-full"></span>}
+                            </button>
+                            <button
                                 onClick={() => setActiveTab("receipt")}
                                 className={`pb-4 border-b-2 text-sm transition-all relative whitespace-nowrap ${activeTab === "receipt" ? "text-[#ec5b13] font-bold" : "text-slate-500 hover:text-slate-200 font-medium"}`}
                             >
@@ -775,6 +783,12 @@ export default function SettingsContent() {
 
                     {activeTab === "api" && (
                         <ApiBotSettings />
+                    )}
+
+                    {activeTab === "faq" && (
+                        <div className="max-w-2xl animate-in fade-in slide-in-from-bottom-2 duration-300">
+                            <FaqBotSettings />
+                        </div>
                     )}
 
                     {activeTab === "receipt" && (

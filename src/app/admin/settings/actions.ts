@@ -4,9 +4,10 @@ import { db } from "@/db";
 import {
     shopSettings, users, resellers, resellerWallets, resellerTransactions,
     supportTickets, digitalCodes, digitalCodeSlots, clients,
-    clientPayments, productVariantSuppliers, auditLogs, orderItems, orders, supplierTransactions, suppliers
+    clientPayments, productVariantSuppliers, auditLogs, orderItems, orders, supplierTransactions, suppliers,
+    whatsappFaqs
 } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { withAuth, logSecurityAction } from "@/lib/security";
 import { z } from "zod";
@@ -521,5 +522,40 @@ export const getWhatsAppQrAction = withAuth(
             console.error("Erreur getWhatsAppQrAction:", error);
             return { success: false, error: error.message };
         }
+    }
+);
+
+export const getFaqsAction = withAuth(
+    { roles: [UserRole.ADMIN] },
+    async () => {
+        const faqs = await db.query.whatsappFaqs.findMany({ orderBy: (f, { asc }) => [asc(f.id)] });
+        return { success: true, faqs };
+    }
+);
+
+export const saveFaqsAction = withAuth(
+    {
+        roles: [UserRole.ADMIN],
+        schema: z.object({
+            faqs: z.array(z.object({
+                id: z.number().optional(),
+                question: z.string().min(1),
+                answer: z.string().min(1),
+            }))
+        })
+    },
+    async ({ faqs }) => {
+        await db.transaction(async (tx) => {
+            // Delete all existing, re-insert (simpler than upsert)
+            await tx.delete(whatsappFaqs);
+            if (faqs.length > 0) {
+                await tx.insert(whatsappFaqs).values(
+                    faqs.map(f => ({ question: f.question, answer: f.answer }))
+                );
+            }
+        });
+        revalidatePath("/admin/settings");
+        const updated = await db.query.whatsappFaqs.findMany({ orderBy: (f, { asc }) => [asc(f.id)] });
+        return { success: true, faqs: updated };
     }
 );

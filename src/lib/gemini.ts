@@ -1,8 +1,11 @@
 const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
+
+// Models ordered by capability — 70b first, smaller as fallbacks
 const GROQ_MODELS = [
-    "llama-3.1-8b-instant",
-    "llama3-8b-8192",
+    "llama-3.3-70b-versatile",
+    "llama-3.1-70b-versatile",
     "mixtral-8x7b-32768",
+    "llama-3.1-8b-instant",
 ];
 
 export async function getGeminiResponse(
@@ -14,7 +17,6 @@ export async function getGeminiResponse(
 ): Promise<string> {
     if (!apiKey) return "⚠️ Clé IA manquante. Vérifiez vos réglages.";
 
-    // Convert Gemini history format → OpenAI format
     const historyMessages = (history || []).map(h => ({
         role: h.role === "model" ? "assistant" : "user" as "assistant" | "user",
         content: h.parts[0]?.text || ""
@@ -35,13 +37,13 @@ export async function getGeminiResponse(
                     "Authorization": `Bearer ${apiKey}`,
                     "Content-Type": "application/json"
                 },
-                body: JSON.stringify({ model, messages, max_tokens: 500, temperature: 0.7 }),
-                signal: AbortSignal.timeout(10_000)
+                body: JSON.stringify({ model, messages, max_tokens: 800, temperature: 0.6 }),
+                signal: AbortSignal.timeout(15_000)
             });
 
             if (!res.ok) {
                 const err = await res.text();
-                console.warn(`⚠️ [AI] ${model} (${res.status}): ${err.slice(0, 100)}`);
+                console.warn(`⚠️ [AI] ${model} (${res.status}): ${err.slice(0, 120)}`);
                 continue;
             }
 

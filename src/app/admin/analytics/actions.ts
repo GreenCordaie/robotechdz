@@ -6,20 +6,25 @@ import { AnalyticsService } from "@/services/analytics.service";
 import { z } from "zod";
 import { getGeminiResponse } from "@/lib/gemini";
 import { db } from "@/db";
-import { shopSettings } from "@/db/schema";
+import { shopSettings, supportTickets } from "@/db/schema";
+import { eq, count } from "drizzle-orm";
 
 export const getAnalyticsOverview = withAuth(
     { roles: [UserRole.ADMIN], schema: z.object({}) },
     async ({ }, user) => {
         try {
-            const overview = await AnalyticsService.getFinancialOverview();
-            const chartData = await AnalyticsService.getProfitTrend();
+            const [overview, chartData, ticketsResult] = await Promise.all([
+                AnalyticsService.getFinancialOverview(),
+                AnalyticsService.getProfitTrend(),
+                db.select({ count: count() }).from(supportTickets).where(eq(supportTickets.status, 'OUVERT'))
+            ]);
 
             return {
                 success: true,
                 data: {
                     overview,
-                    chartData
+                    chartData,
+                    openTicketsCount: ticketsResult[0]?.count ?? 0
                 }
             };
         } catch (error) {

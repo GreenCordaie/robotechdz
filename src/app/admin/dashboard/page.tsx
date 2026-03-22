@@ -1,8 +1,8 @@
 import React from "react";
-import { DashboardQueries } from "@/services/queries/dashboard.queries";
-import { DashboardContainer } from "./DashboardContainer";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/security";
+import { getAnalyticsOverview, getAnalyticsRankings } from "@/app/admin/analytics/actions";
+import AnalyticsContent from "@/app/admin/analytics/AnalyticsContent";
 
 export default async function DashboardPage() {
     const user = await getCurrentUser();
@@ -11,8 +11,17 @@ export default async function DashboardPage() {
     }
 
     try {
-        const stats = await DashboardQueries.getStats("week");
-        return <DashboardContainer initialStats={stats} />;
+        const [overviewResponse, rankingsResponse] = await Promise.all([
+            getAnalyticsOverview({}),
+            getAnalyticsRankings({})
+        ]);
+
+        return (
+            <AnalyticsContent
+                initialOverview={overviewResponse.success ? overviewResponse.data : null}
+                initialRankings={rankingsResponse.success ? rankingsResponse.data : null}
+            />
+        );
     } catch (error) {
         console.error("Dashboard page error:", error);
         return <div className="p-8 text-red-500 font-bold uppercase tracking-widest">Erreur critique de chargement.</div>;

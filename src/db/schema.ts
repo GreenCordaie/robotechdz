@@ -281,7 +281,7 @@ export const resellerTransactions = pgTable("reseller_transactions", {
 
 export const supportTickets = pgTable("support_tickets", {
     id: serial("id").primaryKey(),
-    orderId: integer("order_id").references(() => orders.id, { onDelete: "cascade" }).notNull(),
+    orderId: integer("order_id").references(() => orders.id, { onDelete: "cascade" }),
     subject: text("subject").notNull(),
     message: text("message").notNull(),
     customerPhone: text("customer_phone"),
