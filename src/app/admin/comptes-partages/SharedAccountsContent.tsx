@@ -10,18 +10,17 @@ import {
     getSharingVariants,
     getAvailableVariantsForLinking,
     linkProductToSharing,
-    syncWithNotion
 } from "./actions";
 import {
     Users, Mail, LayoutGrid, CheckCircle2, Search, User, Calendar,
     Activity, ShieldCheck, AlertCircle, Copy, Plus, Edit3, Trash2,
-    Key, ExternalLink, Zap, RefreshCw, Clock
+    Key, ExternalLink, Clock
 } from "lucide-react";
 import toast from "react-hot-toast";
 import {
     Input, Button, Chip, Card, CardBody, Tooltip, Spinner,
     Modal, ModalContent, ModalHeader, ModalBody, ModalFooter,
-    useDisclosure, Select, SelectItem, Progress, Textarea, Switch
+    useDisclosure, Select, SelectItem, Progress, Textarea, Tabs, Tab
 } from "@heroui/react";
 
 export default function SharedAccountsContent() {
@@ -33,26 +32,29 @@ export default function SharedAccountsContent() {
     const [activeProduct, setActiveProduct] = useState<string | null>(null);
     const [searchTerm, setSearchTerm] = useState("");
 
-    // ── Quick entry ───────────────────────────────────────────────────────────
+    // ── Inline add form (single account) ─────────────────────────────────────
+    const [addVariantId, setAddVariantId] = useState("");
+    const [addEmail, setAddEmail] = useState("");
+    const [addPassword, setAddPassword] = useState("");
+    const [addSlotsData, setAddSlotsData] = useState<{ profileName: string; pinCode: string }[]>([]);
+    const [isAdding, setIsAdding] = useState(false);
+
+    // ── Multi-line quick insert ───────────────────────────────────────────────
     const [quickVariantId, setQuickVariantId] = useState("");
     const [quickRawInput, setQuickRawInput] = useState("");
     const [isQuickSubmitting, setIsQuickSubmitting] = useState(false);
     const [quickErrors, setQuickErrors] = useState<string[]>([]);
-    const [autoClassify, setAutoClassify] = useState(false);
-    const [isSyncing, setIsSyncing] = useState(false);
 
-    // ── Modals ────────────────────────────────────────────────────────────────
+    // ── Edit modal ────────────────────────────────────────────────────────────
     const accountModal = useDisclosure();
     const deleteModal = useDisclosure();
     const linkModal = useDisclosure();
 
-    // ── Account form ──────────────────────────────────────────────────────────
-    const [modalMode, setModalMode] = useState<"ADD" | "EDIT">("ADD");
     const [editingAccount, setEditingAccount] = useState<any>(null);
-    const [selectedVariantId, setSelectedVariantId] = useState("");
-    const [email, setEmail] = useState("");
-    const [password, setPassword] = useState("");
-    const [slotsData, setSlotsData] = useState<{ id?: number; profileName: string; pinCode: string }[]>([]);
+    const [editVariantId, setEditVariantId] = useState("");
+    const [editEmail, setEditEmail] = useState("");
+    const [editPassword, setEditPassword] = useState("");
+    const [editSlotsData, setEditSlotsData] = useState<{ id?: number; profileName: string; pinCode: string }[]>([]);
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     // ── Delete ────────────────────────────────────────────────────────────────
@@ -87,6 +89,16 @@ export default function SharedAccountsContent() {
         const interval = setInterval(loadInventory, 30_000);
         return () => clearInterval(interval);
     }, [loadInventory]);
+
+    // ── Slot auto-fill on add variant change ──────────────────────────────────
+    useEffect(() => {
+        if (!addVariantId || !sharingVariants.length) return;
+        const variant = sharingVariants.find(v => v.id.toString() === addVariantId);
+        if (!variant) return;
+        setAddSlotsData(Array.from({ length: variant.totalSlots || 0 }, (_, i) => ({
+            profileName: `Profil ${i + 1}`, pinCode: ""
+        })));
+    }, [addVariantId, sharingVariants]);
 
     // ── Computed ──────────────────────────────────────────────────────────────
     const groupedInventory = useMemo(() => {
@@ -131,34 +143,19 @@ export default function SharedAccountsContent() {
         return { totalAccounts, totalSlots, soldSlots, availableSlots: totalSlots - soldSlots };
     }, [inventory]);
 
-    // ── Slot auto-fill on variant select ─────────────────────────────────────
-    useEffect(() => {
-        if (modalMode !== "ADD" || !selectedVariantId || !sharingVariants.length) return;
-        const variant = sharingVariants.find(v => v.id.toString() === selectedVariantId);
-        if (!variant) return;
-        setSlotsData(Array.from({ length: variant.totalSlots || 0 }, (_, i) => ({
-            profileName: `Profil ${i + 1}`, pinCode: ""
-        })));
-    }, [selectedVariantId, modalMode, sharingVariants]);
+    // Count valid lines for multi-line tab
+    const validLineCount = useMemo(() => {
+        return quickRawInput.split("\n").filter(l => l.trim().includes("|") && l.trim().length > 0).length;
+    }, [quickRawInput]);
 
     // ── Handlers ──────────────────────────────────────────────────────────────
-    const resetForm = () => {
-        setSelectedVariantId(""); setEmail(""); setPassword("");
-        setSlotsData([]); setEditingAccount(null);
-    };
-
-    const handleAddClick = () => {
-        setModalMode("ADD"); resetForm(); accountModal.onOpen();
-    };
-
     const handleEditClick = (account: any, variant: any) => {
-        setModalMode("EDIT");
         setEditingAccount(account);
-        setSelectedVariantId(variant.id.toString());
+        setEditVariantId(variant.id.toString());
         const parts = account.code.split(" | ");
-        setEmail(parts[0] || account.code);
-        setPassword(parts[1] || "");
-        setSlotsData(account.slots.map((s: any) => ({
+        setEditEmail(parts[0] || account.code);
+        setEditPassword(parts[1] || "");
+        setEditSlotsData(account.slots.map((s: any) => ({
             id: s.id, profileName: s.profileName || "", pinCode: s.code || ""
         })));
         accountModal.onOpen();
@@ -188,20 +185,23 @@ export default function SharedAccountsContent() {
         }
     };
 
-    const handleSubmit = async () => {
-        if (modalMode === "ADD" && !selectedVariantId) { toast.error("Sélectionnez une variante"); return; }
-        if (!email || !password) { toast.error("Email et mot de passe requis"); return; }
-        setIsSubmitting(true);
+    const handleInlineAdd = async () => {
+        if (!addVariantId) { toast.error("Sélectionnez un produit"); return; }
+        if (!addEmail || !addPassword) { toast.error("Email et mot de passe requis"); return; }
+        setIsAdding(true);
         try {
-            const res = modalMode === "ADD"
-                ? await addSharedAccount({ variantId: parseInt(selectedVariantId), email, password, slots: slotsData })
-                : await updateSharedAccount({
-                    id: editingAccount.id, email, password,
-                    slots: slotsData.map(s => ({ id: s.id!, profileName: s.profileName, pinCode: s.pinCode }))
-                });
+            const res = await addSharedAccount({
+                variantId: parseInt(addVariantId),
+                email: addEmail,
+                password: addPassword,
+                slots: addSlotsData
+            });
             if (res.success) {
-                toast.success(modalMode === "ADD" ? "Compte ajouté ✓" : "Compte mis à jour ✓");
-                accountModal.onClose();
+                toast.success("Compte ajouté ✓");
+                setAddEmail("");
+                setAddPassword("");
+                setAddSlotsData([]);
+                setAddVariantId("");
                 loadInventory();
             } else {
                 toast.error(res.error || "Erreur");
@@ -209,20 +209,20 @@ export default function SharedAccountsContent() {
         } catch {
             toast.error("Erreur serveur");
         } finally {
-            setIsSubmitting(false);
+            setIsAdding(false);
         }
     };
 
     const handleQuickSubmit = async () => {
-        if (!autoClassify && !quickVariantId) { toast.error("Sélectionnez un SKU ou activez l'Auto-Détection"); return; }
+        if (!quickVariantId) { toast.error("Sélectionnez un produit"); return; }
         if (!quickRawInput.trim()) { toast.error("Collez des identifiants"); return; }
         setIsQuickSubmitting(true);
         setQuickErrors([]);
         try {
             const res = await addSharedAccountQuick({
-                variantId: quickVariantId ? parseInt(quickVariantId) : undefined,
+                variantId: parseInt(quickVariantId),
                 rawInput: quickRawInput,
-                autoClassify
+                autoClassify: false
             });
             if (res.success) {
                 toast.success(res.message || "Insertion terminée");
@@ -239,21 +239,27 @@ export default function SharedAccountsContent() {
         }
     };
 
-    const handleNotionSync = async () => {
-        setIsSyncing(true);
-        const tid = toast.loading("Synchronisation Notion...");
+    const handleEditSubmit = async () => {
+        if (!editEmail || !editPassword) { toast.error("Email et mot de passe requis"); return; }
+        setIsSubmitting(true);
         try {
-            const res = await syncWithNotion({});
+            const res = await updateSharedAccount({
+                id: editingAccount.id,
+                email: editEmail,
+                password: editPassword,
+                slots: editSlotsData.map(s => ({ id: s.id!, profileName: s.profileName, pinCode: s.pinCode }))
+            });
             if (res.success) {
-                toast.success("Sync terminée ✓", { id: tid });
+                toast.success("Compte mis à jour ✓");
+                accountModal.onClose();
                 loadInventory();
             } else {
-                toast.error(res.error || "Erreur", { id: tid });
+                toast.error(res.error || "Erreur");
             }
         } catch {
-            toast.error("Erreur serveur", { id: tid });
+            toast.error("Erreur serveur");
         } finally {
-            setIsSyncing(false);
+            setIsSubmitting(false);
         }
     };
 
@@ -284,8 +290,19 @@ export default function SharedAccountsContent() {
         toast.success("Copié ✓");
     };
 
-    const updateSlot = (index: number, field: "profileName" | "pinCode", value: string) => {
-        setSlotsData(prev => { const d = [...prev]; d[index] = { ...d[index], [field]: value }; return d; });
+    const updateAddSlot = (index: number, field: "profileName" | "pinCode", value: string) => {
+        setAddSlotsData(prev => { const d = [...prev]; d[index] = { ...d[index], [field]: value }; return d; });
+    };
+
+    const updateEditSlot = (index: number, field: "profileName" | "pinCode", value: string) => {
+        setEditSlotsData(prev => { const d = [...prev]; d[index] = { ...d[index], [field]: value }; return d; });
+    };
+
+    // ── Progress bar color ────────────────────────────────────────────────────
+    const progressColor = (rate: number) => {
+        if (rate >= 90) return "bg-red-500";
+        if (rate >= 60) return "bg-orange-400";
+        return "bg-gradient-to-r from-emerald-500 to-emerald-400";
     };
 
     // ── Loading ───────────────────────────────────────────────────────────────
@@ -296,6 +313,8 @@ export default function SharedAccountsContent() {
             </div>
         );
     }
+
+    const noVariants = sharingVariants.length === 0;
 
     // ── Render ────────────────────────────────────────────────────────────────
     return (
@@ -326,20 +345,10 @@ export default function SharedAccountsContent() {
                             }}
                         />
                     </div>
-                    <Button variant="flat" isLoading={isSyncing} startContent={!isSyncing && <RefreshCw size={15} />}
-                        className="h-10 px-4 text-sm font-bold rounded-xl bg-purple-500/10 text-purple-400 border border-purple-500/20"
-                        onClick={handleNotionSync}>
-                        Notion
-                    </Button>
                     <Button variant="flat" startContent={<ExternalLink size={15} />}
                         className="h-10 px-4 text-sm font-bold rounded-xl bg-white/5 border border-white/10"
                         onClick={linkModal.onOpen}>
                         Lier SKU
-                    </Button>
-                    <Button color="primary" startContent={<Plus size={15} />}
-                        className="h-10 px-4 text-sm font-bold rounded-xl"
-                        onClick={handleAddClick}>
-                        Nouveau
                     </Button>
                 </div>
             </header>
@@ -366,90 +375,195 @@ export default function SharedAccountsContent() {
                 ))}
             </div>
 
-            {/* ── Quick Entry ── */}
+            {/* ── Zone d'ajout unifiée ── */}
             <Card className="bg-[#111] border border-primary/20" shadow="none">
-                <CardBody className="p-0">
-                    <div className="flex flex-col md:flex-row">
-                        {/* Left config panel */}
-                        <div className="p-5 md:w-64 bg-primary/5 border-b md:border-b-0 md:border-r border-white/5 space-y-3 shrink-0">
-                            <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-2">
-                                    <Zap className="text-primary size-4" />
-                                    <span className="font-black text-white text-sm uppercase italic">Insertion rapide</span>
-                                </div>
-                                <Tooltip content="Détecter le produit automatiquement via le texte">
-                                    <Switch size="sm" color="primary" isSelected={autoClassify} onValueChange={setAutoClassify} />
-                                </Tooltip>
-                            </div>
-                            <p className="text-[10px] text-slate-500 leading-relaxed">
-                                {autoClassify
-                                    ? "Format : [Produit] | [Email] | [Pass]"
-                                    : "Format : [Email] | [Pass] — sélectionnez le SKU cible"}
-                            </p>
-                            {!autoClassify && (
-                                <Select items={sharingVariants} placeholder="SKU cible..." size="sm"
-                                    selectedKeys={quickVariantId ? [quickVariantId] : []}
-                                    onChange={(e) => setQuickVariantId(e.target.value)}
-                                    classNames={{ trigger: "bg-[#1a1a1a] border border-white/10 h-10" }}>
-                                    {(v) => (
-                                        <SelectItem key={v.id.toString()} textValue={`${v.product.name} (${v.totalSlots}P)`}>
-                                            <span className="text-xs font-bold">{v.product.name}
-                                                <span className="text-slate-500"> · {v.totalSlots}P</span>
-                                            </span>
-                                        </SelectItem>
+                <CardBody className="p-5">
+                    {noVariants ? (
+                        <div className="py-6 text-center space-y-2">
+                            <AlertCircle className="w-8 h-8 text-slate-600 mx-auto" />
+                            <p className="text-slate-400 text-sm font-bold">Aucun SKU partagé configuré.</p>
+                            <p className="text-slate-600 text-xs">Utilisez le bouton <span className="text-primary font-bold">Lier SKU</span> pour commencer.</p>
+                        </div>
+                    ) : (
+                        <Tabs
+                            aria-label="Mode d'ajout"
+                            color="primary"
+                            variant="underlined"
+                            classNames={{
+                                tabList: "gap-6 border-b border-white/5 pb-0 mb-5",
+                                cursor: "bg-primary",
+                                tab: "font-black uppercase text-xs tracking-wider",
+                            }}
+                        >
+                            {/* ── Onglet Compte unique ── */}
+                            <Tab key="single" title="Compte unique">
+                                <div className="space-y-4">
+                                    {/* Product select */}
+                                    <div className="space-y-1.5">
+                                        <label className="text-[10px] text-slate-500 font-black uppercase tracking-wider">Produit</label>
+                                        <Select
+                                            items={sharingVariants}
+                                            placeholder="Sélectionner un produit..."
+                                            selectedKeys={addVariantId ? [addVariantId] : []}
+                                            onChange={(e) => setAddVariantId(e.target.value)}
+                                            classNames={{ trigger: "bg-[#1a1a1a] border border-white/5 h-12 rounded-xl" }}
+                                        >
+                                            {(v) => (
+                                                <SelectItem key={v.id.toString()} textValue={`${v.product.name} - ${v.name}`}>
+                                                    <div className="flex flex-col py-1">
+                                                        <span className="text-[10px] text-slate-500 font-bold uppercase">{v.product.name}</span>
+                                                        <span className="text-sm text-white font-black">
+                                                            {v.name}
+                                                            <span className="text-primary text-xs font-bold"> · {v.totalSlots} slots</span>
+                                                        </span>
+                                                    </div>
+                                                </SelectItem>
+                                            )}
+                                        </Select>
+                                    </div>
+
+                                    {/* Fields — shown only after variant selected */}
+                                    {addVariantId && (
+                                        <>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                                <div className="space-y-1.5">
+                                                    <label className="text-[10px] text-slate-500 uppercase font-black">Email</label>
+                                                    <Input
+                                                        placeholder="email@example.com"
+                                                        value={addEmail}
+                                                        onValueChange={setAddEmail}
+                                                        startContent={<Mail size={14} className="text-primary/70" />}
+                                                        classNames={{ inputWrapper: "bg-[#1a1a1a] border border-white/5 h-12 rounded-xl", input: "text-white font-bold" }}
+                                                    />
+                                                </div>
+                                                <div className="space-y-1.5">
+                                                    <label className="text-[10px] text-slate-500 uppercase font-black">Mot de passe</label>
+                                                    <Input
+                                                        placeholder="••••••••"
+                                                        value={addPassword}
+                                                        onValueChange={setAddPassword}
+                                                        startContent={<Key size={14} className="text-primary/70" />}
+                                                        classNames={{ inputWrapper: "bg-[#1a1a1a] border border-white/5 h-12 rounded-xl", input: "text-white font-bold" }}
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            {addSlotsData.length > 0 && (
+                                                <div className="space-y-2">
+                                                    <label className="text-[10px] text-slate-500 font-black uppercase">
+                                                        Profils ({addSlotsData.length})
+                                                    </label>
+                                                    <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                                                        {addSlotsData.map((slot, index) => (
+                                                            <div key={index} className="flex items-center gap-3 bg-[#1a1a1a] p-3 rounded-xl border border-white/5">
+                                                                <div className="size-7 rounded-lg bg-purple-500/10 border border-purple-500/20 flex items-center justify-center shrink-0">
+                                                                    <span className="text-xs font-black text-purple-400">{index + 1}</span>
+                                                                </div>
+                                                                <Input
+                                                                    placeholder="Nom du profil"
+                                                                    size="sm"
+                                                                    value={slot.profileName}
+                                                                    onValueChange={(v) => updateAddSlot(index, "profileName", v)}
+                                                                    classNames={{ inputWrapper: "bg-[#222] h-9 border border-white/5 flex-1", input: "text-xs text-white" }}
+                                                                />
+                                                                <Input
+                                                                    placeholder="PIN"
+                                                                    size="sm"
+                                                                    value={slot.pinCode}
+                                                                    onValueChange={(v) => updateAddSlot(index, "pinCode", v)}
+                                                                    startContent={<Key size={11} className="text-slate-600" />}
+                                                                    classNames={{ inputWrapper: "bg-[#222] h-9 border border-white/5 w-28", input: "text-xs font-mono text-purple-400" }}
+                                                                />
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            <Button
+                                                color="primary"
+                                                className="w-full font-black uppercase h-11 rounded-xl bg-gradient-to-tr from-primary to-orange-600"
+                                                onClick={handleInlineAdd}
+                                                isLoading={isAdding}
+                                                startContent={!isAdding && <Plus size={16} />}
+                                            >
+                                                Ajouter le compte
+                                            </Button>
+                                        </>
                                     )}
-                                </Select>
-                            )}
-                            {autoClassify && (
-                                <div className="p-2 rounded-lg bg-primary/5 border border-primary/20">
-                                    <p className="text-[10px] font-black text-primary uppercase">Auto-détection active</p>
                                 </div>
-                            )}
-                        </div>
+                            </Tab>
 
-                        {/* Right input area */}
-                        <div className="flex-1 p-5 flex flex-col gap-3">
-                            <div className="flex gap-3 items-start">
-                                <Textarea
-                                    placeholder={autoClassify
-                                        ? "Netflix | user@mail.com | password\nSpotify | user2@mail.com | pass123"
-                                        : "email@exemple.com | motdepasse"}
-                                    value={quickRawInput}
-                                    onValueChange={setQuickRawInput}
-                                    minRows={2}
-                                    maxRows={6}
-                                    classNames={{
-                                        inputWrapper: "bg-[#1a1a1a] border border-white/10 flex-1",
-                                        input: "font-mono text-primary text-sm"
-                                    }}
-                                />
-                                <Button color="primary"
-                                    className="h-auto min-h-[72px] px-6 font-black uppercase rounded-xl"
-                                    onClick={handleQuickSubmit}
-                                    isLoading={isQuickSubmitting}
-                                    startContent={!isQuickSubmitting && <Plus size={18} />}>
-                                    Injecter
-                                </Button>
-                            </div>
+                            {/* ── Onglet Multi-lignes ── */}
+                            <Tab key="multi" title="Multi-lignes">
+                                <div className="space-y-4">
+                                    <div className="space-y-1.5">
+                                        <label className="text-[10px] text-slate-500 font-black uppercase tracking-wider">Produit cible</label>
+                                        <Select
+                                            items={sharingVariants}
+                                            placeholder="Sélectionner un produit..."
+                                            selectedKeys={quickVariantId ? [quickVariantId] : []}
+                                            onChange={(e) => setQuickVariantId(e.target.value)}
+                                            classNames={{ trigger: "bg-[#1a1a1a] border border-white/5 h-12 rounded-xl" }}
+                                        >
+                                            {(v) => (
+                                                <SelectItem key={v.id.toString()} textValue={`${v.product.name} (${v.totalSlots}P)`}>
+                                                    <span className="text-sm font-bold text-white">{v.product.name}
+                                                        <span className="text-slate-500"> · {v.totalSlots}P</span>
+                                                    </span>
+                                                </SelectItem>
+                                            )}
+                                        </Select>
+                                    </div>
 
-                            {/* Inline errors */}
-                            {quickErrors.length > 0 && (
-                                <div className="bg-danger/5 border border-danger/20 rounded-xl p-3 space-y-1">
-                                    <div className="flex items-center justify-between">
-                                        <p className="text-[10px] font-black text-danger uppercase flex items-center gap-1.5">
-                                            <AlertCircle size={11} /> {quickErrors.length} ligne(s) ignorée(s)
-                                        </p>
-                                        <button onClick={() => setQuickErrors([])} className="text-[9px] text-slate-500 hover:text-white">Fermer</button>
+                                    <div className="space-y-1.5">
+                                        <label className="text-[10px] text-slate-500 font-black uppercase tracking-wider">
+                                            Comptes — format : <span className="text-primary font-mono">email | password</span> (un par ligne)
+                                        </label>
+                                        <div className="flex gap-3 items-start">
+                                            <Textarea
+                                                placeholder={"email1@exemple.com | motdepasse1\nemail2@exemple.com | motdepasse2"}
+                                                value={quickRawInput}
+                                                onValueChange={setQuickRawInput}
+                                                minRows={3}
+                                                maxRows={8}
+                                                classNames={{
+                                                    inputWrapper: "bg-[#1a1a1a] border border-white/10 flex-1",
+                                                    input: "font-mono text-primary text-sm"
+                                                }}
+                                            />
+                                            <Button
+                                                color="primary"
+                                                className="h-auto min-h-[88px] px-6 font-black uppercase rounded-xl"
+                                                onClick={handleQuickSubmit}
+                                                isLoading={isQuickSubmitting}
+                                                isDisabled={validLineCount === 0 || !quickVariantId}
+                                                startContent={!isQuickSubmitting && <Plus size={18} />}
+                                            >
+                                                Importer{validLineCount > 0 ? ` ${validLineCount}` : ""}
+                                            </Button>
+                                        </div>
                                     </div>
-                                    <div className="space-y-0.5 max-h-24 overflow-y-auto">
-                                        {quickErrors.map((e, i) => (
-                                            <p key={i} className="text-[10px] text-slate-400 font-mono pl-3 border-l border-danger/20">{e}</p>
-                                        ))}
-                                    </div>
+
+                                    {quickErrors.length > 0 && (
+                                        <div className="bg-danger/5 border border-danger/20 rounded-xl p-3 space-y-1">
+                                            <div className="flex items-center justify-between">
+                                                <p className="text-[10px] font-black text-danger uppercase flex items-center gap-1.5">
+                                                    <AlertCircle size={11} /> {quickErrors.length} ligne(s) ignorée(s)
+                                                </p>
+                                                <button onClick={() => setQuickErrors([])} className="text-[9px] text-slate-500 hover:text-white">Fermer</button>
+                                            </div>
+                                            <div className="space-y-0.5 max-h-24 overflow-y-auto">
+                                                {quickErrors.map((e, i) => (
+                                                    <p key={i} className="text-[10px] text-slate-400 font-mono pl-3 border-l border-danger/20">{e}</p>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
-                            )}
-                        </div>
-                    </div>
+                            </Tab>
+                        </Tabs>
+                    )}
                 </CardBody>
             </Card>
 
@@ -490,7 +604,6 @@ export default function SharedAccountsContent() {
                     </div>
                 ) : (
                     Object.entries(filteredInventory).map(([productName, variants]) => {
-                        // Per-product stats
                         let pAccounts = 0, pSlots = 0, pSold = 0;
                         variants.forEach(v => v.digitalCodes?.forEach((acc: any) => {
                             pAccounts++;
@@ -499,7 +612,6 @@ export default function SharedAccountsContent() {
 
                         return (
                             <section key={productName} className="space-y-4">
-                                {/* Group header */}
                                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#262626] pb-3">
                                     <div className="flex items-center gap-3">
                                         <div className="size-2.5 rounded-full bg-primary shadow-[0_0_8px_rgba(236,91,19,0.4)]" />
@@ -517,7 +629,6 @@ export default function SharedAccountsContent() {
                                     </div>
                                 </div>
 
-                                {/* Cards grid */}
                                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                                     {variants.map(variant => variant.digitalCodes?.map((account: any, accIndex: number) => {
                                         const soldCount = account.slots?.filter((s: any) => s.status === "VENDU").length ?? 0;
@@ -533,23 +644,15 @@ export default function SharedAccountsContent() {
                                                 shadow="none">
                                                 <CardBody className="p-5 space-y-4">
                                                     {/* Card header */}
-                                                    <div className="flex justify-between items-start gap-2">
-                                                        <div className="space-y-1.5 min-w-0 flex-1">
-                                                            <div className="flex items-center gap-1.5 flex-wrap">
-                                                                <span className="text-[10px] font-black text-primary uppercase italic">#{accIndex + 1}</span>
-                                                                <Chip size="sm" className="h-4 text-[9px] font-black bg-white/5 text-slate-400">{variant.name}</Chip>
-                                                                {isFull && <Chip size="sm" className="h-4 text-[9px] font-black bg-red-500/10 text-red-400">Complet</Chip>}
-                                                                {isExpired && <Chip size="sm" className="h-4 text-[9px] font-black bg-yellow-500/10 text-yellow-400">Expiré</Chip>}
-                                                            </div>
-                                                            <button onClick={() => copyToClipboard(account.code)}
-                                                                className="flex items-center gap-2 font-mono text-xs text-slate-300 hover:text-white bg-white/5 px-2.5 py-1.5 rounded-lg border border-white/5 transition-colors w-full text-left group/copy">
-                                                                <Mail size={11} className="text-primary shrink-0" />
-                                                                <span className="truncate">{account.code}</span>
-                                                                <Copy size={11} className="opacity-0 group-hover/copy:opacity-100 transition-opacity ml-auto shrink-0" />
-                                                            </button>
+                                                    <div className="flex justify-between items-center">
+                                                        <div className="flex items-center gap-2 flex-wrap">
+                                                            <span className="text-base font-black text-primary italic">#{accIndex + 1}</span>
+                                                            <Chip size="sm" className="h-4 text-[9px] font-black bg-white/5 text-slate-400">{variant.name}</Chip>
+                                                            {isFull && <Chip size="sm" className="h-4 text-[9px] font-black bg-red-500/10 text-red-400">Complet</Chip>}
+                                                            {isExpired && <Chip size="sm" className="h-4 text-[9px] font-black bg-yellow-500/10 text-yellow-400">Expiré</Chip>}
                                                         </div>
 
-                                                        <div className="flex gap-1 bg-[#1a1a1a] p-1 rounded-xl border border-white/5 shrink-0">
+                                                        <div className="flex gap-1 bg-[#1a1a1a] p-1 rounded-xl border border-white/5">
                                                             <Button isIconOnly size="sm" variant="light"
                                                                 className="h-7 w-7 text-slate-400 hover:text-primary hover:bg-primary/10"
                                                                 onClick={() => handleEditClick(account, variant)}>
@@ -572,59 +675,51 @@ export default function SharedAccountsContent() {
                                                                 {soldCount}<span className="text-slate-600 text-xs">/{total}</span>
                                                             </span>
                                                         </div>
-                                                        <Progress value={rate} size="sm" radius="full"
+                                                        <Progress
+                                                            value={rate}
+                                                            size="sm"
+                                                            radius="full"
                                                             classNames={{
                                                                 base: "bg-white/5 h-1.5",
-                                                                indicator: rate === 100 ? "bg-red-500" : "bg-gradient-to-r from-emerald-500 to-primary"
-                                                            }} />
+                                                                indicator: progressColor(rate)
+                                                            }}
+                                                        />
                                                     </div>
 
-                                                    {/* Slots visualization */}
-                                                    <div className="flex gap-1.5 h-10">
+                                                    {/* Slots list */}
+                                                    <div className="space-y-1.5">
                                                         {account.slots?.map((slot: any) => {
                                                             const occupied = slot.status === "VENDU";
                                                             return (
-                                                                <Tooltip key={slot.id}
-                                                                    content={
-                                                                        <div className="p-3 space-y-2 min-w-[140px]">
-                                                                            <p className="text-[10px] font-black text-primary uppercase pb-1.5 border-b border-white/5">
-                                                                                {slot.profileName || `Profil ${slot.slotNumber}`}
-                                                                            </p>
-                                                                            {slot.code && (
-                                                                                <p className="text-[10px] font-mono text-slate-300 flex items-center gap-1.5">
-                                                                                    <Key size={9} className="text-primary" /> {slot.code}
-                                                                                </p>
-                                                                            )}
-                                                                            {occupied ? (
-                                                                                <div className="pt-1 border-t border-white/5 space-y-0.5">
-                                                                                    <p className="text-[10px] font-black text-orange-400">
-                                                                                        {slot.orderItem?.order?.client?.nomComplet || "Client"}
-                                                                                    </p>
-                                                                                    <p className="text-[9px] text-slate-500">
-                                                                                        #{slot.orderItem?.order?.orderNumber}
-                                                                                    </p>
-                                                                                </div>
-                                                                            ) : (
-                                                                                <p className="text-[10px] text-emerald-400 font-black">Disponible</p>
-                                                                            )}
-                                                                        </div>
-                                                                    }
-                                                                    className="bg-[#1a1a1a] border border-white/10 rounded-xl">
-                                                                    <div className={`flex-1 rounded-lg border flex items-center justify-center h-full transition-all cursor-default
+                                                                <div key={slot.id}
+                                                                    className={`flex items-center gap-2.5 px-3 py-2 rounded-lg border text-[11px] font-bold
                                                                         ${occupied
-                                                                            ? 'bg-orange-500/10 border-orange-500/30'
-                                                                            : 'bg-white/5 border-white/5 hover:border-primary/30'}`}>
-                                                                        {occupied
-                                                                            ? <User className="size-4 text-orange-400" />
-                                                                            : <Activity className="size-3.5 text-white/20" />}
-                                                                    </div>
-                                                                </Tooltip>
+                                                                            ? 'bg-orange-500/5 border-orange-500/20 text-orange-300'
+                                                                            : 'bg-white/[0.02] border-white/5 text-slate-500'}`}
+                                                                >
+                                                                    <div className={`size-1.5 rounded-full shrink-0 ${occupied ? 'bg-orange-400' : 'bg-emerald-500'}`} />
+                                                                    <span className="text-slate-400 text-[10px] w-14 shrink-0 font-black">
+                                                                        {slot.profileName || `Profil ${slot.slotNumber}`}
+                                                                    </span>
+                                                                    {occupied ? (
+                                                                        <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                                                                            <span className="truncate text-orange-300">
+                                                                                {slot.orderItem?.order?.client?.nomComplet || "Client"}
+                                                                            </span>
+                                                                            <span className="text-slate-600 shrink-0">
+                                                                                #{slot.orderItem?.order?.orderNumber}
+                                                                            </span>
+                                                                        </div>
+                                                                    ) : (
+                                                                        <span className="text-emerald-600 text-[10px]">Disponible</span>
+                                                                    )}
+                                                                </div>
                                                             );
                                                         })}
                                                     </div>
 
                                                     {/* Footer */}
-                                                    <div className="pt-3 border-t border-white/5 flex items-center justify-between">
+                                                    <div className="pt-2 border-t border-white/5 flex items-center justify-between">
                                                         <div className="flex items-center gap-1.5 text-slate-500">
                                                             <Calendar size={10} className="text-primary/40" />
                                                             <span className="text-[9px] font-bold uppercase">
@@ -652,7 +747,7 @@ export default function SharedAccountsContent() {
                 )}
             </div>
 
-            {/* ── Account Modal (ADD / EDIT) ── */}
+            {/* ── Edit Modal ── */}
             <Modal isOpen={accountModal.isOpen} onClose={accountModal.onClose}
                 className="dark bg-[#111] border border-white/10" backdrop="blur" size="2xl" scrollBehavior="inside">
                 <ModalContent>
@@ -660,68 +755,44 @@ export default function SharedAccountsContent() {
                         <>
                             <ModalHeader className="pb-4">
                                 <div>
-                                    <h2 className="text-xl font-black text-white uppercase italic">
-                                        {modalMode === "ADD" ? "Nouveau compte partagé" : "Modifier le compte"}
-                                    </h2>
+                                    <h2 className="text-xl font-black text-white uppercase italic">Modifier le compte</h2>
                                     <p className="text-[10px] text-slate-500 font-bold uppercase mt-0.5">
                                         Données chiffrées — niveau 2
                                     </p>
                                 </div>
                             </ModalHeader>
                             <ModalBody className="space-y-6 py-6 border-y border-white/5">
-                                {modalMode === "ADD" && (
-                                    <div className="space-y-2">
-                                        <label className="text-[10px] text-slate-500 font-black uppercase ml-1">Produit</label>
-                                        <Select items={sharingVariants} placeholder="Sélectionner un produit..." className="dark"
-                                            selectedKeys={selectedVariantId ? [selectedVariantId] : []}
-                                            onChange={(e) => setSelectedVariantId(e.target.value)}
-                                            classNames={{ trigger: "bg-[#161616] border border-white/5 h-14 rounded-xl" }}>
-                                            {(v) => (
-                                                <SelectItem key={v.id.toString()} textValue={`${v.product.name} - ${v.name}`}>
-                                                    <div className="flex flex-col py-1">
-                                                        <span className="text-[10px] text-slate-500 font-bold uppercase">{v.product.name}</span>
-                                                        <span className="text-sm text-white font-black">
-                                                            {v.name}
-                                                            <span className="text-primary text-xs font-bold"> · {v.totalSlots} slots</span>
-                                                        </span>
-                                                    </div>
-                                                </SelectItem>
-                                            )}
-                                        </Select>
-                                    </div>
-                                )}
-
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-white/[0.02] p-4 rounded-2xl border border-white/5">
                                     <div className="space-y-2">
                                         <label className="text-[10px] text-slate-500 uppercase font-black ml-1">Email</label>
-                                        <Input placeholder="email@example.com" value={email} onValueChange={setEmail}
+                                        <Input placeholder="email@example.com" value={editEmail} onValueChange={setEditEmail}
                                             startContent={<Mail size={14} className="text-primary/70" />}
                                             classNames={{ inputWrapper: "bg-[#1a1a1a] border border-white/5 h-12 rounded-xl", input: "text-white font-bold" }} />
                                     </div>
                                     <div className="space-y-2">
                                         <label className="text-[10px] text-slate-500 uppercase font-black ml-1">Mot de passe</label>
-                                        <Input placeholder="••••••••" type="text" value={password} onValueChange={setPassword}
+                                        <Input placeholder="••••••••" type="text" value={editPassword} onValueChange={setEditPassword}
                                             startContent={<Key size={14} className="text-primary/70" />}
                                             classNames={{ inputWrapper: "bg-[#1a1a1a] border border-white/5 h-12 rounded-xl", input: "text-white font-bold" }} />
                                     </div>
                                 </div>
 
-                                {slotsData.length > 0 && (
+                                {editSlotsData.length > 0 && (
                                     <div className="space-y-3">
                                         <label className="text-[10px] text-slate-500 font-black uppercase ml-1">
-                                            Profils ({slotsData.length})
+                                            Profils ({editSlotsData.length})
                                         </label>
                                         <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
-                                            {slotsData.map((slot, index) => (
+                                            {editSlotsData.map((slot, index) => (
                                                 <div key={index} className="flex items-center gap-3 bg-[#1a1a1a] p-3 rounded-xl border border-white/5">
                                                     <div className="size-8 rounded-lg bg-purple-500/10 border border-purple-500/20 flex items-center justify-center shrink-0">
                                                         <span className="text-xs font-black text-purple-400">{index + 1}</span>
                                                     </div>
                                                     <Input placeholder="Nom du profil" size="sm" value={slot.profileName}
-                                                        onValueChange={(v) => updateSlot(index, "profileName", v)}
+                                                        onValueChange={(v) => updateEditSlot(index, "profileName", v)}
                                                         classNames={{ inputWrapper: "bg-[#222] h-10 border border-white/5 flex-1", input: "text-xs text-white" }} />
                                                     <Input placeholder="PIN" size="sm" value={slot.pinCode}
-                                                        onValueChange={(v) => updateSlot(index, "pinCode", v)}
+                                                        onValueChange={(v) => updateEditSlot(index, "pinCode", v)}
                                                         startContent={<Key size={11} className="text-slate-600" />}
                                                         classNames={{ inputWrapper: "bg-[#222] h-10 border border-white/5 w-28", input: "text-xs font-mono text-purple-400" }} />
                                                 </div>
@@ -732,9 +803,9 @@ export default function SharedAccountsContent() {
                             </ModalBody>
                             <ModalFooter className="p-4 bg-[#0c0c0c]">
                                 <Button variant="light" onPress={close} className="font-bold text-slate-500 h-11">Annuler</Button>
-                                <Button color="primary" onPress={handleSubmit} isLoading={isSubmitting}
+                                <Button color="primary" onPress={handleEditSubmit} isLoading={isSubmitting}
                                     className="font-black uppercase px-10 h-11 rounded-xl bg-gradient-to-tr from-primary to-orange-600">
-                                    {modalMode === "ADD" ? "Créer le compte" : "Enregistrer"}
+                                    Enregistrer
                                 </Button>
                             </ModalFooter>
                         </>

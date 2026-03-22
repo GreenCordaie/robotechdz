@@ -252,22 +252,6 @@ export default function TraitementMobile({ initialOrders = [], initialFinished =
                     </div>
                 </div>
                 <div className="flex items-center gap-2">
-                    {/* USB Status Info */}
-                    <div className={`flex items-center gap-1.5 px-2 py-1 rounded bg-white/5 border text-[8px] font-black uppercase transition-all ${webusb.connected ? "border-emerald-500/30 text-emerald-400" : "border-white/10 text-slate-500"
-                        }`}>
-                        <div className={`size-1 rounded-full ${webusb.connected ? "bg-emerald-400 animate-pulse" : "bg-slate-600"}`} />
-                        {webusb.connected ? "USB OK" : "OFF"}
-                    </div>
-
-                    <button
-                        onClick={webusb.connected ? webusb.disconnect : webusb.connect}
-                        disabled={webusb.isConnecting}
-                        className={`p-2 rounded-full transition-all active:scale-90 ${webusb.connected ? "bg-zinc-800 text-slate-400" : "bg-[#ec5b13]/10 text-[#ec5b13]"
-                            }`}
-                    >
-                        {webusb.isConnecting ? <Loader2 size={18} className="animate-spin" /> : <Usb size={18} />}
-                    </button>
-
                     <button onClick={() => loadOrders()} className="p-2 bg-white/5 rounded-full text-slate-400">
                         <RefreshCw size={18} className={isLoading ? "animate-spin" : ""} />
                     </button>

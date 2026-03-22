@@ -107,6 +107,7 @@ export default function SettingsContent() {
 
     const [isMaintenanceMode, setIsMaintenanceMode] = useState(false);
     const [allowedIps, setAllowedIps] = useState("");
+    const [stockAlertThreshold, setStockAlertThreshold] = useState(5);
 
     // MFA States
     const [mfaSecret, setMfaSecret] = useState<string | null>(null);
@@ -156,6 +157,7 @@ export default function SettingsContent() {
                 setMinResellerRecharge(s.minResellerRecharge || "1000.00");
                 setIsMaintenanceMode(s.isMaintenanceMode ?? false);
                 setAllowedIps(s.allowedIps || "");
+                setStockAlertThreshold(s.stockAlertThreshold ?? 5);
             }
 
             if (teamRes.success) {
@@ -194,6 +196,7 @@ export default function SettingsContent() {
                 minResellerRecharge,
                 isMaintenanceMode,
                 allowedIps,
+                stockAlertThreshold,
             });
 
             if (!res.success) {
@@ -1129,6 +1132,27 @@ export default function SettingsContent() {
                                             >
                                                 <div className={`absolute top-1 w-5 h-5 bg-white rounded-full transition-all ${isMaintenanceMode ? "left-8" : "left-1"}`} />
                                             </button>
+                                        </div>
+
+                                        <div className="flex items-center justify-between p-6 bg-black/40 rounded-3xl border border-white/5">
+                                            <div className="flex items-center gap-4 text-white">
+                                                <AlertTriangle className="text-orange-400" size={20} />
+                                                <div>
+                                                    <span className="text-sm font-black uppercase block tracking-widest">Seuil d'alerte stock bas</span>
+                                                    <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Alerte Telegram envoyée sous ce nombre</span>
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <input
+                                                    type="number"
+                                                    min={1}
+                                                    max={9999}
+                                                    value={stockAlertThreshold}
+                                                    onChange={(e) => setStockAlertThreshold(Math.max(1, parseInt(e.target.value) || 1))}
+                                                    className="w-20 bg-black/60 border border-white/10 rounded-xl px-3 py-2 text-white font-black text-center text-sm outline-none focus:border-[#ec5b13]/50"
+                                                />
+                                                <span className="text-[10px] text-slate-500 font-bold uppercase">unités</span>
+                                            </div>
                                         </div>
 
                                         <div className="space-y-3">

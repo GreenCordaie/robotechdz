@@ -220,6 +220,7 @@ export const shopSettings = pgTable("shop_settings", {
     usdExchangeRate: numeric("usd_exchange_rate", { precision: 10, scale: 2 }).default("245.00").notNull(),
     vapidPublicKey: text("vapid_public_key"),
     vapidPrivateKey: text("vapid_private_key"),
+    stockAlertThreshold: integer("stock_alert_threshold").default(5).notNull(),
 });
 
 export const whatsappFaqs = pgTable("whatsapp_faqs", {

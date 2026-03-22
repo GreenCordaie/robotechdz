@@ -7,7 +7,8 @@ import { payOrder, getTodayOrders, cancelOrderAction, replaceOrderItemCode, refu
 import { useAuthStore } from "@/store/useAuthStore";
 import { toast } from "react-hot-toast";
 import OrderDetailModal from "@/components/admin/modals/OrderDetailModal";
-import { Eye, User as UserIcon, Plus, Printer } from "lucide-react";
+import RefundOrderModal from "@/components/admin/modals/RefundOrderModal";
+import { Eye, User as UserIcon, Plus, Printer, RotateCcw } from "lucide-react";
 import { getAllClients, createClient } from "../clients/actions";
 import { formatCurrency } from "@/lib/formatters";
 import { ThermalReceiptV2 } from "@/components/admin/receipt/ThermalReceiptV2";
@@ -37,6 +38,8 @@ export default function CaisseContent() {
     const [newClientPhone, setNewClientPhone] = useState("");
     const [itemSuppliers, setItemSuppliers] = useState<Record<number, number>>({});
     const [lastReloadTime, setLastReloadTime] = useState<Date>(new Date());
+    const [orderToRefund, setOrderToRefund] = useState<any | null>(null);
+    const [isRefundModalOpen, setIsRefundModalOpen] = useState(false);
     const settings = useSettingsStore();
 
     const handlePrint = async (data: any) => {
@@ -256,15 +259,12 @@ export default function CaisseContent() {
                                     ESC/POS Auto
                                 </div>
                             </Tooltip>
-                            <div className="hidden sm:flex items-center gap-2 px-2 py-1 bg-slate-100 dark:bg-white/5 rounded-lg border border-slate-200 dark:border-white/10">
+                            <div className="hidden sm:flex items-center gap-1.5 px-2 py-1 bg-slate-100 dark:bg-white/5 rounded-lg border border-slate-200 dark:border-white/10">
                                 <span className={`w-1.5 h-1.5 rounded-full ${isLoading ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500'}`}></span>
-                                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-tighter">
-                                    Actualisé à {lastReloadTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                                </span>
                                 <button
                                     onClick={() => loadOrders()}
                                     disabled={isLoading}
-                                    className="ml-1 p-0.5 hover:text-[#ec5b13] transition-colors disabled:opacity-30"
+                                    className="p-0.5 hover:text-[#ec5b13] transition-colors disabled:opacity-30"
                                 >
                                     <span className={`material-symbols-outlined !text-[14px] ${isLoading ? 'animate-spin' : ''}`}>refresh</span>
                                 </button>
@@ -358,6 +358,19 @@ export default function CaisseContent() {
                                                     >
                                                         <Eye size={14} />
                                                     </button>
+                                                    {["PAYE", "TERMINE", "LIVRE", "PARTIEL"].includes(o.status) && (
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                setOrderToRefund(o);
+                                                                setIsRefundModalOpen(true);
+                                                            }}
+                                                            className="p-1.5 rounded-lg bg-white/5 hover:bg-red-500/20 text-slate-400 hover:text-red-400 transition-all"
+                                                            title="Rembourser cette commande"
+                                                        >
+                                                            <RotateCcw size={14} />
+                                                        </button>
+                                                    )}
                                                 </div>
                                             </td>
                                         </tr>
@@ -649,7 +662,7 @@ export default function CaisseContent() {
                 onClose={() => setIsDetailModalOpen(false)}
                 order={orderForDetail}
                 onRefund={async (id) => {
-                    const res = await refundFullOrder({ id, returnToStock: false });
+                    const res = await refundFullOrder({ id, returnToStock: true });
                     if (res.success) {
                         setIsDetailModalOpen(false);
                         loadOrders();
@@ -695,6 +708,26 @@ export default function CaisseContent() {
 
                     await handlePrint(dataToPrint);
                 }}
+            />
+
+            <RefundOrderModal
+                isOpen={isRefundModalOpen}
+                onClose={() => {
+                    setIsRefundModalOpen(false);
+                    setOrderToRefund(null);
+                }}
+                onSuccess={() => loadOrders()}
+                order={orderToRefund ? {
+                    id: orderToRefund.id,
+                    orderNumber: orderToRefund.orderNumber,
+                    montantPaye: orderToRefund.montantPaye || orderToRefund.totalAmount,
+                    items: (orderToRefund.items || []).map((item: any) => ({
+                        id: item.id,
+                        name: item.name,
+                        quantity: item.quantity,
+                        price: item.price,
+                    }))
+                } : null}
             />
 
             {/* Auto New Client Modal */}

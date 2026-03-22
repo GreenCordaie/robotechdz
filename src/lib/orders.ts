@@ -67,7 +67,8 @@ export async function allocateOrderStock(
                     .for('update');
 
                 if (availableSlots.length < item.quantity) {
-                    throw new Error(`Stock insuffisant pour ${item.name}`);
+                    hasManualDelivery = true;
+                    continue;
                 }
 
                 currentItemSlots = availableSlots;
@@ -97,7 +98,8 @@ export async function allocateOrderStock(
                     .for('update');
 
                 if (availableCodes.length < item.quantity) {
-                    throw new Error(`Stock insuffisant pour ${item.name}`);
+                    hasManualDelivery = true;
+                    continue;
                 }
 
                 const codeIds = availableCodes.map((c: any) => (c as any).id);

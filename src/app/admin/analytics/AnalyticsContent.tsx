@@ -46,7 +46,9 @@ import {
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
 import toast from "react-hot-toast";
-import { getAnalyticsOverview, getAnalyticsRankings, getMarketingRecommendations } from "./actions";
+import { getAnalyticsOverview, getAnalyticsRankings, getMarketingRecommendations, getLowStockItemsAction } from "./actions";
+import { AlertTriangle, ExternalLink } from "lucide-react";
+import Link from "next/link";
 
 interface AnalyticsContentProps {
     initialOverview: any;
@@ -59,6 +61,18 @@ export default function AnalyticsContent({ initialOverview, initialRankings }: A
     const [recommendations, setRecommendations] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [isGeneratingIA, setIsGeneratingIA] = useState(false);
+    const [lowStockItems, setLowStockItems] = useState<any[]>([]);
+    const [stockThreshold, setStockThreshold] = useState(5);
+
+    const loadLowStock = async () => {
+        const res = await getLowStockItemsAction({});
+        if (res.success && res.data) {
+            setLowStockItems((res.data.rows as any[]) || []);
+            setStockThreshold(res.data.threshold ?? 5);
+        }
+    };
+
+    React.useEffect(() => { loadLowStock(); }, []);
 
     const refreshData = async () => {
         setIsLoading(true);
@@ -70,6 +84,7 @@ export default function AnalyticsContent({ initialOverview, initialRankings }: A
 
             if (oRes.success) setOverview(oRes.data);
             if (rRes.success) setRankings(rRes.data);
+            await loadLowStock();
 
             toast.success("Données actualisées");
         } catch (err) {
@@ -84,7 +99,7 @@ export default function AnalyticsContent({ initialOverview, initialRankings }: A
         try {
             const res = await getMarketingRecommendations({});
             if (res.success) {
-                setRecommendations(res.data);
+                setRecommendations(res.data ?? null);
                 toast.success("Analyses marketing générées");
             } else {
                 toast.error(res.error || "Erreur IA");
@@ -438,6 +453,64 @@ export default function AnalyticsContent({ initialOverview, initialRankings }: A
                     </Tab>
                 </Tabs>
             </div>
+
+            {/* ── Panneau Stock Bas ── */}
+            {lowStockItems.length > 0 && (
+                <div className="mt-6">
+                    <Card className="bg-orange-500/5 border border-orange-500/20" shadow="none">
+                        <CardHeader className="px-6 pt-5 pb-3">
+                            <div className="flex items-center justify-between w-full">
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2 bg-orange-500/10 rounded-xl">
+                                        <AlertTriangle className="text-orange-400 w-5 h-5" />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-sm font-black text-white uppercase tracking-wider">Stock Bas</h3>
+                                        <p className="text-[10px] text-slate-500 font-bold uppercase">
+                                            {lowStockItems.length} variante{lowStockItems.length > 1 ? "s" : ""} sous le seuil de {stockThreshold} unités
+                                        </p>
+                                    </div>
+                                </div>
+                                <Link href="/admin/catalogue">
+                                    <Button size="sm" variant="flat"
+                                        className="text-orange-400 bg-orange-500/10 border border-orange-500/20 font-bold text-xs"
+                                        endContent={<ExternalLink size={12} />}>
+                                        Gérer le stock
+                                    </Button>
+                                </Link>
+                            </div>
+                        </CardHeader>
+                        <CardBody className="px-6 pb-5 space-y-2">
+                            {lowStockItems.map((item: any) => {
+                                const stock = Number(item.stock_count ?? 0);
+                                const rate = stockThreshold > 0 ? Math.min((stock / stockThreshold) * 100, 100) : 0;
+                                return (
+                                    <div key={item.id} className="flex items-center gap-4 py-2 border-b border-white/5 last:border-0">
+                                        <div className="flex-1 min-w-0">
+                                            <p className="text-sm font-bold text-white truncate">{item.product_name}</p>
+                                            <p className="text-[10px] text-slate-500 font-bold uppercase">{item.variant_name}</p>
+                                        </div>
+                                        <div className="w-32 hidden sm:block">
+                                            <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
+                                                <div
+                                                    className="h-full bg-red-500 rounded-full transition-all"
+                                                    style={{ width: `${rate}%` }}
+                                                />
+                                            </div>
+                                        </div>
+                                        <div className="text-right shrink-0">
+                                            <span className={`text-sm font-black ${stock === 0 ? "text-red-500" : "text-orange-400"}`}>
+                                                {stock}
+                                            </span>
+                                            <span className="text-slate-600 text-xs"> / {stockThreshold}</span>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </CardBody>
+                    </Card>
+                </div>
+            )}
         </div>
     );
 }

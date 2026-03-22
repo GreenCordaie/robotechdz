@@ -3,13 +3,15 @@ import { digitalCodes, digitalCodeSlots, productVariants, products } from "@/db/
 import { eq, and, count } from "drizzle-orm";
 import { sendTelegramNotification } from "./telegram";
 
-const STOCK_THRESHOLD = 5;
-
 /**
  * Checks the stock level for a specific product variant and sends an alert if it's below the threshold.
  */
 export async function checkStockAndAlert(variantId: number) {
     try {
+        // 0. Read dynamic threshold from settings
+        const settings = await db.query.shopSettings.findFirst();
+        const STOCK_THRESHOLD = settings?.stockAlertThreshold ?? 5;
+
         // 1. Get variant and product info
         const variant = await db.query.productVariants.findFirst({
             where: eq(productVariants.id, variantId),

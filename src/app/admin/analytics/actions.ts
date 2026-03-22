@@ -71,12 +71,12 @@ export const getMarketingRecommendations = withAuth(
 
             const prompt = `
                 Analyse les données suivantes du magasin et propose 3 stratégies concrètes de Relances Cross-Selling pour fidéliser les clients :
-                
+
                 DONNÉES :
                 - Clients Top : ${JSON.stringify(insights.topClients.map(c => ({ name: c.name, spent: c.totalSpent })))}
                 - Produits Top : ${JSON.stringify(insights.topProducts.map(p => ({ product: p.productName, variant: p.variantName, sales: p.volume })))}
                 - Résumé : ${insights.statsSummary.totalActiveClients} clients actifs, Meilleur vendeur: ${insights.statsSummary.bestSeller}.
-                
+
                 FORMAT : Produit une réponse courte, professionnelle et orientée action (3 points max).
             `;
 
@@ -91,6 +91,19 @@ export const getMarketingRecommendations = withAuth(
                 success: true,
                 data: recommendation
             };
+        } catch (error) {
+            return { success: false, error: (error as Error).message };
+        }
+    }
+);
+
+export const getLowStockItemsAction = withAuth(
+    { roles: [UserRole.ADMIN], schema: z.object({}) },
+    async () => {
+        try {
+            const { DashboardQueries } = await import("@/services/queries/dashboard.queries");
+            const data = await DashboardQueries.getLowStockList();
+            return { success: true, data };
         } catch (error) {
             return { success: false, error: (error as Error).message };
         }

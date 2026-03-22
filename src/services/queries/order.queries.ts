@@ -257,4 +257,18 @@ export class OrderQueries {
 
         return { count: result[0]?.count || 0 };
     });
+
+    static getPaidCount = cache(async () => {
+        const startOfDay = new Date();
+        startOfDay.setHours(0, 0, 0, 0);
+
+        const result = await db.select({ count: count() })
+            .from(orders)
+            .where(and(
+                eq(orders.status, OrderStatus.PAYE),
+                gte(orders.createdAt, startOfDay)
+            ));
+
+        return { count: result[0]?.count || 0 };
+    });
 }

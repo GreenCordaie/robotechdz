@@ -1,7 +1,7 @@
 "use server";
 
 import { db } from "@/db";
-import { clients, clientPayments, orders, users } from "@/db/schema";
+import { clients, clientPayments, orders, users, webhookEvents, supportTickets } from "@/db/schema";
 import { eq, sql, desc, and } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { withAuth } from "@/lib/security";
@@ -126,5 +126,56 @@ export const getAllClients = withAuth(
     { roles: [UserRole.ADMIN, UserRole.CAISSIER] },
     async () => {
         return await db.query.clients.findMany({ orderBy: [desc(clients.createdAt)] });
+    }
+);
+
+export const getClientWhatsAppHistory = withAuth(
+    {
+        roles: [UserRole.ADMIN, UserRole.CAISSIER],
+        schema: z.object({ clientId: z.number() })
+    },
+    async ({ clientId }) => {
+        try {
+            const client = await db.query.clients.findFirst({ where: eq(clients.id, clientId) });
+            if (!client?.telephone) return { success: false, error: "Client introuvable ou sans téléphone" };
+
+            // Normalisation : '0XXXXXXXXX' → '213XXXXXXXXX'
+            const intlPhone = client.telephone.startsWith('0')
+                ? '213' + client.telephone.slice(1)
+                : client.telephone;
+
+            const [events, tickets] = await Promise.all([
+                db.select()
+                    .from(webhookEvents)
+                    .where(and(
+                        eq(webhookEvents.provider, 'whatsapp'),
+                        eq(webhookEvents.customerPhone, intlPhone)
+                    ))
+                    .orderBy(desc(webhookEvents.processedAt))
+                    .limit(30),
+                db.select()
+                    .from(supportTickets)
+                    .where(eq(supportTickets.customerPhone, intlPhone))
+                    .orderBy(desc(supportTickets.createdAt))
+                    .limit(5)
+            ]);
+
+            const messages = events.map(e => {
+                const p = e.payload as any;
+                if (p?.event !== "message") return null;
+                const inner = p.payload;
+                return {
+                    id: e.id,
+                    fromMe: inner?.fromMe ?? false,
+                    body: inner?.body || '[Message non textuel]',
+                    messageType: inner?.type || 'text',
+                    timestamp: e.processedAt,
+                };
+            }).filter(Boolean).reverse();
+
+            return { success: true, data: { messages, tickets, phone: intlPhone } };
+        } catch (error) {
+            return { success: false, error: (error as Error).message };
+        }
     }
 );

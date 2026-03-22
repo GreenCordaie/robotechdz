@@ -1,6 +1,6 @@
 "use server";
 
-import { eq, and, ilike, count, sql } from "drizzle-orm";
+import { eq, and, ilike, count, sql, inArray } from "drizzle-orm";
 import { db } from "@/db";
 import { categories, products, productVariants, productVariantSuppliers, digitalCodes, digitalCodeSlots } from "@/db/schema";
 import { revalidatePath } from "next/cache";
@@ -371,6 +371,29 @@ export const bulkInsertCodes = withAuth(
             }
         } catch (error) {
             return { success: false, error: (error as Error).message };
+        }
+    }
+);
+
+export const getVariantStockCounts = withAuth(
+    { roles: [UserRole.ADMIN], schema: z.object({ variantIds: z.array(z.number()) }) },
+    async ({ variantIds }) => {
+        if (variantIds.length === 0) return { success: true, counts: {} as Record<number, number> };
+        try {
+            const rows = await db
+                .select({ variantId: digitalCodes.variantId, count: count() })
+                .from(digitalCodes)
+                .where(and(
+                    inArray(digitalCodes.variantId, variantIds),
+                    eq(digitalCodes.status, "DISPONIBLE")
+                ))
+                .groupBy(digitalCodes.variantId);
+
+            const counts: Record<number, number> = {};
+            for (const r of rows) counts[r.variantId] = r.count;
+            return { success: true, counts };
+        } catch (error) {
+            return { success: false, error: (error as Error).message, counts: {} as Record<number, number> };
         }
     }
 );

@@ -405,6 +405,19 @@ export const getPendingOrdersCount = withAuth(
         }
     }
 );
+export const getPaidOrdersCount = withAuth(
+    { roles: [UserRole.ADMIN, UserRole.CAISSIER, UserRole.TRAITEUR], schema: z.any().optional() },
+    async () => {
+        try {
+            const OrderQueries = await getQueries();
+            const res = await OrderQueries.getPaidCount();
+            return { success: true, count: res.count };
+        } catch (error) {
+            return { success: false, error: "Failed to fetch paid count" };
+        }
+    }
+);
+
 export const resendWhatsAppAction = withAuth(
     {
         roles: [UserRole.ADMIN, UserRole.CAISSIER],

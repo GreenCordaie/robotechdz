@@ -11,7 +11,7 @@ import {
     Textarea,
     Input
 } from "@heroui/react";
-import { bulkInsertCodes } from "@/app/admin/catalogue/actions";
+import { bulkInsertCodes, getVariantStockCounts } from "@/app/admin/catalogue/actions";
 import { toast } from "react-hot-toast";
 import { Hash, Loader2, Save } from "lucide-react";
 
@@ -29,6 +29,7 @@ export const MassImportModal = ({ isOpen, onClose, product }: MassImportModalPro
     const [selectedVariantId, setSelectedVariantId] = useState<string>("");
     const [codesInput, setCodesInput] = useState("");
     const [isSaving, setIsSaving] = useState(false);
+    const [stockCounts, setStockCounts] = useState<Record<number, number>>({});
 
     const [sharingAccounts, setSharingAccounts] = useState([{
         email: "",
@@ -43,6 +44,12 @@ export const MassImportModal = ({ isOpen, onClose, product }: MassImportModalPro
             setSelectedVariantId(product.variants[0].id.toString());
         } else {
             setSelectedVariantId("");
+        }
+        if (product?.variants?.length) {
+            const ids = product.variants.map((v: any) => v.id);
+            getVariantStockCounts({ variantIds: ids }).then(res => {
+                if (res.success) setStockCounts(res.counts);
+            });
         }
     }, [product]);
 
@@ -126,6 +133,11 @@ export const MassImportModal = ({ isOpen, onClose, product }: MassImportModalPro
                 toast.success(selectedVariant?.isSharing ? `${res.count} comptes partagés importés` : `${res.count} codes importés`);
                 setCodesInput("");
                 setSharingAccounts([{ email: "", password: "", slots: [] }]);
+                // Refresh stock counts
+                if (product?.variants?.length) {
+                    const ids = product.variants.map((v: any) => v.id);
+                    getVariantStockCounts({ variantIds: ids }).then(r => { if (r.success) setStockCounts(r.counts); });
+                }
                 onClose();
             } else {
                 toast.error(res.error || "Erreur lors de l'importation");
@@ -158,6 +170,11 @@ export const MassImportModal = ({ isOpen, onClose, product }: MassImportModalPro
                                     <h2 className="text-slate-100 text-lg font-bold leading-tight">Importation de Stock</h2>
                                     <p className="text-slate-500 text-xs font-medium uppercase tracking-wider">{product?.name}</p>
                                 </div>
+                                {selectedVariant && (
+                                    <span className={`ml-auto text-xs font-black px-3 py-1 rounded-full ${(stockCounts[selectedVariant.id] ?? 0) > 0 ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'}`}>
+                                        {stockCounts[selectedVariant.id] ?? 0} en stock
+                                    </span>
+                                )}
                             </div>
                         </ModalHeader>
                         <ModalBody className="p-8">
@@ -172,7 +189,9 @@ export const MassImportModal = ({ isOpen, onClose, product }: MassImportModalPro
                                         >
                                             <option value="" disabled>Sélectionner une variante</option>
                                             {product.variants.map((v: any) => (
-                                                <option key={v.id} value={v.id.toString()}>{v.name}</option>
+                                                <option key={v.id} value={v.id.toString()}>
+                                                    {v.name} — {stockCounts[v.id] ?? 0} en stock
+                                                </option>
                                             ))}
                                         </select>
                                     </div>

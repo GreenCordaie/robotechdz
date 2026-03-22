@@ -13,7 +13,7 @@ export default async function TraitementPage() {
     try {
         // Pre-fetch both pending and a subset of finished for initial load
         const initialPending = await OrderQueries.getPaid();
-        const initialFinished = await OrderQueries.getFinished(20);
+        const initialFinished = await OrderQueries.getFinished();
 
         return (
             <TraitementContainer

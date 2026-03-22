@@ -27,7 +27,7 @@ import { logoutAction } from "@/app/admin/login/actions";
 import { useSettingsStore } from "@/store/useSettingsStore";
 import Image from "next/image";
 import { getSupportCounts } from "@/app/admin/support/actions";
-import { getPendingOrdersCount } from "@/app/admin/caisse/actions";
+import { getPendingOrdersCount, getPaidOrdersCount } from "@/app/admin/caisse/actions";
 
 export const AdminSidebar = () => {
     const pathname = usePathname();
@@ -38,12 +38,14 @@ export const AdminSidebar = () => {
 
     const [openTickets, setOpenTickets] = React.useState(0);
     const [pendingOrders, setPendingOrders] = React.useState(0);
+    const [paidOrders, setPaidOrders] = React.useState(0);
 
     const refreshCounts = React.useCallback(async () => {
         try {
-            const [ticketsRes, ordersRes] = await Promise.all([
+            const [ticketsRes, ordersRes, paidRes] = await Promise.all([
                 getSupportCounts({}),
-                getPendingOrdersCount({})
+                getPendingOrdersCount({}),
+                getPaidOrdersCount({})
             ]);
 
             if ('success' in ticketsRes && ticketsRes.success && typeof ticketsRes.count === 'number') {
@@ -51,6 +53,9 @@ export const AdminSidebar = () => {
             }
             if ('success' in ordersRes && ordersRes.success && typeof ordersRes.count === 'number') {
                 setPendingOrders(ordersRes.count);
+            }
+            if ('success' in paidRes && paidRes.success && typeof paidRes.count === 'number') {
+                setPaidOrders(paidRes.count);
             }
         } catch (error) {
             console.error("Error refreshing sidebar counts:", error);
@@ -74,7 +79,7 @@ export const AdminSidebar = () => {
         { name: "Catalogue", icon: Package, href: "/admin/catalogue", roles: ["ADMIN", "CAISSIER"] },
         { name: "Caisse", icon: Wallet, href: "/admin/caisse", badge: pendingOrders, roles: ["ADMIN", "CAISSIER"] },
         { name: "Comptes Partagés", icon: LayoutGrid, href: "/admin/comptes-partages", roles: ["ADMIN", "CAISSIER"] },
-        { name: "Traitement", icon: RefreshCw, href: "/admin/traitement", roles: ["ADMIN", "CAISSIER", "TRAITEUR"] },
+        { name: "Traitement", icon: RefreshCw, href: "/admin/traitement", badge: paidOrders, roles: ["ADMIN", "CAISSIER", "TRAITEUR"] },
         { name: "Clients & Crédits", icon: Contact, href: "/admin/clients", roles: ["ADMIN", "CAISSIER"] },
         { name: "Fournisseurs", icon: Users, href: "/admin/fournisseurs", roles: ["ADMIN"] },
         ...(isB2bEnabled ? [{ name: "B2B & Revendeurs", icon: Building2, href: "/admin/b2b", roles: ["ADMIN"] }] : []),

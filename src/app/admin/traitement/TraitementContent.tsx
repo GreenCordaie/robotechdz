@@ -117,6 +117,7 @@ export default function TraitementContent({ initialOrders = [], initialFinished 
             }
 
             setOrders(data);
+            setIsLoading(false);
 
             // Auto-Print Logic for Webhook-delivered orders
             if (view === "pending") {
@@ -359,30 +360,6 @@ export default function TraitementContent({ initialOrders = [], initialFinished 
                             </button>
                         </div>
 
-                        {/* WebUSB Hardware Status */}
-                        <div className="flex items-center gap-3 pl-4 border-l border-[#ec5b13]/20">
-                            <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-all ${webusb.connected
-                                ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
-                                : "bg-red-500/10 border-red-500/20 text-red-400"
-                                }`}>
-                                <div className={`size-2 rounded-full ${webusb.connected ? "bg-emerald-500 animate-pulse" : "bg-red-500"}`} />
-                                <span className="text-[10px] font-bold uppercase tracking-widest leading-none">
-                                    {webusb.connected ? "Imprimante prête" : "Hors ligne"}
-                                </span>
-                            </div>
-
-                            <button
-                                onClick={webusb.connected ? webusb.disconnect : webusb.connect}
-                                disabled={webusb.isConnecting}
-                                className={`h-9 px-4 rounded-xl flex items-center gap-2 text-xs font-bold transition-all shadow-lg active:scale-95 ${webusb.connected
-                                    ? "bg-zinc-800 text-zinc-400 hover:bg-zinc-700"
-                                    : "bg-[#ec5b13] text-white hover:bg-orange-600 shadow-orange-950/20"
-                                    }`}
-                            >
-                                {webusb.isConnecting ? <Loader2 className="size-4 animate-spin" /> : <Usb className="size-4" />}
-                                {webusb.connected ? "Déconnecter" : "Connecter USB"}
-                            </button>
-                        </div>
                     </div>
                 </header>
 

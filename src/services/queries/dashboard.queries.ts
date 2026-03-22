@@ -3,7 +3,7 @@ import { db } from "@/db";
 import { orders, orderItems, products, digitalCodes, shopSettings, supportTickets } from "@/db/schema";
 import { eq, sql, and, gte, lte, desc, count } from "drizzle-orm";
 import { cache } from "react";
-import { OrderStatus, DigitalCodeStatus } from "@/lib/constants";
+import { OrderStatus, DigitalCodeStatus, DigitalCodeSlotStatus } from "@/lib/constants";
 
 export class DashboardQueries {
 
@@ -84,14 +84,26 @@ export class DashboardQueries {
             return ((current - previous) / previous) * 100;
         };
 
+        const thresholdSettings = await db.query.shopSettings.findFirst();
+        const alertThreshold = thresholdSettings?.stockAlertThreshold ?? 5;
         const lowStockAlerts = await db.execute(sql`
             SELECT COUNT(*) as count FROM (
-                SELECT pv.id
+                SELECT pv.id,
+                    CASE
+                        WHEN pv.is_sharing THEN (
+                            SELECT COUNT(dcs.id) FROM digital_code_slots dcs
+                            INNER JOIN digital_codes dc2 ON dc2.id = dcs.digital_code_id
+                            WHERE dc2.variant_id = pv.id AND dcs.status = ${DigitalCodeSlotStatus.DISPONIBLE}
+                        )
+                        ELSE (
+                            SELECT COUNT(dc.id) FROM digital_codes dc
+                            WHERE dc.variant_id = pv.id AND dc.status = ${DigitalCodeStatus.DISPONIBLE}
+                        )
+                    END as stock_count
                 FROM product_variants pv
                 JOIN products p ON pv.product_id = p.id
-                LEFT JOIN digital_codes dc ON dc.variant_id = pv.id AND dc.status = ${DigitalCodeStatus.DISPONIBLE}
-                GROUP BY pv.id
-                HAVING COUNT(dc.id) < 5
+                WHERE p.status = 'ACTIVE' AND p.is_manual_delivery = false
+                HAVING stock_count <= ${alertThreshold}
             ) as alerts
         `);
 
@@ -152,19 +164,40 @@ export class DashboardQueries {
     });
 
     /**
-     * Gets low stock alerts with product details.
+     * Gets low stock alerts with product details, using dynamic threshold from settings.
+     * Handles both standard digital codes and sharing variants (slots).
      */
-    static getLowStockList = cache(async () => {
+    static getLowStockList = async () => {
+        const settings = await db.query.shopSettings.findFirst();
+        const threshold = settings?.stockAlertThreshold ?? 5;
+
         const result = await db.execute(sql`
-            SELECT pv.id, p.name as product_name, pv.name as variant_name, COUNT(dc.id) as stock_count
+            SELECT
+                pv.id,
+                p.name as product_name,
+                pv.name as variant_name,
+                pv.is_sharing,
+                CASE
+                    WHEN pv.is_sharing THEN (
+                        SELECT COUNT(dcs.id)
+                        FROM digital_code_slots dcs
+                        INNER JOIN digital_codes dc2 ON dc2.id = dcs.digital_code_id
+                        WHERE dc2.variant_id = pv.id AND dcs.status = ${DigitalCodeSlotStatus.DISPONIBLE}
+                    )
+                    ELSE (
+                        SELECT COUNT(dc.id)
+                        FROM digital_codes dc
+                        WHERE dc.variant_id = pv.id AND dc.status = ${DigitalCodeStatus.DISPONIBLE}
+                    )
+                END as stock_count
             FROM product_variants pv
             JOIN products p ON pv.product_id = p.id
-            LEFT JOIN digital_codes dc ON dc.variant_id = pv.id AND dc.status = ${DigitalCodeStatus.DISPONIBLE}
-            GROUP BY pv.id, p.name, pv.name
-            HAVING COUNT(dc.id) < 5
+            WHERE p.status = 'ACTIVE' AND p.is_manual_delivery = false
+            HAVING stock_count <= ${threshold}
+            ORDER BY stock_count ASC
         `);
-        return result;
-    });
+        return { rows: result, threshold };
+    };
 
     /**
      * Recent orders for realtime components.

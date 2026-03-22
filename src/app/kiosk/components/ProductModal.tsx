@@ -214,7 +214,7 @@ export default function ProductModal({ isOpen, onClose, product }: ProductModalP
                                     <div className="flex items-center gap-4">
                                         <span className="material-symbols-outlined !text-3xl group-hover:translate-x-1 transition-transform">shopping_basket</span>
                                         <span className="text-2xl font-black tracking-tight uppercase">
-                                            {(!product.isManualDelivery && selectedVariant && (selectedVariant.digitalCodes?.length || 0) < quantity) ? "Stock insuffisant" : "Ajouter au panier"}
+                                            {(!product.isManualDelivery && selectedVariant && (selectedVariant.stockCount || 0) < quantity) ? "Stock insuffisant" : "Ajouter au panier"}
                                         </span>
                                     </div>
                                     <div className="h-10 w-px bg-white/20"></div>

@@ -2,6 +2,12 @@
 
 Toutes les modifications notables de ce projet seront documentées dans ce fichier.
 
+## [7.2.1] - 2026-03-22
+
+### 💫 Spec-Driven Development
+- **Spec Kit Integration** : Installation et initialisation du GitHub Spec Kit pour une gestion structurée des spécifications techniques.
+- **Agent Optimization** : Configuration d'Antigravity pour le support natif des routines Spec Kit via `.specify`.
+
 ## [7.2.0] - 2026-03-22
 
 ### 🏪 Module Caisse (POS)

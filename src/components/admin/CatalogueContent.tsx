@@ -50,7 +50,8 @@ import { AddCategoryModal } from "@/components/admin/modals/AddCategoryModal";
 import { ManageCategoriesModal } from "@/components/admin/modals/ManageCategoriesModal";
 import { RechargeBalanceModal } from "@/components/admin/modals/RechargeBalanceModal";
 import { MassImportModal } from "@/components/admin/modals/MassImportModal";
-import { deleteProductAction, toggleProductStatusAction } from "@/app/admin/catalogue/actions";
+import { deleteProductAction, toggleProductStatusAction, getVariantStockCounts } from "@/app/admin/catalogue/actions";
+import { getShopSettingsAction } from "@/app/admin/settings/actions";
 import toast from "react-hot-toast";
 import Link from "next/link";
 import { formatCurrency } from "@/lib/formatters";
@@ -124,6 +125,23 @@ export default function CatalogueContent({
     const [isRechargeOpen, setIsRechargeOpen] = useState(false);
     const [isMassImportOpen, setIsMassImportOpen] = useState(false);
     const [selectedProductForImport, setSelectedProductForImport] = useState<Product | null>(null);
+    const [variantStockCounts, setVariantStockCounts] = useState<Record<number, number>>({});
+    const [stockAlertThreshold, setStockAlertThreshold] = useState(5);
+    const [showLowStockOnly, setShowLowStockOnly] = useState(false);
+
+    React.useEffect(() => {
+        const allVariantIds = initialProducts.flatMap((p: Product) => p.variants.map((v: any) => v.id));
+        if (allVariantIds.length > 0) {
+            getVariantStockCounts({ variantIds: allVariantIds }).then(res => {
+                if (res.success) setVariantStockCounts(res.counts);
+            });
+        }
+        getShopSettingsAction({}).then(res => {
+            if (res.success && res.data?.stockAlertThreshold) {
+                setStockAlertThreshold(res.data.stockAlertThreshold);
+            }
+        });
+    }, [initialProducts]);
 
     // Filter states synced with URL
     const [searchTerm, setSearchTerm] = useState(initialSearch);
@@ -275,7 +293,11 @@ export default function CatalogueContent({
     };
 
     const totalPages = initialTotalPages;
-    const paginatedProducts = products;
+    const paginatedProducts = showLowStockOnly
+        ? products.filter((p: Product) =>
+            p.variants.some((v: any) => (variantStockCounts[v.id] ?? 0) <= stockAlertThreshold)
+          )
+        : products;
 
     const EXCHANGE_RATE_USD_DZD = 245;
 
@@ -298,12 +320,25 @@ export default function CatalogueContent({
                         <button
                             onClick={() => {
                                 setStatus("ARCHIVED");
+                                setShowLowStockOnly(false);
                                 setPage(1);
                                 router.push(createPageUrl(1, searchTerm, selectedCategoryId, "ARCHIVED"));
                             }}
-                            className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${status === "ARCHIVED" ? "bg-red-500/80 text-white shadow-lg shadow-red-500/20" : "text-slate-500 hover:text-slate-300"}`}
+                            className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${status === "ARCHIVED" && !showLowStockOnly ? "bg-red-500/80 text-white shadow-lg shadow-red-500/20" : "text-slate-500 hover:text-slate-300"}`}
                         >
                             Archives
+                        </button>
+                        <button
+                            onClick={() => setShowLowStockOnly(v => !v)}
+                            className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-1 ${showLowStockOnly ? "bg-orange-500/80 text-white shadow-lg shadow-orange-500/20" : "text-slate-500 hover:text-slate-300"}`}
+                        >
+                            ⚠ Stock bas
+                            {(() => {
+                                const lowCount = products.filter((p: Product) =>
+                                    p.variants.some((v: any) => (variantStockCounts[v.id] ?? 0) <= stockAlertThreshold)
+                                ).length;
+                                return lowCount > 0 ? <span className="ml-1 bg-orange-500 text-white text-[9px] px-1.5 py-0.5 rounded-full font-black">{lowCount}</span> : null;
+                            })()}
                         </button>
                     </div>
                 </div>
@@ -518,7 +553,15 @@ export default function CatalogueContent({
                                                                 <Chip size="sm" variant="flat" color="default" className="mt-1 h-4 text-[8px] border-none uppercase font-black">Archivé</Chip>
                                                             )}
                                                         </div>
-                                                        <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">ID: #{product.id + 1000}</p>
+                                                        <div className="flex items-center gap-2 mt-0.5">
+                                                            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">ID: #{product.id + 1000}</p>
+                                                            {product.variants.some((v: any) => (variantStockCounts[v.id] ?? 0) <= stockAlertThreshold) && (
+                                                                <span className="flex items-center gap-0.5 text-[9px] font-black uppercase text-orange-400 bg-orange-500/10 px-1.5 py-0.5 rounded-full border border-orange-500/20">
+                                                                    <AlertTriangle className="w-2.5 h-2.5 shrink-0" />
+                                                                    Stock bas
+                                                                </span>
+                                                            )}
+                                                        </div>
                                                     </div>
                                                 </div>
                                             </td>
@@ -562,6 +605,14 @@ export default function CatalogueContent({
                                                             startContent={<PlusCircle className="w-4 h-4 shrink-0 text-emerald-500" />}
                                                             className="text-white hover:bg-white/5"
                                                             onPress={() => handleOpenMassImport(product)}
+                                                            endContent={(() => {
+                                                                const total = product.variants.reduce((acc: number, v: any) => acc + (variantStockCounts[v.id] || 0), 0);
+                                                                return total > 0 ? (
+                                                                    <span className="text-[10px] font-black px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400">{total}</span>
+                                                                ) : (
+                                                                    <span className="text-[10px] font-black px-1.5 py-0.5 rounded-full bg-red-500/20 text-red-400">0</span>
+                                                                );
+                                                            })()}
                                                         >
                                                             Gérer le Stock
                                                         </DropdownItem>
