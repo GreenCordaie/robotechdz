@@ -274,7 +274,7 @@ export default function CartView() {
                         <svg className="w-10 h-10" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24">
                             <path d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0110.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0l.229 2.523a1.125 1.125 0 01-1.12 1.227H7.231c-.618 0-1.13-.514-1.122-1.141L6.34 18m11.32 0c.41 0 .746-.301.791-.707L19.01 5.39a1.125 1.125 0 00-1.121-1.24H6.111a1.125 1.125 0 00-1.121 1.24l.558 11.903c.045.406.381.707.791.707m11.32 0H6.34" strokeLinecap="round" strokeLinejoin="round"></path>
                         </svg>
-                        Valider et Imprimer le Ticket
+                        Valider ma commande
                     </button>
                 </div>
             </footer>

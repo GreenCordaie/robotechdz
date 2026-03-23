@@ -7,8 +7,7 @@ export async function GET(req: Request) {
         // Use dedicated CRON_SECRET from env, passed as Authorization header
         const cronSecret = process.env.CRON_SECRET;
         const authHeader = req.headers ? (req as any).headers?.get?.("authorization") : null;
-        const providedSecret = authHeader?.replace("Bearer ", "") ||
-            new URL(req.url).searchParams.get("secret");
+        const providedSecret = authHeader?.replace("Bearer ", "") || null;
 
         if (!cronSecret || !providedSecret) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

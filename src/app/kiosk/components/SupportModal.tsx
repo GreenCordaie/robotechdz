@@ -59,80 +59,80 @@ export default function SupportModal({ isOpen, onClose }: SupportModalProps) {
         <Modal
             isOpen={isOpen}
             onClose={handleClose}
-            size="xl"
+            size="lg"
             backdrop="blur"
             classNames={{
-                base: "bg-[#111111] border border-[#262626] rounded-[32px] shadow-2xl p-2",
-                header: "border-b border-white/5 pb-4",
-                body: "py-6",
-                footer: "border-t border-white/5 pt-4",
-                closeButton: "hover:bg-white/5 active:scale-95 transition-all text-slate-400 m-4"
+                base: "bg-[#111111] border border-[#262626] rounded-[24px] shadow-2xl p-1.5",
+                header: "border-b border-white/5 pb-3",
+                body: "py-4",
+                footer: "border-t border-white/5 pt-3",
+                closeButton: "hover:bg-white/5 active:scale-95 transition-all text-slate-400 m-3"
             }}
         >
             <ModalContent>
                 {() => (
                     <>
-                        <ModalHeader className="flex items-center gap-4">
-                            <div className="w-12 h-12 bg-[#ec5b13]/10 rounded-2xl flex items-center justify-center border border-[#ec5b13]/20">
-                                <HelpCircle className="text-[#ec5b13] w-6 h-6" />
+                        <ModalHeader className="flex items-center gap-3">
+                            <div className="w-10 h-10 bg-[#ec5b13]/10 rounded-xl flex items-center justify-center border border-[#ec5b13]/20">
+                                <HelpCircle className="text-[#ec5b13] w-5 h-5" />
                             </div>
                             <div className="flex flex-col">
-                                <h3 className="text-white text-xl font-black uppercase tracking-tight">Support Client</h3>
-                                <p className="text-slate-500 text-xs font-bold uppercase tracking-widest">Uniquement avec ticket</p>
+                                <h3 className="text-white text-lg font-black uppercase tracking-tight">Support Client</h3>
+                                <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest">Uniquement avec ticket</p>
                             </div>
                         </ModalHeader>
-                        <ModalBody className="space-y-6">
+                        <ModalBody className="space-y-4">
                             {showSuccess ? (
-                                <div className="flex flex-col items-center justify-center py-10 text-center animate-in fade-in zoom-in duration-300">
-                                    <div className="w-20 h-20 bg-emerald-500/10 rounded-full flex items-center justify-center mb-6 border border-emerald-500/20">
-                                        <CheckCircle2 className="text-emerald-500 w-10 h-10" />
+                                <div className="flex flex-col items-center justify-center py-8 text-center animate-in fade-in zoom-in duration-300">
+                                    <div className="w-16 h-16 bg-emerald-500/10 rounded-full flex items-center justify-center mb-4 border border-emerald-500/20">
+                                        <CheckCircle2 className="text-emerald-500 w-8 h-8" />
                                     </div>
-                                    <h4 className="text-white text-2xl font-black uppercase tracking-tight mb-2">Message Envoyé</h4>
-                                    <p className="text-slate-400 font-bold max-w-sm">
+                                    <h4 className="text-white text-xl font-black uppercase tracking-tight mb-2">Message Envoyé</h4>
+                                    <p className="text-slate-400 text-sm font-bold max-w-sm">
                                         Votre demande a été transmise à la caisse. Un caissier vous assistera dans quelques instants.
                                     </p>
                                 </div>
                             ) : (
                                 <>
-                                    <div className="space-y-2">
-                                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] ml-1">Numéro de Commande (Ex: #C12)</label>
+                                    <div className="space-y-1.5">
+                                        <label className="text-[9px] font-black text-slate-500 uppercase tracking-[0.2em] ml-1">Numéro de Commande (Ex: #C12)</label>
                                         <Input
                                             placeholder="Entrez le numéro sur votre ticket"
                                             value={orderNumber}
                                             onChange={(e) => setOrderNumber(e.target.value)}
                                             variant="bordered"
                                             classNames={{
-                                                inputWrapper: "h-14 bg-white/5 border-[#262626] group-data-[focus=true]:border-[#ec5b13] rounded-2xl transition-all",
-                                                input: "text-white font-black placeholder:text-slate-600 text-lg"
+                                                inputWrapper: "h-10 bg-white/5 border-[#262626] group-data-[focus=true]:border-[#ec5b13] rounded-xl transition-all",
+                                                input: "text-white font-black placeholder:text-slate-600 text-sm"
                                             }}
                                         />
                                     </div>
 
-                                    <div className="space-y-2">
-                                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] ml-1">Numéro de Téléphone (WhatsApp)</label>
+                                    <div className="space-y-1.5">
+                                        <label className="text-[9px] font-black text-slate-500 uppercase tracking-[0.2em] ml-1">Numéro de Téléphone (WhatsApp)</label>
                                         <Input
                                             placeholder="Ex: 0550 00 00 00"
                                             value={customerPhone}
                                             onChange={(e) => setCustomerPhone(e.target.value)}
                                             variant="bordered"
                                             classNames={{
-                                                inputWrapper: "h-14 bg-white/5 border-[#262626] group-data-[focus=true]:border-[#ec5b13] rounded-2xl transition-all",
-                                                input: "text-white font-black placeholder:text-slate-600 text-lg"
+                                                inputWrapper: "h-10 bg-white/5 border-[#262626] group-data-[focus=true]:border-[#ec5b13] rounded-xl transition-all",
+                                                input: "text-white font-black placeholder:text-slate-600 text-sm"
                                             }}
                                         />
                                     </div>
 
-                                    <div className="space-y-2">
-                                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] ml-1">Quel est votre problème ?</label>
+                                    <div className="space-y-1.5">
+                                        <label className="text-[9px] font-black text-slate-500 uppercase tracking-[0.2em] ml-1">Quel est votre problème ?</label>
                                         <Textarea
                                             placeholder="Expliquez brièvement votre demande..."
                                             value={message}
                                             onChange={(e) => setMessage(e.target.value)}
                                             variant="bordered"
-                                            minRows={4}
+                                            minRows={3}
                                             classNames={{
-                                                inputWrapper: "bg-white/5 border-[#262626] group-data-[focus=true]:border-[#ec5b13] rounded-2xl transition-all",
-                                                input: "text-white font-bold placeholder:text-slate-600 text-base"
+                                                inputWrapper: "bg-white/5 border-[#262626] group-data-[focus=true]:border-[#ec5b13] rounded-xl transition-all",
+                                                input: "text-white font-bold placeholder:text-slate-600 text-sm"
                                             }}
                                         />
                                     </div>
@@ -144,15 +144,15 @@ export default function SupportModal({ isOpen, onClose }: SupportModalProps) {
                                 <Button
                                     variant="light"
                                     onPress={handleClose}
-                                    className="font-black text-slate-400 uppercase tracking-widest text-xs h-12 px-6"
+                                    className="font-black text-slate-400 uppercase tracking-widest text-[10px] h-10 px-4"
                                 >
                                     Annuler
                                 </Button>
                                 <Button
-                                    className="bg-white text-black hover:bg-[#ec5b13] hover:text-white font-black uppercase tracking-widest text-xs h-12 px-10 rounded-2xl shadow-xl transition-all active:scale-95"
+                                    className="bg-white text-black hover:bg-[#ec5b13] hover:text-white font-black uppercase tracking-widest text-[10px] h-10 px-6 rounded-xl shadow-xl transition-all active:scale-95"
                                     onPress={handleSubmit}
                                     isLoading={isSubmitting}
-                                    endContent={!isSubmitting && <Send size={16} />}
+                                    endContent={!isSubmitting && <Send size={14} />}
                                 >
                                     Envoyer le ticket
                                 </Button>

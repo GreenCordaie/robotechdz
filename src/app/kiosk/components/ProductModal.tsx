@@ -71,12 +71,12 @@ export default function ProductModal({ isOpen, onClose, product }: ProductModalP
             <Modal
                 isOpen={isOpen}
                 onOpenChange={onClose}
-                size="3xl"
+                size="2xl"
                 placement="center"
                 backdrop="blur"
                 hideCloseButton
                 classNames={{
-                    base: "bg-white/90 backdrop-blur-xl rounded-[32px] shadow-2xl p-0 overflow-hidden border border-white/20",
+                    base: "bg-white/90 backdrop-blur-xl rounded-[24px] shadow-2xl p-0 overflow-hidden border border-white/20",
                     backdrop: "bg-slate-900/40 backdrop-blur-md",
                     body: "p-0"
                 }}
@@ -84,7 +84,7 @@ export default function ProductModal({ isOpen, onClose, product }: ProductModalP
                 <ModalContent>
                     <ModalBody className="relative flex flex-col p-0">
                         <style jsx global>{`
-                        .material-symbols-outlined { font-size: 24px; }
+                        .material-symbols-outlined { font-size: 20px; }
                         .animate-in {
                             animation-duration: 300ms;
                             animation-fill-mode: both;
@@ -95,44 +95,44 @@ export default function ProductModal({ isOpen, onClose, product }: ProductModalP
                         {/* Close Button */}
                         <button
                             onClick={onClose}
-                            className="absolute top-6 right-6 size-12 bg-slate-100/50 hover:bg-slate-200/50 backdrop-blur-sm rounded-full flex items-center justify-center text-slate-900 transition-colors z-10"
+                            className="absolute top-4 right-4 size-10 bg-slate-100/50 hover:bg-slate-200/50 backdrop-blur-sm rounded-full flex items-center justify-center text-slate-900 transition-colors z-10"
                         >
                             <span className="material-symbols-outlined">close</span>
                         </button>
 
                         {/* BEGIN: Header Section */}
-                        <div className="p-8 lg:p-10 overflow-y-auto max-h-[80vh] no-scrollbar">
-                            <div className="flex flex-col md:flex-row gap-8 items-start md:items-center">
-                                <div className="size-32 min-w-[128px] bg-slate-50 border border-slate-100 rounded-[24px] flex items-center justify-center overflow-hidden relative shadow-sm">
+                        <div className="p-6 lg:p-8 overflow-y-auto max-h-[80vh] no-scrollbar">
+                            <div className="flex flex-col md:flex-row gap-6 items-start md:items-center">
+                                <div className="size-24 min-w-[96px] bg-slate-50 border border-slate-100 rounded-[20px] flex items-center justify-center overflow-hidden relative shadow-sm">
                                     {product.imageUrl ? (
                                         <Image
                                             alt={product.name}
-                                            className="object-contain p-3"
+                                            className="object-contain p-2"
                                             src={product.imageUrl}
                                             fill
-                                            sizes="128px"
+                                            sizes="96px"
                                         />
                                     ) : (
                                         <div className="w-full h-full bg-slate-200 flex items-center justify-center">
-                                            <span className="material-symbols-rounded text-slate-400 text-4xl">package</span>
+                                            <span className="material-symbols-rounded text-slate-400 text-3xl">package</span>
                                         </div>
                                     )}
                                 </div>
                                 <div className="flex-1">
-                                    <h1 className="text-black text-3xl font-black leading-tight tracking-tight uppercase">{product.name}</h1>
-                                    <p className="text-black/50 text-base mt-2 leading-relaxed max-w-lg font-bold">
+                                    <h1 className="text-black text-xl font-black leading-tight tracking-tight uppercase">{product.name}</h1>
+                                    <p className="text-black/50 text-xs mt-1 leading-relaxed max-w-lg font-bold">
                                         {product.description || "Livraison instantanée du code d'activation sur votre ticket de caisse. Service Premium Digital."}
                                     </p>
                                 </div>
                             </div>
 
                             {/* 2. Variants Section */}
-                            <div className="mt-10">
-                                <h2 className="text-black text-xl font-black mb-5 flex items-center gap-2 uppercase tracking-wide">
-                                    <span className="bg-[#ec5b13] text-white size-6 rounded-full flex items-center justify-center text-xs">1</span>
+                            <div className="mt-8">
+                                <h2 className="text-black text-lg font-black mb-4 flex items-center gap-2 uppercase tracking-wide">
+                                    <span className="bg-[#ec5b13] text-white size-5 rounded-full flex items-center justify-center text-[10px]">1</span>
                                     Choisissez une option
                                 </h2>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                     {product.variants && product.variants.map((variant: any) => {
                                         const isActive = selectedVariant?.id === variant.id;
                                         const stockCount = variant.stockCount || 0;
@@ -142,7 +142,7 @@ export default function ProductModal({ isOpen, onClose, product }: ProductModalP
                                             <div
                                                 key={variant.id}
                                                 onClick={() => !isOutOfStock && setSelectedVariant(variant)}
-                                                className={`relative rounded-[20px] p-5 flex flex-col justify-between min-h-[120px] transition-all border-2 ${isOutOfStock
+                                                className={`relative rounded-[16px] p-4 flex flex-col justify-between min-h-[100px] transition-all border-2 ${isOutOfStock
                                                     ? 'border-slate-100 bg-slate-50 opacity-60 cursor-not-allowed'
                                                     : isActive
                                                         ? 'border-[#ec5b13] bg-orange-50/50 cursor-pointer shadow-sm'
@@ -160,8 +160,8 @@ export default function ProductModal({ isOpen, onClose, product }: ProductModalP
                                                     </div>
                                                 )}
                                                 <div>
-                                                    <p className={`text-xl font-black ${isOutOfStock ? 'text-slate-400' : isActive ? 'text-[#ec5b13]' : 'text-black'}`}>{variant.name}</p>
-                                                    <p className={`text-lg font-black mt-0.5 ${isOutOfStock ? 'text-slate-300' : isActive ? 'text-black' : 'text-black/60'}`}>
+                                                    <p className={`text-lg font-black ${isOutOfStock ? 'text-slate-400' : isActive ? 'text-[#ec5b13]' : 'text-black'}`}>{variant.name}</p>
+                                                    <p className={`text-base font-black mt-0.5 ${isOutOfStock ? 'text-slate-300' : isActive ? 'text-black' : 'text-black/60'}`}>
                                                         {formatCurrency(variant.salePriceDzd, 'DZD')}
                                                     </p>
                                                 </div>
@@ -182,22 +182,22 @@ export default function ProductModal({ isOpen, onClose, product }: ProductModalP
                             </div>
 
                             {/* 3. Quantity Section */}
-                            <div className="mt-10">
-                                <h2 className="text-black text-xl font-black mb-5 flex items-center gap-2 uppercase tracking-wide">
-                                    <span className="bg-[#ec5b13] text-white size-6 rounded-full flex items-center justify-center text-xs">2</span>
+                            <div className="mt-8">
+                                <h2 className="text-black text-lg font-black mb-4 flex items-center gap-2 uppercase tracking-wide">
+                                    <span className="bg-[#ec5b13] text-white size-5 rounded-full flex items-center justify-center text-[10px]">2</span>
                                     Quantité
                                 </h2>
-                                <div className="bg-slate-50/50 rounded-full p-2 flex items-center justify-between max-w-[280px] mx-auto md:mx-0 shadow-inner border border-slate-200/50">
+                                <div className="bg-slate-50/50 rounded-full p-1.5 flex items-center justify-between max-w-[220px] mx-auto md:mx-0 shadow-inner border border-slate-200/50">
                                     <button
                                         onClick={decrementQuantity}
-                                        className="size-12 bg-white shadow-sm rounded-full flex items-center justify-center hover:scale-110 active:scale-95 transition-transform border border-slate-100"
+                                        className="size-10 bg-white shadow-sm rounded-full flex items-center justify-center hover:scale-110 active:scale-95 transition-transform border border-slate-100"
                                     >
                                         <span className="material-symbols-outlined text-black font-black">remove</span>
                                     </button>
-                                    <span className="text-black text-3xl font-black px-6">{quantity}</span>
+                                    <span className="text-black text-xl font-black px-4">{quantity}</span>
                                     <button
                                         onClick={incrementQuantity}
-                                        className="size-12 bg-white shadow-sm rounded-full flex items-center justify-center hover:scale-110 active:scale-95 transition-transform border border-slate-100"
+                                        className="size-10 bg-white shadow-sm rounded-full flex items-center justify-center hover:scale-110 active:scale-95 transition-transform border border-slate-100"
                                     >
                                         <span className="material-symbols-outlined text-black font-black">add</span>
                                     </button>
@@ -205,22 +205,22 @@ export default function ProductModal({ isOpen, onClose, product }: ProductModalP
                             </div>
 
                             {/* 4. Footer CTA Section */}
-                            <div className="mt-12">
+                            <div className="mt-8">
                                 <button
                                     onClick={handleAddToCart}
                                     disabled={!selectedVariant || (!product.isManualDelivery && (selectedVariant.stockCount || 0) < quantity)}
-                                    className="w-full h-24 bg-[#ec5b13] hover:bg-orange-600 disabled:bg-slate-200 disabled:cursor-not-allowed text-white rounded-[24px] flex items-center justify-between px-8 shadow-lg shadow-orange-500/10 active:scale-[0.99] transition-all group"
+                                    className="w-full h-16 bg-[#ec5b13] hover:bg-orange-600 disabled:bg-slate-200 disabled:cursor-not-allowed text-white rounded-[20px] flex items-center justify-between px-6 shadow-lg shadow-orange-500/10 active:scale-[0.99] transition-all group"
                                 >
-                                    <div className="flex items-center gap-4">
-                                        <span className="material-symbols-outlined !text-3xl group-hover:translate-x-1 transition-transform">shopping_basket</span>
-                                        <span className="text-2xl font-black tracking-tight uppercase">
+                                    <div className="flex items-center gap-3">
+                                        <span className="material-symbols-outlined !text-2xl group-hover:translate-x-1 transition-transform">shopping_basket</span>
+                                        <span className="text-lg font-black tracking-tight uppercase">
                                             {(!product.isManualDelivery && selectedVariant && (selectedVariant.stockCount || 0) < quantity) ? "Stock insuffisant" : "Ajouter au panier"}
                                         </span>
                                     </div>
-                                    <div className="h-10 w-px bg-white/20"></div>
+                                    <div className="h-8 w-px bg-white/20"></div>
                                     <div className="text-right">
-                                        <p className="text-white/70 text-sm font-black uppercase tracking-widest">Total</p>
-                                        <p className="text-2xl font-black">{formatCurrency(totalAmount, 'DZD')}</p>
+                                        <p className="text-white/70 text-[10px] font-black uppercase tracking-widest leading-none mb-1">Total</p>
+                                        <p className="text-lg font-black leading-none">{formatCurrency(totalAmount, 'DZD')}</p>
                                     </div>
                                 </button>
                                 <p className="text-center text-black/30 text-sm mt-5 font-black uppercase tracking-wide">

@@ -305,7 +305,8 @@ export const createResellerAction = withAuth(
                 const existing = await tx.query.users.findFirst({ where: eq(users.email, data.email) });
                 if (existing) return { success: false, error: "Email déjà utilisé" };
 
-                const passwordHash = await bcrypt.hash("reseller123", 10);
+                const tempPassword = crypto.randomBytes(12).toString("base64url");
+                const passwordHash = await bcrypt.hash(tempPassword, 10);
                 const pinHash = await bcrypt.hash(data.pinCode, 10);
 
                 const [newUser] = await tx.insert(users).values({
@@ -329,7 +330,7 @@ export const createResellerAction = withAuth(
                 });
 
                 revalidatePath("/admin/settings");
-                return { success: true };
+                return { success: true, tempPassword };
             });
         } catch (error) {
             return { success: false, error: "Erreur lors de la création du revendeur" };
@@ -467,9 +468,20 @@ export const exportDatabaseAction = withAuth(
     { roles: [UserRole.ADMIN] },
     async () => {
         try {
+            const SENSITIVE_SETTINGS = ['telegramBotToken', 'whatsappToken', 'whatsappApiKey', 'geminiApiKey', 'vapidPrivateKey', 'vapidPublicKey', 'n8nWebhookUrl', 'whatsappVerifyToken', 'whatsappInstanceName'];
+            const rawSettings = await db.query.shopSettings.findMany();
+            const safeSettings = rawSettings.map((s: any) => {
+                const cleaned = { ...s };
+                SENSITIVE_SETTINGS.forEach(k => { if (k in cleaned) cleaned[k] = '[REDACTED]'; });
+                return cleaned;
+            });
+
+            const rawUsers = await db.query.users.findMany();
+            const safeUsers = rawUsers.map(({ passwordHash, pinCode, twoFactorSecret, mfaBackupCodes, ...u }: any) => u);
+
             const data = {
-                settings: await db.query.shopSettings.findMany(),
-                users: await db.query.users.findMany(),
+                settings: safeSettings,
+                users: safeUsers,
                 suppliers: await db.query.suppliers.findMany(),
                 orders: await db.query.orders.findMany(),
                 resellers: await db.query.resellers.findMany(),

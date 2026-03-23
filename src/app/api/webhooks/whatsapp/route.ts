@@ -53,7 +53,7 @@ async function getConversationHistory(senderPhone: string) {
                 eq(webhookEvents.customerPhone, senderPhone)
             ),
             orderBy: (we, { desc }) => [desc(we.processedAt)],
-            limit: 15
+            limit: 10
         });
 
         const history: { role: "user" | "model"; parts: { text: string }[] }[] = [];
@@ -239,7 +239,12 @@ COMPORTEMENT OBLIGATOIRE :
 - TOUJOURS proposer une solution avant d'escalader
 - Réponds en français ou darija selon la langue du client
 - Réponses courtes avec numérotation
-- Termine TOUJOURS par : "Votre problème est-il résolu ? Répondez *OUI* si tout va bien 😊"
+
+ANTI-RÉPÉTITION (RÈGLE ABSOLUE) :
+- Consulte l'historique de conversation. Ne répète JAMAIS une réponse déjà donnée.
+- Si le client redemande la même chose → propose une NOUVELLE approche ou demande ce qui n'a pas fonctionné.
+- Ne pose la question "Votre problème est-il résolu ?" QUE si tu viens de fournir une solution concrète, pas à chaque message.
+- Varie tes formulations et tes exemples à chaque échange.
 
 ESCALADE : Si après 2 échanges le problème persiste → ajoute le marqueur [TICKET] à la toute fin de ta réponse (invisible pour le client, juste le tag).`;
 
@@ -253,7 +258,7 @@ RÈGLE : Aide concrètement. Ne dis jamais "je ne peux pas aider". Termine par l
 
         const safeText = text.replace(/[\x00-\x1F\x7F]/g, '').slice(0, 1000);
 
-        console.log(`[WHATSAPP_WEBHOOK] Calling AI for ${maskedPhone}... key=${geminiApiKey?.slice(0,8)}`);
+        console.log(`[WHATSAPP_WEBHOOK] Calling AI for ${maskedPhone}...`);
         let rawReply: string;
         try {
             rawReply = await getGeminiResponse(safeText, senderPhone, geminiApiKey, systemPrompt, conversationHistory);
@@ -273,6 +278,18 @@ RÈGLE : Aide concrètement. Ne dis jamais "je ne peux pas aider". Termine par l
         if (sendResult.success) {
             await RateLimitService.resetLimit(rlKey);
             console.log(`[WHATSAPP_WEBHOOK] ✅ Réponse envoyée à ${maskedPhone}`);
+
+            // Stocker la réponse bot dans webhookEvents pour enrichir le contexte futur
+            await db.insert(webhookEvents).values({
+                provider: 'whatsapp',
+                externalId: `bot_${Date.now()}_${senderPhone}`,
+                customerPhone: senderPhone,
+                payload: {
+                    event: "message",
+                    payload: { fromMe: true, body: aiReply, type: "text" }
+                } as any,
+                processedAt: new Date()
+            }).catch(e => console.warn('[WHATSAPP_WEBHOOK] Bot reply storage failed:', e.message));
         } else {
             console.error(`[WHATSAPP_WEBHOOK] ❌ Echec envoi: ${sendResult.error}`);
         }

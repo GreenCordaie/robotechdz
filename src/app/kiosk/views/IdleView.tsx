@@ -71,9 +71,9 @@ export default function IdleView() {
                 className="relative z-10 cursor-pointer flex flex-col items-center justify-center max-w-6xl w-full px-12 text-center transition-all duration-700"
             >
                 {/* Logo & Visual */}
-                <div className="mb-10 animate-float">
-                    <div className="size-40 md:size-48 bg-black rounded-[2.5rem] flex items-center justify-center shadow-2xl relative">
-                        <svg className="text-white drop-shadow-lg" fill="none" height="100" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" width="100" xmlns="http://www.w3.org/2000/svg">
+                <div className="mb-6 animate-float">
+                    <div className="size-32 bg-black rounded-[2rem] flex items-center justify-center shadow-xl relative">
+                        <svg className="text-white drop-shadow-md" fill="none" height="60" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" width="60" xmlns="http://www.w3.org/2000/svg">
                             <line x1="6" x2="10" y1="11" y2="11"></line>
                             <line x1="8" x2="8" y1="9" y2="13"></line>
                             <line x1="15" x2="15.01" y1="12" y2="12"></line>
@@ -81,42 +81,57 @@ export default function IdleView() {
                             <path d="M17.32 5H6.68a4 4 0 0 0-3.978 3.59c-.006.052-.01.101-.017.152L2 17a1 1 0 0 0 1 1h2.2a1 1 0 0 0 .95-.683L7 15h10l.85 2.317a1 1 0 0 0 .95.683H21a1 1 0 0 0 1-1l-.685-8.258c-.007-.051-.011-.1-.017-.152A4 4 0 0 0 17.32 5z"></path>
                         </svg>
                         {/* Decorative HUD Corner */}
-                        <div className="absolute -top-4 -right-4 size-10 border-t-4 border-r-4 border-[#ec5b13] rounded-tr-xl opacity-50" />
+                        <div className="absolute -top-3 -right-3 size-8 border-t-4 border-r-4 border-[#ec5b13] rounded-tr-lg opacity-40" />
                     </div>
                 </div>
 
                 {/* Text Content */}
-                <div className="mb-16">
-                    <h1 className="text-5xl sm:text-6xl md:text-8xl font-black tracking-tighter text-black leading-[0.9] uppercase">
+                <div className="mb-10">
+                    <h1 className="text-4xl sm:text-5xl md:text-6xl font-black tracking-tighter text-black leading-[0.9] uppercase">
                         Bienvenue chez <br />
-                        <span className="text-[#ec5b13] inline-block mt-2 relative">
+                        <span className="text-[#ec5b13] inline-block mt-1 relative">
                             {shopName}
-                            <div className="absolute -bottom-2 left-0 w-full h-2 bg-black/5 rounded-full" />
+                            <div className="absolute -bottom-1 left-0 w-full h-1 bg-black/5 rounded-full" />
                         </span>
                     </h1>
-                    <p className="text-xl md:text-2xl text-black/50 mt-8 font-black max-w-2xl mx-auto uppercase tracking-[0.2em]">
+                    <p className="text-lg md:text-xl text-black/50 mt-6 font-black max-w-xl mx-auto uppercase tracking-[0.2em]">
                         Votre espace gaming & digital premium.
                     </p>
                 </div>
 
-                {/* CTA Block */}
-                <div className="flex flex-col items-center gap-10">
-                    <button
-                        className="group bg-black text-white text-2xl md:text-3xl font-black px-16 py-8 rounded-3xl shadow-2xl animate-soft-glow transition-all active:scale-95 flex items-center gap-6 uppercase tracking-tight hover:bg-[#1a1a1a]"
-                        type="button"
-                    >
-                        <span>COMMENCER</span>
-                        <div className="bg-white/10 p-2 rounded-xl group-hover:bg-[#ec5b13] transition-colors">
-                            <svg className="transition-transform group-hover:translate-x-1" fill="none" height="32" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="4" viewBox="0 0 24 24" width="32" xmlns="http://www.w3.org/2000/svg">
-                                <path d="m12 5 7 7-7 7"></path>
-                                <path d="M5 12h14"></path>
+                {/* Call to Action */}
+                <div className="flex flex-col items-center gap-6">
+                    <button className="group relative">
+                        <div className="absolute -inset-2 bg-[#ec5b13]/20 blur-xl rounded-full group-hover:bg-[#ec5b13]/30 transition-all opacity-0 group-hover:opacity-100" />
+                        <div className="relative bg-black text-white px-10 py-5 rounded-full text-xl font-black flex items-center gap-3 animate-soft-glow hover:scale-105 active:scale-95 transition-all uppercase tracking-wider">
+                            Commencer
+                            <svg className="transition-transform group-hover:translate-x-1" fill="none" height="20" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" viewBox="0 0 24 24" width="20" xmlns="http://www.w3.org/2000/svg">
+                                <line x1="5" x2="19" y1="12" y2="12"></line>
+                                <polyline points="12 5 19 12 12 19"></polyline>
                             </svg>
                         </div>
                     </button>
-                    <div className="flex items-center gap-4 text-black/20 uppercase tracking-[0.3em] font-black text-sm">
-                        <div className="w-12 h-px bg-current" />
-                        <span>Touchez pour démarrer</span>
-                        <div className="w-12 h-px bg-current" />
+
+                    {/* Secondary Actions */}
+                    <div className="flex items-center gap-4 mt-4">
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                setIsSupportOpen(true);
+                            }}
+                            className="bg-black/5 hover:bg-black/10 text-black px-6 py-3 rounded-2xl text-sm font-bold flex items-center gap-2 transition-all uppercase tracking-tight"
+                        >
+                            <LifeBuoy size={16} />
+                            Besoin d'aide ?
+                        </button>
+                        <Link
+                            href="/tracking"
+                            onClick={(e) => e.stopPropagation()}
+                            className="bg-black/5 hover:bg-black/10 text-black px-6 py-3 rounded-2xl text-sm font-bold flex items-center gap-2 transition-all uppercase tracking-tight"
+                        >
+                            <PackageSearch size={16} />
+                            Suivre Commande
+                        </Link>
                     </div>
                 </div>
             </div>

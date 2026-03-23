@@ -37,7 +37,14 @@ export async function getGeminiResponse(
                     "Authorization": `Bearer ${apiKey}`,
                     "Content-Type": "application/json"
                 },
-                body: JSON.stringify({ model, messages, max_tokens: 800, temperature: 0.6 }),
+                body: JSON.stringify({
+                    model,
+                    messages,
+                    max_tokens: 800,
+                    temperature: 0.7,
+                    frequency_penalty: 0.8,   // Pénalise les tokens déjà utilisés → moins de répétitions
+                    presence_penalty: 0.6,    // Encourage la diversité des sujets abordés
+                }),
                 signal: AbortSignal.timeout(15_000)
             });
 

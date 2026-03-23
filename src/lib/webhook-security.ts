@@ -22,8 +22,8 @@ export async function verifyWebhookSignature(headers: Headers, provider: "telegr
         // Waha sends X-Api-Key header for authentication
         const expectedKey = process.env.WHATSAPP_WEBHOOK_SECRET;
 
-        // No secret configured: allow in dev, block in production
-        if (!expectedKey) return process.env.NODE_ENV !== "production";
+        // No secret configured: always block
+        if (!expectedKey) return false;
 
         const receivedKey = headers.get("x-api-key") || headers.get("apikey");
         if (!receivedKey) return false;

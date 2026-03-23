@@ -2,7 +2,7 @@ import { db } from "@/db";
 import { rateLimits } from "@/db/schema";
 import { eq, sql, and, gt } from "drizzle-orm";
 
-const MAX_ATTEMPTS = 20;
+const MAX_ATTEMPTS = 5;
 const WINDOW_MINUTES = 15;
 
 /**

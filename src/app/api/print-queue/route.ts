@@ -12,12 +12,22 @@ import { db } from "@/db";
 import { orders, shopSettings } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { decrypt } from "@/lib/encryption";
+import crypto from "crypto";
 
-const PRINT_SECRET = process.env.PRINT_SECRET || "robotech-print-secret-change-moi";
+const PRINT_SECRET = process.env.PRINT_SECRET;
 
 function checkSecret(req: NextRequest): boolean {
+    if (!PRINT_SECRET) return false;
     const provided = req.headers.get("x-print-secret") || "";
-    return provided === PRINT_SECRET;
+    if (!provided) return false;
+    try {
+        const a = Buffer.from(PRINT_SECRET);
+        const b = Buffer.from(provided);
+        if (a.length !== b.length) return false;
+        return crypto.timingSafeEqual(a, b);
+    } catch {
+        return false;
+    }
 }
 
 // ─── GET : retourne les jobs en attente ───────────────────────────────────────

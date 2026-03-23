@@ -85,7 +85,7 @@ export async function loginAction(formData: FormData) {
             };
         }
 
-        const { id, role, nom, pinCode, tokenVersion } = user;
+        const { id, role, nom, tokenVersion } = user;
         await createSession({ id, role, tokenVersion });
 
         // Audit Success
@@ -101,7 +101,7 @@ export async function loginAction(formData: FormData) {
         // Success
         return {
             success: true,
-            user: { id, role, email, nom, pinCode }
+            user: { id, role, email, nom }
         };
     } catch (error) {
         console.error("🔥 LOGIN ACTION CRITICAL ERROR:", error);
