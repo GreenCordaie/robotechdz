@@ -70,8 +70,8 @@ export const AdminSidebar = () => {
     }, [fetchSettings, refreshCounts]);
 
     const handleLogout = async () => {
-        await logoutAction();
         clearAuth();
+        await logoutAction();
     };
 
     const navItems = [

@@ -106,9 +106,8 @@ export default function AdminLayout({
                                     color="danger"
                                     startContent={<LogOut size={14} />}
                                     onPress={async () => {
-                                        await logoutAction();
                                         useAuthStore.getState().clearAuth();
-                                        router.push("/admin/login");
+                                        await logoutAction();
                                     }}
                                 >
                                     Se déconnecter

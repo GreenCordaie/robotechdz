@@ -314,9 +314,9 @@ export default function SettingsMobile() {
     };
 
     const handleLogout = async () => {
-        await clearAuth();
-        toast.success("Déconnecté");
-        router.push("/admin/login");
+        clearAuth();
+        const { logoutAction } = await import("@/app/admin/login/actions");
+        await logoutAction();
     };
 
     const handleExportDatabase = async () => {

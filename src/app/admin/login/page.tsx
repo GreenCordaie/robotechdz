@@ -4,7 +4,7 @@ import React, { useState } from "react";
 import { Eye, EyeOff, Package, ShieldCheck } from "lucide-react";
 import { useAuthStore } from "@/store/useAuthStore";
 import { useRouter } from "next/navigation";
-import { loginAction } from "./actions";
+import { loginAction, verifyMfaAction } from "./actions";
 
 export default function LoginPage() {
     const [email, setEmail] = useState("");
@@ -19,15 +19,7 @@ export default function LoginPage() {
     const [mfaCode, setMfaCode] = useState("");
 
     const setUser = useAuthStore((state) => state.setUser);
-    const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
     const router = useRouter();
-
-    // Prevent access to login page if already authenticated
-    React.useEffect(() => {
-        if (isAuthenticated) {
-            router.push("/admin");
-        }
-    }, [isAuthenticated, router]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -67,7 +59,6 @@ export default function LoginPage() {
         setError(null);
 
         try {
-            const { verifyMfaAction } = await import("./actions");
             const result = await verifyMfaAction(tempUserId, mfaCode);
             if (result.success) {
                 if (result.user) setUser(result.user as any);

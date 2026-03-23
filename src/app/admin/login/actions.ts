@@ -152,7 +152,7 @@ export async function verifyMfaAction(userId: number, code: string) {
             return { success: false, error: "Code invalide" };
         }
 
-        const { id, role, email, nom, pinCode, tokenVersion } = user;
+        const { id, role, email, nom, tokenVersion } = user;
         await resetRateLimit(`mfa:${user.id}`);
         await createSession({ id, role, tokenVersion });
 
@@ -164,7 +164,7 @@ export async function verifyMfaAction(userId: number, code: string) {
 
         return {
             success: true,
-            user: { id, role, email, nom, pinCode }
+            user: { id, role, email, nom }
         };
     } catch (error) {
         return { success: false, error: "Erreur technique" };
