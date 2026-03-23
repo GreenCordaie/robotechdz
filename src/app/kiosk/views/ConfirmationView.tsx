@@ -21,13 +21,13 @@ export default function ConfirmationView() {
     }, [resetKiosk]);
 
     return (
-        <div className="bg-[#F9FAFB] min-h-screen overflow-hidden select-none font-sans">
+        <div className="bg-gray-50 min-h-screen overflow-hidden select-none font-sans">
             {/* BEGIN: SuccessMainContainer */}
             <main className="min-h-screen flex flex-col items-center justify-center p-6 text-center" data-purpose="success-screen-wrapper">
                 {/* BEGIN: IconSection */}
                 {/* Large success check icon in a circular container */}
                 <div className="w-28 h-28 bg-green-100 rounded-full flex items-center justify-center shadow-lg shadow-green-500/10 mb-8" data-purpose="success-icon-container">
-                    <svg className="h-16 w-16 text-[#10b981]" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <svg className="h-16 w-16 text-emerald-500" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                         <path d="M5 13l4 4L19 7" strokeLinecap="round" strokeLinejoin="round"></path>
                     </svg>
                 </div>

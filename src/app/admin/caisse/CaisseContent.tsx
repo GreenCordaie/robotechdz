@@ -136,7 +136,7 @@ export default function CaisseContent() {
             });
             if (res.success && res.order) {
                 toast.success(`Commande #${currentOrder.orderNumber} encaissée avec succès !`, {
-                    style: { background: '#052e16', color: '#4ade80', border: '1px solid #14532d' }
+                    className: 'bg-green-950 text-green-400 border border-green-900'
                 });
 
                 // Ticket mis en file d'impression automatiquement par payOrder (print_pending en DB)

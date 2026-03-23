@@ -29,7 +29,7 @@ export default function IdleView() {
     };
 
     return (
-        <div className="h-screen w-screen bg-[#fafafa] text-black flex items-center justify-center overflow-hidden font-['Inter',_sans-serif] select-none touch-none relative">
+        <div className="h-screen w-screen bg-gray-50 text-black flex items-center justify-center overflow-hidden font-sans select-none touch-none relative">
             {/* BEGIN: Background Pattern/Gradient */}
             <div className="absolute inset-0 z-0">
                 <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_120%,rgba(236,91,19,0.05),transparent_50%)]" />

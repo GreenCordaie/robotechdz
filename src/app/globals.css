@@ -45,3 +45,9 @@ body {
     text-wrap: balance;
   }
 }
+
+/* Kiosk scrollbar — moved from CartView.tsx inline style */
+.custom-scrollbar::-webkit-scrollbar { width: 12px; }
+.custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+.custom-scrollbar::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
+.shadow-up { box-shadow: 0 -10px 25px -5px rgba(0,0,0,.1), 0 -8px 10px -6px rgba(0,0,0,.1); }

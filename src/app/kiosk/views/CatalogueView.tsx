@@ -33,7 +33,7 @@ export default function CatalogueView({ products, categories }: CatalogueViewPro
     }, [products, selectedCategoryId, searchTerm]);
 
     return (
-        <div className="bg-[#F9FAFB] font-sans text-slate-900 overflow-hidden h-screen flex flex-col select-none touch-none scale-100 origin-top">
+        <div className="bg-gray-50 font-sans text-slate-900 overflow-hidden h-screen flex flex-col select-none touch-none scale-100 origin-top">
             <style jsx global>{`
                 .no-scrollbar::-webkit-scrollbar {
                     display: none;
@@ -45,7 +45,7 @@ export default function CatalogueView({ products, categories }: CatalogueViewPro
             `}</style>
 
             {/* BEGIN: Header */}
-            <header className="h-24 px-8 flex items-center justify-between bg-[#F9FAFB] border-b border-gray-100 shrink-0">
+            <header className="h-24 px-8 flex items-center justify-between bg-gray-50 border-b border-gray-100 shrink-0">
                 {/* Logo Section */}
                 <div className="flex-shrink-0">
                     {dashboardLogoUrl ? (
@@ -128,7 +128,7 @@ export default function CatalogueView({ products, categories }: CatalogueViewPro
                                 onClick={() => setSelectedProduct(product)}
                                 className="w-[243px] bg-white rounded-[24px] overflow-hidden shadow-sm hover:shadow-md transition-shadow flex flex-col active:scale-[0.98] transition-transform cursor-pointer group"
                             >
-                                <div className="w-[243px] h-[228px] bg-[#F3F4F6] flex items-center justify-center relative overflow-hidden">
+                                <div className="w-[243px] h-[228px] bg-gray-100 flex items-center justify-center relative overflow-hidden">
                                     {product.imageUrl && (
                                         <img
                                             alt={product.name}

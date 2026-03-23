@@ -110,25 +110,11 @@ export default function CartView() {
     };
 
     return (
-        <div className="bg-[#F9FAFB] text-slate-900 font-sans flex flex-col h-screen overflow-hidden select-none">
-            <style jsx global>{`
-                .custom-scrollbar::-webkit-scrollbar {
-                    width: 12px;
-                }
-                .custom-scrollbar::-webkit-scrollbar-track {
-                    background: transparent;
-                }
-                .custom-scrollbar::-webkit-scrollbar-thumb {
-                    background: #e2e8f0;
-                    border-radius: 10px;
-                }
-                .shadow-up {
-                    box-shadow: 0 -10px 25px -5px rgba(0, 0, 0, 0.1), 0 -8px 10px -6px rgba(0, 0, 0, 0.1);
-                }
-            `}</style>
+        <div className="bg-gray-50 text-slate-900 font-sans flex flex-col h-screen overflow-hidden select-none">
+
 
             {/* BEGIN: MainHeader */}
-            <header className="flex items-center justify-between px-8 py-10 bg-[#F9FAFB] z-10 shrink-0">
+            <header className="flex items-center justify-between px-8 py-10 bg-gray-50 z-10 shrink-0">
                 {/* Back Button */}
                 <button
                     onClick={() => setStep("CATALOGUE")}
