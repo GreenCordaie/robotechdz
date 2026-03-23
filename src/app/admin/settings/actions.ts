@@ -412,10 +412,22 @@ export const enableMfaAction = withAuth(
     }
 );
 
-export const disableMfaAction = withAuth(
+export const getCurrentUserSecurityAction = withAuth(
     { roles: [UserRole.ADMIN] },
     async (_, user) => {
-        await db.update(users).set({ twoFactorSecret: null }).where(eq(users.id, user.id));
+        const u = await db.query.users.findFirst({ where: eq(users.id, user.id) });
+        return { success: true, data: { hasTwoFactor: !!u?.twoFactorSecret } };
+    }
+);
+
+export const disableMfaAction = withAuth(
+    { roles: [UserRole.ADMIN], schema: z.object({ password: z.string().min(1) }) },
+    async ({ password }, user) => {
+        const u = await db.query.users.findFirst({ where: eq(users.id, user.id) });
+        if (!u) return { success: false, error: "Utilisateur introuvable" };
+        const isValid = await bcrypt.compare(password, u.passwordHash);
+        if (!isValid) return { success: false, error: "Mot de passe incorrect" };
+        await db.update(users).set({ twoFactorSecret: null, mfaBackupCodes: null }).where(eq(users.id, user.id));
         return { success: true };
     }
 );

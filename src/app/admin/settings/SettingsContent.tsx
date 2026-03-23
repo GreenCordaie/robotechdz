@@ -47,6 +47,7 @@ import {
     generateMfaSecretAction,
     enableMfaAction,
     disableMfaAction,
+    getCurrentUserSecurityAction,
     generateBackupCodesAction,
     exportAuditLogsAction,
     resetProductionDataAction,
@@ -114,6 +115,10 @@ export default function SettingsContent() {
     const [mfaQrCode, setMfaQrCode] = useState<string | null>(null);
     const [mfaInputCode, setMfaInputCode] = useState("");
     const [isMfaEnabling, setIsMfaEnabling] = useState(false);
+    const [isMfaEnabled, setIsMfaEnabled] = useState(false);
+    const [showDisableMfa, setShowDisableMfa] = useState(false);
+    const [disableMfaPassword, setDisableMfaPassword] = useState("");
+    const [isDisablingMfa, setIsDisablingMfa] = useState(false);
     const [backupCodes, setBackupCodes] = useState<string[] | null>(null);
     const [isGeneratingCodes, setIsGeneratingCodes] = useState(false);
 
@@ -132,9 +137,10 @@ export default function SettingsContent() {
     const fetchInitialData = async () => {
         setIsLoading(true);
         try {
-            const [settingsRes, teamRes]: [any, any] = await Promise.all([
-                getShopSettingsAction({}), // Added {}
-                getUsersAction({}) // Added {}
+            const [settingsRes, teamRes, securityRes]: [any, any, any] = await Promise.all([
+                getShopSettingsAction({}),
+                getUsersAction({}),
+                getCurrentUserSecurityAction({})
             ]);
 
             if (settingsRes.success && settingsRes.data) {
@@ -162,6 +168,10 @@ export default function SettingsContent() {
 
             if (teamRes.success) {
                 setTeam(teamRes.data || []);
+            }
+
+            if (securityRes.success) {
+                setIsMfaEnabled(securityRes.data.hasTwoFactor);
             }
         } catch (err) {
             console.error(err);
@@ -317,6 +327,26 @@ export default function SettingsContent() {
             toast.error("Erreur activation");
         } finally {
             setIsMfaEnabling(false);
+        }
+    };
+
+    const handleDisableMfa = async () => {
+        if (!disableMfaPassword) return;
+        setIsDisablingMfa(true);
+        try {
+            const res: any = await disableMfaAction({ password: disableMfaPassword });
+            if (res.success) {
+                toast.success("2FA désactivé");
+                setIsMfaEnabled(false);
+                setShowDisableMfa(false);
+                setDisableMfaPassword("");
+            } else {
+                toast.error(res.error || "Erreur");
+            }
+        } catch {
+            toast.error("Erreur désactivation");
+        } finally {
+            setIsDisablingMfa(false);
         }
     };
 
@@ -1186,7 +1216,57 @@ export default function SettingsContent() {
                                             </div>
                                         </div>
 
-                                        {!mfaQrCode ? (
+                                        {/* Status badge */}
+                                        <div className={`flex items-center gap-2 px-4 py-2 rounded-full w-fit mb-6 ${isMfaEnabled ? 'bg-emerald-500/10 border border-emerald-500/20' : 'bg-red-500/10 border border-red-500/20'}`}>
+                                            <span className={`w-2 h-2 rounded-full ${isMfaEnabled ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'}`} />
+                                            <span className={`text-[10px] font-black uppercase tracking-widest ${isMfaEnabled ? 'text-emerald-400' : 'text-red-400'}`}>
+                                                {isMfaEnabled ? '2FA Activé' : '2FA Désactivé'}
+                                            </span>
+                                        </div>
+
+                                        {isMfaEnabled ? (
+                                            /* ── 2FA activé : bouton désactiver ── */
+                                            <div className="space-y-4">
+                                                {!showDisableMfa ? (
+                                                    <Button
+                                                        onPress={() => setShowDisableMfa(true)}
+                                                        className="bg-red-500/10 border border-red-500/20 text-red-400 font-black uppercase tracking-widest text-[10px] py-6 px-10 rounded-2xl hover:bg-red-500/20 transition-colors"
+                                                    >
+                                                        Désactiver le 2FA
+                                                    </Button>
+                                                ) : (
+                                                    <div className="space-y-3 animate-in fade-in duration-200">
+                                                        <p className="text-[10px] text-slate-400 uppercase font-black tracking-widest">Confirmez votre mot de passe pour désactiver le 2FA</p>
+                                                        <input
+                                                            type="password"
+                                                            placeholder="Votre mot de passe"
+                                                            autoFocus
+                                                            className="w-full bg-black/40 border border-white/5 rounded-2xl py-4 px-6 text-white outline-none focus:border-red-500/50 transition-colors"
+                                                            value={disableMfaPassword}
+                                                            onChange={(e) => setDisableMfaPassword(e.target.value)}
+                                                            onKeyDown={(e) => e.key === 'Enter' && handleDisableMfa()}
+                                                        />
+                                                        <div className="flex gap-3">
+                                                            <Button
+                                                                onPress={handleDisableMfa}
+                                                                isLoading={isDisablingMfa}
+                                                                disabled={!disableMfaPassword}
+                                                                className="flex-1 bg-red-600 text-white font-black uppercase tracking-widest text-[10px] py-4 rounded-2xl"
+                                                            >
+                                                                Confirmer la désactivation
+                                                            </Button>
+                                                            <Button
+                                                                onPress={() => { setShowDisableMfa(false); setDisableMfaPassword(""); }}
+                                                                className="px-6 bg-white/5 text-slate-400 font-black uppercase tracking-widest text-[10px] py-4 rounded-2xl"
+                                                            >
+                                                                Annuler
+                                                            </Button>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ) : !mfaQrCode ? (
+                                            /* ── 2FA désactivé : bouton activer ── */
                                             <div className="space-y-6">
                                                 <div className="p-6 bg-black/40 rounded-3xl border border-white/5 text-center">
                                                     <p className="text-slate-400 text-sm italic mb-6">&quot;L&apos;authentification à deux facteurs ajoute une couche de sécurité supplémentaire en demandant un code depuis votre téléphone.&quot;</p>
@@ -1199,6 +1279,7 @@ export default function SettingsContent() {
                                                 </div>
                                             </div>
                                         ) : (
+                                            /* ── QR code + confirmation ── */
                                             <div className="space-y-6 animate-in zoom-in-95 duration-300">
                                                 <div className="flex flex-col items-center p-6 bg-white rounded-3xl mb-4">
                                                     <QRCodeSVG value={mfaQrCode} size={150} />
