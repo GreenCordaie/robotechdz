@@ -51,7 +51,7 @@ export default function KioskContent() {
 
     return (
         <div className="h-full w-full relative overflow-hidden bg-white">
-            {step === "IDLE" && <IdleView />}
+            {step === "IDLE" && <IdleView products={data.products.slice(0, 4)} />}
             {step === "CATALOGUE" && <CatalogueView products={data.products} categories={data.categories} />}
             {step === "CART" && <CartView />}
             {step === "CONFIRMATION" && <ConfirmationView />}

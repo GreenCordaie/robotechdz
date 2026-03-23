@@ -2,6 +2,24 @@
 
 Toutes les modifications notables de ce projet seront documentées dans ce fichier.
 
+## [7.3.0] - 2026-03-23
+
+### 🛡️ Sécurité & Hardening
+- **Audit de Sécurité Majeur** : Évaluation de 40 points de contrôle sur l'ensemble de la stack.
+- **Correction Critique (SEC-001)** : Suppression de la clé de chiffrement fallback pour garantir l'utilisation de `ENCRYPTION_KEY`.
+- **Protection Webhook** : Suppression du bypass en mode développement pour les webhooks WhatsApp (SEC-002).
+- **Hardening API** : Migration vers `timingSafeEqual` pour la file d'impression et suppression des secrets dans les logs et URLs CRON.
+- **Rate-Limiting** : Renforcement des politiques anti-force brute (5 tentatives / 15 min).
+- **Filtrage Export** : Sécurisation de l'export de base de données par masquage des secrets et tokens.
+
+### 🖥️ Expérience Kiosk (UI/UX)
+- **Fluid Layout scaling** : Ajustement global de la taille des éléments pour une interface plus compacte et lisible sur les écrans tactiles.
+- **Catalogue & Idle Views** : Raffinement visuel des marges et des typographies pour éviter la fatigue visuelle.
+
+### 📚 Documentation & Specs
+- **GitHub Spec Kit** : Initialisation des spécifications techniques dans le dossier `/specs`.
+- **Agent Context** : Mise en place du `CLAUDE.md` pour optimiser la mémoire et les routines d'assistance IA.
+
 ## [7.2.1] - 2026-03-22
 
 ### 💫 Spec-Driven Development
