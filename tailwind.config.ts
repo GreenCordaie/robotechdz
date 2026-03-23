@@ -16,11 +16,15 @@ const config: Config = {
                     foreground: "#FFFFFF",
                 },
                 "background-light": "#f8f6f6",
-                "background-dark": "#0f0d0c",
+                "background-dark": "#221610",
                 "neutral-dark": "#2a1b15",
                 "surface-dark": "#1a1614",
                 "border-dark": "#2d2622",
                 "accent-muted": "#4b2e24",
+                whatsapp: {
+                    DEFAULT: "#25D366",
+                    hover: "#22c35e",
+                },
             },
             fontFamily: {
                 sans: ["var(--font-public-sans)", "system-ui", "sans-serif"],

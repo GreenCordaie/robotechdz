@@ -18,7 +18,7 @@
 body {
   color: rgb(var(--foreground-rgb));
   font-family: var(--font-inter), var(--font-public-sans), ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
-  @apply bg-[#f8f6f6] dark:bg-[#221610] transition-colors duration-300;
+  @apply bg-background-light dark:bg-background-dark transition-colors duration-300;
 }
 
 .material-symbols-outlined {

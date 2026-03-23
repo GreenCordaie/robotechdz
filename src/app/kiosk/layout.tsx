@@ -16,7 +16,7 @@ export default function KioskLayout({
     }, []);
 
     return (
-        <div className="min-h-screen bg-white text-black font-sans selection:bg-[#FF8000]/20 select-none cursor-default">
+        <div className="min-h-screen bg-white text-black font-sans selection:bg-primary/20 select-none cursor-default">
             <style jsx global>{`
                 /* Tactile optimizations */
                 * {
