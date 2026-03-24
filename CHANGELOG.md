@@ -2,6 +2,14 @@
 
 Toutes les modifications notables de ce projet seront documentées dans ce fichier.
 
+## [7.3.2] - 2026-03-24
+
+### 🚀 Production & Profits
+- **Purge de Production** : Suppression sécurisée de toutes les données de test (produits, commandes, clients) tout en conservant les configurations système.
+- **Suivi des Profits Réels** : Implémentation du suivi du prix d'achat par compte (shared accounts).
+- **Proratisation Automatique** : Calcul automatique des marges par slot vendu basé sur le coût réel du compte parent.
+- **Interface Admin** : Nouveaux champs de saisie pour le prix de revient dans les formulaires d'ajout et de modification (unique et bulk).
+
 ## [7.3.1] - 2026-03-24
 
 ### 🚀 Orchestration & Robustesse

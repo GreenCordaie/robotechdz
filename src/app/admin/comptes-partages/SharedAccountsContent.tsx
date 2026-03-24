@@ -36,12 +36,14 @@ export default function SharedAccountsContent() {
     const [addVariantId, setAddVariantId] = useState("");
     const [addEmail, setAddEmail] = useState("");
     const [addPassword, setAddPassword] = useState("");
+    const [addPurchasePrice, setAddPurchasePrice] = useState("");
     const [addSlotsData, setAddSlotsData] = useState<{ profileName: string; pinCode: string }[]>([]);
     const [isAdding, setIsAdding] = useState(false);
 
     // ── Multi-line quick insert ───────────────────────────────────────────────
     const [quickVariantId, setQuickVariantId] = useState("");
     const [quickRawInput, setQuickRawInput] = useState("");
+    const [quickPurchasePrice, setQuickPurchasePrice] = useState("");
     const [isQuickSubmitting, setIsQuickSubmitting] = useState(false);
     const [quickErrors, setQuickErrors] = useState<string[]>([]);
 
@@ -54,6 +56,7 @@ export default function SharedAccountsContent() {
     const [editVariantId, setEditVariantId] = useState("");
     const [editEmail, setEditEmail] = useState("");
     const [editPassword, setEditPassword] = useState("");
+    const [editPurchasePrice, setEditPurchasePrice] = useState("");
     const [editSlotsData, setEditSlotsData] = useState<{ id?: number; profileName: string; pinCode: string }[]>([]);
     const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -155,6 +158,7 @@ export default function SharedAccountsContent() {
         const parts = account.code.split(" | ");
         setEditEmail(parts[0] || account.code);
         setEditPassword(parts[1] || "");
+        setEditPurchasePrice(account.purchasePrice || "");
         setEditSlotsData(account.slots.map((s: any) => ({
             id: s.id, profileName: s.profileName || "", pinCode: s.code || ""
         })));
@@ -194,12 +198,15 @@ export default function SharedAccountsContent() {
                 variantId: parseInt(addVariantId),
                 email: addEmail,
                 password: addPassword,
+                purchasePrice: addPurchasePrice,
+                purchaseCurrency: "DZD",
                 slots: addSlotsData
             });
             if (res.success) {
                 toast.success("Compte ajouté ✓");
                 setAddEmail("");
                 setAddPassword("");
+                setAddPurchasePrice("");
                 setAddSlotsData([]);
                 setAddVariantId("");
                 loadInventory();
@@ -222,12 +229,15 @@ export default function SharedAccountsContent() {
             const res = await addSharedAccountQuick({
                 variantId: parseInt(quickVariantId),
                 rawInput: quickRawInput,
+                purchasePrice: quickPurchasePrice,
+                purchaseCurrency: "DZD",
                 autoClassify: false
             });
             if (res.success) {
                 toast.success(res.message || "Insertion terminée");
                 if (res.errors?.length) setQuickErrors(res.errors);
                 setQuickRawInput("");
+                setQuickPurchasePrice("");
                 loadInventory();
             } else {
                 toast.error(res.error || "Erreur d'insertion");
@@ -247,6 +257,7 @@ export default function SharedAccountsContent() {
                 id: editingAccount.id,
                 email: editEmail,
                 password: editPassword,
+                purchasePrice: editPurchasePrice,
                 slots: editSlotsData.map(s => ({ id: s.id!, profileName: s.profileName, pinCode: s.pinCode }))
             });
             if (res.success) {
@@ -448,6 +459,17 @@ export default function SharedAccountsContent() {
                                                 </div>
                                             </div>
 
+                                            <div className="space-y-1.5">
+                                                <label className="text-[10px] text-slate-500 uppercase font-black">Prix d'achat (Total Compte)</label>
+                                                <Input
+                                                    placeholder="0.00"
+                                                    value={addPurchasePrice}
+                                                    onValueChange={setAddPurchasePrice}
+                                                    endContent={<span className="text-xs text-slate-500 font-bold">DZD</span>}
+                                                    classNames={{ inputWrapper: "bg-[#1a1a1a] border border-white/5 h-12 rounded-xl", input: "text-white font-bold" }}
+                                                />
+                                            </div>
+
                                             {addSlotsData.length > 0 && (
                                                 <div className="space-y-2">
                                                     <label className="text-[10px] text-slate-500 font-black uppercase">
@@ -520,18 +542,28 @@ export default function SharedAccountsContent() {
                                         <label className="text-[10px] text-slate-500 font-black uppercase tracking-wider">
                                             Comptes — format : <span className="text-primary font-mono">email | password</span> (un par ligne)
                                         </label>
-                                        <div className="flex gap-3 items-start">
-                                            <Textarea
-                                                placeholder={"email1@exemple.com | motdepasse1\nemail2@exemple.com | motdepasse2"}
-                                                value={quickRawInput}
-                                                onValueChange={setQuickRawInput}
-                                                minRows={3}
-                                                maxRows={8}
-                                                classNames={{
-                                                    inputWrapper: "bg-[#1a1a1a] border border-white/10 flex-1",
-                                                    input: "font-mono text-primary text-sm"
-                                                }}
-                                            />
+                                        <div className="flex flex-col md:flex-row gap-3 items-start">
+                                            <div className="flex-1 w-full space-y-3">
+                                                <Textarea
+                                                    placeholder={"email1@exemple.com | motdepasse1\nemail2@exemple.com | motdepasse2"}
+                                                    value={quickRawInput}
+                                                    onValueChange={setQuickRawInput}
+                                                    minRows={3}
+                                                    maxRows={8}
+                                                    classNames={{
+                                                        inputWrapper: "bg-[#1a1a1a] border border-white/10 w-full",
+                                                        input: "font-mono text-primary text-sm"
+                                                    }}
+                                                />
+                                                <Input
+                                                    label="Prix d'achat unitaire"
+                                                    placeholder="0.00"
+                                                    value={quickPurchasePrice}
+                                                    onValueChange={setQuickPurchasePrice}
+                                                    endContent={<span className="text-xs text-slate-500 font-bold">DZD</span>}
+                                                    classNames={{ inputWrapper: "bg-[#1a1a1a] border border-white/10 h-10 rounded-xl" }}
+                                                />
+                                            </div>
                                             <Button
                                                 color="primary"
                                                 className="h-auto min-h-[88px] px-6 font-black uppercase rounded-xl"
@@ -652,18 +684,25 @@ export default function SharedAccountsContent() {
                                                             {isExpired && <Chip size="sm" className="h-4 text-[9px] font-black bg-yellow-500/10 text-yellow-400">Expiré</Chip>}
                                                         </div>
 
-                                                        <div className="flex gap-1 bg-[#1a1a1a] p-1 rounded-xl border border-white/5">
-                                                            <Button isIconOnly size="sm" variant="light"
-                                                                className="h-7 w-7 text-slate-400 hover:text-primary hover:bg-primary/10"
-                                                                onClick={() => handleEditClick(account, variant)}>
-                                                                <Edit3 size={13} />
-                                                            </Button>
-                                                            <Button isIconOnly size="sm" variant="light"
-                                                                isDisabled={soldCount > 0}
-                                                                className={`h-7 w-7 ${soldCount > 0 ? 'opacity-20 cursor-not-allowed text-slate-600' : 'text-slate-400 hover:text-danger hover:bg-danger/10'}`}
-                                                                onClick={() => soldCount === 0 && handleDeleteClick(account.id)}>
-                                                                <Trash2 size={13} />
-                                                            </Button>
+                                                        <div className="flex flex-col items-end gap-1">
+                                                            <div className="flex gap-1 bg-[#1a1a1a] p-1 rounded-xl border border-white/5">
+                                                                <Button isIconOnly size="sm" variant="light"
+                                                                    className="h-7 w-7 text-slate-400 hover:text-primary hover:bg-primary/10"
+                                                                    onClick={() => handleEditClick(account, variant)}>
+                                                                    <Edit3 size={13} />
+                                                                </Button>
+                                                                <Button isIconOnly size="sm" variant="light"
+                                                                    isDisabled={soldCount > 0}
+                                                                    className={`h-7 w-7 ${soldCount > 0 ? 'opacity-20 cursor-not-allowed text-slate-600' : 'text-slate-400 hover:text-danger hover:bg-danger/10'}`}
+                                                                    onClick={() => soldCount === 0 && handleDeleteClick(account.id)}>
+                                                                    <Trash2 size={13} />
+                                                                </Button>
+                                                            </div>
+                                                            {account.purchasePrice && (
+                                                                <span className="text-[10px] font-black text-slate-500 tabular-nums">
+                                                                    COST: {account.purchasePrice} {account.purchaseCurrency}
+                                                                </span>
+                                                            )}
                                                         </div>
                                                     </div>
 
@@ -774,6 +813,16 @@ export default function SharedAccountsContent() {
                                         <Input placeholder="••••••••" type="text" value={editPassword} onValueChange={setEditPassword}
                                             startContent={<Key size={14} className="text-primary/70" />}
                                             classNames={{ inputWrapper: "bg-[#1a1a1a] border border-white/5 h-12 rounded-xl", input: "text-white font-bold" }} />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] text-slate-500 uppercase font-black ml-1">Prix d'achat</label>
+                                        <Input
+                                            placeholder="0.00"
+                                            value={editPurchasePrice}
+                                            onValueChange={setEditPurchasePrice}
+                                            endContent={<span className="text-xs text-slate-500 font-bold">DZD</span>}
+                                            classNames={{ inputWrapper: "bg-[#1a1a1a] border border-white/5 h-12 rounded-xl", input: "text-white font-bold" }}
+                                        />
                                     </div>
                                 </div>
 

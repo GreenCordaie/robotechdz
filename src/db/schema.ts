@@ -119,6 +119,8 @@ export const digitalCodes = pgTable("digital_codes", {
     variantId: integer("variant_id").references(() => productVariants.id, { onDelete: "cascade" }).notNull(),
     code: text("code").notNull(),
     status: digitalCodeStatusEnum("status").default("DISPONIBLE").notNull(),
+    purchasePrice: numeric("purchase_price", { precision: 12, scale: 2 }), // Cost of the account
+    purchaseCurrency: text("purchase_currency").default("DZD"),
     isDebitCompleted: boolean("is_debit_completed").default(false).notNull(),
     orderItemId: integer("order_item_id").references(() => orderItems.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at", { mode: 'date' }).defaultNow(),
@@ -364,24 +366,24 @@ export const rateLimits = pgTable("rate_limits", {
 });
 
 export const partnerApiKeys = pgTable("partner_api_keys", {
-    id:             serial("id").primaryKey(),
-    name:           varchar("name", { length: 100 }).notNull(),
-    keyHash:        varchar("key_hash", { length: 64 }).notNull().unique(),
-    permissions:    varchar("permissions", { length: 20 }).notNull().default("READ"),
-    isActive:       boolean("is_active").notNull().default(true),
-    createdAt:      timestamp("created_at").notNull().defaultNow(),
-    lastUsedAt:     timestamp("last_used_at"),
+    id: serial("id").primaryKey(),
+    name: varchar("name", { length: 100 }).notNull(),
+    keyHash: varchar("key_hash", { length: 64 }).notNull().unique(),
+    permissions: varchar("permissions", { length: 20 }).notNull().default("READ"),
+    isActive: boolean("is_active").notNull().default(true),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    lastUsedAt: timestamp("last_used_at"),
     callsThisMonth: integer("calls_this_month").notNull().default(0),
 });
 
 export const apiLogs = pgTable("api_logs", {
-    id:             serial("id").primaryKey(),
-    apiKeyId:       integer("api_key_id").notNull().references(() => partnerApiKeys.id),
-    endpoint:       varchar("endpoint", { length: 200 }).notNull(),
-    method:         varchar("method", { length: 10 }).notNull(),
-    statusCode:     integer("status_code").notNull(),
+    id: serial("id").primaryKey(),
+    apiKeyId: integer("api_key_id").notNull().references(() => partnerApiKeys.id),
+    endpoint: varchar("endpoint", { length: 200 }).notNull(),
+    method: varchar("method", { length: 10 }).notNull(),
+    statusCode: integer("status_code").notNull(),
     responseTimeMs: integer("response_time_ms"),
-    createdAt:      timestamp("created_at").notNull().defaultNow(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
 // Relations

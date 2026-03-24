@@ -12,6 +12,8 @@ export class AccountService {
         variantId: number;
         email: string;
         password: string;
+        purchasePrice?: string;
+        purchaseCurrency?: string;
         expiresAt?: string;
         slotsCount?: number;
         slotsConfig?: { profileName?: string; pinCode?: string }[];
@@ -30,6 +32,8 @@ export class AccountService {
                 variantId: data.variantId,
                 code: encrypt(fullCode),
                 status: "DISPONIBLE",
+                purchasePrice: data.purchasePrice || null,
+                purchaseCurrency: data.purchaseCurrency || "DZD",
                 isDebitCompleted: false,
                 expiresAt: data.expiresAt ? new Date(data.expiresAt) : null
             }).returning();

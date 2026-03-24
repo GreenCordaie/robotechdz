@@ -75,10 +75,12 @@ export const addSharedAccount = withAuth(
                 profileName: z.string().optional(),
                 pinCode: z.string().optional()
             })),
+            purchasePrice: z.string().optional(),
+            purchaseCurrency: z.string().optional().default("DZD"),
             expiresAt: z.string().optional()
         })
     },
-    async ({ variantId, email, password, slots: slotsData, expiresAt }) => {
+    async ({ variantId, email, password, slots: slotsData, purchasePrice, purchaseCurrency, expiresAt }) => {
         try {
             const variant = await db.query.productVariants.findFirst({
                 where: eq(productVariants.id, variantId),
@@ -94,6 +96,8 @@ export const addSharedAccount = withAuth(
                 variantId,
                 email,
                 password,
+                purchasePrice,
+                purchaseCurrency,
                 expiresAt,
                 slotsConfig: slotsData
             });
@@ -125,11 +129,13 @@ export const addSharedAccountQuick = withAuth(
         schema: z.object({
             variantId: z.number().optional(), // Optional if autoClassify is true
             rawInput: z.string().min(3),
+            purchasePrice: z.string().optional(),
+            purchaseCurrency: z.string().optional().default("DZD"),
             expiresAt: z.string().optional(),
             autoClassify: z.boolean().default(false)
         })
     },
-    async ({ variantId, rawInput, expiresAt, autoClassify }) => {
+    async ({ variantId, rawInput, purchasePrice, purchaseCurrency, expiresAt, autoClassify }) => {
         try {
             const lines = rawInput.split("\n").map(l => l.trim()).filter(l => l.length > 5);
             let successCount = 0;
@@ -200,6 +206,8 @@ export const addSharedAccountQuick = withAuth(
                         variantId: targetVariantId!,
                         email,
                         password,
+                        purchasePrice,
+                        purchaseCurrency,
                         expiresAt
                     });
 
@@ -289,16 +297,20 @@ export const updateSharedAccount = withAuth(
                 id: z.number(),
                 profileName: z.string().optional(),
                 pinCode: z.string().optional()
-            })).optional()
+            })).optional(),
+            purchasePrice: z.string().optional()
         })
     },
-    async ({ id, email, password, slots: slotsData }) => {
+    async ({ id, email, password, slots: slotsData, purchasePrice }) => {
         try {
             const fullCode = `${email} | ${password}`;
 
             await db.transaction(async (tx) => {
                 await tx.update(digitalCodes)
-                    .set({ code: encrypt(fullCode) })
+                    .set({
+                        code: encrypt(fullCode),
+                        purchasePrice: purchasePrice || null
+                    })
                     .where(eq(digitalCodes.id, id));
 
                 if (slotsData) {

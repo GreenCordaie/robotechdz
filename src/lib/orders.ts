@@ -195,10 +195,24 @@ export async function allocateOrderStock(
                 }
 
                 // Persist historical cost for margin analytics
+                let finalPurchasePrice = purchasePrice;
+
+                // If it's a sharing variant, calculate prorated cost per slot
+                if (item.variant?.isSharing && currentItemSlots.length > 0) {
+                    let totalProratedCost = 0;
+                    for (const slot of currentItemSlots) {
+                        const dcPrice = slot.digitalCode?.purchasePrice ? parseFloat(slot.digitalCode.purchasePrice) : priceNum;
+                        const totalSlots = item.variant.totalSlots || 5;
+                        totalProratedCost += (dcPrice / totalSlots);
+                    }
+                    // Average per unit for orderItems.purchasePrice (which is multiplied by quantity in analytics)
+                    finalPurchasePrice = (totalProratedCost / item.quantity).toFixed(2);
+                }
+
                 await tx.update(orderItems)
                     .set({
                         supplierId,
-                        purchasePrice,
+                        purchasePrice: finalPurchasePrice,
                         purchaseCurrency: currency
                     })
                     .where(eq(orderItems.id, item.id));
