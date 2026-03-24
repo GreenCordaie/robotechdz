@@ -1,4 +1,4 @@
-import { getClientStats, getIndebtedClients } from "./actions";
+import { getClientStats, getAllClients } from "./actions";
 import { redirect } from "next/navigation";
 import ClientsViewSwitcher from "./ClientsViewSwitcher";
 
@@ -6,15 +6,15 @@ export const dynamic = "force-dynamic";
 
 export default async function ClientsPage() {
     const stats: any = await getClientStats({});
-    const indebtedClients: any = await getIndebtedClients({});
+    const clientsData: any = await getAllClients({});
 
-    if (stats.success === false || indebtedClients.success === false) {
-        if (stats.error?.includes("Session") || indebtedClients.error?.includes("Session")) {
+    if (stats.success === false || clientsData.success === false) {
+        if (stats.error?.includes("Session") || clientsData.error?.includes("Session")) {
             return redirect("/admin/login");
         }
         return (
             <div className="p-8 text-white bg-red-900/20 rounded-xl border border-red-500/50">
-                Une erreur de sécurité est survenue : {stats.error || indebtedClients.error}
+                Une erreur de sécurité est survenue : {stats.error || clientsData.error}
             </div>
         );
     }
@@ -22,7 +22,7 @@ export default async function ClientsPage() {
     return (
         <ClientsViewSwitcher
             initialStats={stats}
-            initialClients={indebtedClients}
+            initialClients={clientsData.clients || []}
         />
     );
 }

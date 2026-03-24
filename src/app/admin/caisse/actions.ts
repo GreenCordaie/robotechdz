@@ -8,7 +8,7 @@ import { sendTelegramNotification } from "@/lib/telegram";
 import { triggerOrderDelivery } from "@/lib/delivery";
 import { withAuth, logSecurityAction } from "@/lib/security";
 import { z } from "zod";
-import { allocateOrderStock } from "@/lib/orders";
+import { allocateOrderStock, reverseSupplierDebits } from "@/lib/orders";
 import { sendPushToRoleAction, sendPushToUserAction } from "../push/actions";
 import { decrypt } from "@/lib/encryption";
 import { OrderService } from "@/services/order.service";
@@ -291,8 +291,8 @@ export const refundOrderItem = withAuth(
                         .where(inArray(digitalCodeSlots.id, item.slots.map(s => s.id)));
                 }
 
-                // Note: We don't delete the order item, we just free the codes. 
-                // The UI should probably handle the "Refunded" state visually.
+                // --- 🔄 BALANCE REVERSAL LOGIC ---
+                await reverseSupplierDebits(tx, { orderItemId }, "Remboursement Article");
             });
 
             revalidatePath("/admin/caisse");
@@ -325,6 +325,9 @@ export const refundFullOrder = withAuth(
                 }
 
                 await tx.update(orders).set({ status: OrderStatus.REMBOURSE }).where(eq(orders.id, id));
+
+                // --- 🔄 BALANCE REVERSAL LOGIC ---
+                await reverseSupplierDebits(tx, { orderId: id }, "Remboursement Commande Totale");
             });
 
             revalidatePath("/admin/caisse");
@@ -368,29 +371,7 @@ export const cancelOrderAction = withAuth(
                 }
 
                 // --- 🔄 BALANCE REVERSAL LOGIC ---
-                // Find all previous debits for this order
-                const relatedTransactions = await tx.query.supplierTransactions.findMany({
-                    where: (table: any, { and, eq }: any) => and(
-                        eq(table.orderId, orderId),
-                        eq(table.type, "ACHAT_STOCK")
-                    )
-                });
-
-                await Promise.all(relatedTransactions.map(async (st) => {
-                    await tx.update(suppliers)
-                        .set({ balance: sql`${suppliers.balance} + ${sql.param(st.amount)}` })
-                        .where(eq(suppliers.id, st.supplierId));
-                    await tx.insert(supplierTransactions).values({
-                        supplierId: st.supplierId,
-                        orderId: orderId,
-                        type: SupplierTransactionType.RECHARGE,
-                        paymentStatus: "PAID",
-                        paidAt: new Date(),
-                        amount: st.amount,
-                        currency: st.currency,
-                        reason: `Annulation Commande #${orderId} (Remboursement Auto)`
-                    });
-                }));
+                await reverseSupplierDebits(tx, { orderId: orderId }, "Annulation Commande");
             });
 
             revalidatePath("/admin/caisse");
@@ -580,6 +561,9 @@ export const approveReturn = withAuth(
                             eq(digitalCodeSlots.status, DigitalCodeSlotStatus.VENDU)
                         ));
                 }
+
+                // --- 🔄 BALANCE REVERSAL LOGIC ---
+                await reverseSupplierDebits(tx, { orderId }, "Remboursement (Retour Approuvé)");
 
                 // 6. Update order status and returnRequest
                 const updatedReturnRequest: ReturnRequest = {

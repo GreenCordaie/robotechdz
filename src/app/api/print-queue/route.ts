@@ -82,26 +82,31 @@ export async function GET(req: NextRequest) {
                 const credentials: { label: string; value: string }[] = [];
 
                 // Standard codes (non-sharing products)
-                (item.codes || []).forEach((c: any) => {
-                    const val = decrypt(c.code);
-                    if (val) credentials.push({ label: "Code", value: val });
-                });
+                const standardCodes = (item.codes || []).map((c: any) => decrypt(c.code)).filter(Boolean);
+                if (standardCodes.length === 1) {
+                    credentials.push({ label: "Code", value: standardCodes[0]! });
+                } else {
+                    standardCodes.forEach((val: string, idx: number) => {
+                        credentials.push({ label: `Code ${idx + 1}`, value: val });
+                    });
+                }
 
-                // Shared account slots (Parsing 'Email | Pass' from parent code)
-                (item.slots || []).forEach((s: any) => {
+                // Shared account slots
+                (item.slots || []).forEach((s: any, idx: number) => {
                     const parentData = s.digitalCode?.code ? decrypt(s.digitalCode.code) : null;
                     const code = s.code ? decrypt(s.code) : null;
+                    const suffix = (item.slots || []).length > 1 ? ` ${idx + 1}` : "";
 
                     if (parentData && parentData.includes(" | ")) {
                         const [email, pass] = parentData.split(" | ");
-                        credentials.push({ label: "Email", value: email.trim() });
-                        credentials.push({ label: "Pass", value: pass.trim() });
+                        credentials.push({ label: `Email${suffix}`, value: email.trim() });
+                        credentials.push({ label: `Pass${suffix}`, value: pass.trim() });
                     } else if (parentData) {
-                        credentials.push({ label: "Accès", value: parentData });
+                        credentials.push({ label: `Accès${suffix}`, value: parentData });
                     }
 
-                    if (s.slotNumber) credentials.push({ label: "Profil", value: String(s.slotNumber) });
-                    if (code) credentials.push({ label: "Pin", value: code });
+                    if (s.slotNumber) credentials.push({ label: `Profil${suffix}`, value: String(s.slotNumber) });
+                    if (code) credentials.push({ label: `Pin${suffix}`, value: code });
                 });
 
                 return {

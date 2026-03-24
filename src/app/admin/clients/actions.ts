@@ -11,14 +11,20 @@ import { UserRole, ReturnRequest } from "@/lib/constants";
 export const getClientStats = withAuth(
     { roles: [UserRole.ADMIN, UserRole.CAISSIER] },
     async () => {
-        const totalClients = await db.select({ count: sql<number>`count(*)` }).from(clients);
-        const totalDette = await db.select({ sum: sql<string>`sum(cast(total_dette_dzd as decimal))` }).from(clients);
-        const list = await db.query.clients.findMany({ limit: 5, orderBy: [desc(clients.createdAt)] });
+        const [totalClientsCount] = await db.select({ count: sql<number>`count(*)` }).from(clients);
+        const [totalDetteSum] = await db.select({ sum: sql<string>`sum(cast(total_dette_dzd as decimal))` }).from(clients);
+
+        // Count clients with active debt
+        const [indebtedCount] = await db.select({ count: sql<number>`count(*)` })
+            .from(clients)
+            .where(sql`cast(total_dette_dzd as decimal) > 0`);
 
         return {
-            totalClients: Number(totalClients[0].count),
-            totalDette: totalDette[0].sum || "0",
-            lastClients: list
+            success: true,
+            totalClients: Number(totalClientsCount.count),
+            totalDebt: totalDetteSum.sum || "0",
+            indebtedCount: Number(indebtedCount.count),
+            recoveredThisMonth: "0" // Placeholder or compute from clientPayments
         };
     }
 );
@@ -125,7 +131,60 @@ export const createClient = withAuth(
 export const getAllClients = withAuth(
     { roles: [UserRole.ADMIN, UserRole.CAISSIER] },
     async () => {
-        return await db.query.clients.findMany({ orderBy: [desc(clients.createdAt)] });
+        try {
+            const list = await db.query.clients.findMany({ orderBy: [desc(clients.createdAt)] });
+            return { success: true, clients: list };
+        } catch (error) {
+            return { success: false, error: (error as Error).message };
+        }
+    }
+);
+
+export const updateClient = withAuth(
+    {
+        roles: [UserRole.ADMIN],
+        schema: z.object({
+            id: z.number(),
+            nomComplet: z.string().min(1),
+            telephone: z.string().optional()
+        })
+    },
+    async (data) => {
+        try {
+            await db.update(clients)
+                .set({
+                    nomComplet: data.nomComplet,
+                    telephone: data.telephone
+                })
+                .where(eq(clients.id, data.id));
+
+            revalidatePath("/admin/clients");
+            return { success: true };
+        } catch (error) {
+            return { success: false, error: (error as Error).message };
+        }
+    }
+);
+
+export const deleteClient = withAuth(
+    {
+        roles: [UserRole.ADMIN],
+        schema: z.object({ id: z.number() })
+    },
+    async ({ id }) => {
+        try {
+            // Check for dependencies (orders)
+            const dependencies = await db.query.orders.findFirst({ where: eq(orders.clientId, id) });
+            if (dependencies) {
+                throw new Error("Impossible de supprimer un client ayant déjà des commandes.");
+            }
+
+            await db.delete(clients).where(eq(clients.id, id));
+            revalidatePath("/admin/clients");
+            return { success: true };
+        } catch (error) {
+            return { success: false, error: (error as Error).message };
+        }
     }
 );
 

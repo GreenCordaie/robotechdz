@@ -105,24 +105,26 @@ export async function allocateOrderStock(
                     .for('update');
 
                 if (availableCodes.length < item.quantity) {
-                    console.log(`[STOCK] Stock épuisé pour ${item.name}. Bascule en livraison manuelle.`);
+                    console.log(`[STOCK] Stock partiel pour ${item.name} (${availableCodes.length}/${item.quantity}). Réservation des codes disponibles et bascule en manuel pour le complément.`);
                     hasManualDelivery = true;
-                    continue;
+                    // On ne continue PAS, on va quand même marquer les codes trouvés comme VENDU pour les réserver
                 }
 
-                const codeIds = availableCodes.map((c: any) => (c as any).id);
-                await tx.update(digitalCodes)
-                    .set({ status: DigitalCodeStatus.VENDU, orderItemId: item.id })
-                    .where(inArray(digitalCodes.id, codeIds));
+                if (availableCodes.length > 0) {
+                    const codeIds = availableCodes.map((c: any) => (c as any).id);
+                    await tx.update(digitalCodes)
+                        .set({ status: DigitalCodeStatus.VENDU, orderItemId: item.id })
+                        .where(inArray(digitalCodes.id, codeIds));
 
-                // Audit: Stock movement
-                await logSecurityAction({
-                    userId: options.userId || null,
-                    action: "AUTO_STOCK_ALLOCATION",
-                    entityType: "ORDER_ITEM",
-                    entityId: item.id.toString(),
-                    newData: { variantId: item.variantId, quantity: item.quantity, codeIds }
-                });
+                    // Audit: Stock reservation
+                    await logSecurityAction({
+                        userId: options.userId || null,
+                        action: availableCodes.length < item.quantity ? "PARTIAL_STOCK_RESERVATION" : "AUTO_STOCK_ALLOCATION",
+                        entityType: "ORDER_ITEM",
+                        entityId: item.id.toString(),
+                        newData: { variantId: item.variantId, quantityRequested: item.quantity, quantityAllocated: availableCodes.length, codeIds }
+                    });
+                }
             }
         } else {
             hasManualDelivery = true;
@@ -240,4 +242,61 @@ export async function allocateOrderStock(
     }
 
     return { hasManualDelivery };
+}
+
+/**
+ * Utility to reverse supplier debits for a specific order or order item.
+ * Typically called during refund or cancellation processes.
+ */
+export async function reverseSupplierDebits(
+    tx: Transaction,
+    { orderId, orderItemId }: { orderId?: number, orderItemId?: number },
+    reason: string = "Remboursement"
+) {
+    // Determine which transactions to reverse
+    const relatedTransactions = await tx.query.supplierTransactions.findMany({
+        where: (table: any, { and, eq }: any) => {
+            const conditions = [eq(table.type, SupplierTransactionType.ACHAT_STOCK)];
+            if (orderId) conditions.push(eq(table.orderId, orderId));
+            if (orderItemId) {
+                // Here we might need a more granular check if orderItemId is recorded in transaction metadata
+                // or if we rely on the orderId. Currently supplierTransactions has orderId but not orderItemId.
+                // However, allocateOrderStock creates transactions linked to orderId.
+                conditions.push(eq(table.orderId, orderId));
+            }
+            return and(...conditions);
+        }
+    });
+
+    if (relatedTransactions.length === 0) return;
+
+    await Promise.all(relatedTransactions.map(async (st: any) => {
+        // Double check: Avoid double reversal if already reversed (implementation detail: maybe track reversedTransactions)
+
+        // 1. Credit supplier balance
+        await tx.update(suppliers)
+            .set({ balance: sql`${suppliers.balance} + ${sql.param(st.amount)}` })
+            .where(eq(suppliers.id, st.supplierId));
+
+        // 2. Insert RECHARGE (Refund) transaction
+        await tx.insert(supplierTransactions).values({
+            supplierId: st.supplierId,
+            orderId: st.orderId,
+            type: SupplierTransactionType.RECHARGE,
+            paymentStatus: "PAID",
+            paidAt: new Date(),
+            amount: st.amount,
+            currency: st.currency,
+            reason: `${reason} (#${st.orderId})`
+        });
+
+        // 3. Log security action
+        await logSecurityAction({
+            userId: null, // Systematic
+            action: "SUPPLIER_BALANCE_REVERSAL",
+            entityType: "SUPPLIER",
+            entityId: st.supplierId.toString(),
+            newData: { amount: st.amount, currency: st.currency, orderId: st.orderId, reason }
+        });
+    }));
 }

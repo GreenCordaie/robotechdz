@@ -2,8 +2,8 @@
 
 import React, { useState } from "react";
 import { Button, Card, CardBody, Chip, Spinner, Input, Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, useDisclosure } from "@heroui/react";
-import { ShoppingCart, Wallet as WalletIcon, X, CheckCircle, Search, UserPlus, Phone, Calendar, ArrowUpRight, ArrowDownRight, Users, TrendingUp } from "lucide-react";
-import { getIndebtedClients, recordPayment, getClientHistory, createClient } from "@/app/admin/clients/actions";
+import { ShoppingCart, Wallet as WalletIcon, X, CheckCircle, Search, UserPlus, Phone, Calendar, ArrowUpRight, ArrowDownRight, Users, TrendingUp, Pencil, Trash2 } from "lucide-react";
+import { getAllClients, recordPayment, getClientHistory, createClient, updateClient, deleteClient } from "@/app/admin/clients/actions";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
 import { useRouter } from "next/navigation";
@@ -25,10 +25,11 @@ export default function ClientsMobile({ initialStats, initialClients }: any) {
 
     const { isOpen, onOpen, onClose } = useDisclosure();
     const { isOpen: isNewOpen, onOpen: onNewOpen, onClose: onNewClose } = useDisclosure();
+    const { isOpen: isEditOpen, onOpen: onEditOpen, onClose: onEditClose } = useDisclosure();
 
     const refreshData = async () => {
-        const indebted = await getIndebtedClients({});
-        if (Array.isArray(indebted)) setClients(indebted);
+        const res = await getAllClients({});
+        if (res.success) setClients(res.clients);
     };
 
     const handleViewClient = async (client: any) => {
@@ -68,8 +69,46 @@ export default function ClientsMobile({ initialStats, initialClients }: any) {
             setNewName("");
             setNewTel("");
             refreshData();
-        } else toast.error("Erreur");
+        } else toast.error(res.error || "Erreur");
         setIsCreatingNew(false);
+    };
+
+    const [editId, setEditId] = useState<number | null>(null);
+    const handleEditClient = (client: any, e: React.MouseEvent) => {
+        e.stopPropagation();
+        setEditId(client.id);
+        setNewName(client.nomComplet);
+        setNewTel(client.telephone || "");
+        onEditOpen();
+    };
+
+    const handleSaveEdit = async () => {
+        if (!editId || !newName) return;
+        setIsSubmitting(true);
+        const res = await updateClient({ id: editId, nomComplet: newName, telephone: newTel }) as { success: boolean; error?: string };
+        if (res.success) {
+            toast.success("Dossier mis à jour");
+            onEditClose();
+            refreshData();
+            if (selectedClient?.id === editId) {
+                setSelectedClient({ ...selectedClient, nomComplet: newName, telephone: newTel });
+            }
+        } else toast.error(res.error || "Erreur");
+        setIsSubmitting(false);
+    };
+
+    const handleDeleteClient = async (id: number, e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (!confirm("Voulez-vous vraiment supprimer ce client ? Cette action est irréversible et ne fonctionnera que si le client n'a pas de commandes.")) return;
+
+        try {
+            const res = await deleteClient({ id }) as { success: boolean; error?: string };
+            if (res.success) {
+                toast.success("Client supprimé");
+                refreshData();
+                if (selectedClient?.id === id) onClose();
+            } else toast.error(res.error || "Erreur de suppression");
+        } catch (err) { toast.error("Erreur technique"); }
     };
 
     const filteredClients = clients.filter((c: any) =>
@@ -151,9 +190,17 @@ export default function ClientsMobile({ initialStats, initialClients }: any) {
                                     </div>
                                 </div>
                             </div>
-                            <div className="text-right">
-                                <p className="text-sm font-black text-red-500">{formatCurrency(client.totalDetteDzd || 0, 'DZD')}</p>
-                                <p className="text-[8px] font-black uppercase text-slate-600">À Récupérer</p>
+                            <div className="flex items-center gap-3">
+                                <Button isIconOnly size="sm" variant="light" className="text-slate-400 h-10 w-10 min-w-0" onClick={(e) => handleEditClient(client, e)}>
+                                    <Pencil size={14} />
+                                </Button>
+                                <Button isIconOnly size="sm" variant="light" color="danger" className="text-red-500/50 h-10 w-10 min-w-0" onClick={(e) => handleDeleteClient(client.id, e)}>
+                                    <Trash2 size={14} />
+                                </Button>
+                                <div className="text-right">
+                                    <p className="text-sm font-black text-red-500">{formatCurrency(client.totalDetteDzd || 0, 'DZD')}</p>
+                                    <p className="text-[8px] font-black uppercase text-slate-600">À Récupérer</p>
+                                </div>
                             </div>
                         </div>
                     ))}
@@ -246,6 +293,26 @@ export default function ClientsMobile({ initialStats, initialClients }: any) {
                             <ModalFooter>
                                 <Button onPress={handleSaveClient} isLoading={isCreatingNew} color="primary" className="font-black w-full h-14 rounded-2xl mt-4">
                                     Créer le Dossier
+                                </Button>
+                            </ModalFooter>
+                        </>
+                    )}
+                </ModalContent>
+            </Modal>
+
+            {/* Edit Client Modal */}
+            <Modal isOpen={isEditOpen} onClose={onEditClose} className="dark bg-[#161616]">
+                <ModalContent>
+                    {(onClose) => (
+                        <>
+                            <ModalHeader>Modifier le Client</ModalHeader>
+                            <ModalBody className="space-y-4">
+                                <Input label="Nom Complet" value={newName} onValueChange={setNewName} />
+                                <Input label="Téléphone" value={newTel} onValueChange={setNewTel} />
+                            </ModalBody>
+                            <ModalFooter>
+                                <Button onPress={handleSaveEdit} isLoading={isSubmitting} color="warning" className="font-black w-full h-14 rounded-2xl mt-4">
+                                    Enregistrer les modifications
                                 </Button>
                             </ModalFooter>
                         </>

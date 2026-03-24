@@ -11,6 +11,7 @@ interface DeliveryMethodModalProps {
 
 export default function DeliveryMethodModal({ isOpen, onClose, onConfirm, isSubmitting }: DeliveryMethodModalProps) {
     const [method, setMethod] = useState<"TICKET" | "WHATSAPP">("TICKET");
+    const [callingCode, setCallingCode] = useState("+213");
     const [phone, setPhone] = useState("");
     const [error, setError] = useState("");
 
@@ -21,7 +22,8 @@ export default function DeliveryMethodModal({ isOpen, onClose, onConfirm, isSubm
                 return;
             }
         }
-        onConfirm(method, method === "WHATSAPP" ? phone : undefined);
+        const fullPhone = method === "WHATSAPP" ? `${callingCode}${phone}` : undefined;
+        onConfirm(method, fullPhone);
     };
 
     return (
@@ -88,10 +90,15 @@ export default function DeliveryMethodModal({ isOpen, onClose, onConfirm, isSubm
                         {/* Input WhatsApp Number */}
                         {method === "WHATSAPP" && (
                             <section className="space-y-6 animate-in fade-in slide-in-from-top-4 duration-300">
-                                <div className="relative">
-                                    <div className="absolute inset-y-0 left-0 flex items-center pl-6 pointer-events-none">
-                                        <span className="text-2xl font-semibold text-slate-400">+213</span>
-                                        <div className="h-8 w-[1px] bg-slate-200 ml-4"></div>
+                                <div className="relative flex items-center bg-slate-50 border-2 border-slate-200 rounded-2xl overflow-hidden focus-within:border-[#25D366] focus-within:ring-4 focus-within:ring-[#25D366]/20 transition-all">
+                                    <div className="flex items-center px-4 bg-slate-100/50 border-r-2 border-slate-200 h-20">
+                                        <input
+                                            type="text"
+                                            value={callingCode}
+                                            onChange={(e) => setCallingCode(e.target.value)}
+                                            className="bg-transparent text-2xl font-bold text-slate-900 w-20 outline-none text-center"
+                                            placeholder="+213"
+                                        />
                                     </div>
                                     <input
                                         type="tel"
@@ -100,8 +107,7 @@ export default function DeliveryMethodModal({ isOpen, onClose, onConfirm, isSubm
                                             setPhone(e.target.value);
                                             if (error) setError("");
                                         }}
-                                        className={`block w-full h-20 pl-28 pr-6 text-2xl font-medium tracking-widest bg-slate-50 border-2 rounded-2xl focus:ring-4 transition-all placeholder:text-slate-300 ${error ? "border-red-500 focus:ring-red-500/20" : "border-slate-200 focus:ring-[#25D366]/20 focus:border-[#25D366]"
-                                            }`}
+                                        className="block w-full h-20 px-6 text-2xl font-medium tracking-widest bg-transparent outline-none placeholder:text-slate-300"
                                         placeholder="00 00 00 00"
                                         autoFocus
                                     />
