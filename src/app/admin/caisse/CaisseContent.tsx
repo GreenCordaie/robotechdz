@@ -4,6 +4,8 @@ import React, { useState, useEffect } from "react";
 import { Spinner, Button, Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, Tooltip } from "@heroui/react";
 import { useOrderStore } from "@/store/useOrderStore";
 import { payOrder, getTodayOrders, cancelOrderAction, replaceOrderItemCode, refundOrderItem, refundFullOrder, notifyTraiteurAction, requeueForPrint } from "./actions";
+import { InitiateReturnModal } from "@/components/admin/modals/InitiateReturnModal";
+import { ApproveReturnModal } from "@/components/admin/modals/ApproveReturnModal";
 import { useAuthStore } from "@/store/useAuthStore";
 import { toast } from "react-hot-toast";
 import OrderDetailModal from "@/components/admin/modals/OrderDetailModal";
@@ -40,6 +42,8 @@ export default function CaisseContent() {
     const [lastReloadTime, setLastReloadTime] = useState<Date>(new Date());
     const [orderToRefund, setOrderToRefund] = useState<any | null>(null);
     const [isRefundModalOpen, setIsRefundModalOpen] = useState(false);
+    const [orderForInitiateReturn, setOrderForInitiateReturn] = useState<any | null>(null);
+    const [orderForApproveReturn, setOrderForApproveReturn] = useState<any | null>(null);
     const settings = useSettingsStore();
 
     const handlePrint = async (data: any) => {
@@ -248,6 +252,37 @@ export default function CaisseContent() {
 
             {/* Left Zone (60%) - Order List */}
             <section className="flex-[0.6] min-w-0 flex flex-col bg-background-light dark:bg-[#221610] border-r border-[#ec5b13]/10">
+                {/* Pending Returns Section — SUPER_ADMIN only */}
+                {(user?.role as string) === "SUPER_ADMIN" && allTodayOrders.some((o: any) => o.returnRequest?.status === "EN_ATTENTE") && (
+                    <div className="px-6 pt-4">
+                        <div className="bg-yellow-50 dark:bg-yellow-900/10 border border-yellow-200 dark:border-yellow-700/30 rounded-xl p-4">
+                            <h3 className="text-xs font-black uppercase tracking-wider text-yellow-700 dark:text-yellow-400 mb-3">
+                                🔔 Retours en attente d'approbation
+                            </h3>
+                            <div className="space-y-2">
+                                {allTodayOrders
+                                    .filter((o: any) => o.returnRequest?.status === "EN_ATTENTE")
+                                    .map((o: any) => (
+                                        <div key={o.id} className="flex items-center justify-between bg-white dark:bg-yellow-900/20 rounded-lg px-3 py-2 text-sm">
+                                            <div>
+                                                <span className="font-bold text-gray-900 dark:text-white">#{o.orderNumber}</span>
+                                                <span className="mx-2 text-gray-400">—</span>
+                                                <span className="text-gray-700 dark:text-gray-300">{parseFloat(o.returnRequest.montant).toLocaleString("fr-DZ")} DA</span>
+                                                <span className="ml-2 text-xs text-gray-400">{o.returnRequest.typeRemboursement === "ESPECES" ? "Espèces" : "Crédit Wallet"}</span>
+                                            </div>
+                                            <button
+                                                onClick={() => setOrderForApproveReturn(o)}
+                                                className="px-3 py-1 bg-yellow-500 hover:bg-yellow-600 text-white text-xs font-bold rounded-lg transition-colors"
+                                            >
+                                                Traiter
+                                            </button>
+                                        </div>
+                                    ))}
+                            </div>
+                        </div>
+                    </div>
+                )}
+
                 {/* Header / Filters */}
                 <header className="p-6 space-y-6">
                     <div className="flex items-center justify-between gap-4">
@@ -370,6 +405,23 @@ export default function CaisseContent() {
                                                         >
                                                             <RotateCcw size={14} />
                                                         </button>
+                                                    )}
+                                                    {["PAYE", "LIVRE"].includes(o.status) && !(o as any).returnRequest && (
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                setOrderForInitiateReturn(o);
+                                                            }}
+                                                            className="p-1.5 rounded-lg bg-white/5 hover:bg-orange-500/20 text-slate-400 hover:text-orange-400 transition-all"
+                                                            title="Initier un retour / remboursement"
+                                                        >
+                                                            <span className="material-symbols-outlined !text-sm">assignment_return</span>
+                                                        </button>
+                                                    )}
+                                                    {(o as any).returnRequest?.status === "EN_ATTENTE" && (
+                                                        <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase bg-yellow-100 text-yellow-700 border border-yellow-200 whitespace-nowrap">
+                                                            En attente
+                                                        </span>
                                                     )}
                                                 </div>
                                             </td>
@@ -709,6 +761,35 @@ export default function CaisseContent() {
                     await handlePrint(dataToPrint);
                 }}
             />
+
+            {/* Initiate Return Modal */}
+            {orderForInitiateReturn && (
+                <InitiateReturnModal
+                    isOpen={!!orderForInitiateReturn}
+                    onClose={() => { setOrderForInitiateReturn(null); loadOrders(true); }}
+                    order={{
+                        id: orderForInitiateReturn.id,
+                        orderNumber: orderForInitiateReturn.orderNumber,
+                        totalAmount: orderForInitiateReturn.totalAmount,
+                        clientId: orderForInitiateReturn.clientId ?? null,
+                        status: orderForInitiateReturn.status,
+                    }}
+                />
+            )}
+
+            {/* Approve/Reject Return Modal */}
+            {orderForApproveReturn && (orderForApproveReturn as any).returnRequest && (
+                <ApproveReturnModal
+                    isOpen={!!orderForApproveReturn}
+                    onClose={() => { setOrderForApproveReturn(null); loadOrders(true); }}
+                    order={{
+                        id: orderForApproveReturn.id,
+                        orderNumber: orderForApproveReturn.orderNumber,
+                        returnRequest: (orderForApproveReturn as any).returnRequest,
+                        clientName: orderForApproveReturn.clientId ? `Client #${orderForApproveReturn.clientId}` : undefined,
+                    }}
+                />
+            )}
 
             <RefundOrderModal
                 isOpen={isRefundModalOpen}

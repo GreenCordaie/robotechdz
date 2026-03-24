@@ -59,11 +59,14 @@ import { formatCurrency } from "@/lib/formatters";
 import { ReceiptSettings } from "@/components/admin/settings/ReceiptSettings";
 import { ApiBotSettings } from "@/components/admin/settings/ApiBotSettings";
 import { FaqBotSettings } from "@/components/admin/settings/FaqBotSettings";
+import ApiKeysSection from "@/app/admin/settings/ApiKeysSection";
+import { useAuthStore } from "@/store/useAuthStore";
 
 export default function SettingsContent() {
     const [activeTab, setActiveTab] = useState<"general" | "team" | "api" | "faq" | "b2b" | "appearance" | "receipt" | "security">("general");
     const { isOpen, onOpen, onOpenChange } = useDisclosure();
     const updateGlobalSettings = useSettingsStore((state) => state.updateSettings);
+    const currentUser = useAuthStore((state) => state.user);
 
     const [b2bSubTab, setB2bSubTab] = useState<"config" | "manage">("config");
 
@@ -1470,6 +1473,15 @@ export default function SettingsContent() {
                                     </div>
                                 </CardBody>
                             </Card>
+                        </div>
+                    )}
+
+                    {/* API Keys Section — SUPER_ADMIN only */}
+                    {activeTab === "security" && (currentUser?.role as string) === "SUPER_ADMIN" && (
+                        <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+                            <div className="bg-[#1a1614] border border-white/5 rounded-[32px] overflow-hidden shadow-2xl p-8">
+                                <ApiKeysSection />
+                            </div>
                         </div>
                     )}
 

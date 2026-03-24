@@ -6,7 +6,7 @@ import { eq, sql, desc, and } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { withAuth } from "@/lib/security";
 import { z } from "zod";
-import { UserRole } from "@/lib/constants";
+import { UserRole, ReturnRequest } from "@/lib/constants";
 
 export const getClientStats = withAuth(
     { roles: [UserRole.ADMIN, UserRole.CAISSIER] },
@@ -174,6 +174,44 @@ export const getClientWhatsAppHistory = withAuth(
             }).filter(Boolean).reverse();
 
             return { success: true, data: { messages, tickets, phone: intlPhone } };
+        } catch (error) {
+            return { success: false, error: (error as Error).message };
+        }
+    }
+);
+
+export const getReturnsByClient = withAuth(
+    {
+        roles: [UserRole.ADMIN, UserRole.CAISSIER, UserRole.SUPER_ADMIN],
+        schema: z.object({ clientId: z.number().int().positive() })
+    },
+    async ({ clientId }) => {
+        try {
+            const result = await db.query.orders.findMany({
+                where: and(
+                    eq(orders.clientId, clientId),
+                    sql`return_request IS NOT NULL`
+                ),
+                columns: {
+                    id: true,
+                    orderNumber: true,
+                    totalAmount: true,
+                    returnRequest: true,
+                    createdAt: true,
+                },
+                orderBy: [desc(orders.createdAt)],
+            });
+
+            return {
+                success: true,
+                returns: result.map(o => ({
+                    orderId: o.id,
+                    orderNumber: o.orderNumber,
+                    totalAmount: o.totalAmount,
+                    returnRequest: o.returnRequest as ReturnRequest,
+                    orderCreatedAt: o.createdAt,
+                })),
+            };
         } catch (error) {
             return { success: false, error: (error as Error).message };
         }

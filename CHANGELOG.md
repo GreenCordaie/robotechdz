@@ -2,6 +2,13 @@
 
 Toutes les modifications notables de ce projet seront documentées dans ce fichier.
 
+## [7.3.1] - 2026-03-24
+
+### 🚀 Orchestration & Robustesse
+- **Orchestrateur v6.1** : Amélioration du démarrage de la session WAHA avec un fallback automatique de 15s.
+- **Synchronisation Hybride** : Support de la synchronisation partielle (WhatsApp locale) en attendant les tunnels Cloudflare.
+- **Auto-Start Logiciel** : Automatisation complète du lancement de la session WhatsApp dans `start.bat`.
+
 ## [7.3.0] - 2026-03-23
 
 ### 🛡️ Sécurité & Hardening

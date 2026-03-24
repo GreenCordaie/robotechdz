@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 import { sql, eq, and, count, exists } from "drizzle-orm";
 import { sendTelegramNotification } from "@/lib/telegram";
 import { sendPushToRoleAction } from "../admin/push/actions";
+import { cacheGet, cacheSet, CACHE_KEYS, CACHE_TTL } from "@/lib/redis";
 
 export async function createKioskOrder(
     items: { variantId: number; quantity: number; name: string; customData?: string; playerNickname?: string }[],
@@ -103,6 +104,11 @@ export async function getKioskData() {
     // IMPORTANT: We do NOT use .with({ digitalCodes: true }) as it leaks the actual codes to the frontend!
     // Instead, we fetch products and join with a count of available codes.
 
+    // Cache-aside: try to serve from Redis first
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const cached = await cacheGet<{ products: any[]; categories: any[] }>(CACHE_KEYS.KIOSK_CATALOGUE);
+    if (cached) return cached;
+
     // We fetch products and their variants
     const productsList = await db.query.products.findMany({
         where: eq(products.status, "ACTIVE"),
@@ -163,7 +169,12 @@ export async function getKioskData() {
 
     const categoriesList = await db.query.categories.findMany();
 
-    return { products: safeProducts, categories: categoriesList };
+    const result = { products: safeProducts, categories: categoriesList };
+
+    // Fire-and-forget: populate cache after DB fetch
+    cacheSet(CACHE_KEYS.KIOSK_CATALOGUE, result, CACHE_TTL.KIOSK_CATALOGUE).catch(() => {});
+
+    return result;
 }
 
 export async function createSupportTicket(data: { orderNumber: string; message: string; customerPhone: string }) {

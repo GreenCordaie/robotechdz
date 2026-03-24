@@ -17,7 +17,8 @@ import {
     Building2,
     Headset,
     Settings2,
-    BarChart3
+    BarChart3,
+    Activity
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -84,8 +85,9 @@ export const AdminSidebar = () => {
         { name: "Fournisseurs", icon: Users, href: "/admin/fournisseurs", roles: ["ADMIN"] },
         ...(isB2bEnabled ? [{ name: "B2B & Revendeurs", icon: Building2, href: "/admin/b2b", roles: ["ADMIN"] }] : []),
         { name: "Tickets Support", icon: Headset, href: "/admin/support", badge: openTickets, roles: ["ADMIN", "CAISSIER", "TRAITEUR"] },
-        { name: "Paramètres", icon: Settings2, href: "/admin/settings", roles: ["ADMIN"] },
         { name: "Analytics", icon: BarChart3, href: "/admin/analytics", roles: ["ADMIN"] },
+        { name: "Monitoring", icon: Activity, href: "/admin/monitoring", roles: ["ADMIN", "SUPER_ADMIN"] },
+        { name: "Paramètres", icon: Settings2, href: "/admin/settings", roles: ["ADMIN"] },
     ];
 
     const visibleItems = navItems.filter(item => {

@@ -1,4 +1,4 @@
-import { pgTable, serial, text, timestamp, numeric, integer, boolean, jsonb, pgEnum, index, uuid } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, timestamp, numeric, integer, boolean, jsonb, pgEnum, index, uuid, varchar } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { OrderStatus, UserRole, ClientActionType, DeliveryMethod, SupplierTransactionType, DigitalCodeStatus, DigitalCodeSlotStatus, OrderSource } from "@/lib/constants";
 
@@ -82,6 +82,7 @@ export const orders = pgTable("orders", {
     deliveryMethod: deliveryMethodEnum("delivery_method").default("TICKET").notNull(),
     customerPhone: text("customer_phone"),
     paymentMethod: text("payment_method"),
+    returnRequest: jsonb("return_request").$type<import("@/lib/constants").ReturnRequest | null>().default(null),
     printStatus: text("print_status").default("not_required"), // 'not_required' | 'print_pending' | 'printed' | 'failed'
     isDelivered: boolean("is_delivered").default(false),
     whatsappSentAt: timestamp("whatsapp_sent_at", { mode: 'date' }),
@@ -362,6 +363,27 @@ export const rateLimits = pgTable("rate_limits", {
     expiresAt: timestamp("expires_at", { mode: 'date' }).notNull(),
 });
 
+export const partnerApiKeys = pgTable("partner_api_keys", {
+    id:             serial("id").primaryKey(),
+    name:           varchar("name", { length: 100 }).notNull(),
+    keyHash:        varchar("key_hash", { length: 64 }).notNull().unique(),
+    permissions:    varchar("permissions", { length: 20 }).notNull().default("READ"),
+    isActive:       boolean("is_active").notNull().default(true),
+    createdAt:      timestamp("created_at").notNull().defaultNow(),
+    lastUsedAt:     timestamp("last_used_at"),
+    callsThisMonth: integer("calls_this_month").notNull().default(0),
+});
+
+export const apiLogs = pgTable("api_logs", {
+    id:             serial("id").primaryKey(),
+    apiKeyId:       integer("api_key_id").notNull().references(() => partnerApiKeys.id),
+    endpoint:       varchar("endpoint", { length: 200 }).notNull(),
+    method:         varchar("method", { length: 10 }).notNull(),
+    statusCode:     integer("status_code").notNull(),
+    responseTimeMs: integer("response_time_ms"),
+    createdAt:      timestamp("created_at").notNull().defaultNow(),
+});
+
 // Relations
 export const categoriesRelations = relations(categories, ({ many }) => ({
     products: many(products),
@@ -534,5 +556,16 @@ export const pushSubscriptionsRelations = relations(pushSubscriptions, ({ one })
     user: one(users, {
         fields: [pushSubscriptions.userId],
         references: [users.id],
+    }),
+}));
+
+export const partnerApiKeysRelations = relations(partnerApiKeys, ({ many }) => ({
+    logs: many(apiLogs),
+}));
+
+export const apiLogsRelations = relations(apiLogs, ({ one }) => ({
+    apiKey: one(partnerApiKeys, {
+        fields: [apiLogs.apiKeyId],
+        references: [partnerApiKeys.id],
     }),
 }));

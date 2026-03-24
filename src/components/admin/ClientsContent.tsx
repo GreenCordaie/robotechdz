@@ -31,7 +31,8 @@ import {
     Wallet
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { getIndebtedClients, recordPayment, getClientHistory, createClient } from "@/app/admin/clients/actions";
+import { getIndebtedClients, recordPayment, getClientHistory, createClient, getReturnsByClient } from "@/app/admin/clients/actions";
+import { ReturnRequest } from "@/lib/constants";
 import WhatsAppHistoryModal from "@/components/admin/modals/WhatsAppHistoryModal";
 
 import { format } from "date-fns";
@@ -82,6 +83,7 @@ export default function ClientsContent({ initialStats, initialClients }: Clients
     const [search, setSearch] = React.useState("");
     const [selectedClient, setSelectedClient] = React.useState<Client | null>(null);
     const [history, setHistory] = React.useState<{ payments: ClientPayment[], orders: ClientOrder[] }>({ payments: [], orders: [] });
+    const [clientReturns, setClientReturns] = React.useState<Array<{ orderId: number; orderNumber: string; totalAmount: string; returnRequest: ReturnRequest; orderCreatedAt: Date | null }>>([]);
 
     const [repaymentAmount, setRepaymentAmount] = React.useState("");
     const [isSubmitting, setIsSubmitting] = React.useState(false);
@@ -118,12 +120,20 @@ export default function ClientsContent({ initialStats, initialClients }: Clients
 
     const handleViewClient = async (client: Client) => {
         setSelectedClient(client);
-        const data = await getClientHistory({ clientId: client.id });
+        setClientReturns([]);
+        const [data, returnsData] = await Promise.all([
+            getClientHistory({ clientId: client.id }),
+            getReturnsByClient({ clientId: client.id }),
+        ]);
         const typedData = data as { payments: any[], orders: any[] };
         setHistory({
             payments: typedData.payments.map(p => ({ ...p, createdAt: new Date(p.createdAt) })),
             orders: typedData.orders.map(o => ({ ...o, createdAt: new Date(o.createdAt) }))
         });
+        const typedReturns = returnsData as { success: boolean; returns?: any[] };
+        if (typedReturns.success && typedReturns.returns) {
+            setClientReturns(typedReturns.returns);
+        }
         onOpen();
     };
 
@@ -396,6 +406,41 @@ export default function ClientsContent({ initialStats, initialClients }: Clients
                                         ))}
                                     </div>
                                 </div>
+                                {/* Returns History */}
+                                {clientReturns.length > 0 && (
+                                    <div className="mt-4 border-t border-slate-700 pt-4">
+                                        <h3 className="text-xs font-black uppercase tracking-wider text-slate-400 mb-3">Historique des Retours</h3>
+                                        <div className="space-y-2">
+                                            {clientReturns.map((r) => {
+                                                const statusConfig = {
+                                                    EN_ATTENTE: { label: "En attente", classes: "bg-yellow-500/10 text-yellow-400 border-yellow-500/20" },
+                                                    APPROUVE: { label: "Approuvé", classes: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" },
+                                                    REJETE: { label: "Rejeté", classes: "bg-red-500/10 text-red-400 border-red-500/20" },
+                                                }[r.returnRequest.status] || { label: r.returnRequest.status, classes: "bg-slate-500/10 text-slate-400" };
+
+                                                return (
+                                                    <div key={r.orderId} className="flex justify-between items-center text-sm py-2 border-b border-slate-700/50 last:border-0">
+                                                        <div>
+                                                            <span className="font-bold text-white">#{r.orderNumber}</span>
+                                                            <span className="ml-2 text-slate-400 text-xs">
+                                                                {r.returnRequest.typeRemboursement === "ESPECES" ? "Espèces" : "Crédit Wallet"}
+                                                            </span>
+                                                            {r.returnRequest.status === "REJETE" && r.returnRequest.motifRejet && (
+                                                                <p className="text-xs text-red-400 mt-0.5">{r.returnRequest.motifRejet}</p>
+                                                            )}
+                                                        </div>
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="font-bold text-white">{parseFloat(String(r.returnRequest.montant)).toLocaleString("fr-DZ")} DA</span>
+                                                            <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${statusConfig.classes}`}>
+                                                                {statusConfig.label}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                )}
                             </ModalBody>
                             <ModalFooter className="flex justify-between items-center">
                                 <span className="text-slate-400 font-medium">Dette actuelle</span>

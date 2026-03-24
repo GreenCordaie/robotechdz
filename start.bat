@@ -6,7 +6,7 @@ cd /d "%~dp0"
 
 echo.
 echo  ====================================================
-echo    ROBOTECH ADMIN PLATFORM v6.0 - Demarrage 1-click
+echo    ROBOTECH ADMIN PLATFORM v6.1 - Demarrage 1-click
 echo  ====================================================
 echo.
 
@@ -54,12 +54,12 @@ if not exist "node_modules" (
 
 REM --- 5. Orchestrateur ---
 echo.
-echo  [5/5] Lancement orchestrateur v6.0...
+echo  [5/5] Lancement orchestrateur v6.1...
 echo.
 echo  - Next.js port 1556
 echo  - Tunnel Cloudflare (App + n8n)
 echo  - Sync DB + Waha + Telegram
-echo  - Notification Telegram avec nouveau lien
+echo  - Auto-start session WhatsApp (Dernière étape)
 echo.
 echo  Ctrl+C pour tout arreter.
 echo.

@@ -65,3 +65,21 @@ export enum ClientActionType {
     REMBOURSEMENT = "REMBOURSEMENT",
     RETOUR = "RETOUR"
 }
+
+export type ReturnRequestStatus = "EN_ATTENTE" | "APPROUVE" | "REJETE";
+export type RemboursementType = "ESPECES" | "CREDIT_WALLET";
+
+export interface ReturnRequest {
+    motif: string;
+    typeRemboursement: RemboursementType;
+    montant: number;
+    status: ReturnRequestStatus;
+    initiatedBy: number;
+    initiatedAt: string;
+    previousOrderStatus: string;
+    approvedBy?: number;
+    approvedAt?: string;
+    rejectedBy?: number;
+    rejectedAt?: string;
+    motifRejet?: string;
+}

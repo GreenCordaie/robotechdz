@@ -11,6 +11,7 @@ import {
 import { eq, and, sql, inArray, exists } from "drizzle-orm";
 import { checkStockAndAlert } from "@/lib/stock-alerts";
 import { logSecurityAction } from "@/lib/security";
+import { logger } from "@/lib/logger";
 import { OrderStatus, DigitalCodeStatus, DigitalCodeSlotStatus, SupplierTransactionType } from "@/lib/constants";
 
 type Transaction = any; // Drizzle transaction type depends on client, using any for broad compatibility
@@ -67,6 +68,7 @@ export async function allocateOrderStock(
                     .for('update');
 
                 if (availableSlots.length < item.quantity) {
+                    logger.critical("Allocation stock échouée", { action: "STOCK_ALLOCATION_FAILED", metadata: { orderId } });
                     hasManualDelivery = true;
                     continue;
                 }
@@ -98,6 +100,7 @@ export async function allocateOrderStock(
                     .for('update');
 
                 if (availableCodes.length < item.quantity) {
+                    logger.critical("Allocation stock échouée", { action: "STOCK_ALLOCATION_FAILED", metadata: { orderId } });
                     hasManualDelivery = true;
                     continue;
                 }

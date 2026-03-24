@@ -9,6 +9,7 @@ import { z } from "zod";
 import { encrypt } from "@/lib/encryption";
 import { ProductQueries } from "@/services/queries/product.queries";
 import { UserRole } from "@/lib/constants";
+import { cacheDel, CACHE_KEYS } from "@/lib/redis";
 
 export const getPaginatedProducts = withAuth(
     {
@@ -85,6 +86,7 @@ export const createProductAction = withAuth(
             }
 
             revalidatePath("/admin/catalogue");
+            await cacheDel(CACHE_KEYS.KIOSK_CATALOGUE);
             return { success: true };
         } catch (error) {
             console.error("Failed to create product:", error);
@@ -202,6 +204,7 @@ export const updateProductAction = withAuth(
             }
 
             revalidatePath("/admin/catalogue");
+            await cacheDel(CACHE_KEYS.KIOSK_CATALOGUE);
             return { success: true };
         } catch (error) {
             console.error("Failed to update product:", error);
@@ -237,6 +240,7 @@ export const deleteProductAction = withAuth(
 
             await db.delete(products).where(eq(products.id, id));
             revalidatePath("/admin/catalogue");
+            await cacheDel(CACHE_KEYS.KIOSK_CATALOGUE);
             return { success: true };
         } catch (error) {
             console.error("Failed to delete product:", error);
@@ -255,6 +259,7 @@ export const toggleProductStatusAction = withAuth(
             await db.update(products).set({ status }).where(eq(products.id, id));
             revalidatePath("/admin/catalogue");
             revalidatePath("/kiosk");
+            await cacheDel(CACHE_KEYS.KIOSK_CATALOGUE);
             return { success: true };
         } catch (error) {
             return { success: false, error: (error as Error).message };

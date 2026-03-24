@@ -1,13 +1,11 @@
-import { db } from "@/db";
-import { rateLimits } from "@/db/schema";
-import { eq, sql, and, gt } from "drizzle-orm";
+import { cacheIncr, cacheExpire, cacheDel, CACHE_TTL, redis } from "@/lib/redis";
 
 const MAX_ATTEMPTS = 5;
-const WINDOW_MINUTES = 15;
 
 /**
  * Service Layer for Rate Limiting.
- * Uses database persistence to track attempts across nodes and restarts.
+ * Uses Redis (INCR + EXPIRE) for distributed, atomic rate limiting.
+ * Falls back gracefully if Redis is unavailable (all helpers have try/catch).
  */
 export class RateLimitService {
 
@@ -16,58 +14,40 @@ export class RateLimitService {
      * Returns { isBlocked: boolean, remaining: number, blockedUntil?: Date }
      */
     static async checkLimit(key: string) {
-        const now = new Date();
+        try {
+            const raw = await redis.get(key);
+            const count = raw !== null ? parseInt(raw, 10) : 0;
+            const isBlocked = count >= MAX_ATTEMPTS;
 
-        const entry = await db.query.rateLimits.findFirst({
-            where: eq(rateLimits.key, key)
-        });
+            let blockedUntil: Date | undefined;
+            if (isBlocked) {
+                // Get remaining TTL to compute blockedUntil
+                const ttl = await redis.ttl(key);
+                if (ttl > 0) {
+                    blockedUntil = new Date(Date.now() + ttl * 1000);
+                } else {
+                    blockedUntil = new Date(Date.now() + CACHE_TTL.RATE_LIMIT * 1000);
+                }
+            }
 
-        if (!entry) {
+            return {
+                isBlocked,
+                remaining: Math.max(0, MAX_ATTEMPTS - count),
+                blockedUntil,
+            };
+        } catch {
             return { isBlocked: false, remaining: MAX_ATTEMPTS };
         }
-
-        // Check if block has expired
-        if (entry.expiresAt < now) {
-            // Reset entry if expired
-            await db.delete(rateLimits).where(eq(rateLimits.key, key));
-            return { isBlocked: false, remaining: MAX_ATTEMPTS };
-        }
-
-        const isCurrentlyBlocked = entry.points >= MAX_ATTEMPTS;
-        return {
-            isBlocked: isCurrentlyBlocked,
-            remaining: Math.max(0, MAX_ATTEMPTS - entry.points),
-            blockedUntil: entry.expiresAt
-        };
     }
 
     /**
      * Records a failure for a key.
+     * On the first increment, sets the TTL window.
      */
     static async recordFailure(key: string) {
-        const now = new Date();
-        const expiresAt = new Date(now.getTime() + WINDOW_MINUTES * 60000);
-
-        const entry = await db.query.rateLimits.findFirst({
-            where: eq(rateLimits.key, key)
-        });
-
-        if (!entry) {
-            await db.insert(rateLimits).values({
-                key,
-                points: 1,
-                expiresAt
-            });
-        } else {
-            // Increment points and update expiry if it was already expired or just keep window
-            const newPoints = entry.points + 1;
-            await db.update(rateLimits)
-                .set({
-                    points: newPoints,
-                    // If we just hit the limit, set the block expiry from now
-                    expiresAt: newPoints >= MAX_ATTEMPTS ? expiresAt : entry.expiresAt
-                })
-                .where(eq(rateLimits.key, key));
+        const count = await cacheIncr(key);
+        if (count === 1) {
+            await cacheExpire(key, CACHE_TTL.RATE_LIMIT);
         }
     }
 
@@ -75,6 +55,6 @@ export class RateLimitService {
      * Resets rate limit for a key (on success).
      */
     static async resetLimit(key: string) {
-        await db.delete(rateLimits).where(eq(rateLimits.key, key));
+        await cacheDel(key);
     }
 }

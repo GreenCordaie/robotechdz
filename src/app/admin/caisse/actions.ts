@@ -19,7 +19,9 @@ const getQueries = async () => {
     return OrderQueries;
 };
 
-import { UserRole, OrderStatus, SupplierTransactionType, DigitalCodeStatus, DigitalCodeSlotStatus, ClientActionType } from "@/lib/constants";
+import { UserRole, OrderStatus, SupplierTransactionType, DigitalCodeStatus, DigitalCodeSlotStatus, ClientActionType, RemboursementType, ReturnRequest } from "@/lib/constants";
+import { logger } from "@/lib/logger";
+import { cacheDel, CACHE_KEYS } from "@/lib/redis";
 
 export const findOrderByNumber = withAuth(
     // ... (omitting for brevity in thought, but tool call will have full content)
@@ -61,9 +63,11 @@ export const payOrder = withAuth(
 
             revalidatePath("/admin/caisse");
             revalidatePath("/admin/traitement");
+            cacheDel(...CACHE_KEYS.DASHBOARD_ALL, CACHE_KEYS.KIOSK_CATALOGUE).catch(() => {});
 
             return { success: true, order: result };
         } catch (error) {
+            logger.error((error as Error).message, { userId: user.id, action: "PAY_ORDER_FAILED", metadata: { orderId: id } });
             return { success: false, error: (error as Error).message };
         }
     }
@@ -432,6 +436,211 @@ export const resendWhatsAppAction = withAuth(
         }
     }
 );
+export const initiateReturn = withAuth(
+    {
+        roles: [UserRole.ADMIN, UserRole.CAISSIER],
+        schema: z.object({
+            orderId: z.number().int().positive(),
+            motif: z.string().min(5, "Motif requis (min 5 caractères)"),
+            typeRemboursement: z.enum(["ESPECES", "CREDIT_WALLET"] as [RemboursementType, RemboursementType]),
+            montant: z.number().positive(),
+        })
+    },
+    async ({ orderId, motif, typeRemboursement, montant }, user) => {
+        try {
+            const order = await db.query.orders.findFirst({ where: eq(orders.id, orderId) });
+            if (!order) return { success: false, error: "Commande introuvable" };
+
+            const refundableStatuses: string[] = [OrderStatus.PAYE, OrderStatus.LIVRE];
+            if (!refundableStatuses.includes(order.status)) {
+                return { success: false, error: "Cette commande ne peut pas faire l'objet d'un retour" };
+            }
+            if ((order as any).returnRequest !== null) {
+                return { success: false, error: "Une demande de retour existe déjà pour cette commande" };
+            }
+            if (montant > parseFloat(order.totalAmount as string)) {
+                return { success: false, error: "Le montant ne peut pas dépasser le total de la commande" };
+            }
+            if (typeRemboursement === "CREDIT_WALLET" && !order.clientId) {
+                return { success: false, error: "Le crédit wallet nécessite un client associé à la commande" };
+            }
+
+            const returnRequest: ReturnRequest = {
+                motif,
+                typeRemboursement,
+                montant,
+                status: "EN_ATTENTE",
+                initiatedBy: user.id,
+                initiatedAt: new Date().toISOString(),
+                previousOrderStatus: order.status,
+            };
+
+            await db.update(orders).set({ returnRequest } as any).where(eq(orders.id, orderId));
+
+            await logSecurityAction({
+                userId: user.id,
+                action: "INITIATE_RETURN",
+                entityType: "ORDER",
+                entityId: String(orderId),
+                oldData: { status: order.status, returnRequest: null },
+                newData: { returnRequest },
+            });
+
+            logger.info("Retour initié", { userId: user.id, action: "INITIATE_RETURN", metadata: { orderId } });
+            revalidatePath("/admin/caisse");
+            return { success: true, orderId };
+        } catch (error) {
+            return { success: false, error: (error as Error).message };
+        }
+    }
+);
+
+export const approveReturn = withAuth(
+    {
+        roles: [UserRole.SUPER_ADMIN],
+        schema: z.object({ orderId: z.number().int().positive() })
+    },
+    async ({ orderId }, user) => {
+        try {
+            return await db.transaction(async (tx) => {
+                const order = await tx.query.orders.findFirst({
+                    where: eq(orders.id, orderId),
+                    with: { items: true }
+                }) as any;
+
+                if (!order) return { success: false, error: "Commande introuvable" };
+
+                const returnReq: ReturnRequest | null = order.returnRequest;
+                if (!returnReq || returnReq.status !== "EN_ATTENTE") {
+                    return { success: false, error: "Aucune demande de retour en attente pour cette commande" };
+                }
+
+                // 1. Create clientPayments record (requires clientId)
+                if (order.clientId) {
+                    await tx.insert(clientPayments).values({
+                        clientId: order.clientId,
+                        orderId: order.id,
+                        montantDzd: String(returnReq.montant),
+                        typeAction: ClientActionType.REMBOURSEMENT,
+                    });
+
+                    // 2. If CREDIT_WALLET, reduce client debt
+                    if (returnReq.typeRemboursement === "CREDIT_WALLET") {
+                        await tx.execute(
+                            sql`UPDATE clients SET total_dette_dzd = GREATEST(0, total_dette_dzd - ${returnReq.montant}) WHERE id = ${order.clientId}`
+                        );
+                    }
+                }
+
+                // 3. Restore VENDU digital codes → DISPONIBLE (not UTILISE)
+                const itemIds = (order.items || []).map((i: any) => i.id);
+                if (itemIds.length > 0) {
+                    await tx.update(digitalCodes)
+                        .set({ status: DigitalCodeStatus.DISPONIBLE, orderItemId: null })
+                        .where(and(
+                            inArray(digitalCodes.orderItemId, itemIds),
+                            eq(digitalCodes.status, DigitalCodeStatus.VENDU)
+                        ));
+                    await tx.update(digitalCodeSlots)
+                        .set({ status: DigitalCodeSlotStatus.DISPONIBLE, orderItemId: null })
+                        .where(and(
+                            inArray(digitalCodeSlots.orderItemId, itemIds),
+                            eq(digitalCodeSlots.status, DigitalCodeSlotStatus.VENDU)
+                        ));
+                }
+
+                // 4. Update order status and returnRequest
+                const updatedReturnRequest: ReturnRequest = {
+                    ...returnReq,
+                    status: "APPROUVE",
+                    approvedBy: user.id,
+                    approvedAt: new Date().toISOString(),
+                };
+                await tx.update(orders)
+                    .set({ status: OrderStatus.REMBOURSE, returnRequest: updatedReturnRequest } as any)
+                    .where(eq(orders.id, orderId));
+
+                // 5. Audit log
+                await logSecurityAction({
+                    userId: user.id,
+                    action: "APPROVE_RETURN",
+                    entityType: "ORDER",
+                    entityId: String(orderId),
+                    oldData: { returnRequest: { status: "EN_ATTENTE" } },
+                    newData: { status: OrderStatus.REMBOURSE, returnRequest: updatedReturnRequest },
+                });
+
+                // 6. Telegram notification (fire-and-forget)
+                const clientName = order.clientId ? `Client #${order.clientId}` : "Anonyme";
+                sendTelegramNotification(
+                    `✅ *Retour Approuvé*\nCommande: #${order.orderNumber}\nMontant: ${returnReq.montant.toLocaleString("fr-DZ")} DA\nType: ${returnReq.typeRemboursement === "ESPECES" ? "Espèces" : "Crédit Wallet"}\nClient: ${clientName}\nPar: ${user.nom}`,
+                    ["ADMIN"]
+                ).catch(err => console.error("Telegram failed:", err));
+
+                logger.info("Retour approuvé", { userId: user.id, action: "APPROVE_RETURN", metadata: { orderId } });
+                revalidatePath("/admin/caisse");
+                revalidatePath("/admin/clients");
+                cacheDel(...CACHE_KEYS.DASHBOARD_ALL, CACHE_KEYS.KIOSK_CATALOGUE).catch(() => {});
+                return { success: true };
+            });
+        } catch (error) {
+            logger.error((error as Error).message, { userId: user.id, action: "APPROVE_RETURN_FAILED", metadata: { orderId } });
+            return { success: false, error: (error as Error).message };
+        }
+    }
+);
+
+export const rejectReturn = withAuth(
+    {
+        roles: [UserRole.SUPER_ADMIN],
+        schema: z.object({
+            orderId: z.number().int().positive(),
+            motifRejet: z.string().min(5, "Motif de rejet requis (min 5 caractères)"),
+        })
+    },
+    async ({ orderId, motifRejet }, user) => {
+        try {
+            const order = await db.query.orders.findFirst({ where: eq(orders.id, orderId) }) as any;
+            if (!order) return { success: false, error: "Commande introuvable" };
+
+            const returnReq: ReturnRequest | null = order.returnRequest;
+            if (!returnReq || returnReq.status !== "EN_ATTENTE") {
+                return { success: false, error: "Aucune demande de retour en attente pour cette commande" };
+            }
+
+            const updatedReturnRequest: ReturnRequest = {
+                ...returnReq,
+                status: "REJETE",
+                rejectedBy: user.id,
+                rejectedAt: new Date().toISOString(),
+                motifRejet,
+            };
+
+            await db.update(orders)
+                .set({
+                    status: returnReq.previousOrderStatus as any,
+                    returnRequest: updatedReturnRequest,
+                } as any)
+                .where(eq(orders.id, orderId));
+
+            await logSecurityAction({
+                userId: user.id,
+                action: "REJECT_RETURN",
+                entityType: "ORDER",
+                entityId: String(orderId),
+                oldData: { returnRequest: { status: "EN_ATTENTE" } },
+                newData: { status: returnReq.previousOrderStatus, returnRequest: updatedReturnRequest },
+            });
+
+            logger.info("Retour rejeté", { userId: user.id, action: "REJECT_RETURN", metadata: { orderId } });
+            revalidatePath("/admin/caisse");
+            return { success: true };
+        } catch (error) {
+            return { success: false, error: (error as Error).message };
+        }
+    }
+);
+
 export const notifyTraiteurAction = withAuth(
     {
         roles: [UserRole.ADMIN, UserRole.CAISSIER],

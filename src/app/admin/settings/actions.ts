@@ -5,9 +5,9 @@ import {
     shopSettings, users, resellers, resellerWallets, resellerTransactions,
     supportTickets, digitalCodes, digitalCodeSlots, clients,
     clientPayments, productVariantSuppliers, auditLogs, orderItems, orders, supplierTransactions, suppliers,
-    whatsappFaqs
+    whatsappFaqs, partnerApiKeys
 } from "@/db/schema";
-import { eq, inArray } from "drizzle-orm";
+import { eq, inArray, desc } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { withAuth, logSecurityAction } from "@/lib/security";
 import { z } from "zod";
@@ -582,5 +582,62 @@ export const saveFaqsAction = withAuth(
         revalidatePath("/admin/settings");
         const updated = await db.query.whatsappFaqs.findMany({ orderBy: (f, { asc }) => [asc(f.id)] });
         return { success: true, faqs: updated };
+    }
+);
+
+// ─── API Key Management (SUPER_ADMIN only) ───────────────────────────────────
+
+export const createApiKeyAction = withAuth(
+    {
+        roles: [UserRole.SUPER_ADMIN],
+        schema: z.object({
+            name: z.string().min(1).max(100),
+            permissions: z.enum(["READ", "READ_WRITE"]),
+        }),
+    },
+    async ({ name, permissions }) => {
+        const rawKey = "rbt_" + crypto.randomBytes(32).toString("hex");
+        const keyHash = crypto.createHash("sha256").update(rawKey).digest("hex");
+
+        const [record] = await db.insert(partnerApiKeys).values({
+            name,
+            keyHash,
+            permissions,
+        }).returning();
+
+        revalidatePath("/admin/settings");
+        return { success: true, data: { key: rawKey, record } };
+    }
+);
+
+export const revokeApiKeyAction = withAuth(
+    {
+        roles: [UserRole.SUPER_ADMIN],
+        schema: z.object({ id: z.number().int().positive() }),
+    },
+    async ({ id }) => {
+        await db.update(partnerApiKeys)
+            .set({ isActive: false })
+            .where(eq(partnerApiKeys.id, id));
+
+        revalidatePath("/admin/settings");
+        return { success: true };
+    }
+);
+
+export const listApiKeysAction = withAuth(
+    { roles: [UserRole.SUPER_ADMIN] },
+    async () => {
+        const keys = await db.query.partnerApiKeys.findMany({
+            orderBy: [desc(partnerApiKeys.createdAt)],
+        });
+
+        const safeKeys = keys.map((k) => ({
+            ...k,
+            keyPrefix: k.keyHash.slice(0, 8) + "...",
+            keyHash: undefined,
+        }));
+
+        return { success: true, data: safeKeys };
     }
 );

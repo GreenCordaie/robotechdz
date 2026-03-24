@@ -208,10 +208,10 @@ const isWindows = process.platform === 'win32';
 const npmCmd = isWindows ? 'npm.cmd' : 'npm';
 
 console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-console.log("  🤖 ROBOTECH ORCHESTRATOR v6.0 - Démarrage...");
+console.log("  🤖 ROBOTECH ORCHESTRATOR v6.1 - Démarrage...");
 console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
 
-// 0. Docker
+// 0. Docker (Vérification et démarrage si besoin)
 console.log(`\n🐳 [0/4] Démarrage des services Docker...`);
 try {
     execSync('docker compose up -d', {
@@ -224,8 +224,7 @@ try {
     console.log(`   ⚠️  Docker : ${e.message?.slice(0, 80)}`);
 }
 
-// 1. Print Service — tourne sur le PC caisse uniquement (poll /api/print-queue)
-let printProcess = null;
+// 1. Print Service
 console.log(`\n🖨️  [1/5] Print Service : géré par RobotechPrint.exe sur le PC caisse.`);
 
 // 2. Next.js
@@ -236,17 +235,18 @@ const nextProcess = spawn(npmCmd, ['run', 'dev'], {
     shell: true
 });
 
-// 3. Tunnel App
-console.log(`🌐 [3/5] Tunnel Cloudflare → localhost:${APP_PORT}...`);
-const appTunnel = spawn('cloudflared', ['tunnel', '--url', `http://localhost:${APP_PORT}`], {
-    shell: true
-});
+// 3. Tunnels Cloudflare
+console.log(`🌐 [3/5] Tunnels Cloudflare en cours...`);
+const appTunnel = spawn('cloudflared', ['tunnel', '--url', `http://localhost:${APP_PORT}`], { shell: true });
+const n8nTunnel = spawn('cloudflared', ['tunnel', '--url', `http://localhost:${N8N_PORT}`], { shell: true });
 
-// 4. Tunnel n8n
-console.log(`🌐 [4/5] Tunnel Cloudflare → n8n:${N8N_PORT}...`);
-const n8nTunnel = spawn('cloudflared', ['tunnel', '--url', `http://localhost:${N8N_PORT}`], {
-    shell: true
-});
+// 4. Fallback Sync (si le tunnel tarde trop ou échoue localement)
+setTimeout(async () => {
+    if (!synced) {
+        console.log("\n   ⏳ Le tunnel tarde... Tentative de démarrage forcée de WAHA");
+        await syncAll(true); // force WAHA even without tunnel
+    }
+}, 15000);
 
 // ─── Détection des URLs ───────────────────────────────────────────────────────
 let appUrl = null;
@@ -281,11 +281,19 @@ n8nTunnel.stderr.on('data', async (d) => {
 });
 
 // ─── Sync tout ───────────────────────────────────────────────────────────────
-async function syncAll() {
-    if (!appUrl || synced) return;
-    synced = true;
+async function syncAll(forceWaha = false) {
+    if ((!appUrl && !forceWaha) || (synced && !forceWaha)) return;
 
-    console.log("\n🔄 [4/4] Synchronisation de toutes les configurations...");
+    // Si on a l'URL, on fait la sync totale une seule fois
+    if (appUrl && !synced) {
+        synced = true;
+        console.log("\n🔄 [4/4] Synchronisation complète (DB + Telegram + WAHA)...");
+    } else if (forceWaha && !synced) {
+        console.log("\n🔄 [4/4] Synchronisation partielle (WAHA uniquement)...");
+    } else {
+        return;
+    }
+
     const sql = postgres(DATABASE_URL);
 
     try {
@@ -293,26 +301,27 @@ async function syncAll() {
         if (!rows.length) { console.error("❌ Pas de shop_settings en DB"); return; }
         const s = rows[0];
 
-        // 1. DB
-        await sql`
-            UPDATE shop_settings SET
-                webhook_url = ${appUrl},
-                whatsapp_webhook_url = ${appUrl + '/api/webhooks/whatsapp'}
-            WHERE id = ${s.id}
-        `;
-        console.log("   ✅ DB → webhook_url + whatsapp_webhook_url mis à jour");
+        // 1. DB & Telegram (uniquement si appUrl est dispo)
+        if (appUrl) {
+            await sql`
+                UPDATE shop_settings SET
+                    webhook_url = ${appUrl},
+                    whatsapp_webhook_url = ${appUrl + '/api/webhooks/whatsapp'}
+                WHERE id = ${s.id}
+            `;
+            console.log("   ✅ DB → webhook_url + whatsapp_webhook_url mis à jour");
 
-        // 2. Telegram webhook (bot reçoit les commandes)
-        if (s.telegram_bot_token) {
-            const tgWebhookUrl = `${appUrl}/api/telegram/webhook`;
-            const res = await fetch(
-                `https://api.telegram.org/bot${s.telegram_bot_token}/setWebhook?url=${tgWebhookUrl}&secret_token=${TELEGRAM_SECRET}`
-            );
-            const data = await res.json();
-            console.log(`   ${data.ok ? '✅' : '❌'} Telegram webhook → ${tgWebhookUrl}`);
+            if (s.telegram_bot_token) {
+                const tgWebhookUrl = `${appUrl}/api/telegram/webhook`;
+                const res = await fetch(
+                    `https://api.telegram.org/bot${s.telegram_bot_token}/setWebhook?url=${tgWebhookUrl}&secret_token=${TELEGRAM_SECRET}`
+                );
+                const data = await res.json();
+                console.log(`   ${data.ok ? '✅' : '❌'} Telegram webhook → ${tgWebhookUrl}`);
+            }
         }
 
-        // 3. Waha
+        // 2. Waha (toujours tenté si syncAll est appelé)
         const wahaOk = await syncWaha();
 
         // 4. Notification Telegram avec le nouveau lien
