@@ -2,6 +2,12 @@
 
 Toutes les modifications notables de ce projet seront documentées dans ce fichier.
 
+## [7.3.3] - 2026-03-24
+
+### 💱 Devises & Statistiques
+- **Support Multi-devises** : Ajout du sélecteur DZD / $ pour le prix d'achat des comptes.
+- **Précision Analytique** : Les statistiques de commande utilisent désormais la devise spécifique de chaque compte pour le calcul de la marge.
+
 ## [7.3.2] - 2026-03-24
 
 ### 🚀 Production & Profits
