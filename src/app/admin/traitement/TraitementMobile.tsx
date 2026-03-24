@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Spinner, Button } from "@heroui/react";
 import { toast } from "react-hot-toast";
-import { getPaidOrders, getFinishedOrders, processOrder, markOrderAsTermine, cancelOrderAction, resendWhatsAppAction } from "../caisse/actions";
+import { getPaidOrders, getFinishedOrders, processOrder, markOrderAsTermine, cancelOrderAction, resendWhatsAppAction, requeueForPrint } from "../caisse/actions";
 import { formatCurrency } from "@/lib/formatters";
 import { useThermalPrinter } from "@/hooks/useThermalPrinter";
 import { useWebUSBPrinter } from "@/hooks/useWebUSBPrinter";
@@ -37,6 +37,15 @@ export default function TraitementMobile({ initialOrders = [], initialFinished =
     const settings = useSettingsStore();
     const webusb = useWebUSBPrinter();
     const { user } = useAuthStore();
+    const handlePrint = async (data: any) => {
+        if (!data?.id) return;
+        const res: any = await requeueForPrint({ orderId: data.id });
+        if (res?.success) {
+            toast.success(`🖨️ Ticket #${data.orderNumber} en file d'impression`);
+        } else {
+            toast.error(`🖨️ Erreur: ${res?.error || 'Impossible de mettre en file'}`);
+        }
+    };
 
     const loadOrders = useCallback(async () => {
         if (view === "pending" && orders.length === 0) setIsLoading(true);
@@ -95,43 +104,16 @@ export default function TraitementMobile({ initialOrders = [], initialFinished =
         return () => clearInterval(interval);
     }, [view, loadOrders]);
 
+    // Consolidated Effect for Auto-Print trigger (Cloud Print Mode)
     useEffect(() => {
         if (shouldPrint && orderForDetail) {
-            const triggerPrint = async () => {
-                const printContent = document.getElementById('thermal-receipt-source');
-                if (!printContent && !webusb.connected) return;
-
-                const printData = {
-                    ...orderForDetail,
-                    cashier: user?.nom || "Admin"
-                };
-
-                // Strategy 1: Direct WebUSB
-                if (webusb.connected) {
-                    try {
-                        const buffer = generateOrderEscPos(printData, settings);
-                        await webusb.print(buffer);
-                        toast.success(`Ticket imprimé (USB) : ${orderForDetail.orderNumber}`, { icon: '⚡' });
-                    } catch (e) {
-                        console.error("Mobile USB fail:", e);
-                        if (printContent) printToIframe(orderForDetail.orderNumber, printContent.innerHTML);
-                    }
-                }
-                // Strategy 2: Standard Iframe
-                else if (printContent) {
-                    const success = printToIframe(orderForDetail.orderNumber, printContent.innerHTML);
-                    if (success) toast.success(`Impression envoyée : ${orderForDetail.orderNumber}`, { icon: '🖨️' });
-                }
-
-                setShouldPrint(false);
-                if (orderForDetail.status === "LIVRE") {
-                    markOrderAsTermine({ id: orderForDetail.id }).then(() => loadOrders());
-                }
-            };
-            const timer = setTimeout(triggerPrint, 500);
-            return () => clearTimeout(timer);
+            handlePrint(orderForDetail);
+            setShouldPrint(false);
+            if (orderForDetail.status === "LIVRE") {
+                markOrderAsTermine({ id: orderForDetail.id }).then(() => loadOrders());
+            }
         }
-    }, [shouldPrint, orderForDetail, loadOrders, printToIframe, webusb, settings, user]);
+    }, [shouldPrint, orderForDetail, loadOrders]);
 
     useEffect(() => {
         if (selectedOrder) {
@@ -431,27 +413,7 @@ export default function TraitementMobile({ initialOrders = [], initialFinished =
                 onClose={() => setIsDetailModalOpen(false)}
                 order={orderForDetail}
                 onRefund={() => handleCancelOrder(orderForDetail.id)}
-                onReprint={async () => {
-                    const printContent = document.getElementById('thermal-receipt-source');
-                    const printData = {
-                        ...orderForDetail,
-                        cashier: user?.nom || "Admin"
-                    };
-
-                    if (webusb.connected) {
-                        try {
-                            const buffer = generateOrderEscPos(printData, settings);
-                            await webusb.print(buffer);
-                            toast.success("Réimpression USB lancée", { icon: '⚡' });
-                        } catch (e) {
-                            console.error("Mobile reprint error:", e);
-                            toast.error("Erreur USB");
-                        }
-                    } else if (printContent) {
-                        toast.loading("Réimpression...", { duration: 2000 });
-                        printToIframe(orderForDetail.orderNumber, printContent.innerHTML);
-                    }
-                }}
+                onReprint={() => handlePrint(orderForDetail)}
             />
         </div>
     );

@@ -31,6 +31,7 @@ interface ThermalReceiptProps {
         showCashier: boolean;
         showDateTime: boolean;
         showLogo: boolean;
+        showTrackQr: boolean;
         logoUrl: string;
     };
 }
@@ -53,6 +54,7 @@ export const ThermalReceiptV2 = ({
         showCashier,
         showDateTime,
         showLogo,
+        showTrackQr,
         logoUrl
     } = settings || storeSettings;
 
@@ -297,6 +299,26 @@ export const ThermalReceiptV2 = ({
                 <div style={{ marginTop: '4mm', letterSpacing: '4px', fontWeight: 900, fontSize: '12pt' }}>
                     *{orderNumber.toUpperCase()}*
                 </div>
+
+                {showTrackQr && (
+                    <div style={{ marginTop: '4mm', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                        <div style={{ fontSize: '7pt', marginBottom: '2mm', fontWeight: 700 }}>SUIVI DE COMMANDE</div>
+                        <div className="receipt-v2-qr-placeholder" style={{
+                            width: '30mm',
+                            height: '30mm',
+                            border: '1px solid black',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: '6pt',
+                            textAlign: 'center'
+                        }}>
+                            [QR CODE DE SUIVI]
+                            {/* Note: Physical printer prints real QR via command, 
+                                this is for preview/browser print representation */}
+                        </div>
+                    </div>
+                )}
             </footer>
         </div>
     );

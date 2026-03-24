@@ -53,6 +53,10 @@ export const payOrder = withAuth(
                 montantPaye: z.number().nonnegative(),
                 clientId: z.number().optional(),
                 itemSuppliers: z.record(z.string(), z.number()).optional(),
+                itemPriceOverrides: z.record(z.string(), z.object({
+                    price: z.string(),
+                    currency: z.string()
+                })).optional(),
                 paymentMethod: z.string().optional(),
             })
         })
@@ -63,7 +67,7 @@ export const payOrder = withAuth(
 
             revalidatePath("/admin/caisse");
             revalidatePath("/admin/traitement");
-            cacheDel(...CACHE_KEYS.DASHBOARD_ALL, CACHE_KEYS.KIOSK_CATALOGUE).catch(() => {});
+            cacheDel(...CACHE_KEYS.DASHBOARD_ALL, CACHE_KEYS.KIOSK_CATALOGUE).catch(() => { });
 
             return { success: true, order: result };
         } catch (error) {
@@ -75,7 +79,7 @@ export const payOrder = withAuth(
 
 export const requeueForPrint = withAuth(
     {
-        roles: [UserRole.ADMIN, UserRole.CAISSIER],
+        roles: [UserRole.ADMIN, UserRole.CAISSIER, UserRole.TRAITEUR],
         schema: z.object({ orderId: z.number() })
     },
     async ({ orderId }) => {
@@ -524,15 +528,43 @@ export const approveReturn = withAuth(
                         typeAction: ClientActionType.REMBOURSEMENT,
                     });
 
-                    // 2. If CREDIT_WALLET, reduce client debt
+                    // 2. Reduce client stats (Spent and Loyalty)
+                    const pointsToDeduct = Math.floor(returnReq.montant / 100);
+                    await tx.execute(
+                        sql`UPDATE clients 
+                            SET total_spent_dzd = GREATEST(0, CAST(total_spent_dzd AS numeric) - ${returnReq.montant})::text,
+                                loyalty_points = GREATEST(0, loyalty_points - ${pointsToDeduct})
+                            WHERE id = ${order.clientId}`
+                    );
+
+                    // 3. If CREDIT_WALLET, reduce client debt
                     if (returnReq.typeRemboursement === "CREDIT_WALLET") {
                         await tx.execute(
-                            sql`UPDATE clients SET total_dette_dzd = GREATEST(0, total_dette_dzd - ${returnReq.montant}) WHERE id = ${order.clientId}`
+                            sql`UPDATE clients SET total_dette_dzd = GREATEST(0, CAST(total_dette_dzd AS numeric) - ${returnReq.montant})::text WHERE id = ${order.clientId}`
                         );
                     }
                 }
 
-                // 3. Restore VENDU digital codes → DISPONIBLE (not UTILISE)
+                // 4. Handle Reseller Balance Restoration
+                if (order.resellerId) {
+                    await tx.execute(
+                        sql`UPDATE resellers SET balance = balance + ${returnReq.montant} WHERE id = ${order.resellerId}`
+                    );
+
+                    // Log transaction for traceability
+                    await tx.insert(supplierTransactions).values({
+                        resellerId: order.resellerId,
+                        orderId: order.id,
+                        type: SupplierTransactionType.RECHARGE,
+                        paymentStatus: "PAID",
+                        paidAt: new Date(),
+                        amount: returnReq.montant,
+                        currency: "DZD",
+                        reason: `Remboursement Commande #${order.id} (Retour Approuvé)`
+                    } as any);
+                }
+
+                // 5. Restore VENDU digital codes → DISPONIBLE
                 const itemIds = (order.items || []).map((i: any) => i.id);
                 if (itemIds.length > 0) {
                     await tx.update(digitalCodes)
@@ -549,7 +581,7 @@ export const approveReturn = withAuth(
                         ));
                 }
 
-                // 4. Update order status and returnRequest
+                // 6. Update order status and returnRequest
                 const updatedReturnRequest: ReturnRequest = {
                     ...returnReq,
                     status: "APPROUVE",
@@ -560,7 +592,7 @@ export const approveReturn = withAuth(
                     .set({ status: OrderStatus.REMBOURSE, returnRequest: updatedReturnRequest } as any)
                     .where(eq(orders.id, orderId));
 
-                // 5. Audit log
+                // 7. Audit log
                 await logSecurityAction({
                     userId: user.id,
                     action: "APPROVE_RETURN",
@@ -570,7 +602,7 @@ export const approveReturn = withAuth(
                     newData: { status: OrderStatus.REMBOURSE, returnRequest: updatedReturnRequest },
                 });
 
-                // 6. Telegram notification (fire-and-forget)
+                // 8. Telegram notification
                 const clientName = order.clientId ? `Client #${order.clientId}` : "Anonyme";
                 sendTelegramNotification(
                     `✅ *Retour Approuvé*\nCommande: #${order.orderNumber}\nMontant: ${returnReq.montant.toLocaleString("fr-DZ")} DA\nType: ${returnReq.typeRemboursement === "ESPECES" ? "Espèces" : "Crédit Wallet"}\nClient: ${clientName}\nPar: ${user.nom}`,
@@ -580,7 +612,8 @@ export const approveReturn = withAuth(
                 logger.info("Retour approuvé", { userId: user.id, action: "APPROVE_RETURN", metadata: { orderId } });
                 revalidatePath("/admin/caisse");
                 revalidatePath("/admin/clients");
-                cacheDel(...CACHE_KEYS.DASHBOARD_ALL, CACHE_KEYS.KIOSK_CATALOGUE).catch(() => {});
+                revalidatePath("/admin/resellers");
+                cacheDel(...CACHE_KEYS.DASHBOARD_ALL, CACHE_KEYS.KIOSK_CATALOGUE).catch(() => { });
                 return { success: true };
             });
         } catch (error) {

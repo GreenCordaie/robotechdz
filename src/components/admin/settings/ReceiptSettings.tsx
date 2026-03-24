@@ -29,6 +29,7 @@ export function ReceiptSettings() {
     const [showCashier, setShowCashier] = useState(store.showCashier);
     const [showDateTime, setShowDateTime] = useState(store.showDateTime);
     const [showLogo, setShowLogo] = useState(store.showLogo);
+    const [showTrackQr, setShowTrackQr] = useState(store.showTrackQr);
     const [isSaving, setIsSaving] = useState(false);
 
     // Sync local state when store hydrates
@@ -40,7 +41,8 @@ export function ReceiptSettings() {
         setShowCashier(store.showCashier);
         setShowDateTime(store.showDateTime);
         setShowLogo(store.showLogo);
-    }, [store.shopName, store.shopTel, store.shopAddress, store.footerMessage, store.showCashier, store.showDateTime, store.showLogo]);
+        setShowTrackQr(store.showTrackQr);
+    }, [store.shopName, store.shopTel, store.shopAddress, store.footerMessage, store.showCashier, store.showDateTime, store.showLogo, store.showTrackQr]);
 
     const handleSave = async () => {
         setIsSaving(true);
@@ -53,6 +55,7 @@ export function ReceiptSettings() {
                 showCashierOnReceipt: showCashier,
                 showDateTimeOnReceipt: showDateTime,
                 showLogoOnReceipt: showLogo,
+                showTrackQrOnReceipt: showTrackQr,
             } as any);
 
             if (res.success) {
@@ -64,6 +67,7 @@ export function ReceiptSettings() {
                     showCashier,
                     showDateTime,
                     showLogo,
+                    showTrackQr,
                 });
                 toast.success("Paramètres d'impression mis à jour");
             } else if ("error" in res) {
@@ -98,6 +102,7 @@ export function ReceiptSettings() {
         showCashier,
         showDateTime,
         showLogo,
+        showTrackQr,
         logoUrl: store.logoUrl
     };
 
@@ -190,18 +195,26 @@ export function ReceiptSettings() {
                                 <UserIcon size={20} className={showCashier ? 'text-[#ec5b13]' : ''} />
                                 <span className="text-[10px] font-black uppercase tracking-widest">Caissier</span>
                             </button>
+
+                            <button
+                                onClick={() => setShowTrackQr(!showTrackQr)}
+                                className={`p-4 rounded-2xl border transition-all flex flex-col items-center gap-3 ${showTrackQr ? 'bg-[#ec5b13]/10 border-[#ec5b13]/30 text-white' : 'bg-black/40 border-white/5 text-slate-500'}`}
+                            >
+                                <Type size={20} className={showTrackQr ? 'text-[#ec5b13]' : ''} />
+                                <span className="text-[10px] font-black uppercase tracking-widest">QR Code</span>
+                            </button>
                         </div>
                     </div>
-
-                    <button
-                        onClick={handleSave}
-                        disabled={isSaving}
-                        className="w-full bg-[#ec5b13] hover:bg-orange-600 text-white font-black py-5 rounded-2xl shadow-xl shadow-[#ec5b13]/30 transition-all transform active:scale-[0.98] mt-10 flex items-center justify-center gap-3 disabled:opacity-50 uppercase tracking-[0.2em] text-xs"
-                    >
-                        {isSaving ? <Loader2 className="animate-spin size-5" /> : <Save className="size-5" />}
-                        {isSaving ? "Enregistrement..." : "Appliquer les Changements"}
-                    </button>
                 </div>
+
+                <button
+                    onClick={handleSave}
+                    disabled={isSaving}
+                    className="w-full bg-[#ec5b13] hover:bg-orange-600 text-white font-black py-5 rounded-2xl shadow-xl shadow-[#ec5b13]/30 transition-all transform active:scale-[0.98] mt-10 flex items-center justify-center gap-3 disabled:opacity-50 uppercase tracking-[0.2em] text-xs"
+                >
+                    {isSaving ? <Loader2 className="animate-spin size-5" /> : <Save className="size-5" />}
+                    {isSaving ? "Enregistrement..." : "Appliquer les Changements"}
+                </button>
             </div>
 
             {/* Preview Column */}

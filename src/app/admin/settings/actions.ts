@@ -50,6 +50,7 @@ export const saveShopSettingsAction = withAuth(
             showCashierOnReceipt: z.boolean().optional(),
             showDateTimeOnReceipt: z.boolean().optional(),
             showLogoOnReceipt: z.boolean().optional(),
+            showTrackQrOnReceipt: z.boolean().optional(),
             accentColor: z.string().optional(),
             logoUrl: z.string().nullable().optional(),
             dashboardLogoUrl: z.string().nullable().optional(),

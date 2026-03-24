@@ -19,7 +19,11 @@ type Transaction = any; // Drizzle transaction type depends on client, using any
 export async function allocateOrderStock(
     tx: Transaction,
     orderId: number,
-    options: { userId?: number, itemSuppliers?: Record<string, number> }
+    options: {
+        userId?: number,
+        itemSuppliers?: Record<string, number>,
+        itemPriceOverrides?: Record<string, { price: string, currency: string }>
+    }
 ) {
     const items = await tx.query.orderItems.findMany({
         where: (table: any, { eq }: any) => eq(table.orderId, orderId),
@@ -68,8 +72,9 @@ export async function allocateOrderStock(
                     .for('update');
 
                 if (availableSlots.length < item.quantity) {
-                    logger.critical("Allocation stock échouée", { action: "STOCK_ALLOCATION_FAILED", metadata: { orderId } });
+                    console.log(`[STOCK] Stock partiel pour ${item.name} (${availableSlots.length}/${item.quantity}). Bascule en livraison manuelle.`);
                     hasManualDelivery = true;
+                    // On ne fait rien : l'article sera traité manuellement par l'admin plus tard
                     continue;
                 }
 
@@ -100,7 +105,7 @@ export async function allocateOrderStock(
                     .for('update');
 
                 if (availableCodes.length < item.quantity) {
-                    logger.critical("Allocation stock échouée", { action: "STOCK_ALLOCATION_FAILED", metadata: { orderId } });
+                    console.log(`[STOCK] Stock épuisé pour ${item.name}. Bascule en livraison manuelle.`);
                     hasManualDelivery = true;
                     continue;
                 }
@@ -128,27 +133,28 @@ export async function allocateOrderStock(
         let purchasePrice: string | null = null;
         let currency: string = "USD";
 
+        // Check if cashier provided a manual override for this item's cost
+        const priceOverride = (options?.itemPriceOverrides as any)?.[item.id.toString()];
+
         if (!supplierId) {
             const variantSuppliers = await tx.query.productVariantSuppliers.findFirst({
                 where: (pvs: any, { eq }: any) => eq(pvs.variantId, item.variantId)
             });
             if (variantSuppliers) {
                 supplierId = variantSuppliers.supplierId;
-                purchasePrice = variantSuppliers.purchasePrice;
-                currency = variantSuppliers.currency;
+                purchasePrice = priceOverride?.price ?? variantSuppliers.purchasePrice;
+                currency = priceOverride?.currency ?? variantSuppliers.currency;
             }
         } else {
             const link = await tx.query.productVariantSuppliers.findFirst({
                 where: (pvs: any, { and, eq }: any) => and(eq(pvs.variantId, item.variantId), eq(pvs.supplierId, supplierId))
             });
-            if (link) {
-                purchasePrice = link.purchasePrice;
-                currency = link.currency;
-            }
+            purchasePrice = priceOverride?.price ?? (link?.purchasePrice || null);
+            currency = priceOverride?.currency ?? (link?.currency || "USD");
         }
 
-        if (supplierId && purchasePrice) {
-            const priceNum = parseFloat(purchasePrice || "0");
+        if (supplierId && (purchasePrice || priceOverride)) {
+            const priceNum = parseFloat(purchasePrice || priceOverride?.price || "0");
             const supplier = await tx.query.suppliers.findFirst({
                 where: (s: any, { eq }: any) => eq(s.id, supplierId)
             });
@@ -161,6 +167,8 @@ export async function allocateOrderStock(
                     for (const pid of uniqueParentIds) {
                         const parent = await tx.query.digitalCodes.findFirst({ where: eq(digitalCodes.id, pid as number) });
                         if (parent && !parent.isDebitCompleted) {
+                            // If it's a sharing variant, priceNum is the account price (if not overridden)
+                            // or the overridden account price.
                             amountToDebit += priceNum;
                             await tx.update(digitalCodes).set({ isDebitCompleted: true }).where(eq(digitalCodes.id, pid as number));
                         }
@@ -169,9 +177,10 @@ export async function allocateOrderStock(
 
                 if (amountToDebit > 0) {
                     let cost = amountToDebit;
-                    if (supplier.currency !== currency) {
-                        if (supplier.currency === 'DZD' && currency === 'USD') cost *= EXCHANGE_RATE;
-                        else if (supplier.currency === 'USD' && currency === 'DZD') cost /= EXCHANGE_RATE;
+                    const debitCurrency = priceOverride?.currency ?? currency;
+                    if (supplier.currency !== debitCurrency) {
+                        if (supplier.currency === 'DZD' && debitCurrency === 'USD') cost *= EXCHANGE_RATE;
+                        else if (supplier.currency === 'USD' && debitCurrency === 'DZD') cost /= EXCHANGE_RATE;
                     }
 
                     await tx.update(suppliers).set({ balance: sql`${suppliers.balance} - ${cost}` }).where(eq(suppliers.id, supplierId));
@@ -181,37 +190,31 @@ export async function allocateOrderStock(
                         type: SupplierTransactionType.ACHAT_STOCK,
                         amount: cost.toFixed(2),
                         currency: supplier.currency!,
-                        reason: `Vente Automatique : ${item.name} (#${orderId})`
+                        reason: `Vente Automatique : ${item.name} (#${orderId}) (Prix Manuel: ${priceOverride ? 'OUI' : 'NON'})`
                     });
 
-                    // Audit: Supplier Debit
                     await logSecurityAction({
                         userId: options.userId || null,
                         action: "AUTO_SUPPLIER_DEBIT",
                         entityType: "SUPPLIER",
                         entityId: supplierId.toString(),
-                        newData: { amount: cost, currency: supplier.currency, orderId }
+                        newData: { amount: cost, currency: supplier.currency, orderId, isManual: !!priceOverride }
                     });
                 }
 
-                // Persist historical cost for margin analytics
-                let finalPurchasePrice = purchasePrice;
+                // --- 📊 Persist historical cost for margin analytics ---
+                let finalPurchasePrice = priceOverride?.price ?? purchasePrice;
+                let finalPurchaseCurrency = priceOverride?.currency ?? currency;
 
-                // If it's a sharing variant, calculate prorated cost per slot
-                if (item.variant?.isSharing && currentItemSlots.length > 0) {
+                // If it's a sharing variant AND NO MANUAL OVERRIDE, calculate prorated cost per slot
+                if (item.variant?.isSharing && currentItemSlots.length > 0 && !priceOverride) {
                     let totalProratedCost = 0;
                     for (const slot of currentItemSlots) {
                         const dcPrice = slot.digitalCode?.purchasePrice ? parseFloat(slot.digitalCode.purchasePrice) : priceNum;
                         const totalSlots = item.variant.totalSlots || 5;
                         totalProratedCost += (dcPrice / totalSlots);
                     }
-                    // Average per unit for orderItems.purchasePrice (which is multiplied by quantity in analytics)
                     finalPurchasePrice = (totalProratedCost / item.quantity).toFixed(2);
-                }
-
-                // Use account currency if sharing
-                let finalPurchaseCurrency = currency;
-                if (item.variant?.isSharing && currentItemSlots.length > 0) {
                     finalPurchaseCurrency = currentItemSlots[0].digitalCode?.purchaseCurrency || currency;
                 }
 

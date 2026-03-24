@@ -39,6 +39,7 @@ export default function CaisseContent() {
     const [newClientName, setNewClientName] = useState("");
     const [newClientPhone, setNewClientPhone] = useState("");
     const [itemSuppliers, setItemSuppliers] = useState<Record<number, number>>({});
+    const [itemPriceOverrides, setItemPriceOverrides] = useState<Record<number, { price: string, currency: string }>>({});
     const [lastReloadTime, setLastReloadTime] = useState<Date>(new Date());
     const [orderToRefund, setOrderToRefund] = useState<any | null>(null);
     const [isRefundModalOpen, setIsRefundModalOpen] = useState(false);
@@ -97,18 +98,24 @@ export default function CaisseContent() {
             setMontantRecu(Number(currentOrder.totalAmount));
             setSelectedClientId(null);
 
-            // AUTO-SELECT BEST MARGIN SUPPLIER
+            // AUTO-SELECT BEST MARGIN SUPPLIER & INIT OVERRIDES
             const initialSuppliers: Record<number, number> = {};
+            const initialOverrides: Record<number, { price: string, currency: string }> = {};
+
             (currentOrder.items as any[]).forEach(item => {
                 if (item.variant?.variantSuppliers?.length > 0) {
-                    // Sort by cost (simplified: assumes same currency for current cheapest logic if both USD or both DZD)
                     const cheapest = [...item.variant.variantSuppliers].sort((a, b) =>
                         parseFloat(a.purchasePrice) - parseFloat(b.purchasePrice)
                     )[0];
                     initialSuppliers[item.id] = cheapest.supplierId;
+                    initialOverrides[item.id] = {
+                        price: cheapest.purchasePrice,
+                        currency: cheapest.currency
+                    };
                 }
             });
             setItemSuppliers(initialSuppliers);
+            setItemPriceOverrides(initialOverrides);
         }
     }, [currentOrder]);
 
@@ -135,6 +142,7 @@ export default function CaisseContent() {
                     montantPaye: effectiveRecu,
                     clientId: finalClientId || undefined,
                     itemSuppliers,
+                    itemPriceOverrides: itemPriceOverrides as any,
                     paymentMethod: paymentMethodLabel,
                 }
             });
@@ -555,21 +563,61 @@ export default function CaisseContent() {
                                             </div>
                                         </div>
 
-                                        {/* Supplier Selector */}
+                                        {/* Supplier & Price Override Section */}
                                         {linkedSuppliers.length > 0 && (
-                                            <div className="flex items-center gap-2 pt-2 border-t border-[#ec5b13]/10">
-                                                <span className="text-[10px] font-bold text-slate-500 uppercase shrink-0">Acheter via:</span>
-                                                <select
-                                                    className="flex-1 bg-black/40 border border-[#ec5b13]/20 rounded-lg px-2 py-1 text-[11px] text-white outline-none cursor-pointer hover:border-[#ec5b13]/50 transition-colors"
-                                                    value={itemSuppliers[item.id] || ""}
-                                                    onChange={(e) => setItemSuppliers(prev => ({ ...prev, [item.id]: parseInt(e.target.value) }))}
-                                                >
-                                                    {linkedSuppliers.map((ls: any) => (
-                                                        <option key={ls.supplier.id} value={ls.supplier.id} className="bg-[#1a1614]">
-                                                            {ls.supplier.name} ({formatCurrency(ls.purchasePrice, ls.currency)})
-                                                        </option>
-                                                    ))}
-                                                </select>
+                                            <div className="flex flex-col gap-2 pt-2 border-t border-[#ec5b13]/10">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-[10px] font-bold text-slate-500 uppercase shrink-0">Fournisseur :</span>
+                                                    <select
+                                                        className="flex-1 bg-black/40 border border-[#ec5b13]/20 rounded-lg px-2 py-1 text-[11px] text-white outline-none cursor-pointer hover:border-[#ec5b13]/50 transition-colors"
+                                                        value={itemSuppliers[item.id] || ""}
+                                                        onChange={(e) => {
+                                                            const sid = parseInt(e.target.value);
+                                                            setItemSuppliers(prev => ({ ...prev, [item.id]: sid }));
+                                                            const s = linkedSuppliers.find((ls: any) => ls.supplierId === sid);
+                                                            if (s) {
+                                                                setItemPriceOverrides(prev => ({
+                                                                    ...prev,
+                                                                    [item.id]: { price: s.purchasePrice, currency: s.currency }
+                                                                }));
+                                                            }
+                                                        }}
+                                                    >
+                                                        <option value="" className="bg-[#1a1614]">Aucun</option>
+                                                        {linkedSuppliers.map((ls: any) => (
+                                                            <option key={ls.supplier.id} value={ls.supplier.id} className="bg-[#1a1614]">
+                                                                {ls.supplier.name}
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-[10px] font-bold text-slate-500 uppercase shrink-0">Prix Achat :</span>
+                                                    <div className="flex-1 flex gap-1 items-center">
+                                                        <input
+                                                            className="flex-1 bg-black/40 border border-[#ec5b13]/20 rounded-lg px-2 py-1 text-[11px] text-white outline-none focus:border-[#ec5b13]/50 transition-colors"
+                                                            type="text"
+                                                            value={itemPriceOverrides[item.id]?.price || ""}
+                                                            placeholder="0.00"
+                                                            onChange={(e) => setItemPriceOverrides(prev => ({
+                                                                ...prev,
+                                                                [item.id]: { ...prev[item.id], price: e.target.value }
+                                                            }))}
+                                                        />
+                                                        <select
+                                                            className="bg-black/40 border border-[#ec5b13]/20 rounded-lg px-1 py-1 text-[11px] text-white outline-none cursor-pointer"
+                                                            value={itemPriceOverrides[item.id]?.currency || "USD"}
+                                                            onChange={(e) => setItemPriceOverrides(prev => ({
+                                                                ...prev,
+                                                                [item.id]: { ...prev[item.id], currency: e.target.value }
+                                                            }))}
+                                                        >
+                                                            <option value="USD">$</option>
+                                                            <option value="DZD">DA</option>
+                                                        </select>
+                                                    </div>
+                                                </div>
                                             </div>
                                         )}
                                     </div>
@@ -749,13 +797,13 @@ export default function CaisseContent() {
                     });
 
                     const dataToPrint = {
-                        id:            orderForDetail.id,
-                        orderNumber:   orderForDetail.orderNumber,
-                        date:          orderForDetail.createdAt,
-                        items:         enrichedItems,
-                        totalAmount:   orderForDetail.totalAmount,
+                        id: orderForDetail.id,
+                        orderNumber: orderForDetail.orderNumber,
+                        date: orderForDetail.createdAt,
+                        items: enrichedItems,
+                        totalAmount: orderForDetail.totalAmount,
                         paymentMethod: orderForDetail.paymentMethod || "Espèces",
-                        cashier:       user?.nom || "Admin"
+                        cashier: user?.nom || "Admin"
                     };
 
                     await handlePrint(dataToPrint);

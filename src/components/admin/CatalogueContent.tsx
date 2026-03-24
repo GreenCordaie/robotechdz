@@ -296,7 +296,7 @@ export default function CatalogueContent({
     const paginatedProducts = showLowStockOnly
         ? products.filter((p: Product) =>
             p.variants.some((v: any) => (variantStockCounts[v.id] ?? 0) <= stockAlertThreshold)
-          )
+        )
         : products;
 
     const EXCHANGE_RATE_USD_DZD = 245;
@@ -502,7 +502,6 @@ export default function CatalogueContent({
                                     <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-500">Produit</th>
                                     <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-500">Catégorie</th>
                                     <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-500 text-right">Prix de Vente</th>
-                                    <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-500 text-right">Profit Est.</th>
                                     <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-500 text-center">Actions</th>
                                 </tr>
                             </thead>
@@ -513,27 +512,6 @@ export default function CatalogueContent({
                                         ? Math.min(...product.variants.map(v => Number(v.salePriceDzd)))
                                         : 0;
 
-                                    // Improved profit calculation across variants for display
-                                    const avgProfit = product.variants.length > 0
-                                        ? product.variants.reduce((acc, v) => {
-                                            const sellPrice = parseFloat(v.salePriceDzd);
-                                            const totalRevenue = v.isSharing ? sellPrice * (v.totalSlots || 1) : sellPrice;
-
-                                            // Find the primary linked supplier for this variant
-                                            const linkedSup = v.variantSuppliers?.[0];
-                                            if (!linkedSup) return acc + totalRevenue; // Assume 100% profit if no cost data
-
-                                            const buyPrice = parseFloat(linkedSup.purchasePrice || "0");
-                                            let buyPriceDzd = buyPrice;
-
-                                            if (linkedSup.currency === 'USD') {
-                                                const rate = EXCHANGE_RATE_USD_DZD;
-                                                buyPriceDzd = buyPrice * rate;
-                                            }
-
-                                            return acc + (totalRevenue - buyPriceDzd);
-                                        }, 0) / product.variants.length
-                                        : 0;
 
                                     return (
                                         <tr key={product.id} className="hover:bg-white/5 transition-colors group">
@@ -572,11 +550,6 @@ export default function CatalogueContent({
                                             </td>
                                             <td className="px-6 py-4 text-right">
                                                 <p className="text-sm font-black text-white whitespace-nowrap">{formatCurrency(minPrice, 'DZD')}</p>
-                                            </td>
-                                            <td className="px-6 py-4 text-right">
-                                                <p className={`text-sm font-black whitespace-nowrap ${avgProfit > 0 ? 'text-green-500' : 'text-red-500'}`}>
-                                                    {avgProfit > 0 ? '+' : ''}{formatCurrency(Math.round(avgProfit), 'DZD')}
-                                                </p>
                                             </td>
                                             <td className="px-6 py-4 text-center">
                                                 <Dropdown classNames={{ content: "bg-[#161616] border border-[#262626]" }}>

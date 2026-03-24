@@ -15,11 +15,22 @@ export default function KioskContent() {
 
     const { fetchSettings } = useSettingsStore();
 
-    // Initial data fetch
-    useEffect(() => {
+    const refreshData = React.useCallback(() => {
         getKioskData().then(setData).catch(console.error);
         fetchSettings();
     }, [fetchSettings]);
+
+    // Initial and conditional fetch
+    useEffect(() => {
+        refreshData();
+    }, [refreshData]);
+
+    // Rafraîchir les données quand on revient de la confirmation ou de l'idle
+    useEffect(() => {
+        if (step === "CATALOGUE" || step === "IDLE") {
+            refreshData();
+        }
+    }, [step, refreshData]);
 
     // Inactivity timeout: 60s
     useEffect(() => {

@@ -413,41 +413,59 @@ export default function AnalyticsContent({ initialOverview, initialRankings }: A
                             <span>Rentabilité Produits</span>
                         </div>
                     }>
-                        <Table aria-label="Détails Ventes Produits" className="mt-4" removeWrapper shadow="none">
+                        <Table aria-label="Rentabilité Produits" className="mt-4" removeWrapper shadow="none">
                             <TableHeader>
                                 <TableColumn>PRODUIT / VARIANTE</TableColumn>
-                                <TableColumn>UNITÉS VENDUES</TableColumn>
+                                <TableColumn>VENTES</TableColumn>
                                 <TableColumn>CA GÉNÉRÉ</TableColumn>
-                                <TableColumn>POPULARITÉ</TableColumn>
+                                <TableColumn>COÛT TOTAL</TableColumn>
+                                <TableColumn>PROFIT NET</TableColumn>
+                                <TableColumn>MARGE</TableColumn>
                             </TableHeader>
                             <TableBody>
-                                {topProducts.map((p: any) => (
-                                    <TableRow key={p.productId + p.variantName}>
-                                        <TableCell>
-                                            <div className="flex flex-col">
-                                                <span className="font-medium">{p.productName}</span>
-                                                <span className="text-tiny text-default-400">{p.variantName}</span>
-                                            </div>
-                                        </TableCell>
-                                        <TableCell>{p.volume}</TableCell>
-                                        <TableCell>
-                                            {formatCurrency(parseFloat(p.revenue))}
-                                        </TableCell>
-                                        <TableCell>
-                                            <div className="flex items-center gap-2">
-                                                <div className="w-24 h-2 bg-default-100 rounded-full overflow-hidden">
-                                                    <div
-                                                        className="h-full bg-orange-500"
-                                                        style={{ width: `${Math.min((p.volume / topProducts[0].volume) * 100, 100)}%` }}
-                                                    />
+                                {topProducts.map((p: any) => {
+                                    const rev = parseFloat(p.revenue) || 0;
+                                    const cost = parseFloat(p.cost) || 0;
+                                    const profit = parseFloat(p.profit) || (rev - cost);
+                                    const marginPct = rev > 0 ? (profit / rev) * 100 : 0;
+
+                                    return (
+                                        <TableRow key={p.productId + p.variantName}>
+                                            <TableCell>
+                                                <div className="flex flex-col">
+                                                    <span className="font-medium">{p.productName}</span>
+                                                    <span className="text-tiny text-default-400">{p.variantName}</span>
                                                 </div>
-                                                <span className="text-tiny text-default-400">
-                                                    {Math.round((p.volume / topProducts[0].volume) * 100)}%
+                                            </TableCell>
+                                            <TableCell>
+                                                <Chip size="sm" variant="flat" color="default">
+                                                    {p.volume} unités
+                                                </Chip>
+                                            </TableCell>
+                                            <TableCell>
+                                                <span className="font-bold text-orange-500">{formatCurrency(rev)}</span>
+                                            </TableCell>
+                                            <TableCell>
+                                                <span className="text-default-400">{formatCurrency(cost)}</span>
+                                            </TableCell>
+                                            <TableCell>
+                                                <span className={`font-bold ${profit >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                                                    {profit >= 0 ? '+' : ''}{formatCurrency(Math.round(profit))}
                                                 </span>
-                                            </div>
-                                        </TableCell>
-                                    </TableRow>
-                                ))}
+                                            </TableCell>
+                                            <TableCell>
+                                                <Chip
+                                                    size="sm"
+                                                    variant="flat"
+                                                    color={marginPct >= 30 ? "success" : marginPct >= 10 ? "warning" : "danger"}
+                                                    className="font-bold"
+                                                >
+                                                    {marginPct.toFixed(1)}%
+                                                </Chip>
+                                            </TableCell>
+                                        </TableRow>
+                                    );
+                                })}
                             </TableBody>
                         </Table>
                     </Tab>

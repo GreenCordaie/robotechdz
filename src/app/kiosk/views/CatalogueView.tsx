@@ -21,20 +21,20 @@ const FALLBACK_CATEGORIES = [
 
 // ─── Category icon mapping (T017) ──────────────────────────────────────────
 const ICON_MAP: Record<string, string> = {
-    gaming:    "sports_esports",
-    jeux:      "sports_esports",
-    game:      "sports_esports",
+    gaming: "sports_esports",
+    jeux: "sports_esports",
+    game: "sports_esports",
     streaming: "live_tv",
-    stream:    "live_tv",
-    video:     "live_tv",
-    carte:     "redeem",
-    card:      "redeem",
-    cadeau:    "redeem",
-    gift:      "redeem",
-    recharge:  "smartphone",
-    mobile:    "smartphone",
-    musique:   "music_note",
-    music:     "music_note",
+    stream: "live_tv",
+    video: "live_tv",
+    carte: "redeem",
+    card: "redeem",
+    cadeau: "redeem",
+    gift: "redeem",
+    recharge: "smartphone",
+    mobile: "smartphone",
+    musique: "music_note",
+    music: "music_note",
 };
 
 function getCategoryIcon(name: string): string {
@@ -54,12 +54,12 @@ export default function CatalogueView({ products, categories }: CatalogueViewPro
 
     // T006 — States locaux
     const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null);
-    const [searchTerm,         setSearchTerm]         = useState("");
-    const [selectedProduct,    setSelectedProduct]     = useState<any | null>(null);
+    const [searchTerm, setSearchTerm] = useState("");
+    const [selectedProduct, setSelectedProduct] = useState<any | null>(null);
 
     // Catégories à afficher — fallback si la DB est vide
     const displayCategories = categories.length > 0 ? categories : FALLBACK_CATEGORIES;
-    const usingFallback     = categories.length === 0;
+    const usingFallback = categories.length === 0;
 
     // T008 — Filtrage
     const filteredProducts = useMemo(() => {
@@ -75,7 +75,7 @@ export default function CatalogueView({ products, categories }: CatalogueViewPro
     }, [products, selectedCategoryId, searchTerm, usingFallback]);
 
     const totalAmount = getTotalAmount();
-    const totalItems  = cart.reduce((sum, item) => sum + item.quantity, 0);
+    const totalItems = cart.reduce((sum, item) => sum + item.quantity, 0);
 
     // ─── Render ─────────────────────────────────────────────────────────────
     return (
@@ -112,11 +112,10 @@ export default function CatalogueView({ products, categories }: CatalogueViewPro
                         {/* Chip "Tout" */}
                         <button
                             onClick={() => setSelectedCategoryId(null)}
-                            className={`flex items-center gap-2 px-6 py-3 rounded-full font-semibold text-sm whitespace-nowrap transition-colors ${
-                                selectedCategoryId === null
+                            className={`flex items-center gap-2 px-6 py-3 rounded-full font-semibold text-sm whitespace-nowrap transition-colors ${selectedCategoryId === null
                                     ? "bg-[#FF8000] text-white shadow-lg shadow-[#FF8000]/20"
                                     : "bg-white text-gray-800 border border-gray-200 hover:bg-gray-50"
-                            }`}
+                                }`}
                         >
                             <span className="material-symbols-outlined !text-[18px] leading-none">apps</span>
                             Tout
@@ -127,11 +126,10 @@ export default function CatalogueView({ products, categories }: CatalogueViewPro
                             <button
                                 key={cat.id}
                                 onClick={() => setSelectedCategoryId(cat.id)}
-                                className={`flex items-center gap-2 px-6 py-3 rounded-full font-semibold text-sm whitespace-nowrap transition-colors ${
-                                    selectedCategoryId === cat.id
+                                className={`flex items-center gap-2 px-6 py-3 rounded-full font-semibold text-sm whitespace-nowrap transition-colors ${selectedCategoryId === cat.id
                                         ? "bg-[#FF8000] text-white shadow-lg shadow-[#FF8000]/20"
                                         : "bg-white text-gray-800 border border-gray-200 hover:bg-gray-50"
-                                }`}
+                                    }`}
                             >
                                 <span className="material-symbols-outlined !text-[18px] leading-none">
                                     {getCategoryIcon(cat.name)}
@@ -162,19 +160,25 @@ export default function CatalogueView({ products, categories }: CatalogueViewPro
                             <h2 className="text-2xl font-bold text-gray-900 mb-6">Nos Produits</h2>
                             <div className="grid grid-cols-[repeat(auto-fill,243px)] gap-6 justify-center">
                                 {filteredProducts.map((product) => {
-                                    const variants   = product.variants || [];
+                                    const variants = product.variants || [];
                                     const totalStock = variants.reduce(
                                         (acc: number, v: any) => acc + (v.stockCount || 0), 0
                                     );
-                                    const isOutOfStock = !product.isManualDelivery && totalStock === 0 && variants.length > 0;
-                                    const minPrice     = variants.length > 0
+
+                                    // Nouveau : Un produit n'est en rupture QUE s'il n'est pas manuel ET n'a pas de stock
+                                    // Si isManualDelivery est true, on n'est jamais en rupture
+                                    // Si totalStock === 0 mais que c'est un produit auto, il bascule en manuel (donc pas de blocage)
+                                    const isAutoAndOutOfStock = !product.isManualDelivery && totalStock === 0 && variants.length > 0;
+                                    const isManual = product.isManualDelivery || totalStock === 0;
+
+                                    const minPrice = variants.length > 0
                                         ? Math.min(...variants.map((v: any) => Number(v.salePriceDzd) || 0))
                                         : null;
 
                                     return (
                                         <div
                                             key={product.id}
-                                            onClick={() => !isOutOfStock && setSelectedProduct(product)}
+                                            onClick={() => setSelectedProduct(product)}
                                             className="w-[243px] bg-white rounded-[24px] overflow-hidden shadow-sm hover:shadow-md transition-shadow flex flex-col active:scale-[0.98] cursor-pointer group"
                                         >
                                             {/* Image fixe 243×228 */}
@@ -186,27 +190,42 @@ export default function CatalogueView({ products, categories }: CatalogueViewPro
                                                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                                                     />
                                                 )}
+
+                                                {/* Badge type de livraison sur l'image */}
+                                                <div className="absolute top-4 left-4 flex flex-col gap-2">
+                                                    {isManual ? (
+                                                        <div className="flex items-center gap-1 px-3 py-1.5 bg-blue-600/90 backdrop-blur-md text-white rounded-full text-[10px] font-black uppercase tracking-wider shadow-lg">
+                                                            <span className="material-symbols-outlined !text-[14px]">person</span>
+                                                            Manuel
+                                                        </div>
+                                                    ) : (
+                                                        <div className="flex items-center gap-1 px-3 py-1.5 bg-emerald-500/90 backdrop-blur-md text-white rounded-full text-[10px] font-black uppercase tracking-wider shadow-lg">
+                                                            <span className="material-symbols-outlined !text-[14px]">bolt</span>
+                                                            Instant
+                                                        </div>
+                                                    )}
+                                                </div>
                                             </div>
 
                                             {/* Info */}
                                             <div className="px-4 py-3 flex flex-col gap-1">
                                                 <h3 className="text-sm font-black text-black leading-tight uppercase tracking-tight truncate">{product.name}</h3>
                                                 <div className="flex items-center justify-between mt-1">
-                                                    {isOutOfStock || minPrice === null ? (
+                                                    {minPrice === null ? (
                                                         <div className="px-2 py-0.5 bg-rose-50 text-[8px] font-black text-rose-600 rounded-full border border-rose-100 uppercase tracking-wider">
-                                                            Rupture
+                                                            Indisponible
                                                         </div>
                                                     ) : (
                                                         <>
                                                             <div>
-                                                                <p className="text-[10px] text-black/40 font-semibold uppercase tracking-wider">From</p>
+                                                                <p className="text-[10px] text-black/40 font-semibold uppercase tracking-wider">À partir de</p>
                                                                 <p className="text-[#FF8000] text-sm font-black leading-tight">
                                                                     {formatCurrency(minPrice, "DZD")}
                                                                 </p>
                                                             </div>
                                                             <button
                                                                 onClick={(e) => { e.stopPropagation(); setSelectedProduct(product); }}
-                                                                className="bg-[#FF8000] hover:bg-[#E67300] text-white w-3 h-3 rounded-full shadow transition-colors flex items-center justify-center active:scale-95 shrink-0"
+                                                                className="bg-[#FF8000] hover:bg-[#E67300] text-white w-8 h-8 rounded-full shadow transition-colors flex items-center justify-center active:scale-95 shrink-0"
                                                             >
                                                                 <span className="material-symbols-outlined !text-sm leading-none">add</span>
                                                             </button>

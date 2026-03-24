@@ -97,15 +97,22 @@ export default function CatalogueMobile({
     };
 
     const handleExportCSV = () => {
-        const headers = ["Produit", "Catégorie", "Prix d'achat (Moyen)", "Prix de vente", "Marge", "Statut"];
-        const rows = filteredVariants.map((v: any) => [
-            `${v.product.name} - ${v.name}`,
-            v.product.category?.name || "N/A",
-            parseFloat(v.purchasePrice).toFixed(2),
-            parseFloat(v.salePriceDzd).toFixed(2),
-            (parseFloat(v.salePriceDzd) - parseFloat(v.purchasePrice)).toFixed(2),
-            v.product.status
-        ]);
+        const headers = ["Produit", "Catégorie", "Prix d'achat (DZD)", "Prix de vente", "Profit", "Statut"];
+        const rows = filteredVariants.map((v: any) => {
+            const linkedSup = v.variantSuppliers?.[0];
+            const buyPrice = linkedSup ? parseFloat(linkedSup.purchasePrice || "0") : 0;
+            const buyPriceDzd = linkedSup?.currency === 'USD' ? buyPrice * EXCHANGE_RATE_USD_DZD : buyPrice;
+            const sellPrice = parseFloat(v.salePriceDzd);
+            const revenue = v.isSharing ? sellPrice * (v.totalSlots || 1) : sellPrice;
+            return [
+                `${v.product.name} - ${v.name}`,
+                v.product.category?.name || "N/A",
+                buyPriceDzd.toFixed(2),
+                sellPrice.toFixed(2),
+                (revenue - buyPriceDzd).toFixed(2),
+                v.product.status
+            ];
+        });
 
         const csvContent = [headers, ...rows].map(e => e.join(",")).join("\n");
         const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -134,12 +141,6 @@ export default function CatalogueMobile({
             return matchesSearch && matchesCatalog && matchesStatus;
         });
     }, [allVariants, searchTerm, activeTab, filterStatus]);
-
-    const avgProfit = useMemo(() => {
-        const valid = filteredVariants.filter((v: any) => parseFloat(v.purchasePrice) > 0);
-        if (valid.length === 0) return 0;
-        return valid.reduce((acc: number, v: any) => acc + (parseFloat(v.salePriceDzd) - parseFloat(v.purchasePrice)), 0) / valid.length;
-    }, [filteredVariants]);
 
     const filteredProducts = useMemo(() => {
         return initialProducts.filter((p: any) => {
@@ -190,13 +191,6 @@ export default function CatalogueMobile({
                     <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-500">Soldes Fournisseurs</h3>
                 </div>
                 <div className="flex gap-3 overflow-x-auto pb-4 no-scrollbar">
-                    {/* Profit Summary Card */}
-                    <div className="min-w-[140px] p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-3xl space-y-1">
-                        <p className="text-[9px] font-bold text-emerald-500 uppercase">Marge Moyenne</p>
-                        <p className="text-sm font-black text-emerald-400">
-                            {formatCurrency(avgProfit, 'DZD')}
-                        </p>
-                    </div>
 
                     {suppliers.map((s: any) => {
                         const bal = parseFloat(s.balance || "0");

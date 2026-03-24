@@ -113,8 +113,6 @@ function buildWhatsAppMessage(order: any, shopName: string, appUrl: string): str
     // ── Footer ──
     lines.push(sep);
     lines.push(``);
-    lines.push(`📦 *Suivre ma commande :*`);
-    lines.push(`${appUrl}/suivi/${encodeURIComponent(order.orderNumber)}`);
     lines.push(``);
     lines.push(`💬 _Un problème ? Répondez à ce message, notre équipe vous aide 24h/24._`);
     lines.push(``);

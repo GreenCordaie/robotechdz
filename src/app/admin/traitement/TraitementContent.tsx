@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Spinner } from "@heroui/react";
 import { toast } from "react-hot-toast";
-import { getPaidOrders, getFinishedOrders, processOrder, markOrderAsTermine, cancelOrderAction, resendWhatsAppAction } from "../caisse/actions";
+import { getPaidOrders, getFinishedOrders, processOrder, markOrderAsTermine, cancelOrderAction, resendWhatsAppAction, requeueForPrint } from "../caisse/actions";
 import { attribuerSlotAutomatiqueAction } from "../comptes-partages/actions";
 import { ThermalReceiptV2 } from "@/components/admin/receipt/ThermalReceiptV2";
 import OrderDetailModal from "@/components/admin/modals/OrderDetailModal";
@@ -42,6 +42,15 @@ export default function TraitementContent({ initialOrders = [], initialFinished 
     const { user } = useAuthStore();
 
     const [isAssigning, setIsAssigning] = useState<Record<string, boolean>>({});
+    const handlePrint = async (data: any) => {
+        if (!data?.id) return;
+        const res: any = await requeueForPrint({ orderId: data.id });
+        if (res?.success) {
+            toast.success(`🖨️ Ticket #${data.orderNumber} en file d'impression`);
+        } else {
+            toast.error(`🖨️ Erreur: ${res?.error || 'Impossible de mettre en file'}`);
+        }
+    };
 
     const handleAutoAssign = async (orderItemId: number, variantId: number, slotIndex: number) => {
         const key = `${orderItemId}-${slotIndex}`;
@@ -133,53 +142,16 @@ export default function TraitementContent({ initialOrders = [], initialFinished 
         return () => clearInterval(interval);
     }, [view, loadOrders]);
 
-    // Consolidated Effect for Auto-Print trigger (Robust Hybrid Mode)
+    // Consolidated Effect for Auto-Print trigger (Cloud Print Mode)
     useEffect(() => {
         if (shouldPrint && orderForDetail) {
-            const triggerPrint = async () => {
-                // Prepare data for ESC/POS with cashier info
-                const printData = {
-                    ...orderForDetail,
-                    cashier: user?.nom || "Admin"
-                };
-
-                // Strategy 1: WebUSB (Direct)
-                if (webusb.connected) {
-                    try {
-                        const buffer = generateOrderEscPos(printData, settings);
-                        const success = await webusb.print(buffer);
-                        if (success) {
-                            toast.success(`Ticket imprimé (USB) : ${orderForDetail.orderNumber}`, { icon: '⚡' });
-                        } else {
-                            throw new Error("USB failure");
-                        }
-                    } catch (err) {
-                        console.warn("WebUSB failed, fallback to Iframe", err);
-                        // Fallback logic handled below
-                    }
-                }
-
-                // Strategy 2: Iframe Fallback (Standard)
-                if (!webusb.connected) {
-                    const printContent = document.getElementById('thermal-receipt-source');
-                    if (printContent) {
-                        const success = printToIframe(orderForDetail.orderNumber, printContent.innerHTML);
-                        if (success) {
-                            toast.success(`Impression envoyée : ${orderForDetail.orderNumber}`, { icon: '🖨️' });
-                        }
-                    }
-                }
-
-                setShouldPrint(false);
-                if (orderForDetail.status === "LIVRE") {
-                    markOrderAsTermine({ id: orderForDetail.id }).then(() => loadOrders());
-                }
-            };
-
-            const timer = setTimeout(triggerPrint, 500);
-            return () => clearTimeout(timer);
+            handlePrint(orderForDetail);
+            setShouldPrint(false);
+            if (orderForDetail.status === "LIVRE") {
+                markOrderAsTermine({ id: orderForDetail.id }).then(() => loadOrders());
+            }
         }
-    }, [shouldPrint, orderForDetail, loadOrders, printToIframe, webusb, settings, user]);
+    }, [shouldPrint, orderForDetail, loadOrders]);
 
     const handleCodeChange = (itemId: string, index: number, value: string) => {
         setCodes(prev => ({
@@ -455,21 +427,7 @@ export default function TraitementContent({ initialOrders = [], initialFinished 
                                             )}
                                             <button
                                                 aria-label="Réimprimer le ticket"
-                                                onClick={async () => {
-                                                    // Robust Reprint Logic
-                                                    if (webusb.connected) {
-                                                        const printData = { ...selectedOrder, cashier: user?.nom || "Admin" };
-                                                        const buffer = generateOrderEscPos(printData, settings);
-                                                        await webusb.print(buffer);
-                                                        toast.success("Réimpression USB lancée");
-                                                    } else {
-                                                        const printContent = document.getElementById('thermal-receipt-source');
-                                                        if (printContent) {
-                                                            printToIframe(selectedOrder.orderNumber, printContent.innerHTML);
-                                                            toast.success("Impression demandée...");
-                                                        }
-                                                    }
-                                                }}
+                                                onClick={() => handlePrint(selectedOrder)}
                                                 className="p-2.5 rounded-xl bg-[#2a1b15] border border-white/5 text-slate-400 hover:text-white transition-colors"
                                             >
                                                 <span className="material-symbols-outlined">print</span>
@@ -616,20 +574,7 @@ export default function TraitementContent({ initialOrders = [], initialFinished 
                 onClose={() => setIsDetailModalOpen(false)}
                 order={orderForDetail}
                 onRefund={() => handleCancelOrder(orderForDetail.id)}
-                onReprint={async () => {
-                    if (webusb.connected) {
-                        const printData = { ...orderForDetail, cashier: user?.nom || "Admin" };
-                        const buffer = generateOrderEscPos(printData, settings);
-                        await webusb.print(buffer);
-                        toast.success("Réimpression USB lancée");
-                    } else {
-                        const printContent = document.getElementById('thermal-receipt-source');
-                        if (printContent) {
-                            toast.loading("Lancement réimpression...", { duration: 2000 });
-                            printToIframe(orderForDetail.orderNumber, printContent.innerHTML);
-                        }
-                    }
-                }}
+                onReprint={() => handlePrint(orderForDetail)}
             />
         </div>
     );

@@ -6,7 +6,7 @@ import { revalidatePath } from "next/cache";
 import { sql, eq, and, count, exists } from "drizzle-orm";
 import { sendTelegramNotification } from "@/lib/telegram";
 import { sendPushToRoleAction } from "../admin/push/actions";
-import { cacheGet, cacheSet, CACHE_KEYS, CACHE_TTL } from "@/lib/redis";
+import { cacheGet, cacheSet, cacheDel, CACHE_KEYS, CACHE_TTL } from "@/lib/redis";
 
 export async function createKioskOrder(
     items: { variantId: number; quantity: number; name: string; customData?: string; playerNickname?: string }[],
@@ -71,6 +71,9 @@ export async function createKioskOrder(
 
             return { ...order, verifiedTotal: realTotalAmount };
         });
+
+        // Invalider le cache catalogue pour forcer le refresh des stocks
+        await cacheDel(CACHE_KEYS.KIOSK_CATALOGUE);
 
         revalidatePath("/admin/caisse");
 
@@ -164,7 +167,9 @@ export async function getKioskData() {
             isSharing: v.isSharing,
             totalSlots: v.totalSlots,
             stockCount: v.isSharing ? (sharingMap.get(v.id) || 0) : (standardMap.get(v.id) || 0)
-        }))
+        })),
+        // On s'assure que isManualDelivery est explicitement passé
+        isManualDelivery: !!p.isManualDelivery
     }));
 
     const categoriesList = await db.query.categories.findMany();
@@ -172,7 +177,7 @@ export async function getKioskData() {
     const result = { products: safeProducts, categories: categoriesList };
 
     // Fire-and-forget: populate cache after DB fetch
-    cacheSet(CACHE_KEYS.KIOSK_CATALOGUE, result, CACHE_TTL.KIOSK_CATALOGUE).catch(() => {});
+    cacheSet(CACHE_KEYS.KIOSK_CATALOGUE, result, CACHE_TTL.KIOSK_CATALOGUE).catch(() => { });
 
     return result;
 }

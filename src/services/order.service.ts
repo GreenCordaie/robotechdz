@@ -18,6 +18,7 @@ export class OrderService {
         montantPaye: number;
         clientId?: number;
         itemSuppliers?: Record<string, number>;
+        itemPriceOverrides?: Record<string, { price: string, currency: string }>;
         paymentMethod?: string;
     }) {
         const remise = options.remise || 0;
@@ -39,7 +40,29 @@ export class OrderService {
                 status = montantPaye === 0 ? OrderStatus.NON_PAYE : OrderStatus.PARTIEL;
             }
 
-            // 1. Update Order Status
+            // 3. Fetch Enriched Order for credential checks and return
+            const finalOrder = await tx.query.orders.findFirst({
+                where: eq(orders.id, id),
+                with: {
+                    client: true,
+                    reseller: true,
+                    items: {
+                        with: {
+                            codes: true,
+                            slots: { with: { digitalCode: true } },
+                            variant: { with: { product: true } }
+                        }
+                    }
+                }
+            });
+
+            if (!finalOrder) return null;
+
+            // 4. Check for manual products
+            const hasManualProducts = (finalOrder as any).items.some((item: any) => !item.variant?.isAutomatic);
+            const printStatus = hasManualProducts ? "idle" : "print_pending";
+
+            // 5. Update Order Status and Print Status
             await tx.update(orders)
                 .set({
                     status,
@@ -49,11 +72,11 @@ export class OrderService {
                     resteAPayer: resteAPayer.toString(),
                     clientId: clientId || null,
                     paymentMethod: options.paymentMethod || null,
-                    printStatus: "print_pending",
+                    printStatus: printStatus as any,
                 })
                 .where(eq(orders.id, id));
 
-            // 2. Manage Client Debt
+            // 6. Manage Client Debt
             if (clientId && resteAPayer > 0) {
                 const client = await tx.query.clients.findFirst({
                     where: (c, { eq }) => eq(c.id, clientId)
@@ -75,29 +98,12 @@ export class OrderService {
                 });
             }
 
-            // 3. Centralized Stock Allocation
+            // 7. Centralized Stock Allocation
             await allocateOrderStock(tx, id, {
                 userId,
-                itemSuppliers: options.itemSuppliers
+                itemSuppliers: options.itemSuppliers,
+                itemPriceOverrides: options.itemPriceOverrides
             });
-
-            // 4. Fetch Enriched Order for return
-            const finalOrder = await tx.query.orders.findFirst({
-                where: eq(orders.id, id),
-                with: {
-                    client: true,
-                    reseller: true,
-                    items: {
-                        with: {
-                            codes: true,
-                            slots: { with: { digitalCode: true } },
-                            variant: { with: { product: true } }
-                        }
-                    }
-                }
-            });
-
-            if (!finalOrder) return null;
 
             const mappedItems = (finalOrder as any).items.map((item: any) => {
                 const standardCodes = (item.codes || []).map((c: any) => decrypt(c.code) || "[ERREUR DÉCRYPTAGE]");
@@ -141,6 +147,9 @@ export class OrderService {
         if (!order) return null;
 
         const isFullyAuto = order.status === OrderStatus.TERMINE;
+        const hasCodesOrSlots = (order as any).items.some((item: any) =>
+            (item.codes && item.codes.length > 0) || (item.slots && item.slots.length > 0)
+        );
 
         // --- NEW: TOULOULOU LOYALTY LOGIC ---
         const totalAmount = parseFloat(order.totalAmount);
@@ -192,10 +201,14 @@ export class OrderService {
             }).catch(err => console.error("[N8N-TRIGGER-ERROR] notifyOrderCreated:", err));
         }
 
-        // Instant Delivery Trigger (Customer Notification)
-        triggerOrderDelivery(order.id).catch(err => {
-            console.error(`[Background Delivery Error] Order #${order.id}:`, err);
-        });
+        // --- DELAYED DELIVERY LOGIC ---
+        // Only trigger delivery if we have codes/slots OR it's fully auto
+        // If it's manual and no codes assigned yet, we wait for processOrder
+        if (isFullyAuto || hasCodesOrSlots) {
+            triggerOrderDelivery(order.id).catch(err => {
+                console.error(`[Background Delivery Error] Order #${order.id}:`, err);
+            });
+        }
 
         // Map items for return (legacy UI support)
         const mappedItems = (order as any).items.map((item: any) => {
@@ -275,10 +288,13 @@ export class OrderService {
 
         // Post-process triggers
         if (result?.status === OrderStatus.TERMINE) {
+            // Set for print once codes are in
+            await db.update(orders).set({ printStatus: "print_pending" }).where(eq(orders.id, id));
+
             N8nService.notifyOrderArchival(result).catch(err => console.error("[N8N-ARCHIVAL-ERROR]:", err));
         }
 
-        // Post-process delivery
+        // Post-process delivery (WhatsApp)
         triggerOrderDelivery(id).catch(err => {
             console.error(`[Background Delivery Error] Order #${id}:`, err);
         });
@@ -321,7 +337,11 @@ export class OrderService {
             if (insertedCount > 0) {
                 const nextStatus = order.status === OrderStatus.PAYE ? OrderStatus.TERMINE : order.status;
                 await tx.update(orders)
-                    .set({ status: nextStatus, isDelivered: true })
+                    .set({
+                        status: nextStatus,
+                        isDelivered: true,
+                        printStatus: "print_pending" // Trigger print
+                    })
                     .where(eq(orders.id, order.id));
 
                 return { success: true, nextStatus };
@@ -330,7 +350,7 @@ export class OrderService {
             }
         });
 
-        // Trigger delivery notifications
+        // Trigger delivery notifications (WhatsApp)
         triggerOrderDelivery(order.id).catch(err => {
             console.error(`[Background Delivery Error] Order #${order.id}:`, err);
         });

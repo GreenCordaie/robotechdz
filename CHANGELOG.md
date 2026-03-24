@@ -2,6 +2,24 @@
 
 Toutes les modifications notables de ce projet seront documentées dans ce fichier.
 
+## [7.3.5] - 2026-03-24
+
+### 🖨️ Synchronisation Impression
+- **Automatisme Traitement** : Le module de traitement utilise désormais la file d'impression centralisée (`requeueForPrint`), éliminant les boîtes de dialogue manuelles du navigateur.
+- **Expérience Unifiée** : Alignement de la logique d'impression Desktop et Mobile sur celle du module Caisse pour une meilleure fiabilité.
+
+### 📊 Profit → Analytics (Rentabilité)
+- **Catalogue** : Suppression de la colonne/carte "Profit Estimé" — les estimations ne reflétaient pas les ventes réelles.
+- **Analytics > Rentabilité Produits** : Nouveau tableau avec **CA**, **Coût Total**, **Profit Net** et **Marge %** par produit vendu, trié par profit décroissant.
+- **Marge Nette corrigée** : Les coûts d'achat en USD sont désormais convertis en DZD (×245) dans `getFinancialOverview`, `getProfitTrend` et `getTopProducts`.
+- **Export CSV** : L'export du catalogue reflète les prix d'achat convertis en DZD.
+
+## [7.3.4] - 2026-03-24
+
+### ✨ Flexibilité Caisse
+- **Édition Prix d'Achat** : Le caissier peut désormais modifier manuellement le prix d'achat d'un article lors de l'encaissement pour une précision comptable totale.
+- **Réconciliation Dynamique** : Les surcharges de prix impactent directement les débits fournisseur et l'historique analytique de la vente.
+
 ## [7.3.3] - 2026-03-24
 
 ### 💱 Devises & Statistiques

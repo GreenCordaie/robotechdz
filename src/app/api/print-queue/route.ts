@@ -60,8 +60,22 @@ export async function GET(req: NextRequest) {
 
         const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:1556";
 
+        // --- NEW: Filter out manual orders that don't have codes yet ---
+        const ordersToPrint = pendingOrders.filter((order: any) => {
+            const hasCredentials = order.items.some((item: any) =>
+                (item.codes && item.codes.length > 0) || (item.slots && item.slots.length > 0)
+            );
+            const isFullyAuto = order.items.every((item: any) => item.variant?.isAutomatic);
+
+            // Print if:
+            // 1. It's fully automatic (codes assigned instantly)
+            // 2. OR it's manual but already has credentials assigned
+            // 3. OR it's already TERMINE (processed)
+            return isFullyAuto || hasCredentials || order.status === "TERMINE";
+        });
+
         // Map each order to PrintData format (with decrypted credentials)
-        const jobs = pendingOrders.map((order: any) => {
+        const jobs = ordersToPrint.map((order: any) => {
             const createdAt = new Date(order.createdAt);
 
             const items = (order.items || []).map((item: any) => {
@@ -73,45 +87,59 @@ export async function GET(req: NextRequest) {
                     if (val) credentials.push({ label: "Code", value: val });
                 });
 
-                // Shared account slots (Email → Pass → Profil → Code)
+                // Shared account slots (Parsing 'Email | Pass' from parent code)
                 (item.slots || []).forEach((s: any) => {
-                    const parent = s.digitalCode || {};
-                    const email = parent.email ? decrypt(parent.email) : null;
-                    const pass  = parent.password ? decrypt(parent.password) : null;
-                    const code  = s.code ? decrypt(s.code) : null;
+                    const parentData = s.digitalCode?.code ? decrypt(s.digitalCode.code) : null;
+                    const code = s.code ? decrypt(s.code) : null;
 
-                    if (email)         credentials.push({ label: "Email",  value: email });
-                    if (pass)          credentials.push({ label: "Pass",   value: pass });
-                    if (s.slotNumber)  credentials.push({ label: "Profil", value: String(s.slotNumber) });
-                    if (code)          credentials.push({ label: "Code",   value: code });
+                    if (parentData && parentData.includes(" | ")) {
+                        const [email, pass] = parentData.split(" | ");
+                        credentials.push({ label: "Email", value: email.trim() });
+                        credentials.push({ label: "Pass", value: pass.trim() });
+                    } else if (parentData) {
+                        credentials.push({ label: "Accès", value: parentData });
+                    }
+
+                    if (s.slotNumber) credentials.push({ label: "Profil", value: String(s.slotNumber) });
+                    if (code) credentials.push({ label: "Pin", value: code });
                 });
 
                 return {
                     productName: item.variant?.product?.name || item.name || "Article",
-                    quantity:    item.quantity ?? 1,
-                    price:       Number(item.price ?? 0),
+                    quantity: item.quantity ?? 1,
+                    price: Number(item.price ?? 0),
                     credentials,
                 };
             });
 
-            const customerName  = order.client?.nomComplet  || order.reseller?.name  || "Client";
-            const customerPhone = order.client?.telephone   || order.reseller?.telephone || order.customerPhone || "";
+            const customerName = order.client?.nomComplet || order.reseller?.name || "Client";
+            const customerPhone = order.client?.telephone || order.reseller?.telephone || order.customerPhone || "";
 
             return {
-                _orderId:      order.id,  // used for ack
-                orderNumber:   order.orderNumber,
-                date:          createdAt.toLocaleDateString("fr-FR"),
-                time:          createdAt.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }),
+                _orderId: order.id, // used for ack
+                orderNumber: order.orderNumber,
+                date: createdAt.toLocaleDateString("fr-FR"),
+                time: createdAt.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }),
+                totalAmount: Number(order.totalAmount ?? 0),
+                total: Number(order.totalAmount ?? 0), // Fallback alias 1
+                total_amount: Number(order.totalAmount ?? 0), // Fallback alias 2 (snake_case)
+                grandTotal: Number(order.totalAmount ?? 0), // Fallback alias 3
+                montantTotal: Number(order.totalAmount ?? 0), // Fallback alias 4
+                // String variants for safety
+                totalStr: String(order.totalAmount ?? 0),
                 paymentMethod: order.paymentMethod || undefined,
-                customer:      { name: customerName, phone: customerPhone },
-                trackingUrl:   `${appUrl}/suivi/${order.orderNumber}`,
+                customer: { name: customerName, phone: customerPhone },
+                trackingUrl: `${appUrl}/suivi/${order.orderNumber}`,
                 shop: {
-                    name:          settings?.shopName         || "MA BOUTIQUE",
-                    address:       settings?.shopAddress      || undefined,
-                    tel:           settings?.shopTel          || undefined,
-                    footerMessage: settings?.footerMessage    || undefined,
-                    showDateTime:  settings?.showDateTimeOnReceipt ?? true,
-                    showCashier:   settings?.showCashierOnReceipt  ?? true,
+                    name: settings?.shopName || "MA BOUTIQUE",
+                    address: settings?.shopAddress || undefined,
+                    tel: settings?.shopTel || undefined,
+                    logoUrl: settings?.logoUrl || undefined,
+                    footerMessage: settings?.footerMessage || undefined,
+                    showLogo: settings?.showLogoOnReceipt ?? true,
+                    showDateTime: settings?.showDateTimeOnReceipt ?? true,
+                    showCashier: settings?.showCashierOnReceipt ?? true,
+                    showTrackQr: settings?.showTrackQrOnReceipt ?? true,
                 },
                 items,
             };

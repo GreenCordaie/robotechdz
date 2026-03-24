@@ -5,6 +5,10 @@ import { subDays, startOfMonth, endOfMonth } from "date-fns";
 
 // Orders that count as revenue: paid, delivered, or completed
 const PAID_STATUSES = `('PAYE', 'LIVRE', 'TERMINE')`;
+const EXCHANGE_RATE_USD_DZD = 245;
+
+// SQL fragment: convert purchasePrice to DZD based on purchaseCurrency
+const costInDzd = sql`CASE WHEN ${orderItems.purchaseCurrency} = 'USD' THEN CAST(${orderItems.purchasePrice} AS numeric) * ${EXCHANGE_RATE_USD_DZD} ELSE COALESCE(CAST(${orderItems.purchasePrice} AS numeric), 0) END`;
 
 export class AnalyticsService {
     static async getFinancialOverview(startDate?: Date, endDate?: Date) {
@@ -14,7 +18,7 @@ export class AnalyticsService {
         const stats = await db
             .select({
                 totalRevenue: sql<number>`COALESCE(SUM(${orderItems.price} * ${orderItems.quantity}), 0)`,
-                totalCost: sql<number>`COALESCE(SUM(${orderItems.purchasePrice} * ${orderItems.quantity}), 0)`,
+                totalCost: sql<number>`COALESCE(SUM(${costInDzd} * ${orderItems.quantity}), 0)`,
                 orderCount: sql<number>`COUNT(DISTINCT ${orders.id})`,
             })
             .from(orderItems)
@@ -69,6 +73,8 @@ export class AnalyticsService {
                 variantName: productVariants.name,
                 volume: sql<number>`SUM(${orderItems.quantity})`,
                 revenue: sql<number>`SUM(${orderItems.price} * ${orderItems.quantity})`,
+                cost: sql<number>`COALESCE(SUM(${costInDzd} * ${orderItems.quantity}), 0)`,
+                profit: sql<number>`SUM(${orderItems.price} * ${orderItems.quantity}) - COALESCE(SUM(${costInDzd} * ${orderItems.quantity}), 0)`,
             })
             .from(orderItems)
             .innerJoin(productVariants, sql`${orderItems.variantId} = ${productVariants.id}`)
@@ -76,7 +82,7 @@ export class AnalyticsService {
             .innerJoin(orders, sql`${orderItems.orderId} = ${orders.id}`)
             .where(sql`${orders.status} IN ${sql.raw(PAID_STATUSES)}`)
             .groupBy(products.id, productVariants.id)
-            .orderBy(desc(sql`SUM(${orderItems.quantity})`))
+            .orderBy(desc(sql`SUM(${orderItems.price} * ${orderItems.quantity}) - COALESCE(SUM(${costInDzd} * ${orderItems.quantity}), 0)`))
             .limit(limit);
     }
 
@@ -87,7 +93,7 @@ export class AnalyticsService {
             .select({
                 date: sql<string>`DATE(${orders.createdAt})`,
                 revenue: sql<number>`SUM(${orderItems.price} * ${orderItems.quantity})`,
-                cost: sql<number>`SUM(${orderItems.purchasePrice} * ${orderItems.quantity})`,
+                cost: sql<number>`COALESCE(SUM(${costInDzd} * ${orderItems.quantity}), 0)`,
             })
             .from(orderItems)
             .innerJoin(orders, sql`${orderItems.orderId} = ${orders.id}`)

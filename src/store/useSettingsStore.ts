@@ -9,6 +9,7 @@ interface SettingsState {
     showCashier: boolean;
     showDateTime: boolean;
     showLogo: boolean;
+    showTrackQr: boolean;
     logoUrl: string;
     dashboardLogoUrl: string;
     faviconUrl: string;
@@ -26,6 +27,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
     showCashier: true,
     showDateTime: true,
     showLogo: true,
+    showTrackQr: true,
     logoUrl: "",
     dashboardLogoUrl: "",
     faviconUrl: "",
@@ -44,6 +46,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
                     showCashier: res.data.showCashierOnReceipt ?? true,
                     showDateTime: res.data.showDateTimeOnReceipt ?? true,
                     showLogo: res.data.showLogoOnReceipt ?? true,
+                    showTrackQr: res.data.showTrackQrOnReceipt ?? true,
                     logoUrl: res.data.logoUrl || "",
                     dashboardLogoUrl: res.data.dashboardLogoUrl || "",
                     faviconUrl: res.data.faviconUrl || "",

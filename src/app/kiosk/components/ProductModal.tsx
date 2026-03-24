@@ -136,42 +136,52 @@ export default function ProductModal({ isOpen, onClose, product }: ProductModalP
                                     {product.variants && product.variants.map((variant: any) => {
                                         const isActive = selectedVariant?.id === variant.id;
                                         const stockCount = variant.stockCount || 0;
-                                        const isOutOfStock = !product.isManualDelivery && stockCount === 0;
+
+                                        // Un variant n'est jamais vraiment "en rupture" bloquante maintenant, 
+                                        // il bascule juste en manuel
+                                        const isAutoOutOfStock = !product.isManualDelivery && stockCount === 0;
+                                        const isManual = product.isManualDelivery || stockCount === 0;
 
                                         return (
                                             <div
                                                 key={variant.id}
-                                                onClick={() => !isOutOfStock && setSelectedVariant(variant)}
-                                                className={`relative rounded-[16px] p-4 flex flex-col justify-between min-h-[100px] transition-all border-2 ${isOutOfStock
-                                                    ? 'border-slate-100 bg-slate-50 opacity-60 cursor-not-allowed'
-                                                    : isActive
-                                                        ? 'border-[#ec5b13] bg-orange-50/50 cursor-pointer shadow-sm'
-                                                        : 'border-slate-200/60 bg-white/50 hover:bg-white cursor-pointer'
+                                                onClick={() => setSelectedVariant(variant)}
+                                                className={`relative rounded-[16px] p-4 flex flex-col justify-between min-h-[100px] transition-all border-2 ${isActive
+                                                    ? 'border-[#ec5b13] bg-orange-50/50 cursor-pointer shadow-sm'
+                                                    : 'border-slate-200/60 bg-white/50 hover:bg-white cursor-pointer'
                                                     }`}
                                             >
-                                                {isActive && !isOutOfStock && (
+                                                {isActive && (
                                                     <div className="absolute -top-2 -right-2 bg-[#ec5b13] text-white size-7 rounded-full flex items-center justify-center shadow-md">
                                                         <span className="material-symbols-outlined !text-sm font-black">check</span>
                                                     </div>
                                                 )}
-                                                {isOutOfStock && (
-                                                    <div className="absolute -top-2 -right-2 bg-slate-400 text-white px-3 py-0.5 rounded-full text-[10px] font-black uppercase shadow-sm">
-                                                        Rupture
+
+                                                {isAutoOutOfStock && (
+                                                    <div className="absolute -top-2 -right-2 bg-blue-600 text-white px-3 py-0.5 rounded-full text-[10px] font-black uppercase shadow-sm flex items-center gap-1">
+                                                        <span className="material-symbols-outlined !text-[12px]">person</span>
+                                                        Manuel
                                                     </div>
                                                 )}
+
                                                 <div>
-                                                    <p className={`text-lg font-black ${isOutOfStock ? 'text-slate-400' : isActive ? 'text-[#ec5b13]' : 'text-black'}`}>{variant.name}</p>
-                                                    <p className={`text-base font-black mt-0.5 ${isOutOfStock ? 'text-slate-300' : isActive ? 'text-black' : 'text-black/60'}`}>
+                                                    <p className={`text-lg font-black ${isActive ? 'text-[#ec5b13]' : 'text-black'}`}>{variant.name}</p>
+                                                    <p className={`text-base font-black mt-0.5 ${isActive ? 'text-black' : 'text-black/60'}`}>
                                                         {formatCurrency(variant.salePriceDzd, 'DZD')}
                                                     </p>
                                                 </div>
                                                 <div className="mt-3 flex items-center justify-between">
-                                                    {!product.isManualDelivery && (
-                                                        <span className={`text-[10px] font-black uppercase tracking-wider ${stockCount > 5 ? 'text-black/30' : stockCount > 0 ? 'text-orange-500' : 'text-red-600'}`}>
-                                                            {stockCount > 0 ? `${stockCount} ${variant.isSharing ? 'profils' : 'en stock'}` : 'Plus de stock'}
+                                                    {isManual ? (
+                                                        <span className="text-[10px] font-black uppercase tracking-wider text-blue-600 flex items-center gap-1">
+                                                            <span className="material-symbols-outlined !text-[14px]">schedule</span>
+                                                            Délai: ~15min
+                                                        </span>
+                                                    ) : (
+                                                        <span className={`text-[10px] font-black uppercase tracking-wider ${stockCount > 5 ? 'text-black/30' : 'text-orange-500'}`}>
+                                                            {stockCount} {variant.isSharing ? 'profils' : 'en stock'}
                                                         </span>
                                                     )}
-                                                    {isActive && !isOutOfStock && (
+                                                    {isActive && (
                                                         <span className="text-[10px] font-black uppercase tracking-widest text-[#ec5b13]/70 ml-auto">Sélectionné</span>
                                                     )}
                                                 </div>
@@ -208,13 +218,13 @@ export default function ProductModal({ isOpen, onClose, product }: ProductModalP
                             <div className="mt-8">
                                 <button
                                     onClick={handleAddToCart}
-                                    disabled={!selectedVariant || (!product.isManualDelivery && (selectedVariant.stockCount || 0) < quantity)}
+                                    disabled={!selectedVariant}
                                     className="w-full h-16 bg-[#ec5b13] hover:bg-orange-600 disabled:bg-slate-200 disabled:cursor-not-allowed text-white rounded-[20px] flex items-center justify-between px-6 shadow-lg shadow-orange-500/10 active:scale-[0.99] transition-all group"
                                 >
                                     <div className="flex items-center gap-3">
                                         <span className="material-symbols-outlined !text-2xl group-hover:translate-x-1 transition-transform">shopping_basket</span>
                                         <span className="text-lg font-black tracking-tight uppercase">
-                                            {(!product.isManualDelivery && selectedVariant && (selectedVariant.stockCount || 0) < quantity) ? "Stock insuffisant" : "Ajouter au panier"}
+                                            {(!product.isManualDelivery && selectedVariant && (selectedVariant.stockCount || 0) < quantity) ? "Commander (Traitement Manuel)" : "Ajouter au panier"}
                                         </span>
                                     </div>
                                     <div className="h-8 w-px bg-white/20"></div>

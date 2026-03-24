@@ -191,6 +191,7 @@ export const shopSettings = pgTable("shop_settings", {
     showCashierOnReceipt: boolean("show_cashier_on_receipt").default(true),
     showDateTimeOnReceipt: boolean("show_date_time_on_receipt").default(true),
     showLogoOnReceipt: boolean("show_logo_on_receipt").default(false),
+    showTrackQrOnReceipt: boolean("show_track_qr_on_receipt").default(true),
     accentColor: text("accent_color").default("#ec5b13"),
     logoUrl: text("logo_url"),
     dashboardLogoUrl: text("dashboard_logo_url"),
