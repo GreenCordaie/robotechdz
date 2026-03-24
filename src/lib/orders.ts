@@ -209,11 +209,17 @@ export async function allocateOrderStock(
                     finalPurchasePrice = (totalProratedCost / item.quantity).toFixed(2);
                 }
 
+                // Use account currency if sharing
+                let finalPurchaseCurrency = currency;
+                if (item.variant?.isSharing && currentItemSlots.length > 0) {
+                    finalPurchaseCurrency = currentItemSlots[0].digitalCode?.purchaseCurrency || currency;
+                }
+
                 await tx.update(orderItems)
                     .set({
                         supplierId,
                         purchasePrice: finalPurchasePrice,
-                        purchaseCurrency: currency
+                        purchaseCurrency: finalPurchaseCurrency
                     })
                     .where(eq(orderItems.id, item.id));
             }

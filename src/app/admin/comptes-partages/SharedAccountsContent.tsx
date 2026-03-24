@@ -37,6 +37,7 @@ export default function SharedAccountsContent() {
     const [addEmail, setAddEmail] = useState("");
     const [addPassword, setAddPassword] = useState("");
     const [addPurchasePrice, setAddPurchasePrice] = useState("");
+    const [addPurchaseCurrency, setAddPurchaseCurrency] = useState("DZD");
     const [addSlotsData, setAddSlotsData] = useState<{ profileName: string; pinCode: string }[]>([]);
     const [isAdding, setIsAdding] = useState(false);
 
@@ -44,6 +45,7 @@ export default function SharedAccountsContent() {
     const [quickVariantId, setQuickVariantId] = useState("");
     const [quickRawInput, setQuickRawInput] = useState("");
     const [quickPurchasePrice, setQuickPurchasePrice] = useState("");
+    const [quickPurchaseCurrency, setQuickPurchaseCurrency] = useState("DZD");
     const [isQuickSubmitting, setIsQuickSubmitting] = useState(false);
     const [quickErrors, setQuickErrors] = useState<string[]>([]);
 
@@ -57,6 +59,7 @@ export default function SharedAccountsContent() {
     const [editEmail, setEditEmail] = useState("");
     const [editPassword, setEditPassword] = useState("");
     const [editPurchasePrice, setEditPurchasePrice] = useState("");
+    const [editPurchaseCurrency, setEditPurchaseCurrency] = useState("DZD");
     const [editSlotsData, setEditSlotsData] = useState<{ id?: number; profileName: string; pinCode: string }[]>([]);
     const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -159,6 +162,7 @@ export default function SharedAccountsContent() {
         setEditEmail(parts[0] || account.code);
         setEditPassword(parts[1] || "");
         setEditPurchasePrice(account.purchasePrice || "");
+        setEditPurchaseCurrency(account.purchaseCurrency || "DZD");
         setEditSlotsData(account.slots.map((s: any) => ({
             id: s.id, profileName: s.profileName || "", pinCode: s.code || ""
         })));
@@ -199,7 +203,7 @@ export default function SharedAccountsContent() {
                 email: addEmail,
                 password: addPassword,
                 purchasePrice: addPurchasePrice,
-                purchaseCurrency: "DZD",
+                purchaseCurrency: addPurchaseCurrency,
                 slots: addSlotsData
             });
             if (res.success) {
@@ -230,14 +234,15 @@ export default function SharedAccountsContent() {
                 variantId: parseInt(quickVariantId),
                 rawInput: quickRawInput,
                 purchasePrice: quickPurchasePrice,
-                purchaseCurrency: "DZD",
+                purchaseCurrency: quickPurchaseCurrency,
                 autoClassify: false
             });
             if (res.success) {
-                toast.success(res.message || "Insertion terminée");
+                toast.success("Comptes importés ✓");
                 if (res.errors?.length) setQuickErrors(res.errors);
                 setQuickRawInput("");
                 setQuickPurchasePrice("");
+                setQuickPurchaseCurrency("DZD");
                 loadInventory();
             } else {
                 toast.error(res.error || "Erreur d'insertion");
@@ -258,6 +263,7 @@ export default function SharedAccountsContent() {
                 email: editEmail,
                 password: editPassword,
                 purchasePrice: editPurchasePrice,
+                purchaseCurrency: editPurchaseCurrency,
                 slots: editSlotsData.map(s => ({ id: s.id!, profileName: s.profileName, pinCode: s.pinCode }))
             });
             if (res.success) {
@@ -461,13 +467,28 @@ export default function SharedAccountsContent() {
 
                                             <div className="space-y-1.5">
                                                 <label className="text-[10px] text-slate-500 uppercase font-black">Prix d'achat (Total Compte)</label>
-                                                <Input
-                                                    placeholder="0.00"
-                                                    value={addPurchasePrice}
-                                                    onValueChange={setAddPurchasePrice}
-                                                    endContent={<span className="text-xs text-slate-500 font-bold">DZD</span>}
-                                                    classNames={{ inputWrapper: "bg-[#1a1a1a] border border-white/5 h-12 rounded-xl", input: "text-white font-bold" }}
-                                                />
+                                                <div className="flex gap-2">
+                                                    <Input
+                                                        placeholder="0.00"
+                                                        value={addPurchasePrice}
+                                                        onValueChange={setAddPurchasePrice}
+                                                        classNames={{ inputWrapper: "bg-[#1a1a1a] border border-white/5 h-12 rounded-xl flex-1", input: "text-white font-bold" }}
+                                                    />
+                                                    <div className="flex bg-[#1a1a1a] border border-white/5 rounded-xl p-1 gap-1 h-12 items-center">
+                                                        {['DZD', '$'].map(curr => (
+                                                            <Button
+                                                                key={curr}
+                                                                size="sm"
+                                                                variant={addPurchaseCurrency === curr ? "solid" : "light"}
+                                                                color={addPurchaseCurrency === curr ? "primary" : "default"}
+                                                                className={`min-w-[40px] h-10 font-black rounded-lg ${addPurchaseCurrency === curr ? 'bg-primary text-black' : 'text-slate-500'}`}
+                                                                onClick={() => setAddPurchaseCurrency(curr)}
+                                                            >
+                                                                {curr}
+                                                            </Button>
+                                                        ))}
+                                                    </div>
+                                                </div>
                                             </div>
 
                                             {addSlotsData.length > 0 && (
@@ -555,14 +576,29 @@ export default function SharedAccountsContent() {
                                                         input: "font-mono text-primary text-sm"
                                                     }}
                                                 />
-                                                <Input
-                                                    label="Prix d'achat unitaire"
-                                                    placeholder="0.00"
-                                                    value={quickPurchasePrice}
-                                                    onValueChange={setQuickPurchasePrice}
-                                                    endContent={<span className="text-xs text-slate-500 font-bold">DZD</span>}
-                                                    classNames={{ inputWrapper: "bg-[#1a1a1a] border border-white/10 h-10 rounded-xl" }}
-                                                />
+                                                <div className="flex gap-2 items-end">
+                                                    <Input
+                                                        label="Prix d'achat (par compte)"
+                                                        placeholder="0.00"
+                                                        value={quickPurchasePrice}
+                                                        onValueChange={setQuickPurchasePrice}
+                                                        classNames={{ inputWrapper: "bg-[#1a1a1a] border border-white/5 h-12 rounded-xl flex-1", input: "text-white font-bold" }}
+                                                    />
+                                                    <div className="flex bg-[#1a1a1a] border border-white/5 rounded-xl p-1 gap-1 h-12 items-center">
+                                                        {['DZD', '$'].map(curr => (
+                                                            <Button
+                                                                key={curr}
+                                                                size="sm"
+                                                                variant={quickPurchaseCurrency === curr ? "solid" : "light"}
+                                                                color={quickPurchaseCurrency === curr ? "primary" : "default"}
+                                                                className={`min-w-[40px] h-10 font-black rounded-lg ${quickPurchaseCurrency === curr ? 'bg-primary text-black' : 'text-slate-500'}`}
+                                                                onClick={() => setQuickPurchaseCurrency(curr)}
+                                                            >
+                                                                {curr}
+                                                            </Button>
+                                                        ))}
+                                                    </div>
+                                                </div>
                                             </div>
                                             <Button
                                                 color="primary"
@@ -816,13 +852,28 @@ export default function SharedAccountsContent() {
                                     </div>
                                     <div className="space-y-2">
                                         <label className="text-[10px] text-slate-500 uppercase font-black ml-1">Prix d'achat</label>
-                                        <Input
-                                            placeholder="0.00"
-                                            value={editPurchasePrice}
-                                            onValueChange={setEditPurchasePrice}
-                                            endContent={<span className="text-xs text-slate-500 font-bold">DZD</span>}
-                                            classNames={{ inputWrapper: "bg-[#1a1a1a] border border-white/5 h-12 rounded-xl", input: "text-white font-bold" }}
-                                        />
+                                        <div className="flex gap-2">
+                                            <Input
+                                                placeholder="0.00"
+                                                value={editPurchasePrice}
+                                                onValueChange={setEditPurchasePrice}
+                                                classNames={{ inputWrapper: "bg-[#1a1a1a] border border-white/5 h-12 rounded-xl flex-1", input: "text-white font-bold" }}
+                                            />
+                                            <div className="flex bg-[#1a1a1a] border border-white/5 rounded-xl p-1 gap-1 h-12 items-center">
+                                                {['DZD', '$'].map(curr => (
+                                                    <Button
+                                                        key={curr}
+                                                        size="sm"
+                                                        variant={editPurchaseCurrency === curr ? "solid" : "light"}
+                                                        color={editPurchaseCurrency === curr ? "primary" : "default"}
+                                                        className={`min-w-[40px] h-10 font-black rounded-lg ${editPurchaseCurrency === curr ? 'bg-primary text-black' : 'text-slate-500'}`}
+                                                        onClick={() => setEditPurchaseCurrency(curr)}
+                                                    >
+                                                        {curr}
+                                                    </Button>
+                                                ))}
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
 

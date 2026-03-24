@@ -298,10 +298,11 @@ export const updateSharedAccount = withAuth(
                 profileName: z.string().optional(),
                 pinCode: z.string().optional()
             })).optional(),
-            purchasePrice: z.string().optional()
+            purchasePrice: z.string().optional(),
+            purchaseCurrency: z.string().optional()
         })
     },
-    async ({ id, email, password, slots: slotsData, purchasePrice }) => {
+    async ({ id, email, password, slots: slotsData, purchasePrice, purchaseCurrency }) => {
         try {
             const fullCode = `${email} | ${password}`;
 
@@ -309,7 +310,8 @@ export const updateSharedAccount = withAuth(
                 await tx.update(digitalCodes)
                     .set({
                         code: encrypt(fullCode),
-                        purchasePrice: purchasePrice || null
+                        purchasePrice: purchasePrice || null,
+                        purchaseCurrency: purchaseCurrency || "DZD"
                     })
                     .where(eq(digitalCodes.id, id));
 
