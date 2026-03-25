@@ -39,7 +39,6 @@ import {
     ArrowUpCircle,
     Landmark,
     CircleDollarSign,
-    Download,
     Printer,
     Filter,
     Edit,
@@ -328,33 +327,10 @@ export default function CatalogueContent({
                         >
                             Archives
                         </button>
-                        <button
-                            onClick={() => setShowLowStockOnly(v => !v)}
-                            className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-1 ${showLowStockOnly ? "bg-orange-500/80 text-white shadow-lg shadow-orange-500/20" : "text-slate-500 hover:text-slate-300"}`}
-                        >
-                            ⚠ Stock bas
-                            {(() => {
-                                const lowCount = products.filter((p: Product) =>
-                                    p.variants.some((v: any) => (variantStockCounts[v.id] ?? 0) <= stockAlertThreshold)
-                                ).length;
-                                return lowCount > 0 ? <span className="ml-1 bg-orange-500 text-white text-[9px] px-1.5 py-0.5 rounded-full font-black">{lowCount}</span> : null;
-                            })()}
-                        </button>
                     </div>
                 </div>
-                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 w-full md:w-auto overflow-x-auto pb-2 md:pb-0">
-                    <div className="relative w-full max-w-xs md:w-64 shrink-0">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 w-4 h-4 shrink-0" />
-                        <Input
-                            classNames={{
-                                input: "pl-10 text-white",
-                                inputWrapper: "bg-[#161616] border border-[#262626] rounded-xl h-10 text-sm focus-within:ring-2 focus-within:ring-primary/50"
-                            }}
-                            placeholder="Rechercher..."
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                        />
-                    </div>
+                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 w-full md:w-auto">
+
                     <Select
                         className="w-full sm:w-48 shrink-0"
                         classNames={{
@@ -375,16 +351,6 @@ export default function CatalogueContent({
                         ))}
                     </Select>
                     {isPending && <Spinner size="sm" color="warning" className="shrink-0" />}
-                    <div className="flex gap-2 border-l border-[#262626] pl-4">
-                        <Button
-                            isIconOnly
-                            aria-label="Exporter en CSV"
-                            className="size-10 rounded-xl bg-[#161616] border border-[#262626] flex items-center justify-center hover:bg-[#262626] transition-colors"
-                            onClick={handleExportCSV}
-                        >
-                            <Download className="w-5 h-5 text-slate-400 shrink-0" />
-                        </Button>
-                    </div>
                     <Button
                         isIconOnly
                         aria-label="Notifications"
@@ -392,15 +358,6 @@ export default function CatalogueContent({
                         onClick={() => toast.success("Aucune nouvelle notification")}
                     >
                         <Bell className="w-5 h-5 text-slate-400 shrink-0" />
-                    </Button>
-                    <Button
-                        isIconOnly
-                        aria-label="Paramètres"
-                        className="size-10 rounded-xl bg-[#161616] border border-[#262626] flex items-center justify-center hover:bg-[#262626] transition-colors"
-                        as={Link}
-                        href="/admin/settings"
-                    >
-                        <Settings className="w-5 h-5 text-slate-400 shrink-0" />
                     </Button>
                 </div>
             </header>
@@ -465,7 +422,19 @@ export default function CatalogueContent({
                         <Package className="text-primary w-5 h-5 shrink-0" />
                         Catalogue Produits
                     </h3>
-                    <div className="flex flex-wrap md:flex-nowrap gap-3">
+                    <div className="flex flex-wrap md:flex-nowrap items-center gap-3">
+                        <div className="relative w-full md:w-64 shrink-0">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 w-4 h-4 shrink-0" />
+                            <Input
+                                classNames={{
+                                    input: "pl-10 text-white",
+                                    inputWrapper: "bg-[#161616] border border-[#262626] rounded-xl h-10 text-sm focus-within:ring-2 focus-within:ring-primary/50"
+                                }}
+                                placeholder="Rechercher..."
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                            />
+                        </div>
                         <Button
                             onPress={() => setIsAddCategoryOpen(true)}
                             variant="flat"

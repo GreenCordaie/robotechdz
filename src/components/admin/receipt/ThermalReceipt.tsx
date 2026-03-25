@@ -174,6 +174,7 @@ export const ThermalReceipt = ({
 
             <main className="receipt-paper w-full max-w-[320px] p-6 flex flex-col items-center" data-purpose="thermal-receipt-container">
                 <header className="text-center w-full mb-2">
+                    <div style={{ fontSize: '7pt', color: 'red', fontWeight: 'bold' }}>VERSION 1 - ANCIEN</div>
                     <h1 className="text-2xl font-black uppercase tracking-tight thermal-text-bold">FLEXBOX II</h1>
                     <p className="text-[10px] mt-1 font-bold">REÇU DE COMMANDE</p>
                 </header>

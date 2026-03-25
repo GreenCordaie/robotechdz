@@ -9,9 +9,7 @@ import {
     Package,
     Wallet,
     PlusCircle,
-    Settings,
-    Landmark,
-    Download
+    Landmark
 } from "lucide-react";
 import { Button, Card, CardBody, Chip, Spinner, Dropdown, DropdownTrigger, DropdownMenu, DropdownItem, Pagination } from "@heroui/react";
 import { formatCurrency } from "@/lib/formatters";
@@ -158,9 +156,6 @@ export default function CatalogueMobile({
                 <div className="flex justify-between items-center">
                     <h1 className="text-xl font-black text-white">Catalogue</h1>
                     <div className="flex gap-2">
-                        <Button isIconOnly aria-label="Gérer les catégories" size="sm" variant="flat" className="bg-white/5" onPress={() => setIsManageCategoriesOpen(true)}>
-                            <Settings size={16} />
-                        </Button>
                         <Button isIconOnly aria-label="Ajouter un produit" size="sm" variant="flat" className="bg-primary/20 text-primary" onPress={() => setIsAddProductOpen(true)}>
                             <Plus size={16} />
                         </Button>
@@ -178,9 +173,6 @@ export default function CatalogueMobile({
                             onChange={(e) => setSearchTerm(e.target.value)}
                         />
                     </div>
-                    <Button isIconOnly aria-label="Exporter en CSV" variant="flat" className="bg-white/5 text-slate-400" onPress={handleExportCSV}>
-                        <Download size={18} />
-                    </Button>
                 </div>
             </header>
 

@@ -176,7 +176,7 @@ export default function TraitementMobile({ initialOrders = [], initialFinished =
                     }))
                 };
                 setOrderForDetail(flattened);
-                setShouldPrint(true);
+                // setShouldPrint(true); // Removed as processOrder now handles print status
                 toast.success("Validation réussie !");
                 loadOrders();
                 setSelectedOrder(null);
@@ -242,70 +242,77 @@ export default function TraitementMobile({ initialOrders = [], initialFinished =
 
             {selectedOrder ? (
                 /* DETAIL VIEW */
-                <main className="flex-1 p-4 space-y-6 pb-32">
-                    <button
-                        onClick={() => setSelectedOrder(null)}
-                        className="flex items-center gap-2 text-slate-400 hover:text-white transition-colors"
-                    >
-                        <ArrowLeft size={20} />
-                        <span className="font-bold text-sm">Retour</span>
-                    </button>
+                <main className="flex-1 flex flex-col min-h-0 overflow-hidden">
+                    <div className="flex-1 overflow-y-auto p-4 space-y-6">
+                        <button
+                            onClick={() => setSelectedOrder(null)}
+                            className="flex items-center gap-2 text-slate-400 hover:text-white transition-colors"
+                        >
+                            <ArrowLeft size={20} />
+                            <span className="font-bold text-sm">Retour</span>
+                        </button>
 
-                    <div className="bg-white/5 rounded-3xl p-6 border border-white/10 space-y-6">
-                        <div>
-                            <h2 className="text-2xl font-black">#{selectedOrder.orderNumber}</h2>
-                            <p className="text-xs text-slate-500">{new Date(selectedOrder.createdAt).toLocaleString()}</p>
-                        </div>
+                        <div className="bg-white/5 rounded-3xl p-6 border border-white/10 space-y-6">
+                            <div>
+                                <h2 className="text-2xl font-black">#{selectedOrder.orderNumber}</h2>
+                                <p className="text-xs text-slate-500">{new Date(selectedOrder.createdAt).toLocaleString()}</p>
+                            </div>
 
-                        <div className="space-y-6">
-                            {selectedOrder.items.map((item: any) => (
-                                <div key={item.id} className="space-y-3">
-                                    <div className="flex justify-between items-center bg-white/5 p-3 rounded-2xl">
-                                        <span className="font-bold text-sm">{item.name}</span>
-                                        <span className="text-[10px] bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full font-black">QTY: {item.quantity}</span>
+                            <div className="space-y-6">
+                                {selectedOrder.items.map((item: any) => (
+                                    <div key={item.id} className="space-y-3">
+                                        <div className="flex justify-between items-center bg-white/5 p-3 rounded-2xl">
+                                            <span className="font-bold text-sm">{item.name}</span>
+                                            <span className="text-[10px] bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full font-black">QTY: {item.quantity}</span>
+                                        </div>
+                                        <div className="space-y-2">
+                                            {Array.from({ length: item.quantity }).map((_, i) => {
+                                                const isPreassigned = item.codes && item.codes[i];
+                                                return (
+                                                    <div key={i} className="relative group">
+                                                        <div className={`absolute inset-y-0 left-0 w-1 ${isPreassigned ? 'bg-blue-500' : 'bg-emerald-500'} rounded-full`} />
+                                                        <input
+                                                            className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm focus:border-emerald-500 outline-none placeholder:text-slate-700 font-bold"
+                                                            placeholder={isPreassigned ? "Code pré-assigné" : `Code #${i + 1}...`}
+                                                            value={codes[`${item.id}-${i}`] || ""}
+                                                            onChange={(e) => handleCodeChange(item.id, i, e.target.value)}
+                                                            disabled={view === 'finished' || !!isPreassigned}
+                                                        />
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
                                     </div>
-                                    <div className="space-y-2">
-                                        {Array.from({ length: item.quantity }).map((_, i) => {
-                                            const isPreassigned = item.codes && item.codes[i];
-                                            return (
-                                                <div key={i} className="relative group">
-                                                    <div className={`absolute inset-y-0 left-0 w-1 ${isPreassigned ? 'bg-blue-500' : 'bg-emerald-500'} rounded-full`} />
-                                                    <input
-                                                        className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm focus:border-emerald-500 outline-none placeholder:text-slate-700 font-bold"
-                                                        placeholder={isPreassigned ? "Code pré-assigné" : `Code #${i + 1}...`}
-                                                        value={codes[`${item.id}-${i}`] || ""}
-                                                        onChange={(e) => handleCodeChange(item.id, i, e.target.value)}
-                                                        disabled={view === 'finished' || !!isPreassigned}
-                                                    />
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                </div>
-                            ))}
+                                ))}
+                            </div>
                         </div>
+                    </div>
 
-                        <div className="flex gap-2">
-                            <button
-                                disabled={!isOrderReady() || isProcessing}
-                                onClick={handleProcess}
-                                className={`flex-1 py-4 rounded-2xl font-black uppercase text-sm shadow-xl transition-all flex items-center justify-center gap-3 ${isOrderReady() ? 'bg-gradient-to-r from-emerald-500 to-emerald-600 text-white shadow-emerald-500/20 active:scale-95' : 'bg-white/5 text-slate-600 opacity-50'
-                                    }`}
-                            >
-                                {isProcessing ? <Spinner size="sm" color="white" /> : (
-                                    <>
-                                        <Send size={18} />
-                                        <span>Valider & Imprimer</span>
-                                    </>
-                                )}
-                            </button>
-                            <button
-                                onClick={() => handleResendWhatsApp(selectedOrder.id)}
-                                className="p-4 bg-emerald-500/10 text-emerald-500 rounded-2xl border border-emerald-500/20 hover:bg-emerald-500 hover:text-white transition-all"
-                            >
-                                <MessageSquare size={20} />
-                            </button>
-                        </div>
+                    {/* Actions Panel - Fixed at bottom */}
+                    <div className="p-4 border-t border-white/10 bg-[#0a0a0a]/95 backdrop-blur-md">
+                        {view === 'pending' && (
+                            <div className="flex flex-col gap-2">
+                                <button
+                                    disabled={!isOrderReady() || isProcessing}
+                                    onClick={handleProcess}
+                                    className={`w-full py-4 rounded-2xl font-black uppercase text-sm shadow-xl transition-all flex items-center justify-center gap-3 ${isOrderReady() ? 'bg-gradient-to-r from-emerald-500 to-emerald-600 text-white shadow-emerald-500/20 active:scale-95' : 'bg-white/5 text-slate-600 opacity-50'}`}
+                                >
+                                    {isProcessing ? <Spinner size="sm" color="white" /> : (
+                                        <>
+                                            <Send size={18} />
+                                            <span>Valider & Imprimer</span>
+                                        </>
+                                    )}
+                                </button>
+                                <button
+                                    onClick={() => handleResendWhatsApp(selectedOrder.id)}
+                                    className="w-full py-3 bg-emerald-500/10 text-emerald-500 rounded-xl border border-emerald-500/20 active:scale-95 transition-all flex items-center justify-center gap-2"
+                                >
+                                    <MessageSquare size={18} />
+                                    <span className="font-bold text-xs uppercase">Renvoyer WhatsApp</span>
+                                </button>
+                            </div>
+                        )}
                     </div>
                 </main>
             ) : (

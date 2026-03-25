@@ -28,10 +28,12 @@ import {
     Eye,
     X,
     ShoppingCart,
-    Wallet
+    Wallet,
+    Edit2,
+    Trash2
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { getIndebtedClients, recordPayment, getClientHistory, createClient, getReturnsByClient } from "@/app/admin/clients/actions";
+import { getIndebtedClients, recordPayment, getClientHistory, createClient, getReturnsByClient, getAllClients, updateClient, deleteClient } from "@/app/admin/clients/actions";
 import { ReturnRequest } from "@/lib/constants";
 import WhatsAppHistoryModal from "@/components/admin/modals/WhatsAppHistoryModal";
 
@@ -93,6 +95,18 @@ export default function ClientsContent({ initialStats, initialClients }: Clients
     const [newTel, setNewTel] = React.useState("");
     const [isCreatingNew, setIsCreatingNew] = React.useState(false);
 
+    // Edit Client States
+    const [isEditOpen, setIsEditOpen] = React.useState(false);
+    const [editingClient, setEditingClient] = React.useState<Client | null>(null);
+    const [editName, setEditName] = React.useState("");
+    const [editTel, setEditTel] = React.useState("");
+    const [isUpdating, setIsUpdating] = React.useState(false);
+
+    // Delete Client States
+    const [isDeleteOpen, setIsDeleteOpen] = React.useState(false);
+    const [clientToDelete, setClientToDelete] = React.useState<Client | null>(null);
+    const [isDeleting, setIsDeleting] = React.useState(false);
+
 
     const { isOpen, onOpen, onClose } = useDisclosure();
     const { isOpen: isNewOpen, onOpen: onNewOpen, onClose: onNewClose } = useDisclosure();
@@ -103,9 +117,9 @@ export default function ClientsContent({ initialStats, initialClients }: Clients
 
     // Polling or refresh logic
     const refreshData = React.useCallback(async () => {
-        const indebted = await getIndebtedClients({});
-        if (Array.isArray(indebted)) {
-            setClients(indebted);
+        const res = await getAllClients({});
+        if (res.success && Array.isArray(res.clients)) {
+            setClients(res.clients as Client[]);
         } else {
             toast.error("Erreur lors de la récupération des clients");
         }
@@ -151,6 +165,7 @@ export default function ClientsContent({ initialStats, initialClients }: Clients
                 toast.success("Paiement enregistré avec succès");
                 setRepaymentAmount("");
                 onClose();
+                refreshData();
                 router.refresh();
             } else {
                 toast.error(res.error || "Erreur lors de l'enregistrement");
@@ -160,6 +175,61 @@ export default function ClientsContent({ initialStats, initialClients }: Clients
             toast.error("Erreur lors de l'enregistrement");
         } finally {
             setIsSubmitting(false);
+        }
+    };
+
+    const handleEditClient = (client: Client) => {
+        setEditingClient(client);
+        setEditName(client.nomComplet);
+        setEditTel(client.telephone || "");
+        setIsEditOpen(true);
+    };
+
+    const handleUpdateClient = async () => {
+        if (!editingClient || !editName) return;
+        setIsUpdating(true);
+        try {
+            const res = await updateClient({
+                id: editingClient.id,
+                nomComplet: editName,
+                telephone: editTel
+            }) as { success: boolean; error?: string };
+
+            if (res.success) {
+                toast.success("Client mis à jour");
+                setIsEditOpen(false);
+                refreshData();
+            } else {
+                toast.error(res.error || "Erreur lors de la mise à jour");
+            }
+        } catch (error) {
+            toast.error("Erreur lors de la mise à jour");
+        } finally {
+            setIsUpdating(false);
+        }
+    };
+
+    const handleDeleteClick = (client: Client) => {
+        setClientToDelete(client);
+        setIsDeleteOpen(true);
+    };
+
+    const handleConfirmDelete = async () => {
+        if (!clientToDelete) return;
+        setIsDeleting(true);
+        try {
+            const res = await deleteClient({ id: clientToDelete.id }) as { success: boolean; error?: string };
+            if (res.success) {
+                toast.success("Client supprimé");
+                setIsDeleteOpen(false);
+                refreshData();
+            } else {
+                toast.error(res.error || "Erreur lors de la suppression");
+            }
+        } catch (error) {
+            toast.error("Erreur lors de la suppression");
+        } finally {
+            setIsDeleting(false);
         }
     };
 
@@ -220,7 +290,7 @@ export default function ClientsContent({ initialStats, initialClients }: Clients
             {/* Main Table Section */}
             <div className="bg-[#161616] border border-[#262626] rounded-2xl overflow-hidden shadow-2xl">
                 <div className="p-6 border-b border-[#262626] flex justify-between items-center">
-                    <h3 className="font-bold text-lg text-white">Liste des clients endettés</h3>
+                    <h3 className="font-bold text-lg text-white">Liste des clients</h3>
 
                     <div className="relative w-full max-w-xs md:w-64">
                         <Input
@@ -293,6 +363,20 @@ export default function ClientsContent({ initialStats, initialClients }: Clients
                                                         </svg>
                                                     </button>
                                                 )}
+                                                <button
+                                                    onClick={() => handleEditClient(client)}
+                                                    className="p-1.5 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 transition-all"
+                                                    title="Modifier le client"
+                                                >
+                                                    <Edit2 className="w-4 h-4" />
+                                                </button>
+                                                <button
+                                                    onClick={() => handleDeleteClick(client)}
+                                                    className="p-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 transition-all"
+                                                    title="Supprimer le client"
+                                                >
+                                                    <Trash2 className="w-4 h-4" />
+                                                </button>
                                                 <Button
                                                     variant="light"
                                                     className="text-[#ec5b13] hover:text-white font-bold text-sm transition-colors"
@@ -309,7 +393,7 @@ export default function ClientsContent({ initialStats, initialClients }: Clients
                     </table>
                     {clients.length === 0 && (
                         <div className="p-12 text-center text-slate-500 font-medium">
-                            Aucun client avec une dette active trouvé.
+                            Aucun client trouvé.
                         </div>
                     )}
                 </div>
@@ -523,6 +607,79 @@ export default function ClientsContent({ initialStats, initialClients }: Clients
                 clientName={whatsappClient?.nomComplet ?? ""}
                 clientPhone={whatsappClient?.telephone ?? ""}
             />
+
+            {/* Edit Client Modal */}
+            <Modal
+                isOpen={isEditOpen}
+                onClose={() => setIsEditOpen(false)}
+                classNames={{ base: "bg-[#161616] text-white border border-[#262626]" }}
+            >
+                <ModalContent>
+                    {(onClose) => (
+                        <>
+                            <ModalHeader>Modifier le Profil Client</ModalHeader>
+                            <ModalBody className="gap-4">
+                                <Input
+                                    label="Nom Complet"
+                                    value={editName}
+                                    onValueChange={setEditName}
+                                    classNames={{ inputWrapper: "bg-[#0a0a0a]" }}
+                                />
+                                <Input
+                                    label="Téléphone"
+                                    value={editTel}
+                                    onValueChange={setEditTel}
+                                    classNames={{ inputWrapper: "bg-[#0a0a0a]" }}
+                                />
+                            </ModalBody>
+                            <ModalFooter>
+                                <Button variant="flat" onPress={onClose} className="text-slate-400">Annuler</Button>
+                                <Button
+                                    isLoading={isUpdating}
+                                    className="bg-[#ec5b13] text-white font-bold"
+                                    onPress={handleUpdateClient}
+                                >
+                                    Sauvegarder
+                                </Button>
+                            </ModalFooter>
+                        </>
+                    )}
+                </ModalContent>
+            </Modal>
+
+            {/* Delete Confirmation Modal */}
+            <Modal
+                isOpen={isDeleteOpen}
+                onClose={() => setIsDeleteOpen(false)}
+                classNames={{ base: "bg-[#161616] text-white border border-[#262626]" }}
+            >
+                <ModalContent>
+                    {(onClose) => (
+                        <>
+                            <ModalHeader>Confirmer la suppression</ModalHeader>
+                            <ModalBody>
+                                <p className="text-slate-300">
+                                    Êtes-vous sûr de vouloir supprimer le client <span className="text-white font-bold">{clientToDelete?.nomComplet}</span> ?
+                                </p>
+                                <p className="text-red-400 text-xs mt-2 italic">
+                                    Note : La suppression échouera si le client possède déjà des commandes enregistrées (historique protégé).
+                                </p>
+                            </ModalBody>
+                            <ModalFooter>
+                                <Button variant="flat" onPress={onClose} className="text-slate-400">Annuler</Button>
+                                <Button
+                                    isLoading={isDeleting}
+                                    color="danger"
+                                    className="font-bold"
+                                    onPress={handleConfirmDelete}
+                                >
+                                    Supprimer définitivement
+                                </Button>
+                            </ModalFooter>
+                        </>
+                    )}
+                </ModalContent>
+            </Modal>
         </div>
     );
 }

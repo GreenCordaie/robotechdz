@@ -8,6 +8,7 @@ interface Order {
     id: number;
     orderNumber: string;
     totalAmount: string | number;
+    remise?: string | number | null;
     clientId: number | null;
     status: string;
 }
@@ -20,9 +21,11 @@ interface InitiateReturnModalProps {
 
 export function InitiateReturnModal({ isOpen, onClose, order }: InitiateReturnModalProps) {
     const totalAmount = parseFloat(String(order.totalAmount));
+    const remise = parseFloat(String(order.remise || 0));
+    const netTotal = totalAmount - remise;
     const [motif, setMotif] = useState("");
     const [typeRemboursement, setTypeRemboursement] = useState<RemboursementType>("ESPECES");
-    const [montant, setMontant] = useState(totalAmount);
+    const [montant, setMontant] = useState(netTotal);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
@@ -86,13 +89,12 @@ export function InitiateReturnModal({ isOpen, onClose, order }: InitiateReturnMo
                                 return (
                                     <label
                                         key={type}
-                                        className={`flex-1 flex items-center gap-2 border rounded-xl px-3 py-2.5 cursor-pointer text-sm transition-colors ${
-                                            isDisabled
+                                        className={`flex-1 flex items-center gap-2 border rounded-xl px-3 py-2.5 cursor-pointer text-sm transition-colors ${isDisabled
                                                 ? "opacity-40 cursor-not-allowed border-gray-200 bg-gray-50"
                                                 : typeRemboursement === type
-                                                ? "border-orange-400 bg-orange-50 text-orange-700"
-                                                : "border-gray-200 hover:border-gray-300"
-                                        }`}
+                                                    ? "border-orange-400 bg-orange-50 text-orange-700"
+                                                    : "border-gray-200 hover:border-gray-300"
+                                            }`}
                                     >
                                         <input
                                             type="radio"

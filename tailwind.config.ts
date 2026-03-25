@@ -25,6 +25,16 @@ const config: Config = {
                     DEFAULT: "#25D366",
                     hover: "#22c35e",
                 },
+                kiosk: {
+                    primary: "#924700",
+                    "primary-container": "#ff8000",
+                    surface: "#FFFFFF",
+                    "on-surface": "#482702",
+                    background: "#FFFFFF",
+                    "on-background": "#1A1A1A",
+                    "surface-container": "#f8f9fa",
+                    outline: "#9b6d41",
+                }
             },
             fontFamily: {
                 sans: ["var(--font-public-sans)", "system-ui", "sans-serif"],

@@ -21,6 +21,7 @@ interface ThermalReceiptProps {
     date: string | Date;
     items: ReceiptItem[];
     totalAmount: string | number;
+    remise?: string | number;
     paymentMethod?: string;
     isPreview?: boolean; // Prop to control preview styles
     settings?: {
@@ -41,6 +42,7 @@ export const ThermalReceiptV2 = ({
     date,
     items,
     totalAmount,
+    remise = 0,
     paymentMethod = "Espèces",
     isPreview = false,
     settings
@@ -211,6 +213,7 @@ export const ThermalReceiptV2 = ({
                         />
                     </div>
                 )}
+                <div style={{ fontSize: '7pt', color: 'blue', fontWeight: 'bold', textAlign: 'center' }}>VERSION 2 - NOUVEAU</div>
                 <div className="receipt-v2-title">{shopName.toUpperCase()}</div>
                 {shopAddress && <div style={{ fontSize: '7pt', marginBottom: '0.5mm' }}>{shopAddress}</div>}
                 {shopTel && <div style={{ fontSize: '7pt', marginBottom: '1mm' }}>Tel: {shopTel}</div>}
@@ -225,20 +228,47 @@ export const ThermalReceiptV2 = ({
             </header>
 
             <div className="receipt-v2-items">
-                {items.map((item, idx) => (
-                    <div key={idx} className="receipt-v2-item-row">
-                        <span className="receipt-v2-item-name">{item.quantity}x {item.name}</span>
-                        <span className="receipt-v2-item-price">{formatCurrency(item.price, 'DZD')}</span>
-                    </div>
-                ))}
+                {items.map((item, idx) => {
+                    const quantity = Number(item.quantity ?? 1);
+                    const unitPrice = Number(item.price ?? 0);
+                    const itemTotal = quantity * unitPrice;
+
+                    return (
+                        <div key={idx} className="receipt-v2-item-row">
+                            <span className="receipt-v2-item-name">
+                                {quantity}x {item.name}
+                                {quantity > 1 && (
+                                    <span style={{ fontSize: '8pt', fontWeight: 400, marginLeft: '1mm' }}>
+                                        ({formatCurrency(unitPrice, 'DZD')})
+                                    </span>
+                                )}
+                            </span>
+                            <span className="receipt-v2-item-price">{formatCurrency(itemTotal, 'DZD')}</span>
+                        </div>
+                    );
+                })}
             </div>
 
             <div className="receipt-v2-total-block">
-                <div className="receipt-v2-total-row">
-                    <span>TOTAL :</span>
+                <div className="receipt-v2-total-row" style={{ fontWeight: Number(remise) > 0 ? 500 : 900, fontSize: Number(remise) > 0 ? '10pt' : '12pt' }}>
+                    <span>{Number(remise) > 0 ? "TOTAL BRUT :" : "TOTAL :"}</span>
                     <span>{formatCurrency(totalAmount, 'DZD')}</span>
                 </div>
-                <div style={{ fontSize: '10pt', fontWeight: 700, marginTop: '2mm' }}>
+
+                {Number(remise) > 0 && (
+                    <>
+                        <div className="receipt-v2-total-row" style={{ fontSize: '10pt', fontStyle: 'italic', fontWeight: 500, marginTop: '1mm' }}>
+                            <span>REMISE :</span>
+                            <span>-{formatCurrency(remise, 'DZD')}</span>
+                        </div>
+                        <div className="receipt-v2-total-row" style={{ fontSize: '13pt', fontWeight: 900, borderTop: '0.5px dotted black', marginTop: '2mm', paddingTop: '2mm' }}>
+                            <span>TOTAL NET :</span>
+                            <span>{formatCurrency(Number(totalAmount) - Number(remise), 'DZD')}</span>
+                        </div>
+                    </>
+                )}
+
+                <div style={{ fontSize: '10pt', fontWeight: 700, marginTop: '3mm', borderTop: '0.5px solid #eee', paddingTop: '1mm' }}>
                     PAIEMENT: {paymentMethod.toUpperCase()}
                 </div>
             </div>

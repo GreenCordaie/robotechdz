@@ -15,11 +15,11 @@
  * ─────────────────────────────────────────────────────────────────────
  */
 
-const express      = require('express');
-const crypto       = require('crypto');
-const fs           = require('fs');
-const path         = require('path');
-const os           = require('os');
+const express = require('express');
+const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
+const os = require('os');
 const { execSync } = require('child_process');
 const { generateTicket } = require('./ticket');
 
@@ -38,16 +38,16 @@ function loadConfig() {
     }
 }
 
-const cfg          = loadConfig();
-const PORT         = cfg.port          || 6543;
-const HOST         = '127.0.0.1';
-const PRINT_SECRET = cfg.secret        || 'robotech-print-secret-change-moi';
-const PRINTER_IP   = cfg.printerIp    || null;
-const PRINTER_TCP  = cfg.printerPort  || 9100;
-const SERVER_URL   = (cfg.serverUrl    || 'http://localhost:1556').replace(/\/$/, '');
-const POLL_MS      = cfg.pollIntervalMs || 5000;
-const LOG_FILE     = path.join(path.dirname(process.execPath || __dirname), 'print.log');
-const LOG_MAX      = 512 * 1024;
+const cfg = loadConfig();
+const PORT = cfg.port || 6543;
+const HOST = '127.0.0.1';
+const PRINT_SECRET = cfg.secret || 'robotech-print-secret-change-moi';
+const PRINTER_IP = cfg.printerIp || null;
+const PRINTER_TCP = cfg.printerPort || 9100;
+const SERVER_URL = (cfg.serverUrl || 'http://localhost:1556').replace(/\/$/, '');
+const POLL_MS = cfg.pollIntervalMs || 5000;
+const LOG_FILE = path.join(path.dirname(process.execPath || __dirname), 'print.log');
+const LOG_MAX = 512 * 1024;
 
 // ─── Express (health + manual reprint) ───────────────────────────────────────
 const app = express();
@@ -178,20 +178,43 @@ const net = require('net');
 
 function sendToPrinter(buffer) {
     return new Promise((resolve, reject) => {
-        if (!PRINTER_IP) {
-            return reject(new Error('printerIp non configuré dans config.json'));
-        }
-        const sock = net.createConnection(PRINTER_TCP, PRINTER_IP);
-        sock.setTimeout(8000);
-        sock.once('connect', () => {
-            sock.write(buffer, (err) => {
-                if (err) { sock.destroy(); return reject(err); }
-                sock.end();
-                resolve();
+        // Mode 1 : TCP/LAN
+        if (PRINTER_IP && PRINTER_IP.includes('.')) {
+            log(`MODE TCP: ${PRINTER_IP}:${PRINTER_TCP}`);
+            const sock = net.createConnection(PRINTER_TCP, PRINTER_IP);
+            sock.setTimeout(8000);
+            sock.once('connect', () => {
+                sock.write(buffer, (err) => {
+                    if (err) { sock.destroy(); return reject(err); }
+                    sock.end();
+                    resolve();
+                });
             });
-        });
-        sock.once('timeout', () => { sock.destroy(); reject(new Error(`Timeout TCP ${PRINTER_IP}:${PRINTER_TCP}`)); });
-        sock.once('error',   (err) => reject(new Error(`TCP ${PRINTER_IP}:${PRINTER_TCP} — ${err.message}`)));
+            sock.once('timeout', () => { sock.destroy(); reject(new Error(`Timeout TCP ${PRINTER_IP}:${PRINTER_TCP}`)); });
+            sock.once('error', (err) => reject(new Error(`TCP ${PRINTER_IP}:${PRINTER_TCP} — ${err.message}`)));
+            return;
+        }
+
+        // Mode 2 : Local Port (USB001, COM1, LPT1, etc.)
+        const port = String(cfg.printerPort || '');
+        if (port.toUpperCase().startsWith('USB') || port.toUpperCase().startsWith('COM') || port.toUpperCase().startsWith('LPT')) {
+            log(`MODE LOCAL PORT: ${port}`);
+            const tmp = path.join(os.tmpdir(), `rbt_print_${Date.now()}.bin`);
+            try {
+                fs.writeFileSync(tmp, buffer);
+                const { execSync: ex } = require('child_process');
+                // Commande Windows standard pour envoyer du binaire brut à un port
+                ex(`copy /b "${tmp}" ${port}:`, { shell: 'cmd.exe', stdio: 'ignore' });
+                resolve();
+            } catch (err) {
+                reject(new Error(`Local Port ${port} — ${err.message}`));
+            } finally {
+                try { if (fs.existsSync(tmp)) fs.unlinkSync(tmp); } catch { }
+            }
+            return;
+        }
+
+        reject(new Error('Aucune imprimante valide configurée (besoin de printerIp pour LAN ou printerPort pour USB/COM)'));
     });
 }
 
@@ -204,7 +227,7 @@ function log(msg) {
             fs.renameSync(LOG_FILE, LOG_FILE + '.old');
         }
         fs.appendFileSync(LOG_FILE, line, 'utf8');
-    } catch {}
+    } catch { }
 }
 
 // ─── Démarrage ────────────────────────────────────────────────────────────────
@@ -224,5 +247,5 @@ app.listen(PORT, HOST, () => {
     log('  Prêt — en attente de tickets à imprimer.');
 });
 
-process.on('SIGINT',  () => { log('Arrêt (SIGINT)');  process.exit(0); });
+process.on('SIGINT', () => { log('Arrêt (SIGINT)'); process.exit(0); });
 process.on('SIGTERM', () => { log('Arrêt (SIGTERM)'); process.exit(0); });

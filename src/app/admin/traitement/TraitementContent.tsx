@@ -190,7 +190,7 @@ export default function TraitementContent({ initialOrders = [], initialFinished 
                     }))
                 };
                 setOrderForDetail(flattened);
-                setShouldPrint(true);
+                // setShouldPrint(true); // Removed as processOrder now handles print status
                 loadOrders();
                 setSelectedOrder(null);
                 setCodes({});
@@ -331,7 +331,6 @@ export default function TraitementContent({ initialOrders = [], initialFinished 
                                 Finies
                             </button>
                         </div>
-
                     </div>
                 </header>
 
@@ -402,43 +401,43 @@ export default function TraitementContent({ initialOrders = [], initialFinished 
 
                     {/* Right Column: Workspace */}
                     <section className="flex-1 flex flex-col min-w-0 bg-[#1a0f0a]/30 relative overflow-hidden">
-                        {
-                            selectedOrder ? (
-                                <div className="flex-1 flex flex-col min-w-0">
-                                    <div className="p-8 border-b border-white/5 shrink-0 flex justify-between items-center">
-                                        <div>
-                                            <h4 className="text-2xl font-bold tracking-tight mb-1 truncate">Détails de la Commande {selectedOrder.orderNumber}</h4>
-                                            <p className="text-slate-500 text-sm flex items-center gap-2">
-                                                <span className="material-symbols-outlined text-sm">calendar_today</span>
-                                                {new Date(selectedOrder.createdAt).toLocaleDateString("fr-FR", { day: 'numeric', month: 'long', year: 'numeric' })} • {new Date(selectedOrder.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                            </p>
-                                        </div>
-                                        <div className="flex gap-2">
-                                            {selectedOrder.deliveryMethod === "whatsapp" && (
-                                                <button
-                                                    aria-label="Renvoyer par WhatsApp"
-                                                    onClick={() => handleResendWhatsApp(selectedOrder.id)}
-                                                    disabled={isResending}
-                                                    title="Renvoyer par WhatsApp"
-                                                    className="p-2.5 rounded-xl bg-[#25D366]/10 border border-[#25D366]/20 text-[#25D366] hover:bg-[#25D366]/20 transition-all disabled:opacity-50"
-                                                >
-                                                    {isResending ? <Loader2 className="size-5 animate-spin" /> : <MessageSquare size={20} />}
-                                                </button>
-                                            )}
-                                            <button
-                                                aria-label="Réimprimer le ticket"
-                                                onClick={() => handlePrint(selectedOrder)}
-                                                className="p-2.5 rounded-xl bg-[#2a1b15] border border-white/5 text-slate-400 hover:text-white transition-colors"
-                                            >
-                                                <span className="material-symbols-outlined">print</span>
-                                            </button>
-                                            <button aria-label="Désélectionner la commande" className="p-2.5 rounded-xl bg-[#2a1b15] border border-white/5 text-slate-400 hover:text-red-400 transition-colors" onClick={() => setSelectedOrder(null)}>
-                                                <span className="material-symbols-outlined">block</span>
-                                            </button>
-                                        </div>
+                        {selectedOrder ? (
+                            <div className="flex-1 flex flex-col min-w-0">
+                                <div className="p-8 border-b border-white/5 shrink-0 flex justify-between items-center">
+                                    <div>
+                                        <h4 className="text-2xl font-bold tracking-tight mb-1 truncate">Détails de la Commande {selectedOrder.orderNumber}</h4>
+                                        <p className="text-slate-500 text-sm flex items-center gap-2">
+                                            <span className="material-symbols-outlined text-sm">calendar_today</span>
+                                            {new Date(selectedOrder.createdAt).toLocaleDateString("fr-FR", { day: 'numeric', month: 'long', year: 'numeric' })} • {new Date(selectedOrder.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                        </p>
                                     </div>
+                                    <div className="flex gap-2">
+                                        {selectedOrder.deliveryMethod === "whatsapp" && (
+                                            <button
+                                                aria-label="Renvoyer par WhatsApp"
+                                                onClick={() => handleResendWhatsApp(selectedOrder.id)}
+                                                disabled={isResending}
+                                                title="Renvoyer par WhatsApp"
+                                                className="p-2.5 rounded-xl bg-[#25D366]/10 border border-[#25D366]/20 text-[#25D366] hover:bg-[#25D366]/20 transition-all disabled:opacity-50"
+                                            >
+                                                {isResending ? <Loader2 className="size-5 animate-spin" /> : <MessageSquare size={20} />}
+                                            </button>
+                                        )}
+                                        <button
+                                            aria-label="Réimprimer le ticket"
+                                            onClick={() => handlePrint(selectedOrder)}
+                                            className="p-2.5 rounded-xl bg-[#2a1b15] border border-white/5 text-slate-400 hover:text-white transition-colors"
+                                        >
+                                            <span className="material-symbols-outlined">print</span>
+                                        </button>
+                                        <button aria-label="Désélectionner la commande" className="p-2.5 rounded-xl bg-[#2a1b15] border border-white/5 text-slate-400 hover:text-red-400 transition-colors" onClick={() => setSelectedOrder(null)}>
+                                            <span className="material-symbols-outlined">block</span>
+                                        </button>
+                                    </div>
+                                </div>
 
-                                    <div className="flex-1 overflow-y-auto p-8 space-y-8 custom-scrollbar">
+                                <div className="flex-1 overflow-y-auto custom-scrollbar">
+                                    <div className="p-8 space-y-8">
                                         {selectedOrder.items.map((item: any) => (
                                             <div key={item.id} className="space-y-4">
                                                 <div className="flex justify-between items-center">
@@ -513,34 +512,35 @@ export default function TraitementContent({ initialOrders = [], initialFinished 
                                             </div>
                                         </div>
                                     </div>
+                                </div>
 
-                                    {view === "pending" && (
-                                        <footer className="p-8 border-t border-white/5 shrink-0 bg-[#1a0f0a]">
-                                            <button
-                                                onClick={handleProcess}
-                                                disabled={!isOrderReady() || isProcessing}
-                                                className={`w-full font-bold py-4 rounded-2xl shadow-xl transition-all flex items-center justify-center gap-3 active:scale-[0.98] ${isOrderReady() ? 'bg-gradient-to-r from-[#ec5b13] to-orange-600 text-white shadow-[#ec5b13]/20 hover:from-[#ec5b13] hover:to-[#ec5b13]' : 'bg-slate-800 text-slate-500 cursor-not-allowed'}`}
-                                            >
-                                                {isProcessing ? <Spinner size="sm" color="white" /> : (
-                                                    <>
-                                                        <span className="material-symbols-outlined shrink-0">task_alt</span>
-                                                        <span>Valider & Imprimer le Ticket</span>
-                                                    </>
-                                                )}
-                                            </button>
-                                        </footer>
-                                    )}
+                                {view === "pending" && (
+                                    <footer className="p-8 border-t border-white/5 bg-[#1a0f0a] shrink-0">
+                                        <button
+                                            onClick={handleProcess}
+                                            disabled={!isOrderReady() || isProcessing}
+                                            className={`w-full font-bold py-4 rounded-2xl shadow-xl transition-all flex items-center justify-center gap-3 active:scale-[0.98] ${isOrderReady() ? 'bg-gradient-to-r from-[#ec5b13] to-orange-600 text-white shadow-[#ec5b13]/20 hover:from-[#ec5b13] hover:to-[#ec5b13]' : 'bg-slate-800 text-slate-500 cursor-not-allowed'}`}
+                                        >
+                                            {isProcessing ? <Spinner size="sm" color="white" /> : (
+                                                <>
+                                                    <span className="material-symbols-outlined shrink-0">task_alt</span>
+                                                    <span>Valider & Imprimer le Ticket</span>
+                                                </>
+                                            )}
+                                        </button>
+                                    </footer>
+                                )}
+                            </div>
+                        ) : (
+                            <div className="flex-1 flex flex-col items-center justify-center p-20 text-center group opacity-40">
+                                <div className="size-48 rounded-[64px] bg-[#2a1b15]/40 border border-white/5 flex items-center justify-center mb-10 shadow-2xl relative overflow-hidden">
+                                    <div className="absolute inset-0 bg-[#ec5b13]/5" />
+                                    <span className="material-symbols-outlined text-8xl text-[#ec5b13]/20 group-hover:scale-110 transition-all duration-700">order_approve</span>
                                 </div>
-                            ) : (
-                                <div className="flex-1 flex flex-col items-center justify-center p-20 text-center group opacity-40">
-                                    <div className="size-48 rounded-[64px] bg-[#2a1b15]/40 border border-white/5 flex items-center justify-center mb-10 shadow-2xl relative overflow-hidden">
-                                        <div className="absolute inset-0 bg-[#ec5b13]/5" />
-                                        <span className="material-symbols-outlined text-8xl text-[#ec5b13]/20 group-hover:scale-110 transition-all duration-700">order_approve</span>
-                                    </div>
-                                    <h3 className="text-3xl font-bold text-slate-600 uppercase tracking-widest italic mb-4">Poste de Travail</h3>
-                                    <p className="text-slate-400 font-medium">Veuillez sélectionner une commande dans la file d&apos;attente</p>
-                                </div>
-                            )}
+                                <h3 className="text-3xl font-bold text-slate-600 uppercase tracking-widest italic mb-4">Poste de Travail</h3>
+                                <p className="text-slate-400 font-medium">Veuillez sélectionner une commande dans la file d&apos;attente</p>
+                            </div>
+                        )}
                     </section>
                 </div>
             </main>
@@ -564,6 +564,7 @@ export default function TraitementContent({ initialOrders = [], initialFinished 
                                 : item.codes
                         })) || []}
                         totalAmount={selectedOrder?.totalAmount || orderForDetail?.totalAmount}
+                        remise={selectedOrder?.remise || orderForDetail?.remise}
                         paymentMethod={(selectedOrder || orderForDetail)?.paymentMethod}
                     />
                 </div>

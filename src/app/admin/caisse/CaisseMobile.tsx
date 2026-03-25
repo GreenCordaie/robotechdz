@@ -5,7 +5,7 @@ import { Spinner, Button, Modal, ModalContent, ModalHeader, ModalBody, ModalFoot
 import { useOrderStore } from "@/store/useOrderStore";
 import { useAuthStore } from "@/store/useAuthStore";
 import { toast } from "react-hot-toast";
-import { Eye, Search, Filter, ArrowLeft, RefreshCw, Smartphone, User as UserIcon, Plus, Printer } from "lucide-react";
+import { Eye, Search, Filter, ArrowLeft, User as UserIcon, Plus } from "lucide-react";
 import { formatCurrency } from "@/lib/formatters";
 import { requeueForPrint } from "./actions";
 import { useSettingsStore } from "@/store/useSettingsStore";
@@ -70,7 +70,7 @@ export default function CaisseMobile() {
         loadOrders();
         const loadClients = async () => {
             const res: any = await getAllClients({});
-            setAllClients(Array.isArray(res) ? res : []);
+            setAllClients(res.success && Array.isArray(res.clients) ? res.clients : []);
         };
         loadClients();
         const interval = setInterval(() => loadOrders(true), 10000);
@@ -109,7 +109,7 @@ export default function CaisseMobile() {
 
         setIsUpdating(true);
         try {
-        const paymentMethodLabel = effectiveRecu >= (Number(currentOrder.totalAmount) - remise) ? "Espèces" : "Crédit / Partiel";
+            const paymentMethodLabel = effectiveRecu >= (Number(currentOrder.totalAmount) - remise) ? "Espèces" : "Crédit / Partiel";
 
             const res: any = await payOrder({
                 id: currentOrder.id,
@@ -197,13 +197,6 @@ export default function CaisseMobile() {
                     <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">{allTodayOrders.length} Commandes</p>
                 </div>
                 <div className="flex items-center gap-2">
-                    <div className="flex items-center gap-1 px-2 py-1 rounded-lg border text-[10px] font-bold uppercase bg-emerald-500/10 border-emerald-500/20 text-emerald-400">
-                        <Printer className="w-3 h-3" />
-                        ESC/POS
-                    </div>
-                    <button onClick={() => loadOrders()} className="p-2 bg-white/5 rounded-full text-slate-400">
-                        <RefreshCw size={18} className={isLoading ? "animate-spin" : ""} />
-                    </button>
                 </div>
             </header>
 
@@ -297,7 +290,7 @@ export default function CaisseMobile() {
                                         </div>
                                         <div className="flex gap-2 text-white">
                                             <select
-                                                className="bg-transparent border-none text-sm font-bold flex-1 outline-none appearance-none"
+                                                className="bg-transparent border-none focus:ring-0 p-0 text-sm font-semibold text-[#ec5b13] dark:text-white flex-1 outline-none appearance-none"
                                                 value={selectedClientId || ""}
                                                 onChange={(e) => setSelectedClientId(Number(e.target.value) || null)}
                                             >
@@ -426,13 +419,14 @@ export default function CaisseMobile() {
                     });
 
                     const dataToPrint = {
-                        id:            orderForDetail.id,
-                        orderNumber:   orderForDetail.orderNumber,
-                        date:          orderForDetail.createdAt,
-                        items:         enrichedItems,
-                        totalAmount:   orderForDetail.totalAmount,
+                        id: orderForDetail.id,
+                        orderNumber: orderForDetail.orderNumber,
+                        date: orderForDetail.createdAt,
+                        items: enrichedItems,
+                        totalAmount: orderForDetail.totalAmount,
+                        remise: orderForDetail.remise,
                         paymentMethod: orderForDetail.paymentMethod || "Espèces",
-                        cashier:       user?.nom || "Admin"
+                        cashier: user?.nom || "Admin"
                     };
 
                     await handlePrint(dataToPrint);

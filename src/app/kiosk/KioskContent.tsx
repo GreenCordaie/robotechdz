@@ -8,8 +8,11 @@ import CatalogueView from "./views/CatalogueView";
 import CartView from "./views/CartView";
 import ConfirmationView from "./views/ConfirmationView";
 import { getKioskData } from "./actions";
+import { useIsMobile } from "@/hooks/useIsMobile";
+import KioskMobile from "./KioskMobile";
 
 export default function KioskContent() {
+    const isMobile = useIsMobile();
     const { step, resetKiosk } = useKioskStore();
     const [data, setData] = useState<{ products: any[], categories: any[] } | null>(null);
 
@@ -59,6 +62,10 @@ export default function KioskContent() {
     }, [step, resetKiosk]);
 
     if (!data) return null; // Or a simple loader
+
+    if (isMobile) {
+        return <KioskMobile products={data.products} categories={data.categories} />;
+    }
 
     return (
         <div className="h-full w-full relative overflow-hidden bg-white">

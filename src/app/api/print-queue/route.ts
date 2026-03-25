@@ -65,13 +65,8 @@ export async function GET(req: NextRequest) {
             const hasCredentials = order.items.some((item: any) =>
                 (item.codes && item.codes.length > 0) || (item.slots && item.slots.length > 0)
             );
-            const isFullyAuto = order.items.every((item: any) => item.variant?.isAutomatic);
-
-            // Print if:
-            // 1. It's fully automatic (codes assigned instantly)
-            // 2. OR it's manual but already has credentials assigned
-            // 3. OR it's already TERMINE (processed)
-            return isFullyAuto || hasCredentials || order.status === "TERMINE";
+            // Only print if there are actual credentials (codes or slots)
+            return hasCredentials;
         });
 
         // Map each order to PrintData format (with decrypted credentials)
@@ -80,6 +75,14 @@ export async function GET(req: NextRequest) {
 
             const items = (order.items || []).map((item: any) => {
                 const credentials: { label: string; value: string }[] = [];
+
+                // Base identifiers from order items (Player ID and Nickname)
+                if (item.customData) {
+                    credentials.push({ label: "ID/Lien", value: item.customData });
+                }
+                if (item.playerNickname) {
+                    credentials.push({ label: "Pseudo", value: item.playerNickname });
+                }
 
                 // Standard codes (non-sharing products)
                 const standardCodes = (item.codes || []).map((c: any) => decrypt(c.code)).filter(Boolean);
@@ -109,10 +112,16 @@ export async function GET(req: NextRequest) {
                     if (code) credentials.push({ label: `Pin${suffix}`, value: code });
                 });
 
+                const quantity = item.quantity ?? 1;
+                const unitPrice = Number(item.price ?? 0);
+                const itemTotal = quantity * unitPrice;
+
                 return {
                     productName: item.variant?.product?.name || item.name || "Article",
-                    quantity: item.quantity ?? 1,
-                    price: Number(item.price ?? 0),
+                    quantity: quantity,
+                    price: unitPrice,
+                    total: itemTotal, // Line total
+                    totalStr: String(itemTotal),
                     credentials,
                 };
             });
@@ -120,18 +129,27 @@ export async function GET(req: NextRequest) {
             const customerName = order.client?.nomComplet || order.reseller?.name || "Client";
             const customerPhone = order.client?.telephone || order.reseller?.telephone || order.customerPhone || "";
 
+            const totalAmount = Number(order.totalAmount ?? 0);
+            const remise = Number(order.remise ?? 0);
+            const netTotal = Math.max(0, totalAmount - remise);
+
             return {
                 _orderId: order.id, // used for ack
                 orderNumber: order.orderNumber,
                 date: createdAt.toLocaleDateString("fr-FR"),
                 time: createdAt.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }),
-                totalAmount: Number(order.totalAmount ?? 0),
-                total: Number(order.totalAmount ?? 0), // Fallback alias 1
-                total_amount: Number(order.totalAmount ?? 0), // Fallback alias 2 (snake_case)
-                grandTotal: Number(order.totalAmount ?? 0), // Fallback alias 3
-                montantTotal: Number(order.totalAmount ?? 0), // Fallback alias 4
+                totalAmount: totalAmount,
+                total: totalAmount, // Fallback alias 1
+                brutTotal: totalAmount,
+                remise: remise,
+                discount: remise, // Alias for some services
+                netTotal: netTotal,
+                finalTotal: netTotal,
                 // String variants for safety
-                totalStr: String(order.totalAmount ?? 0),
+                totalStr: String(totalAmount),
+                remiseStr: String(remise),
+                discountStr: String(remise),
+                netTotalStr: String(netTotal),
                 paymentMethod: order.paymentMethod || undefined,
                 customer: { name: customerName, phone: customerPhone },
                 trackingUrl: `${appUrl}/suivi/${order.orderNumber}`,

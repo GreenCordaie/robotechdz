@@ -21,22 +21,32 @@ export default function ProductModal({ isOpen, onClose, product }: ProductModalP
     const { addToCart } = useKioskStore();
 
     // State for local selection
-    const [selectedVariant, setSelectedVariant] = useState<any>(null);
-    const [quantity, setQuantity] = useState(1);
+    const [selectedQuantities, setSelectedQuantities] = useState<Record<number, number>>({});
     const [isPlayerIdModalOpen, setIsPlayerIdModalOpen] = useState(false);
 
     // Reset selection when modal opens with a new product
     useEffect(() => {
-        if (product && product.variants && product.variants.length > 0) {
-            setSelectedVariant(product.variants[0]);
-            setQuantity(1);
+        if (product && isOpen) {
+            setSelectedQuantities({});
         }
     }, [product, isOpen]);
 
     if (!product) return null;
 
+    const updateVariantQuantity = (variantId: number, delta: number) => {
+        setSelectedQuantities(prev => {
+            const current = prev[variantId] || 0;
+            const next = Math.max(0, current + delta);
+            if (next === 0) {
+                const { [variantId]: _, ...rest } = prev;
+                return rest;
+            }
+            return { ...prev, [variantId]: next };
+        });
+    };
+
     const handleAddToCart = () => {
-        if (!selectedVariant) return;
+        if (Object.keys(selectedQuantities).length === 0) return;
 
         if (product.requiresPlayerId) {
             setIsPlayerIdModalOpen(true);
@@ -47,24 +57,29 @@ export default function ProductModal({ isOpen, onClose, product }: ProductModalP
     };
 
     const finalizeAddToCart = (customData?: string, playerNickname?: string) => {
-        addToCart({
-            variantId: selectedVariant.id,
-            productId: product.id,
-            name: selectedVariant.name,
-            productName: product.name,
-            price: selectedVariant.salePriceDzd,
-            quantity: quantity,
-            imageUrl: product.imageUrl,
-            customData,
-            playerNickname
+        product.variants.forEach((variant: any) => {
+            const qty = selectedQuantities[variant.id];
+            if (qty && qty > 0) {
+                addToCart({
+                    variantId: variant.id,
+                    productId: product.id,
+                    name: variant.name,
+                    productName: product.name,
+                    price: variant.salePriceDzd,
+                    quantity: qty,
+                    imageUrl: product.imageUrl,
+                    customData,
+                    playerNickname
+                });
+            }
         });
         onClose();
     };
 
-    const incrementQuantity = () => setQuantity(prev => prev + 1);
-    const decrementQuantity = () => setQuantity(prev => Math.max(1, prev - 1));
-
-    const totalAmount = selectedVariant ? Number(selectedVariant.salePriceDzd) * quantity : 0;
+    const totalAmount = product.variants.reduce((acc: number, v: any) => {
+        const qty = selectedQuantities[v.id] || 0;
+        return acc + (Number(v.salePriceDzd) * qty);
+    }, 0);
 
     return (
         <>
@@ -72,11 +87,11 @@ export default function ProductModal({ isOpen, onClose, product }: ProductModalP
                 isOpen={isOpen}
                 onOpenChange={onClose}
                 size="2xl"
-                placement="center"
+                placement="bottom-center"
                 backdrop="blur"
                 hideCloseButton
                 classNames={{
-                    base: "bg-white/90 backdrop-blur-xl rounded-[24px] shadow-2xl p-0 overflow-hidden border border-white/20",
+                    base: "bg-white/90 backdrop-blur-xl rounded-t-[32px] sm:rounded-[24px] shadow-2xl p-0 overflow-hidden border border-white/20 m-0",
                     backdrop: "bg-slate-900/40 backdrop-blur-md",
                     body: "p-0"
                 }}
@@ -95,22 +110,22 @@ export default function ProductModal({ isOpen, onClose, product }: ProductModalP
                         {/* Close Button */}
                         <button
                             onClick={onClose}
-                            className="absolute top-4 right-4 size-10 bg-slate-100/50 hover:bg-slate-200/50 backdrop-blur-sm rounded-full flex items-center justify-center text-slate-900 transition-colors z-10"
+                            className="absolute top-4 right-4 size-10 bg-slate-100/50 hover:bg-slate-200/50 backdrop-blur-sm rounded-full flex items-center justify-center text-slate-900 transition-colors z-30"
                         >
                             <span className="material-symbols-outlined">close</span>
                         </button>
 
                         {/* BEGIN: Header Section */}
-                        <div className="p-6 lg:p-8 overflow-y-auto max-h-[80vh] no-scrollbar">
-                            <div className="flex flex-col md:flex-row gap-6 items-start md:items-center">
-                                <div className="size-24 min-w-[96px] bg-slate-50 border border-slate-100 rounded-[20px] flex items-center justify-center overflow-hidden relative shadow-sm">
+                        <div className="p-5 sm:p-8 overflow-y-auto max-h-[85vh] no-scrollbar">
+                            <div className="flex flex-col sm:flex-row gap-4 sm:gap-6 items-start sm:items-center">
+                                <div className="size-20 sm:size-24 min-w-[80px] sm:min-w-[96px] bg-slate-50 border border-slate-100 rounded-[20px] flex items-center justify-center overflow-hidden relative shadow-sm">
                                     {product.imageUrl ? (
                                         <Image
                                             alt={product.name}
-                                            className="object-contain p-2"
+                                            className="object-cover"
                                             src={product.imageUrl}
                                             fill
-                                            sizes="96px"
+                                            sizes="(max-width: 768px) 80px, 96px"
                                         />
                                     ) : (
                                         <div className="w-full h-full bg-slate-200 flex items-center justify-center">
@@ -119,71 +134,72 @@ export default function ProductModal({ isOpen, onClose, product }: ProductModalP
                                     )}
                                 </div>
                                 <div className="flex-1">
-                                    <h1 className="text-black text-xl font-black leading-tight tracking-tight uppercase">{product.name}</h1>
-                                    <p className="text-black/50 text-xs mt-1 leading-relaxed max-w-lg font-bold">
-                                        {product.description || "Livraison instantanée du code d'activation sur votre ticket de caisse. Service Premium Digital."}
+                                    <h1 className="text-[#0c121e] text-lg sm:text-xl font-black leading-tight tracking-tight uppercase font-['Plus_Jakarta_Sans']">{product.name}</h1>
+                                    <p className="text-slate-400 text-[10px] sm:text-xs mt-1 leading-relaxed max-w-lg font-medium">
+                                        {product.description || "Livraison instantanée du code d'activation sur votre ticket de caisse."}
                                     </p>
                                 </div>
                             </div>
 
                             {/* 2. Variants Section */}
                             <div className="mt-8">
-                                <h2 className="text-black text-lg font-black mb-4 flex items-center gap-2 uppercase tracking-wide">
-                                    <span className="bg-[#ec5b13] text-white size-5 rounded-full flex items-center justify-center text-[10px]">1</span>
+                                <h2 className="text-[#0c121e] text-lg font-black mb-4 flex items-center gap-2 uppercase tracking-wide">
+                                    <span className="bg-primary text-white size-5 rounded-full flex items-center justify-center text-[10px]">1</span>
                                     Choisissez une option
                                 </h2>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     {product.variants && product.variants.map((variant: any) => {
-                                        const isActive = selectedVariant?.id === variant.id;
+                                        const qty = selectedQuantities[variant.id] || 0;
                                         const stockCount = variant.stockCount || 0;
-
-                                        // Un variant n'est jamais vraiment "en rupture" bloquante maintenant, 
-                                        // il bascule juste en manuel
-                                        const isAutoOutOfStock = !product.isManualDelivery && stockCount === 0;
                                         const isManual = product.isManualDelivery || stockCount === 0;
 
                                         return (
                                             <div
                                                 key={variant.id}
-                                                onClick={() => setSelectedVariant(variant)}
-                                                className={`relative rounded-[16px] p-4 flex flex-col justify-between min-h-[100px] transition-all border-2 ${isActive
-                                                    ? 'border-[#ec5b13] bg-orange-50/50 cursor-pointer shadow-sm'
-                                                    : 'border-slate-200/60 bg-white/50 hover:bg-white cursor-pointer'
+                                                className={`relative rounded-[20px] p-4 flex flex-col justify-between min-h-[120px] transition-all border-2 ${qty > 0
+                                                    ? 'border-[#ec5b13] bg-orange-50/50 shadow-sm'
+                                                    : 'border-slate-100 bg-white/50 hover:bg-white hover:border-slate-200'
                                                     }`}
                                             >
-                                                {isActive && (
-                                                    <div className="absolute -top-2 -right-2 bg-[#ec5b13] text-white size-7 rounded-full flex items-center justify-center shadow-md">
-                                                        <span className="material-symbols-outlined !text-sm font-black">check</span>
-                                                    </div>
-                                                )}
-
-                                                {isAutoOutOfStock && (
-                                                    <div className="absolute -top-2 -right-2 bg-blue-600 text-white px-3 py-0.5 rounded-full text-[10px] font-black uppercase shadow-sm flex items-center gap-1">
-                                                        <span className="material-symbols-outlined !text-[12px]">person</span>
-                                                        Manuel
-                                                    </div>
-                                                )}
-
                                                 <div>
-                                                    <p className={`text-lg font-black ${isActive ? 'text-[#ec5b13]' : 'text-black'}`}>{variant.name}</p>
-                                                    <p className={`text-base font-black mt-0.5 ${isActive ? 'text-black' : 'text-black/60'}`}>
+                                                    <div className="flex justify-between items-start mb-1">
+                                                        <p className={`text-base font-black ${qty > 0 ? 'text-[#ec5b13]' : 'text-black'}`}>{variant.name}</p>
+                                                        {qty > 0 && <span className="bg-[#ec5b13] text-white text-[10px] font-black px-2 py-0.5 rounded-full">x{qty}</span>}
+                                                    </div>
+                                                    <p className={`text-sm font-black ${qty > 0 ? 'text-black' : 'text-black/60'}`}>
                                                         {formatCurrency(variant.salePriceDzd, 'DZD')}
                                                     </p>
                                                 </div>
-                                                <div className="mt-3 flex items-center justify-between">
-                                                    {isManual ? (
-                                                        <span className="text-[10px] font-black uppercase tracking-wider text-blue-600 flex items-center gap-1">
-                                                            <span className="material-symbols-outlined !text-[14px]">schedule</span>
-                                                            Délai: ~15min
-                                                        </span>
-                                                    ) : (
-                                                        <span className={`text-[10px] font-black uppercase tracking-wider ${stockCount > 5 ? 'text-black/30' : 'text-orange-500'}`}>
-                                                            {stockCount} {variant.isSharing ? 'profils' : 'en stock'}
-                                                        </span>
-                                                    )}
-                                                    {isActive && (
-                                                        <span className="text-[10px] font-black uppercase tracking-widest text-[#ec5b13]/70 ml-auto">Sélectionné</span>
-                                                    )}
+
+                                                <div className="mt-4 flex items-center justify-between">
+                                                    <div className="flex flex-col">
+                                                        {isManual ? (
+                                                            <span className="text-[9px] font-black uppercase tracking-wider text-blue-600 flex items-center gap-1">
+                                                                <span className="material-symbols-outlined !text-[12px]">schedule</span>
+                                                                Délai: ~15min
+                                                            </span>
+                                                        ) : (
+                                                            <span className={`text-[9px] font-black uppercase tracking-wider ${stockCount > 5 ? 'text-black/30' : 'text-orange-500'}`}>
+                                                                {stockCount} {variant.isSharing ? 'profils' : 'en stock'}
+                                                            </span>
+                                                        )}
+                                                    </div>
+
+                                                    <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl p-1 shadow-sm">
+                                                        <button
+                                                            onClick={(e) => { e.stopPropagation(); updateVariantQuantity(variant.id, -1); }}
+                                                            className="size-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-black hover:bg-slate-50 transition-all active:scale-90"
+                                                        >
+                                                            <span className="material-symbols-outlined !text-lg">remove</span>
+                                                        </button>
+                                                        <span className="text-sm font-black w-4 text-center tabular-nums text-black">{qty}</span>
+                                                        <button
+                                                            onClick={(e) => { e.stopPropagation(); updateVariantQuantity(variant.id, 1); }}
+                                                            className="size-8 rounded-lg flex items-center justify-center text-[#ec5b13] hover:bg-orange-50 transition-all active:scale-90"
+                                                        >
+                                                            <span className="material-symbols-outlined !text-lg">add</span>
+                                                        </button>
+                                                    </div>
                                                 </div>
                                             </div>
                                         );
@@ -191,50 +207,27 @@ export default function ProductModal({ isOpen, onClose, product }: ProductModalP
                                 </div>
                             </div>
 
-                            {/* 3. Quantity Section */}
-                            <div className="mt-8">
-                                <h2 className="text-black text-lg font-black mb-4 flex items-center gap-2 uppercase tracking-wide">
-                                    <span className="bg-[#ec5b13] text-white size-5 rounded-full flex items-center justify-center text-[10px]">2</span>
-                                    Quantité
-                                </h2>
-                                <div className="bg-slate-50/50 rounded-full p-1.5 flex items-center justify-between max-w-[220px] mx-auto md:mx-0 shadow-inner border border-slate-200/50">
-                                    <button
-                                        onClick={decrementQuantity}
-                                        className="size-10 bg-white shadow-sm rounded-full flex items-center justify-center hover:scale-110 active:scale-95 transition-transform border border-slate-100"
-                                    >
-                                        <span className="material-symbols-outlined text-black font-black">remove</span>
-                                    </button>
-                                    <span className="text-black text-xl font-black px-4">{quantity}</span>
-                                    <button
-                                        onClick={incrementQuantity}
-                                        className="size-10 bg-white shadow-sm rounded-full flex items-center justify-center hover:scale-110 active:scale-95 transition-transform border border-slate-100"
-                                    >
-                                        <span className="material-symbols-outlined text-black font-black">add</span>
-                                    </button>
-                                </div>
-                            </div>
-
-                            {/* 4. Footer CTA Section */}
-                            <div className="mt-8">
+                            {/* 3. Footer CTA Section */}
+                            <div className="mt-10">
                                 <button
                                     onClick={handleAddToCart}
-                                    disabled={!selectedVariant}
-                                    className="w-full h-16 bg-[#ec5b13] hover:bg-orange-600 disabled:bg-slate-200 disabled:cursor-not-allowed text-white rounded-[20px] flex items-center justify-between px-6 shadow-lg shadow-orange-500/10 active:scale-[0.99] transition-all group"
+                                    disabled={Object.keys(selectedQuantities).length === 0}
+                                    className="w-full h-16 bg-primary hover:bg-primary/90 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed text-white rounded-[20px] flex items-center justify-between px-6 shadow-xl shadow-primary/20 active:scale-[0.98] transition-all group"
                                 >
                                     <div className="flex items-center gap-3">
                                         <span className="material-symbols-outlined !text-2xl group-hover:translate-x-1 transition-transform">shopping_basket</span>
-                                        <span className="text-lg font-black tracking-tight uppercase">
-                                            {(!product.isManualDelivery && selectedVariant && (selectedVariant.stockCount || 0) < quantity) ? "Commander (Traitement Manuel)" : "Ajouter au panier"}
+                                        <span className="text-sm font-black tracking-widest uppercase">
+                                            Ajouter au panier
                                         </span>
                                     </div>
                                     <div className="h-8 w-px bg-white/20"></div>
                                     <div className="text-right">
-                                        <p className="text-white/70 text-[10px] font-black uppercase tracking-widest leading-none mb-1">Total</p>
+                                        <p className="text-white/60 text-[9px] font-black uppercase tracking-widest leading-none mb-1">Total Sélection</p>
                                         <p className="text-lg font-black leading-none">{formatCurrency(totalAmount, 'DZD')}</p>
                                     </div>
                                 </button>
-                                <p className="text-center text-black/30 text-sm mt-5 font-black uppercase tracking-wide">
-                                    Paiement sécurisé par carte ou espèces à la caisse.
+                                <p className="text-center text-slate-300 text-[10px] mt-5 font-bold uppercase tracking-widest">
+                                    Paiement sécurisé à la caisse
                                 </p>
                             </div>
                         </div>

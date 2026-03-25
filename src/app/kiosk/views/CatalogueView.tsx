@@ -113,8 +113,8 @@ export default function CatalogueView({ products, categories }: CatalogueViewPro
                         <button
                             onClick={() => setSelectedCategoryId(null)}
                             className={`flex items-center gap-2 px-6 py-3 rounded-full font-semibold text-sm whitespace-nowrap transition-colors ${selectedCategoryId === null
-                                    ? "bg-[#FF8000] text-white shadow-lg shadow-[#FF8000]/20"
-                                    : "bg-white text-gray-800 border border-gray-200 hover:bg-gray-50"
+                                ? "bg-[#FF8000] text-white shadow-lg shadow-[#FF8000]/20"
+                                : "bg-white text-gray-800 border border-gray-200 hover:bg-gray-50"
                                 }`}
                         >
                             <span className="material-symbols-outlined !text-[18px] leading-none">apps</span>
@@ -127,8 +127,8 @@ export default function CatalogueView({ products, categories }: CatalogueViewPro
                                 key={cat.id}
                                 onClick={() => setSelectedCategoryId(cat.id)}
                                 className={`flex items-center gap-2 px-6 py-3 rounded-full font-semibold text-sm whitespace-nowrap transition-colors ${selectedCategoryId === cat.id
-                                        ? "bg-[#FF8000] text-white shadow-lg shadow-[#FF8000]/20"
-                                        : "bg-white text-gray-800 border border-gray-200 hover:bg-gray-50"
+                                    ? "bg-[#FF8000] text-white shadow-lg shadow-[#FF8000]/20"
+                                    : "bg-white text-gray-800 border border-gray-200 hover:bg-gray-50"
                                     }`}
                             >
                                 <span className="material-symbols-outlined !text-[18px] leading-none">
@@ -245,12 +245,12 @@ export default function CatalogueView({ products, categories }: CatalogueViewPro
             {/* ══════════════════════════════════════════════════════════════
                 SIDEBAR — "Ma Sélection" (desktop lg+) — T022-T028
             ══════════════════════════════════════════════════════════════ */}
-            <aside className="hidden lg:flex flex-col w-[25%] min-w-[280px] max-w-[380px] bg-white border-l border-gray-200 shadow-2xl shrink-0">
+            <aside className="hidden lg:flex flex-col w-[25%] min-w-[280px] max-w-[380px] bg-white border-l border-gray-200 shadow-2xl shrink-0 h-full">
 
                 {/* T023 — Header */}
-                <div className="p-8 border-b border-gray-100">
+                <div className="p-6 xl:p-8 border-b border-gray-100 shrink-0">
                     <div className="flex items-center justify-between">
-                        <h2 className="text-2xl font-bold text-gray-900">Ma Sélection</h2>
+                        <h2 className="text-xl xl:text-2xl font-bold text-gray-900">Ma Sélection</h2>
                         <span className="bg-[#FF8000]/10 text-[#FF8000] px-3 py-1 rounded-full text-sm font-bold">
                             {totalItems} {totalItems <= 1 ? "item" : "items"}
                         </span>
@@ -259,7 +259,7 @@ export default function CatalogueView({ products, categories }: CatalogueViewPro
 
                 {/* T024-T025 — Liste items */}
                 <div
-                    className="flex-1 overflow-y-auto p-8 space-y-6"
+                    className="flex-1 overflow-y-auto p-6 xl:p-8 space-y-6 min-h-0"
                     style={{ scrollbarWidth: "none" }}
                 >
                     {/* T027 — État vide */}
@@ -323,18 +323,18 @@ export default function CatalogueView({ products, categories }: CatalogueViewPro
                     )}
                 </div>
 
-                {/* T026 — Total + Checkout */}
-                <div className="p-8 bg-[#F5F5F7] border-t border-gray-100">
-                    <div className="flex justify-between items-end mb-6">
-                        <span className="text-[#86868B] font-medium text-lg">Total</span>
-                        <span className="text-4xl font-bold text-gray-900">
+                {/* T026 — Total + Checkout (Fixé en bas de la sidebar) */}
+                <div className="p-6 xl:p-8 bg-white border-t border-gray-100 shrink-0 shadow-[0_-10px_30px_rgba(0,0,0,0.04)] relative z-10">
+                    <div className="flex justify-between items-end mb-4 xl:mb-6">
+                        <span className="text-[#86868B] font-medium text-base xl:text-lg">Total</span>
+                        <span className="text-2xl xl:text-4xl font-bold text-gray-900">
                             {formatCurrency(totalAmount, "DZD")}
                         </span>
                     </div>
                     <button
                         onClick={() => setStep("CART")}
                         disabled={cart.length === 0}
-                        className="w-full py-5 bg-[#FF8000] hover:bg-[#E67300] disabled:bg-gray-200 disabled:cursor-not-allowed text-white rounded-[24px] font-bold text-lg uppercase tracking-wider shadow-xl shadow-[#FF8000]/20 transition-all active:scale-[0.98]"
+                        className="w-full py-4 xl:py-5 bg-[#FF8000] hover:bg-[#E67300] disabled:bg-gray-200 disabled:cursor-not-allowed text-white rounded-[24px] font-bold text-base xl:text-lg uppercase tracking-wider shadow-xl shadow-[#FF8000]/20 transition-all active:scale-[0.98]"
                     >
                         Terminer et Commander
                     </button>

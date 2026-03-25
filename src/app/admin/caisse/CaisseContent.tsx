@@ -10,7 +10,7 @@ import { useAuthStore } from "@/store/useAuthStore";
 import { toast } from "react-hot-toast";
 import OrderDetailModal from "@/components/admin/modals/OrderDetailModal";
 import RefundOrderModal from "@/components/admin/modals/RefundOrderModal";
-import { Eye, User as UserIcon, Plus, Printer, RotateCcw } from "lucide-react";
+import { Eye, User as UserIcon, Plus, RotateCcw } from "lucide-react";
 import { getAllClients, createClient } from "../clients/actions";
 import { formatCurrency } from "@/lib/formatters";
 import { ThermalReceiptV2 } from "@/components/admin/receipt/ThermalReceiptV2";
@@ -80,7 +80,7 @@ export default function CaisseContent() {
         loadOrders();
         const loadClients = async () => {
             const res: any = await getAllClients({});
-            setAllClients(Array.isArray(res) ? res : []);
+            setAllClients(res.success && Array.isArray(res.clients) ? res.clients : []);
         };
         loadClients();
 
@@ -155,9 +155,9 @@ export default function CaisseContent() {
                 if (res.order.deliveryMethod === "TICKET") {
                     const hasManual = res.order.items?.some((it: any) => it.variant?.product?.isManualDelivery);
                     if (!hasManual) {
-                        toast.success(`🖨️ Ticket #${res.order.orderNumber} en file d'impression`, { duration: 3000 });
+                        toast.success(`🖨️ Ticket #${res.order.orderNumber} envoyé à l'imprimante`, { duration: 3000 });
                     } else {
-                        toast.success("Commande à livraison manuelle (Impression différée)");
+                        toast.success("Commande mixte/manuelle : l'impression se lancera après insertion des codes manquants", { duration: 5000 });
                     }
                 }
 
@@ -296,22 +296,6 @@ export default function CaisseContent() {
                     <div className="flex items-center justify-between gap-4">
                         <div className="flex items-center gap-3">
                             <h2 className="text-lg font-bold tracking-tight shrink-0 text-[#ec5b13]">Commandes du jour</h2>
-                            <Tooltip content="Impression automatique via RobotechPrint.exe">
-                                <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg border text-[10px] font-bold uppercase cursor-default bg-emerald-500/10 border-emerald-500/20 text-emerald-400">
-                                    <Printer className="w-3 h-3" />
-                                    ESC/POS Auto
-                                </div>
-                            </Tooltip>
-                            <div className="hidden sm:flex items-center gap-1.5 px-2 py-1 bg-slate-100 dark:bg-white/5 rounded-lg border border-slate-200 dark:border-white/10">
-                                <span className={`w-1.5 h-1.5 rounded-full ${isLoading ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500'}`}></span>
-                                <button
-                                    onClick={() => loadOrders()}
-                                    disabled={isLoading}
-                                    className="p-0.5 hover:text-[#ec5b13] transition-colors disabled:opacity-30"
-                                >
-                                    <span className={`material-symbols-outlined !text-[14px] ${isLoading ? 'animate-spin' : ''}`}>refresh</span>
-                                </button>
-                            </div>
                         </div>
                         <div className="flex flex-nowrap gap-1 p-1 bg-slate-200 dark:bg-[#ec5b13]/5 rounded-xl transition-all overflow-x-auto scrollbar-hide">
                             {["Toutes", "En attente", "Payées", "Partiel", "Dettes", "Livrées", "Remboursés"].map((s) => (
@@ -688,7 +672,7 @@ export default function CaisseContent() {
                                 </div>
                                 <div className="flex gap-2">
                                     <select
-                                        className="bg-transparent border-none focus:ring-0 p-0 text-sm font-semibold text-white flex-1 outline-none"
+                                        className="bg-transparent border-none focus:ring-0 p-0 text-sm font-semibold text-[#ec5b13] dark:text-white flex-1 outline-none"
                                         value={selectedClientId || ""}
                                         onChange={(e) => setSelectedClientId(Number(e.target.value) || null)}
                                     >
@@ -802,6 +786,7 @@ export default function CaisseContent() {
                         date: orderForDetail.createdAt,
                         items: enrichedItems,
                         totalAmount: orderForDetail.totalAmount,
+                        remise: orderForDetail.remise,
                         paymentMethod: orderForDetail.paymentMethod || "Espèces",
                         cashier: user?.nom || "Admin"
                     };
@@ -819,6 +804,7 @@ export default function CaisseContent() {
                         id: orderForInitiateReturn.id,
                         orderNumber: orderForInitiateReturn.orderNumber,
                         totalAmount: orderForInitiateReturn.totalAmount,
+                        remise: orderForInitiateReturn.remise,
                         clientId: orderForInitiateReturn.clientId ?? null,
                         status: orderForInitiateReturn.status,
                     }}

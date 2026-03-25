@@ -66,6 +66,7 @@ interface DashboardContentProps {
 
 import OrderDetailModal from "./modals/OrderDetailModal";
 import { cancelOrderAction } from "@/app/admin/caisse/actions";
+import { getDashboardStats } from "@/app/admin/dashboard/actions";
 import { useThermalPrinter } from "@/hooks/useThermalPrinter";
 import { useWebUSBPrinter } from "@/hooks/useWebUSBPrinter";
 import { generateOrderEscPos } from "@/lib/escpos";
@@ -494,6 +495,7 @@ export default function DashboardContent({ stats }: DashboardContentProps) {
                             playerNickname: it.playerNickname
                         }))}
                         totalAmount={selectedOrder.totalAmount}
+                        remise={selectedOrder.remise}
                         paymentMethod={selectedOrder.paymentMethod}
                     />
                 </div>

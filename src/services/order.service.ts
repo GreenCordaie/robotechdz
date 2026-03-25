@@ -59,7 +59,7 @@ export class OrderService {
             if (!finalOrder) return null;
 
             // 4. Check for manual products
-            const hasManualProducts = (finalOrder as any).items.some((item: any) => !item.variant?.isAutomatic);
+            const hasManualProducts = (finalOrder as any).items.some((item: any) => item.variant?.product?.isManualDelivery);
             const printStatus = hasManualProducts ? "idle" : "print_pending";
 
             // 5. Update Order Status and Print Status
