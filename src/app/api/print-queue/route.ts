@@ -60,13 +60,15 @@ export async function GET(req: NextRequest) {
 
         const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:1556";
 
-        // --- NEW: Filter out manual orders that don't have codes yet ---
+        // --- NEW: Filter out orders that don't have codes for ALL items yet ---
+        // Exception: Kiosk orders in EN_ATTENTE (Wait tickets) are allowed.
         const ordersToPrint = pendingOrders.filter((order: any) => {
-            const hasCredentials = order.items.some((item: any) =>
-                (item.codes && item.codes.length > 0) || (item.slots && item.slots.length > 0)
-            );
-            // Only print if there are actual credentials (codes or slots)
-            return hasCredentials;
+            const allItemsFulfilled = order.items.every((item: any) => {
+                const hasCodes = (item.codes && item.codes.length > 0) || (item.slots && item.slots.length > 0);
+                return hasCodes;
+            });
+            const isKioskWaitTicket = order.source === "KIOSK" && order.status === "EN_ATTENTE";
+            return allItemsFulfilled || isKioskWaitTicket;
         });
 
         // Map each order to PrintData format (with decrypted credentials)
@@ -120,7 +122,9 @@ export async function GET(req: NextRequest) {
                     productName: item.variant?.product?.name || item.name || "Article",
                     quantity: quantity,
                     price: unitPrice,
+                    unitPrice: unitPrice, // Explicit alias
                     total: itemTotal, // Line total
+                    itemTotal: itemTotal, // Explicit alias
                     totalStr: String(itemTotal),
                     credentials,
                 };
@@ -142,14 +146,18 @@ export async function GET(req: NextRequest) {
                 total: totalAmount, // Fallback alias 1
                 brutTotal: totalAmount,
                 remise: remise,
+                remiseGlobale: remise, // Explicit alias
                 discount: remise, // Alias for some services
                 netTotal: netTotal,
                 finalTotal: netTotal,
+                totalNet: netTotal, // Another common alias
+                resteAPayer: Number(order.resteAPayer || 0), // Show if there is remaining debt
                 // String variants for safety
                 totalStr: String(totalAmount),
                 remiseStr: String(remise),
                 discountStr: String(remise),
                 netTotalStr: String(netTotal),
+                totalClientDebt: order.client?.totalDetteDzd || "0",
                 paymentMethod: order.paymentMethod || undefined,
                 customer: { name: customerName, phone: customerPhone },
                 trackingUrl: `${appUrl}/suivi/${order.orderNumber}`,

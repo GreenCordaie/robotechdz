@@ -12,12 +12,17 @@ export interface OrderItem {
 export interface Order {
     id: number;
     orderNumber: string;
-    status: OrderStatus;
+    status: OrderStatus | any; // Allow for PARTIEL, NON_PAYE
     totalAmount: string;
+    remise?: string;
+    montantPaye?: string;
+    resteAPayer?: string;
+    clientId?: number | null;
     items: OrderItem[];
     deliveryMethod: "TICKET" | "WHATSAPP";
     customerPhone?: string;
     createdAt: Date | string | null;
+    printStatus?: "idle" | "print_pending" | "printed" | "error";
 }
 
 interface OrderState {

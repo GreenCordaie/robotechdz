@@ -53,7 +53,7 @@ export const AddProductModal = ({ isOpen, onClose, categories, suppliers, produc
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
     const [previewUrl, setPreviewUrl] = useState<string | null>(null);
     const [requiresPlayerId, setRequiresPlayerId] = useState(false);
-    const [isManualDelivery, setIsManualDelivery] = useState(true);
+    const [isManualDelivery, setIsManualDelivery] = useState(false);
     const [tutorialText, setTutorialText] = useState("");
     const fileInputRef = React.useRef<HTMLInputElement>(null);
 
@@ -298,10 +298,10 @@ export const AddProductModal = ({ isOpen, onClose, categories, suppliers, produc
                 backdrop="blur"
                 size="4xl"
                 classNames={{
-                    base: "bg-[#161616] border border-[#262626] rounded-2xl shadow-2xl overflow-hidden font-display",
-                    header: "border-b border-white/5 px-8 py-5",
-                    footer: "border-t border-white/5 px-8 py-6 bg-[#161616]/80 backdrop-blur-md",
-                    closeButton: "hover:bg-white/5 active:bg-white/10 transition-colors top-4 right-4 rounded-full size-10 text-slate-400 hover:text-white",
+                    base: "bg-white dark:bg-[#161616] border border-slate-200 dark:border-[#262626] rounded-2xl shadow-2xl overflow-hidden font-display",
+                    header: "border-b border-slate-100 dark:border-white/5 px-8 py-5",
+                    footer: "border-t border-slate-100 dark:border-white/5 px-8 py-6 bg-slate-50/80 dark:bg-[#161616]/80 backdrop-blur-md",
+                    closeButton: "hover:bg-slate-100 dark:hover:bg-white/5 active:bg-slate-200 dark:active:bg-white/10 transition-colors top-4 right-4 rounded-full size-10 text-slate-400 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white",
                 }}
             >
                 <ModalContent>
@@ -311,7 +311,7 @@ export const AddProductModal = ({ isOpen, onClose, categories, suppliers, produc
                                 <div className="flex flex-col gap-1">
                                     <div className="flex items-center gap-3">
                                         <PlusCircle className="text-[#ec5b13] size-6" />
-                                        <h2 className="text-slate-100 text-lg font-black leading-tight tracking-tight uppercase">
+                                        <h2 className="text-slate-900 dark:text-slate-100 text-lg font-black leading-tight tracking-tight uppercase">
                                             {productToEdit ? "Modifier le Produit" : "Ajouter un Nouveau Produit"}
                                         </h2>
                                     </div>
@@ -337,7 +337,7 @@ export const AddProductModal = ({ isOpen, onClose, categories, suppliers, produc
                                             />
                                             <div
                                                 onClick={() => fileInputRef.current?.click()}
-                                                className="flex-1 min-h-[260px] border-2 border-dashed border-[#262626] bg-[#0a0a0a] rounded-xl flex flex-col items-center justify-center gap-4 cursor-pointer hover:border-[#ec5b13]/50 transition-all group p-6 relative overflow-hidden"
+                                                className="flex-1 min-h-[260px] border-2 border-dashed border-slate-200 dark:border-[#262626] bg-slate-50 dark:bg-[#0a0a0a] rounded-xl flex flex-col items-center justify-center gap-4 cursor-pointer hover:border-[#ec5b13]/50 transition-all group p-6 relative overflow-hidden"
                                             >
                                                 {previewUrl ? (
                                                     <Image src={previewUrl} className="object-cover" alt="Preview" fill sizes="(max-width: 768px) 100vw, 400px" />
@@ -347,7 +347,7 @@ export const AddProductModal = ({ isOpen, onClose, categories, suppliers, produc
                                                             <ImageIcon className="text-slate-400 size-8 group-hover:text-[#ec5b13]" />
                                                         </div>
                                                         <div className="text-center">
-                                                            <p className="text-slate-100 text-sm font-black uppercase tracking-tight">Glissez l&apos;image ou cliquez</p>
+                                                            <p className="text-slate-900 dark:text-slate-100 text-sm font-black uppercase tracking-tight">Glissez l&apos;image ou cliquez</p>
                                                             <p className="text-slate-500 text-[10px] mt-1 font-bold uppercase tracking-wider">PNG, JPG jusqu&apos;à 10MB</p>
                                                         </div>
                                                     </>
@@ -365,7 +365,7 @@ export const AddProductModal = ({ isOpen, onClose, categories, suppliers, produc
                                             <div className="flex flex-col gap-2">
                                                 <label className="text-slate-400 text-xs font-black uppercase tracking-widest">Nom du Produit</label>
                                                 <input
-                                                    className="w-full bg-[#0a0a0a] border border-[#262626] rounded-xl px-4 py-3.5 text-slate-100 placeholder:text-slate-600 focus:ring-1 focus:ring-[#ec5b13] focus:border-[#ec5b13] outline-none transition-all font-bold text-sm"
+                                                    className="w-full bg-slate-50 dark:bg-[#0a0a0a] border border-slate-200 dark:border-[#262626] rounded-xl px-4 py-3.5 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-600 focus:ring-1 focus:ring-[#ec5b13] focus:border-[#ec5b13] outline-none transition-all font-bold text-sm"
                                                     placeholder="ex: Netflix Premium"
                                                     type="text"
                                                     value={name}
@@ -377,13 +377,13 @@ export const AddProductModal = ({ isOpen, onClose, categories, suppliers, produc
                                                 <label className="text-slate-400 text-xs font-black uppercase tracking-widest">Catégorie</label>
                                                 <div className="relative group">
                                                     <select
-                                                        className="w-full bg-[#0a0a0a] border border-[#262626] rounded-xl px-4 py-3.5 text-slate-100 appearance-none focus:ring-1 focus:ring-[#ec5b13] focus:border-[#ec5b13] outline-none transition-all cursor-pointer font-bold text-sm"
+                                                        className="w-full bg-slate-50 dark:bg-[#0a0a0a] border border-slate-200 dark:border-[#262626] rounded-xl px-4 py-3.5 text-slate-900 dark:text-slate-100 appearance-none focus:ring-1 focus:ring-[#ec5b13] focus:border-[#ec5b13] outline-none transition-all cursor-pointer font-bold text-sm"
                                                         value={categoryId}
                                                         onChange={(e) => setCategoryId(e.target.value)}
                                                     >
                                                         <option disabled value="">Sélectionner une catégorie</option>
                                                         {categories.map(cat => (
-                                                            <option key={cat.id} value={String(cat.id)}>{cat.name}</option>
+                                                            <option key={cat.id} value={String(cat.id)} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100">{cat.name}</option>
                                                         ))}
                                                     </select>
                                                     <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none group-focus-within:text-[#ec5b13] transition-colors size-5" />
@@ -393,7 +393,7 @@ export const AddProductModal = ({ isOpen, onClose, categories, suppliers, produc
                                             <div className="flex flex-col gap-2">
                                                 <label className="text-slate-400 text-xs font-black uppercase tracking-widest">Description</label>
                                                 <textarea
-                                                    className="w-full bg-[#0a0a0a] border border-[#262626] rounded-xl px-4 py-3.5 text-slate-100 placeholder:text-slate-600 focus:ring-1 focus:ring-[#ec5b13] focus:border-[#ec5b13] outline-none transition-all resize-none h-[115px] font-bold text-sm"
+                                                    className="w-full bg-slate-50 dark:bg-[#0a0a0a] border border-slate-200 dark:border-[#262626] rounded-xl px-4 py-3.5 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-600 focus:ring-1 focus:ring-[#ec5b13] focus:border-[#ec5b13] outline-none transition-all resize-none h-[115px] font-bold text-sm"
                                                     placeholder="Décrivez les fonctionnalités..."
                                                     value={description}
                                                     onChange={(e) => setDescription(e.target.value)}
@@ -410,7 +410,7 @@ export const AddProductModal = ({ isOpen, onClose, categories, suppliers, produc
                                                 Tutoriel d&apos;installation (Bot Gemini)
                                             </label>
                                             <textarea
-                                                className="w-full bg-[#0a0a0a] border border-[#262626] rounded-xl px-4 py-3.5 text-slate-100 placeholder:text-slate-600 focus:ring-1 focus:ring-purple-500 focus:border-purple-500 outline-none transition-all resize-none h-[140px] font-bold text-sm"
+                                                className="w-full bg-slate-50 dark:bg-[#0a0a0a] border border-slate-200 dark:border-[#262626] rounded-xl px-4 py-3.5 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-600 focus:ring-1 focus:ring-purple-500 focus:border-purple-500 outline-none transition-all resize-none h-[140px] font-bold text-sm"
                                                 placeholder="Instructions étape par étape, liens vidéo, codes promos..."
                                                 value={tutorialText}
                                                 onChange={(e) => setTutorialText(e.target.value)}
@@ -420,9 +420,9 @@ export const AddProductModal = ({ isOpen, onClose, categories, suppliers, produc
                                         <div className="flex flex-col gap-4">
                                             <p className="text-slate-400 text-xs font-black uppercase tracking-widest">Options de livraison</p>
                                             <div className="space-y-4">
-                                                <div className="flex items-center justify-between p-4 bg-[#0a0a0a] border border-[#262626] rounded-xl group hover:border-blue-500/30 transition-colors">
+                                                <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-[#0a0a0a] border border-slate-200 dark:border-[#262626] rounded-xl group hover:border-blue-500/30 transition-colors">
                                                     <div className="flex flex-col gap-0.5">
-                                                        <span className="text-slate-100 text-xs font-black uppercase tracking-tight">Direct Top-up</span>
+                                                        <span className="text-slate-900 dark:text-slate-100 text-xs font-black uppercase tracking-tight">Direct Top-up</span>
                                                         <span className="text-slate-500 text-[9px] font-black uppercase tracking-wider">Nécessite ID / Lien Client</span>
                                                     </div>
                                                     <Switch
@@ -433,19 +433,28 @@ export const AddProductModal = ({ isOpen, onClose, categories, suppliers, produc
                                                     />
                                                 </div>
 
-                                                <div className="flex items-center justify-between p-4 bg-[#0a0a0a] border border-[#262626] rounded-xl group hover:border-[#ec5b13]/30 transition-colors">
+                                                <div className="bg-slate-800/40 border border-slate-700/50 rounded-2xl p-4 flex items-center justify-between">
                                                     <div className="flex flex-col gap-0.5">
-                                                        <span className="text-slate-100 text-xs font-black uppercase tracking-tight">Livraison Manuelle</span>
-                                                        <span className="text-slate-500 text-[9px] font-black uppercase tracking-wider">{isManualDelivery ? "Stock Infini" : "Code Numérique"}</span>
+                                                        <span className="text-slate-900 dark:text-slate-100 text-xs font-black uppercase tracking-tight">Mode de Livraison</span>
+                                                        <span className="text-slate-500 text-[9px] font-black uppercase tracking-wider">
+                                                            {isManualDelivery ? "Saisie Manuelle (Agent)" : "Livraison Instantanée (Auto)"}
+                                                        </span>
                                                     </div>
-                                                    <Switch
-                                                        isSelected={isManualDelivery}
-                                                        onValueChange={setIsManualDelivery}
-                                                        color="warning"
-                                                        size="sm"
-                                                        isDisabled={variants.some(v => v.isSharing)}
-                                                    />
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setIsManualDelivery(!isManualDelivery)}
+                                                        className={`w-14 h-7 rounded-full transition-all duration-300 flex items-center p-1 ${isManualDelivery ? 'bg-amber-500' : 'bg-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.3)]'}`}
+                                                        disabled={variants.some(v => v.isSharing)}
+                                                    >
+                                                        <div className={`w-5 h-5 rounded-full bg-white shadow-sm transform transition-transform duration-300 ${isManualDelivery ? 'translate-x-7' : 'translate-x-0'} flex items-center justify-center`}>
+                                                            <span className="material-symbols-outlined !text-xs !font-bold text-slate-800">
+                                                                {isManualDelivery ? 'edit_note' : 'bolt'}
+                                                            </span>
+                                                        </div>
+                                                    </button>
                                                 </div>
+
+
                                             </div>
                                         </div>
                                     </div>
@@ -453,7 +462,7 @@ export const AddProductModal = ({ isOpen, onClose, categories, suppliers, produc
                                     {/* Section 2: Variants & Pricing */}
                                     <section className="flex flex-col gap-6">
                                         <div className="flex items-center justify-between">
-                                            <h3 className="text-slate-100 font-black flex items-center gap-2 uppercase tracking-tight">
+                                            <h3 className="text-slate-900 dark:text-slate-100 font-black flex items-center gap-2 uppercase tracking-tight">
                                                 <Layers className="text-[#ec5b13] size-5" />
                                                 Variantes du Produit
                                             </h3>
@@ -461,13 +470,13 @@ export const AddProductModal = ({ isOpen, onClose, categories, suppliers, produc
 
                                         <div className="space-y-6">
                                             {variants.map((v) => (
-                                                <div key={v.id} className="bg-[#0a0a0a] border border-[#262626] rounded-xl p-6 flex flex-col gap-6 group relative shadow-lg hover:border-[#ec5b13]/20 transition-colors">
+                                                <div key={v.id} className="bg-slate-50 dark:bg-[#0a0a0a] border border-slate-200 dark:border-[#262626] rounded-xl p-6 flex flex-col gap-6 group relative shadow-lg hover:border-[#ec5b13]/20 transition-colors">
                                                     {/* Variant Main Info Row */}
                                                     <div className="flex flex-col md:flex-row items-end gap-4 w-full">
                                                         <div className="flex-1 w-full flex flex-col gap-2">
                                                             <label className="text-slate-500 text-[10px] font-black uppercase tracking-widest">Nom de la variante</label>
                                                             <input
-                                                                className="w-full bg-black/40 border border-[#262626] rounded-lg px-4 py-2.5 text-slate-100 focus:ring-1 focus:ring-[#ec5b13] outline-none font-bold text-sm"
+                                                                className="w-full bg-white/50 dark:bg-black/40 border border-slate-200 dark:border-[#262626] rounded-lg px-4 py-2.5 text-slate-900 dark:text-slate-100 focus:ring-1 focus:ring-[#ec5b13] outline-none font-bold text-sm"
                                                                 placeholder="Standard Edition"
                                                                 type="text"
                                                                 value={v.name}
@@ -478,7 +487,7 @@ export const AddProductModal = ({ isOpen, onClose, categories, suppliers, produc
                                                             <label className="text-slate-500 text-[10px] font-black uppercase tracking-widest">Prix de vente (DZD)</label>
                                                             <div className="relative">
                                                                 <input
-                                                                    className="w-full bg-black/40 border border-[#262626] rounded-lg pl-4 pr-16 py-2.5 text-slate-100 focus:ring-1 focus:ring-[#ec5b13] outline-none font-black text-sm"
+                                                                    className="w-full bg-white/50 dark:bg-black/40 border border-slate-200 dark:border-[#262626] rounded-lg pl-4 pr-16 py-2.5 text-slate-900 dark:text-slate-100 focus:ring-1 focus:ring-[#ec5b13] outline-none font-black text-sm"
                                                                     placeholder="0.00"
                                                                     type="number"
                                                                     value={v.salePrice}
@@ -496,10 +505,10 @@ export const AddProductModal = ({ isOpen, onClose, categories, suppliers, produc
                                                     </div>
 
                                                     {/* SHARING Row */}
-                                                    <div className="flex flex-col md:flex-row items-center gap-6 p-4 bg-black/20 rounded-lg border border-white/5">
+                                                    <div className="flex flex-col md:flex-row items-center gap-6 p-4 bg-slate-100/50 dark:bg-black/20 rounded-lg border border-slate-200 dark:border-white/5">
                                                         <div className="flex items-center gap-4 flex-1">
                                                             <div className="flex flex-col gap-0.5">
-                                                                <span className="text-slate-200 text-xs font-black uppercase tracking-tight">Mode Partagé (Sharing)</span>
+                                                                <span className="text-slate-900 dark:text-slate-200 text-xs font-black uppercase tracking-tight">Mode Partagé (Sharing)</span>
                                                                 <span className="text-slate-500 text-[9px] font-bold tracking-wide uppercase">Divise le compte en profils</span>
                                                             </div>
                                                             <Switch
@@ -514,7 +523,7 @@ export const AddProductModal = ({ isOpen, onClose, categories, suppliers, produc
                                                             <div className="w-48 flex flex-col gap-2">
                                                                 <label className="text-slate-500 text-[9px] font-black uppercase tracking-widest px-1">Profils par Compte</label>
                                                                 <input
-                                                                    className="w-full bg-black/40 border border-[#262626] rounded-lg px-4 py-2 text-sm text-slate-100 focus:ring-1 focus:ring-[#ec5b13] outline-none font-black"
+                                                                    className="w-full bg-white/50 dark:bg-black/40 border border-slate-200 dark:border-[#262626] rounded-lg px-4 py-2 text-sm text-slate-900 dark:text-slate-100 focus:ring-1 focus:ring-[#ec5b13] outline-none font-black"
                                                                     type="number"
                                                                     min="1"
                                                                     max="10"
@@ -541,7 +550,7 @@ export const AddProductModal = ({ isOpen, onClose, categories, suppliers, produc
                                                                         <select
                                                                             value={ls.supplierId}
                                                                             onChange={(e) => updateLinkedSupplier(v.id, ls.id, "supplierId", e.target.value)}
-                                                                            className="w-full bg-black/40 border border-[#262626] rounded-lg px-3 py-2 text-slate-100 text-sm appearance-none focus:ring-1 focus:ring-[#ec5b13] outline-none transition-all cursor-pointer font-bold"
+                                                                            className="w-full bg-white/50 dark:bg-black/40 border border-slate-200 dark:border-[#262626] rounded-lg px-3 py-2 text-slate-900 dark:text-slate-100 text-sm appearance-none focus:ring-1 focus:ring-[#ec5b13] outline-none transition-all cursor-pointer font-bold"
                                                                         >
                                                                             <option value="" disabled>Choisir un fournisseur</option>
                                                                             {suppliers.map(s => (
@@ -555,7 +564,7 @@ export const AddProductModal = ({ isOpen, onClose, categories, suppliers, produc
                                                                             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-xs font-black">$</span>
                                                                         ) : null}
                                                                         <input
-                                                                            className={`w-full bg-black/40 border border-[#262626] rounded-lg ${ls.currency === "USD" ? "pl-6 pr-12" : "pl-3 pr-12"} py-2 text-slate-100 text-sm focus:ring-1 focus:ring-[#ec5b13] outline-none transition-all font-black`}
+                                                                            className={`w-full bg-white/50 dark:bg-black/40 border border-slate-200 dark:border-[#262626] rounded-lg ${ls.currency === "USD" ? "pl-6 pr-12" : "pl-3 pr-12"} py-2 text-slate-900 dark:text-slate-100 text-sm focus:ring-1 focus:ring-[#ec5b13] outline-none transition-all font-black`}
                                                                             placeholder="Achat"
                                                                             type="number"
                                                                             step="0.01"

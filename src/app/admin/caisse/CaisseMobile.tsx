@@ -5,7 +5,7 @@ import { Spinner, Button, Modal, ModalContent, ModalHeader, ModalBody, ModalFoot
 import { useOrderStore } from "@/store/useOrderStore";
 import { useAuthStore } from "@/store/useAuthStore";
 import { toast } from "react-hot-toast";
-import { Eye, Search, Filter, ArrowLeft, User as UserIcon, Plus } from "lucide-react";
+import { Eye, Search, Filter, ArrowLeft, User as UserIcon, Plus, RotateCcw } from "lucide-react";
 import { formatCurrency } from "@/lib/formatters";
 import { requeueForPrint } from "./actions";
 import { useSettingsStore } from "@/store/useSettingsStore";
@@ -55,8 +55,8 @@ export default function CaisseMobile() {
         if (!silent) setIsLoading(true);
         try {
             const res: any = await getTodayOrders({});
-            if (res && res.success !== false) {
-                setAllTodayOrders(Array.isArray(res) ? res : []);
+            if (res && (Array.isArray(res) || res.success !== false)) {
+                setAllTodayOrders(Array.isArray(res) ? res : (res.orders || []));
                 setLastReloadTime(new Date());
             }
         } catch (error) {
@@ -79,9 +79,14 @@ export default function CaisseMobile() {
 
     useEffect(() => {
         if (currentOrder) {
-            setRemise(0);
-            setMontantRecu(Number(currentOrder.totalAmount));
-            setSelectedClientId(null);
+            const currentPaid = Number(currentOrder.montantPaye || 0);
+            const currentRemise = Number(currentOrder.remise || 0);
+            const total = Number(currentOrder.totalAmount || 0);
+            const remaining = Math.max(0, total - currentRemise - currentPaid);
+
+            setRemise(currentRemise);
+            setMontantRecu(remaining);
+            setSelectedClientId(currentOrder.clientId ?? null);
             const initialSuppliers: Record<number, number> = {};
             (currentOrder.items as any[]).forEach(item => {
                 if (item.variant?.variantSuppliers?.length > 0) {
@@ -214,13 +219,34 @@ export default function CaisseMobile() {
 
                     <div className="bg-white/5 rounded-3xl p-6 border border-white/10">
                         <div className="flex justify-between items-start mb-6">
-                            <div>
+                            <div className="flex flex-col">
                                 <h2 className="text-2xl font-black">#{currentOrder.orderNumber}</h2>
                                 <p className="text-xs text-slate-500">{currentOrder.createdAt ? new Date(currentOrder.createdAt).toLocaleString() : ""}</p>
+                                <div className="flex items-center gap-2 mt-2">
+                                    <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase ${getStatusColor(currentOrder.status)}`}>
+                                        {currentOrder.status}
+                                    </span>
+                                    {currentOrder.deliveryMethod === "TICKET" && (
+                                        <div className="flex items-center gap-1">
+                                            {(currentOrder as any).printStatus === "printed" ? (
+                                                <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-emerald-500/20 text-emerald-500 text-[8px] font-black uppercase border border-emerald-500/30">
+                                                    Imprimé
+                                                </span>
+                                            ) : (currentOrder as any).printStatus === "print_pending" ? (
+                                                (currentOrder.items as any[])?.some(it => it.variant?.product?.isManualDelivery) ? (
+                                                    <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-500/20 text-amber-500 text-[8px] font-black uppercase border border-amber-500/30 animate-pulse">
+                                                        Attente Saisie
+                                                    </span>
+                                                ) : (
+                                                    <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-blue-500/20 text-blue-500 text-[8px] font-black uppercase border border-blue-500/30">
+                                                        En File
+                                                    </span>
+                                                )
+                                            ) : null}
+                                        </div>
+                                    )}
+                                </div>
                             </div>
-                            <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase ${getStatusColor(currentOrder.status)}`}>
-                                {currentOrder.status}
-                            </span>
                         </div>
 
                         <div className="space-y-4 mb-8">
@@ -229,8 +255,8 @@ export default function CaisseMobile() {
                                 return (
                                     <div key={idx} className="p-3 bg-white/5 rounded-2xl border border-white/5 space-y-3">
                                         <div className="flex justify-between items-center text-sm">
-                                            <span className="font-bold">{item.quantity}x {item.name}</span>
-                                            <span className="font-black text-emerald-500">{formatCurrency(item.price * item.quantity, 'DZD')}</span>
+                                            <span className="font-bold text-slate-900 dark:text-white">{item.quantity}x {item.name}</span>
+                                            <span className="font-black text-emerald-600 dark:text-emerald-500">{formatCurrency(item.price * item.quantity, 'DZD')}</span>
                                         </div>
                                         {linkedSuppliers.length > 0 && (
                                             <div className="flex items-center gap-2 pt-2 border-t border-white/5">
@@ -259,7 +285,7 @@ export default function CaisseMobile() {
                                 <span className="text-2xl font-black text-[#ec5b13]">{formatCurrency(currentOrder.totalAmount, 'DZD')}</span>
                             </div>
 
-                            {currentOrder.status === 'EN_ATTENTE' && (
+                            {['EN_ATTENTE', 'PARTIEL', 'NON_PAYE'].includes(currentOrder.status) && (
                                 <div className="space-y-4 pt-4">
                                     <div className="flex gap-2">
                                         <Button
@@ -374,16 +400,30 @@ export default function CaisseMobile() {
                                         <p className="font-black text-[#ec5b13] text-lg leading-none">{formatCurrency(o.totalAmount, 'DZD')}</p>
                                         <p className="text-[9px] text-slate-500 font-bold mt-1 uppercase">{o.items?.length} article(s)</p>
                                     </div>
-                                    <button
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            setOrderForDetail(o);
-                                            setIsDetailModalOpen(true);
-                                        }}
-                                        className="p-2 bg-white/5 rounded-xl text-primary"
-                                    >
-                                        <Eye size={16} />
-                                    </button>
+                                    <div className="flex items-center gap-1">
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setOrderForDetail(o);
+                                                setIsDetailModalOpen(true);
+                                            }}
+                                            className="p-2 bg-white/5 rounded-xl text-primary"
+                                        >
+                                            <Eye size={16} />
+                                        </button>
+                                        {["PAYE", "TERMINE", "LIVRE", "PARTIEL", "NON_PAYE"].includes(o.status) && (
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setOrderForDetail(o);
+                                                    setIsDetailModalOpen(true);
+                                                }}
+                                                className="p-2 bg-white/5 rounded-xl text-red-500"
+                                            >
+                                                <RotateCcw size={16} />
+                                            </button>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
                         ))}
@@ -448,7 +488,7 @@ export default function CaisseMobile() {
                                 if (res.success && res.client) {
                                     const newC = res.client;
                                     const clientsRes: any = await getAllClients({});
-                                    setAllClients(Array.isArray(clientsRes) ? clientsRes : []);
+                                    setAllClients(clientsRes.success ? clientsRes.clients : []);
                                     setSelectedClientId(newC.id);
                                     await handleEncaisser(newC.id);
                                     setIsCreatingClient(false);

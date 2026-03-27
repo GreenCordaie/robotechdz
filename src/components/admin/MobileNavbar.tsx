@@ -50,7 +50,7 @@ export const MobileNavbar = () => {
     });
 
     return (
-        <nav className="fixed bottom-0 left-0 right-0 h-20 bg-[#140e0b]/95 backdrop-blur-xl border-t border-white/5 px-4 flex items-center justify-around z-50 shadow-[0_-10px_40px_rgba(0,0,0,0.5)]">
+        <nav className="fixed bottom-0 left-0 right-0 h-20 bg-white/95 dark:bg-[#140e0b]/95 backdrop-blur-xl border-t border-slate-200 dark:border-white/5 px-4 flex items-center justify-around z-50 shadow-xl dark:shadow-[0_-10px_40px_rgba(0,0,0,0.5)] transition-colors">
             {visibleItems.map((item) => {
                 const isActive = pathname === item.href;
                 return (
@@ -71,7 +71,7 @@ export const MobileNavbar = () => {
                                 {item.icon}
                             </span>
                             {item.badge && item.badge > 0 ? (
-                                <span className="absolute -top-1 -right-1.5 bg-[#ec5b13] text-white text-[9px] font-black w-4 h-4 flex items-center justify-center rounded-full border border-black animate-bounce">
+                                <span className="absolute -top-1 -right-1.5 bg-[#ec5b13] text-white text-[9px] font-black w-4 h-4 flex items-center justify-center rounded-full border border-white dark:border-black animate-bounce">
                                     {item.badge}
                                 </span>
                             ) : null}

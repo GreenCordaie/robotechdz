@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Spinner, Button } from "@heroui/react";
 import { toast } from "react-hot-toast";
-import { getPaidOrders, getFinishedOrders, processOrder, markOrderAsTermine, cancelOrderAction, resendWhatsAppAction, requeueForPrint } from "../caisse/actions";
+import { getPaidOrders, getFinishedOrders, processOrder, markOrderAsTermine, cancelOrderAction, resendWhatsAppAction, requeueForPrint, updateItemPurchasePrice } from "../caisse/actions";
 import { formatCurrency } from "@/lib/formatters";
 import { useThermalPrinter } from "@/hooks/useThermalPrinter";
 import { useWebUSBPrinter } from "@/hooks/useWebUSBPrinter";
@@ -12,7 +12,7 @@ import { useSettingsStore } from "@/store/useSettingsStore";
 import { useAuthStore } from "@/store/useAuthStore";
 import { ThermalReceiptV2 } from "@/components/admin/receipt/ThermalReceiptV2";
 import OrderDetailModal from "@/components/admin/modals/OrderDetailModal";
-import { Search, RefreshCw, ArrowLeft, Send, CheckCircle2, History, Eye, Printer, XCircle, Usb, Loader2, Wifi, WifiOff, MessageSquare } from "lucide-react";
+import { Search, RefreshCw, ArrowLeft, Send, CheckCircle2, History, Eye, Printer, XCircle, Usb, Loader2, Wifi, WifiOff, MessageSquare, ShieldCheck, X } from "lucide-react";
 import Image from "next/image";
 
 interface TraitementMobileProps {
@@ -37,6 +37,10 @@ export default function TraitementMobile({ initialOrders = [], initialFinished =
     const settings = useSettingsStore();
     const webusb = useWebUSBPrinter();
     const { user } = useAuthStore();
+    const [editingPurchaseItemId, setEditingPurchaseItemId] = useState<number | null>(null);
+    const [tempPurchasePrice, setTempPurchasePrice] = useState("");
+    const [tempPurchaseCurrency, setTempPurchaseCurrency] = useState("USD");
+    const [isActionLoading, setIsActionLoading] = useState(false);
     const handlePrint = async (data: any) => {
         if (!data?.id) return;
         const res: any = await requeueForPrint({ orderId: data.id });
@@ -44,6 +48,31 @@ export default function TraitementMobile({ initialOrders = [], initialFinished =
             toast.success(`🖨️ Ticket #${data.orderNumber} en file d'impression`);
         } else {
             toast.error(`🖨️ Erreur: ${res?.error || 'Impossible de mettre en file'}`);
+        }
+    };
+
+    const handleSavePurchasePrice = async (orderItemId: number) => {
+        if (!tempPurchasePrice) return;
+
+        setIsActionLoading(true);
+        try {
+            const res: any = await updateItemPurchasePrice({
+                orderItemId,
+                newPurchasePrice: tempPurchasePrice,
+                newPurchaseCurrency: tempPurchaseCurrency
+            });
+
+            if (res && res.success) {
+                toast.success("Prix d'achat mis à jour");
+                setEditingPurchaseItemId(null);
+                loadOrders();
+            } else {
+                toast.error(res?.error || "Erreur de mise à jour");
+            }
+        } catch (error: any) {
+            toast.error(error.message);
+        } finally {
+            setIsActionLoading(false);
         }
     };
 
@@ -262,8 +291,62 @@ export default function TraitementMobile({ initialOrders = [], initialFinished =
                                 {selectedOrder.items.map((item: any) => (
                                     <div key={item.id} className="space-y-3">
                                         <div className="flex justify-between items-center bg-white/5 p-3 rounded-2xl">
-                                            <span className="font-bold text-sm">{item.name}</span>
-                                            <span className="text-[10px] bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full font-black">QTY: {item.quantity}</span>
+                                            <div className="flex flex-col items-end gap-1">
+                                                <span className="font-bold text-sm">{formatCurrency(item.price, 'DZD')}</span>
+                                                <span className="text-[10px] bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full font-black">QTY: {item.quantity}</span>
+
+                                                {/* Purchase Price Section */}
+                                                <div className="flex items-center gap-1.5 mt-1 pt-1 border-t border-white/5 w-full justify-end">
+                                                    <span className="text-[9px] text-slate-500 font-bold uppercase">Achat:</span>
+                                                    {editingPurchaseItemId === item.id ? (
+                                                        <div className="flex items-center gap-1">
+                                                            <input
+                                                                type="text"
+                                                                className="w-14 h-6 bg-black border border-emerald-500/50 rounded text-[9px] px-1 text-white outline-none"
+                                                                value={tempPurchasePrice}
+                                                                onChange={(e) => setTempPurchasePrice(e.target.value)}
+                                                                autoFocus
+                                                            />
+                                                            <select
+                                                                className="h-6 bg-black border border-emerald-500/50 rounded text-[9px] text-white outline-none px-0.5"
+                                                                value={tempPurchaseCurrency}
+                                                                onChange={(e) => setTempPurchaseCurrency(e.target.value)}
+                                                            >
+                                                                <option value="USD">USD</option>
+                                                                <option value="DZD">DZD</option>
+                                                            </select>
+                                                            <button
+                                                                onClick={() => handleSavePurchasePrice(item.id)}
+                                                                disabled={isActionLoading}
+                                                                className="size-6 flex items-center justify-center bg-emerald-500/20 text-emerald-500 rounded"
+                                                            >
+                                                                <ShieldCheck size={10} />
+                                                            </button>
+                                                            <button
+                                                                onClick={() => setEditingPurchaseItemId(null)}
+                                                                className="size-6 flex items-center justify-center bg-white/5 text-slate-400 rounded"
+                                                            >
+                                                                <X size={10} />
+                                                            </button>
+                                                        </div>
+                                                    ) : (
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                setEditingPurchaseItemId(item.id);
+                                                                setTempPurchasePrice(item.purchasePrice || "0");
+                                                                setTempPurchaseCurrency(item.purchaseCurrency || 'USD');
+                                                            }}
+                                                            className="flex items-center gap-1 hover:text-emerald-500 transition-colors"
+                                                        >
+                                                            <span className="text-[10px] text-slate-400 font-black">
+                                                                {item.purchasePrice ? formatCurrency(item.purchasePrice, item.purchaseCurrency || 'USD') : "Non défini"}
+                                                            </span>
+                                                            <RefreshCw size={8} className="text-slate-600" />
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </div>
                                         </div>
                                         <div className="space-y-2">
                                             {Array.from({ length: item.quantity }).map((_, i) => {

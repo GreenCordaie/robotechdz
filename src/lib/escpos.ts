@@ -202,6 +202,11 @@ export function generateOrderEscPos(orderData: any, shopSettings: any) {
     encoder.bold(`TOTAL: ${orderData.totalAmount} DZD`);
     encoder.add(COMMANDS.LINE_FEED);
     encoder.line(`PAIEMENT: ${orderData.paymentMethod.toUpperCase()}`);
+
+    if (orderData.totalClientDebt > 0) {
+        encoder.line(`RESTE À PAYER (CLIENT): ${orderData.totalClientDebt} DZD`);
+    }
+
     encoder.add(COMMANDS.ALIGN_LEFT);
 
     // Footer

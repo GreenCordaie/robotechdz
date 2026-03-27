@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Modal, ModalContent, ModalHeader, ModalBody, Spinner, Chip } from "@heroui/react";
 import { getClientWhatsAppHistory } from "@/app/admin/clients/actions";
+import { formatWhatsApp } from "@/lib/formatters";
 
 interface Message {
     id: number;
@@ -108,7 +109,7 @@ export default function WhatsAppHistoryModal({
                             </span>
                         )}
                     </div>
-                    <p className="text-[11px] text-slate-500 font-mono">{clientPhone}</p>
+                    <p className="text-[11px] text-slate-500 font-mono">{formatWhatsApp(clientPhone)}</p>
                 </ModalHeader>
 
                 <ModalBody>
@@ -138,11 +139,10 @@ export default function WhatsAppHistoryModal({
                                             {msg.fromMe && (
                                                 <span className="text-[9px] font-black uppercase text-[#ec5b13]/60 px-1">Bot</span>
                                             )}
-                                            <div className={`px-3 py-2 rounded-2xl text-sm leading-relaxed ${
-                                                msg.fromMe
+                                            <div className={`px-3 py-2 rounded-2xl text-sm leading-relaxed ${msg.fromMe
                                                     ? "bg-[#ec5b13]/20 text-orange-100 rounded-tr-sm"
                                                     : "bg-[#262626] text-slate-200 rounded-tl-sm"
-                                            }`}>
+                                                }`}>
                                                 {msg.messageType !== "text"
                                                     ? <span className="italic text-slate-400">[{msg.messageType === "image" ? "Image" : msg.messageType === "audio" ? "Audio" : "Fichier"}]</span>
                                                     : msg.body

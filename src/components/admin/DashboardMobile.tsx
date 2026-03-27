@@ -90,14 +90,14 @@ export default function DashboardMobile({ stats }: DashboardMobileProps) {
                 <input
                     type="text"
                     placeholder="Trouver une commande..."
-                    className="w-full bg-[#161616] border border-white/5 rounded-2xl py-4 pl-12 pr-4 outline-none focus:border-primary/50 transition-all font-bold text-sm"
+                    className="w-full bg-white dark:bg-[#161616] border border-slate-200 dark:border-white/5 rounded-2xl py-4 pl-12 pr-4 outline-none focus:border-primary/50 transition-all font-bold text-sm text-slate-900 dark:text-white shadow-sm"
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                 />
             </div>
 
             {/* Sub-Header: Global Hardware Status */}
-            <div className="flex items-center justify-between px-4 py-2 bg-white/5 border border-white/5 rounded-2xl mx-1">
+            <div className="flex items-center justify-between px-4 py-2 bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/5 rounded-2xl mx-1 shadow-sm">
                 <div className="flex items-center gap-2">
                     <div className={`size-2 rounded-full ${webusb.connected ? 'bg-emerald-500 animate-pulse' : 'bg-slate-600'}`} />
                     <span className={`text-[10px] font-black uppercase tracking-tighter ${webusb.connected ? 'text-emerald-400' : 'text-slate-500'}`}>
@@ -116,7 +116,7 @@ export default function DashboardMobile({ stats }: DashboardMobileProps) {
             </div>
             {/* Maintenance Warning */}
             {stats.isMaintenanceMode && (
-                <div className="bg-red-500/10 border border-red-500/20 p-4 rounded-3xl flex items-center gap-4">
+                <div className="bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 p-4 rounded-3xl flex items-center gap-4 shadow-sm">
                     <AlertTriangle className="text-red-500 shrink-0" size={24} />
                     <p className="text-xs font-bold text-red-100 uppercase tracking-tighter">Mode Maintenance Actif</p>
                 </div>
@@ -124,23 +124,23 @@ export default function DashboardMobile({ stats }: DashboardMobileProps) {
 
             {/* Quick Summary Cards */}
             <div className="grid grid-cols-2 gap-4">
-                <div className="bg-[#161616] border border-white/5 p-5 rounded-[2rem] space-y-2">
+                <div className="bg-white dark:bg-[#161616] border border-slate-200 dark:border-white/5 p-5 rounded-[2rem] space-y-2 shadow-sm">
                     <div className="flex justify-between items-center">
                         <span className="text-[10px] font-black text-slate-500 uppercase">Revenu</span>
                         <TrendingUp size={12} className="text-emerald-500" />
                     </div>
-                    <p className="text-xl font-black text-white">
+                    <p className="text-xl font-black text-slate-900 dark:text-white">
                         {user?.role === 'ADMIN' ? formatCurrency(stats.totalTurnover, 'DZD').split(',')[0] : '************'}
                         <span className="text-[10px] ml-1 opacity-50">DZD</span>
                     </p>
                     <p className="text-[9px] font-bold text-emerald-500">+{stats.turnoverChange.toFixed(0)}%</p>
                 </div>
-                <div className="bg-[#161616] border border-white/5 p-5 rounded-[2rem] space-y-2">
+                <div className="bg-white dark:bg-[#161616] border border-slate-200 dark:border-white/5 p-5 rounded-[2rem] space-y-2 shadow-sm">
                     <div className="flex justify-between items-center">
                         <span className="text-[10px] font-black text-slate-500 uppercase">Profit</span>
                         <Wallet size={12} className="text-primary" />
                     </div>
-                    <p className="text-xl font-black text-white">
+                    <p className="text-xl font-black text-slate-900 dark:text-white">
                         {user?.role === 'ADMIN' ? formatCurrency(stats.totalProfit, 'DZD').split(',')[0] : '************'}
                         <span className="text-[10px] ml-1 opacity-50">DZD</span>
                     </p>
@@ -150,7 +150,7 @@ export default function DashboardMobile({ stats }: DashboardMobileProps) {
 
             {/* Micro Chart - Only for Admin */}
             {user?.role === 'ADMIN' && (
-                <div className="bg-[#161616] border border-white/5 p-6 rounded-[2.5rem] space-y-4">
+                <div className="bg-white dark:bg-[#161616] border border-slate-200 dark:border-white/5 p-6 rounded-[2.5rem] space-y-4 shadow-sm">
                     <div className="flex justify-between items-center px-2">
                         <h3 className="text-sm font-black uppercase tracking-widest text-slate-400">Activité</h3>
                         <div className="flex items-center gap-1">
@@ -159,13 +159,13 @@ export default function DashboardMobile({ stats }: DashboardMobileProps) {
                         </div>
                     </div>
 
-                    <div className="flex bg-[#0a0a0a] p-1 rounded-xl border border-white/5 w-fit ml-auto">
+                    <div className="flex bg-slate-100 dark:bg-[#0a0a0a] p-1 rounded-xl border border-slate-200 dark:border-white/5 w-fit ml-auto">
                         <button
                             onClick={async () => {
                                 setChartPeriod("7");
                                 router.refresh();
                             }}
-                            className={`px-4 py-1.5 text-[10px] font-bold rounded-lg transition-all ${chartPeriod === "7" ? "bg-[#262626] text-white" : "text-slate-500"}`}
+                            className={`px-4 py-1.5 text-[10px] font-bold rounded-lg transition-all ${chartPeriod === "7" ? "bg-white dark:bg-[#262626] text-slate-900 dark:text-white shadow-sm" : "text-slate-500"}`}
                         >
                             7J
                         </button>
@@ -174,7 +174,7 @@ export default function DashboardMobile({ stats }: DashboardMobileProps) {
                                 setChartPeriod("30");
                                 router.refresh();
                             }}
-                            className={`px-4 py-1.5 text-[10px] font-bold rounded-lg transition-all ${chartPeriod === "30" ? "bg-[#262626] text-white" : "text-slate-500"}`}
+                            className={`px-4 py-1.5 text-[10px] font-bold rounded-lg transition-all ${chartPeriod === "30" ? "bg-white dark:bg-[#262626] text-slate-900 dark:text-white shadow-sm" : "text-slate-500"}`}
                         >
                             30J
                         </button>
@@ -214,13 +214,13 @@ export default function DashboardMobile({ stats }: DashboardMobileProps) {
                 </div>
 
                 <div className="grid gap-3">
-                    <Link href="/admin/caisse" className="flex items-center justify-between p-5 bg-white/5 border border-white/5 rounded-3xl active:scale-95 transition-all">
+                    <Link href="/admin/caisse" className="flex items-center justify-between p-5 bg-white dark:bg-white/5 border border-slate-200 dark:border-white/5 rounded-3xl active:scale-95 transition-all shadow-sm">
                         <div className="flex items-center gap-4">
                             <div className="size-12 rounded-2xl bg-[#ec5b13]/10 flex items-center justify-center text-[#ec5b13]">
                                 <ShoppingBag size={20} />
                             </div>
                             <div>
-                                <p className="font-bold text-sm text-white">Attente Caisse</p>
+                                <p className="font-bold text-sm text-slate-900 dark:text-white">Attente Caisse</p>
                                 <p className="text-[10px] text-slate-500 font-bold uppercase">{stats.pendingOrdersCount} commandes à encaisser</p>
                             </div>
                         </div>
@@ -229,13 +229,13 @@ export default function DashboardMobile({ stats }: DashboardMobileProps) {
                         </div>
                     </Link>
 
-                    <Link href="/admin/support" className="flex items-center justify-between p-5 bg-white/5 border border-white/5 rounded-3xl active:scale-95 transition-all">
+                    <Link href="/admin/support" className="flex items-center justify-between p-5 bg-white dark:bg-white/5 border border-slate-200 dark:border-white/5 rounded-3xl active:scale-95 transition-all shadow-sm">
                         <div className="flex items-center gap-4">
                             <div className="size-12 rounded-2xl bg-blue-500/10 flex items-center justify-center text-blue-500">
                                 <Bell size={20} />
                             </div>
                             <div>
-                                <p className="font-bold text-sm text-white">Tickets Support</p>
+                                <p className="font-bold text-sm text-slate-900 dark:text-white">Tickets Support</p>
                                 <p className="text-[10px] text-slate-500 font-bold uppercase">{stats.openTicketsCount} tickets ouverts</p>
                             </div>
                         </div>
@@ -257,7 +257,7 @@ export default function DashboardMobile({ stats }: DashboardMobileProps) {
                     {filteredOrders.slice(0, 10).map((order: any) => (
                         <div
                             key={order.id}
-                            className="p-4 bg-[#161616] border border-white/5 rounded-[2rem] flex justify-between items-center active:scale-95 transition-all"
+                            className="p-4 bg-white dark:bg-[#161616] border border-slate-200 dark:border-white/5 rounded-[2rem] flex justify-between items-center active:scale-95 transition-all shadow-sm"
                             onClick={() => handleViewOrder(order)}
                         >
                             <div className="flex items-center gap-3">
@@ -265,7 +265,7 @@ export default function DashboardMobile({ stats }: DashboardMobileProps) {
                                     <Clock size={16} />
                                 </div>
                                 <div>
-                                    <p className="text-sm font-black text-white">#{order.orderNumber}</p>
+                                    <p className="text-sm font-black text-slate-900 dark:text-white">#{order.orderNumber}</p>
                                     <p className="text-[10px] text-slate-500 font-bold uppercase">{new Date(order.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
                                 </div>
                             </div>

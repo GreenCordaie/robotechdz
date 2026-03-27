@@ -118,7 +118,7 @@ export default function DashboardContent({ stats }: DashboardContentProps) {
         order.status.toLowerCase().includes(searchTerm.toLowerCase())
     );
     return (
-        <div className="flex-1 space-y-8 bg-[#0a0a0a] min-h-full">
+        <div className="flex-1 space-y-8 bg-background-light dark:bg-[#0a0a0a] min-h-full">
 
             {stats.isMaintenanceMode && (
                 <div className="bg-red-500/20 border-2 border-red-500 p-4 rounded-2xl flex items-center justify-between animate-pulse shadow-lg shadow-red-500/10">
@@ -146,15 +146,15 @@ export default function DashboardContent({ stats }: DashboardContentProps) {
             {/* Header matches Stitch structure */}
             <header className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
-                    <h2 className="text-xl font-bold text-white tracking-tight">Dashboard Overview</h2>
+                    <h2 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">Dashboard Overview</h2>
                 </div>
                 <div className="flex items-center gap-3 w-full md:w-auto overflow-x-auto pb-2 md:pb-0 scrollbar-hide">
                     <div className="relative w-full max-w-xs md:w-64 shrink-0">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 w-4 h-4" />
                         <Input
                             classNames={{
-                                input: "pl-10 text-white",
-                                inputWrapper: "bg-[#161616] border border-[#262626] rounded-xl h-10 text-sm focus-within:ring-2 focus-within:ring-primary/50"
+                                input: "pl-10 text-slate-900 dark:text-white",
+                                inputWrapper: "bg-white dark:bg-[#161616] border border-slate-200 dark:border-[#262626] rounded-xl h-10 text-sm focus-within:ring-2 focus-within:ring-primary/50"
                             }}
                             placeholder="Rechercher une commande..."
                             value={searchTerm}
@@ -165,7 +165,7 @@ export default function DashboardContent({ stats }: DashboardContentProps) {
                         <DropdownTrigger>
                             <Button
                                 isIconOnly
-                                className="size-10 rounded-xl bg-[#161616] border border-[#262626] flex items-center justify-center hover:bg-[#262626] transition-colors relative"
+                                className="size-10 rounded-xl bg-white dark:bg-[#161616] border border-slate-200 dark:border-[#262626] flex items-center justify-center hover:bg-slate-50 dark:hover:bg-[#262626] transition-colors relative"
                             >
                                 <Bell className="w-5 h-5 text-slate-400" />
                                 {stats.notifications.length > 0 && (
@@ -224,7 +224,7 @@ export default function DashboardContent({ stats }: DashboardContentProps) {
 
                     <Button
                         isIconOnly
-                        className="size-10 rounded-xl bg-[#161616] border border-[#262626] flex items-center justify-center hover:bg-[#262626] transition-colors"
+                        className="size-10 rounded-xl bg-white dark:bg-[#161616] border border-slate-200 dark:border-[#262626] flex items-center justify-center hover:bg-slate-50 dark:hover:bg-[#262626] transition-colors"
                         as={Link}
                         href="/admin/settings"
                     >
@@ -236,49 +236,49 @@ export default function DashboardContent({ stats }: DashboardContentProps) {
             {/* Stats Cards - Exact Stitch Fidelity Image 2 */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 {/* Turnover */}
-                <div className="bg-[#161616] border border-[#262626] p-6 rounded-xl shadow-sm hover:border-primary/20 transition-colors">
+                <div className="bg-white dark:bg-[#161616] border border-slate-200 dark:border-[#262626] p-6 rounded-xl shadow-sm hover:border-primary/20 transition-colors">
                     <div className="flex justify-between items-start mb-4">
                         <span className="text-slate-400 text-xs font-bold uppercase tracking-wider">Chiffre d&apos;Affaires</span>
                         <span className={`px-2 py-0.5 ${stats.turnoverChange >= 0 ? "bg-green-500/10 text-green-500" : "bg-red-500/10 text-red-500"} text-[10px] font-bold rounded-lg`}>
                             {stats.turnoverChange >= 0 ? "+" : ""}{stats.turnoverChange.toFixed(0)}%
                         </span>
                     </div>
-                    <div className="text-[28px] font-black leading-none text-white tracking-tighter">
+                    <div className="text-[28px] font-black leading-none text-slate-900 dark:text-white tracking-tighter">
                         {user?.role === 'ADMIN' ? formatCurrency(stats.totalTurnover, 'DZD') : '************'}
                     </div>
                     <p className="text-[11px] text-slate-500 mt-2 font-medium">Ventes aujourd&apos;hui</p>
                 </div>
 
                 {/* Profit */}
-                <div className="bg-[#161616] border border-[#262626] p-6 rounded-xl shadow-sm hover:border-primary/20 transition-colors">
+                <div className="bg-white dark:bg-[#161616] border border-slate-200 dark:border-[#262626] p-6 rounded-xl shadow-sm hover:border-primary/20 transition-colors">
                     <div className="flex justify-between items-start mb-4">
                         <span className="text-slate-400 text-xs font-bold uppercase tracking-wider">Bénéfice Net</span>
                         <span className={`px-2 py-0.5 ${stats.profitChange >= 0 ? "bg-primary/10 text-primary" : "bg-red-500/10 text-red-500"} text-[10px] font-bold rounded-lg`}>
                             {stats.profitChange >= 0 ? "+" : ""}{stats.profitChange.toFixed(0)}%
                         </span>
                     </div>
-                    <div className="text-[28px] font-black leading-none text-white tracking-tighter">
+                    <div className="text-[28px] font-black leading-none text-slate-900 dark:text-white tracking-tighter">
                         {user?.role === 'ADMIN' ? formatCurrency(stats.totalProfit, 'DZD') : '************'}
                     </div>
                     <p className="text-[11px] text-slate-500 mt-2 font-medium">Aujourd&apos;hui vs Hier</p>
                 </div>
 
                 {/* Orders */}
-                <div className="bg-[#161616] border border-[#262626] p-6 rounded-xl shadow-sm hover:border-primary/20 transition-colors">
+                <div className="bg-white dark:bg-[#161616] border border-slate-200 dark:border-[#262626] p-6 rounded-xl shadow-sm hover:border-primary/20 transition-colors">
                     <div className="flex justify-between items-start mb-4">
                         <span className="text-slate-400 text-xs font-bold uppercase tracking-wider">Commandes</span>
                         <span className={`px-2 py-0.5 ${stats.ordersChange >= 0 ? "bg-blue-500/10 text-blue-500" : "bg-red-500/10 text-red-500"} text-[10px] font-bold rounded-lg`}>
                             {stats.ordersChange >= 0 ? "+" : ""}{stats.ordersChange.toFixed(0)}%
                         </span>
                     </div>
-                    <div className="text-[28px] font-black leading-none text-white tracking-tighter">
+                    <div className="text-[28px] font-black leading-none text-slate-900 dark:text-white tracking-tighter">
                         {stats.ordersToday}
                     </div>
                     <p className="text-[11px] text-slate-500 mt-2 font-medium">{stats.pendingOrdersCount} en attente</p>
                 </div>
 
                 {/* Support Tickets */}
-                <Link href="/admin/support" className="bg-[#161616] border border-[#262626] p-6 rounded-xl shadow-sm hover:border-primary/20 transition-colors group">
+                <Link href="/admin/support" className="bg-white dark:bg-[#161616] border border-slate-200 dark:border-[#262626] p-6 rounded-xl shadow-sm hover:border-primary/20 transition-colors group">
                     <div className="flex justify-between items-start mb-4">
                         <span className="text-slate-400 text-xs font-bold uppercase tracking-wider">Tickets Support</span>
                         <MessageSquare className={`${stats.openTicketsCount > 0 ? "text-red-500" : "text-emerald-500"} w-4 h-4 transition-colors`} />
@@ -292,12 +292,12 @@ export default function DashboardContent({ stats }: DashboardContentProps) {
 
             {/* Main Chart Section - Only for Admin */}
             {user?.role === 'ADMIN' && (
-                <div className="bg-[#161616] border border-[#262626] p-8 rounded-xl shadow-sm">
+                <div className="bg-white dark:bg-[#161616] border border-slate-200 dark:border-[#262626] p-8 rounded-xl shadow-sm">
                     <div className="flex items-center justify-between mb-8">
                         <div>
-                            <h3 className="text-lg font-bold text-white tracking-tight">Évolution des Ventes</h3>
+                            <h3 className="text-lg font-bold text-slate-900 dark:text-white tracking-tight">Évolution des Ventes</h3>
                             <div className="flex items-center gap-2 mt-1">
-                                <span className="text-3xl font-black text-white tracking-tighter">
+                                <span className="text-3xl font-black text-slate-900 dark:text-white tracking-tighter">
                                     {formatCurrency(stats.totalTurnover, 'DZD')}
                                 </span>
                                 <span className={`${stats.turnoverChange >= 0 ? "text-green-500" : "text-red-500"} font-bold text-sm flex items-center gap-1`}>
@@ -306,7 +306,7 @@ export default function DashboardContent({ stats }: DashboardContentProps) {
                                 </span>
                             </div>
                         </div>
-                        <div className="flex bg-[#0a0a0a] p-1 rounded-xl border border-[#262626]">
+                        <div className="flex bg-slate-50 dark:bg-[#0a0a0a] p-1 rounded-xl border border-slate-200 dark:border-[#262626]">
                             <button
                                 onClick={async () => {
                                     setChartPeriod("7");
@@ -314,7 +314,7 @@ export default function DashboardContent({ stats }: DashboardContentProps) {
                                     const res = await getDashboardStats({ period: "week" });
                                     if (res) router.refresh();
                                 }}
-                                className={`px-4 py-1.5 text-[11px] font-bold rounded-lg shadow-sm transition-all ${chartPeriod === "7" ? "bg-[#262626] text-white" : "text-slate-500 hover:text-white"}`}
+                                className={`px-4 py-1.5 text-[11px] font-bold rounded-lg shadow-sm transition-all ${chartPeriod === "7" ? "bg-white dark:bg-[#262626] text-slate-900 dark:text-white" : "text-slate-500 hover:text-slate-700 dark:hover:text-white"}`}
                             >
                                 7 Jours
                             </button>
@@ -325,7 +325,7 @@ export default function DashboardContent({ stats }: DashboardContentProps) {
                                     const res = await getDashboardStats({ period: "month" });
                                     if (res) router.refresh();
                                 }}
-                                className={`px-4 py-1.5 text-[11px] font-bold rounded-lg shadow-sm transition-all ${chartPeriod === "30" ? "bg-[#262626] text-white" : "text-slate-500 hover:text-white"}`}
+                                className={`px-4 py-1.5 text-[11px] font-bold rounded-lg shadow-sm transition-all ${chartPeriod === "30" ? "bg-white dark:bg-[#262626] text-slate-900 dark:text-white" : "text-slate-500 hover:text-slate-700 dark:hover:text-white"}`}
                             >
                                 30 Jours
                             </button>
@@ -384,9 +384,9 @@ export default function DashboardContent({ stats }: DashboardContentProps) {
             )}
 
             {/* Latest Orders Section - 161616 Background */}
-            <div className="bg-[#161616] border border-[#262626] rounded-xl shadow-sm overflow-hidden">
+            <div className="bg-white dark:bg-[#161616] border border-slate-200 dark:border-[#262626] rounded-xl shadow-sm overflow-hidden">
                 <div className="p-6 border-b border-[#262626] flex items-center justify-between">
-                    <h3 className="text-lg font-bold text-white">Dernières Commandes</h3>
+                    <h3 className="text-lg font-bold text-slate-900 dark:text-white">Dernières Commandes</h3>
                     <Button
                         variant="light"
                         color="primary"
@@ -400,7 +400,7 @@ export default function DashboardContent({ stats }: DashboardContentProps) {
                 <div className="overflow-x-auto">
                     <table className="w-full text-left border-collapse">
                         <thead>
-                            <tr className="text-slate-500 text-[10px] font-black uppercase tracking-widest bg-[#262626]/50">
+                            <tr className="text-slate-500 text-[10px] font-black uppercase tracking-widest bg-slate-50 dark:bg-[#262626]/50">
                                 <th className="px-6 py-4">Commande ID</th>
                                 <th className="px-6 py-4">Heure</th>
                                 <th className="px-6 py-4 text-right">Montant</th>
@@ -408,10 +408,10 @@ export default function DashboardContent({ stats }: DashboardContentProps) {
                                 <th className="px-6 py-4 text-center">Actions</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-[#262626]">
+                        <tbody className="divide-y divide-slate-100 dark:divide-[#262626]">
                             {filteredOrders.length > 0 ? (
                                 filteredOrders.map((order) => (
-                                    <tr key={order.id} className="hover:bg-white/5 transition-colors">
+                                    <tr key={order.id} className="hover:bg-slate-50 dark:hover:bg-white/5 transition-colors text-slate-900 dark:text-white">
                                         <td className="px-6 py-4 font-bold text-sm text-white">{order.orderNumber}</td>
                                         <td className="px-6 py-4 text-xs text-slate-500 font-medium">
                                             {new Date(order.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -434,7 +434,7 @@ export default function DashboardContent({ stats }: DashboardContentProps) {
                                                 isIconOnly
                                                 size="sm"
                                                 variant="light"
-                                                className="text-slate-500 hover:text-white transition-colors hover:bg-[#262626]"
+                                                className="text-slate-500 hover:text-slate-700 dark:hover:text-white transition-colors hover:bg-slate-100 dark:hover:bg-[#262626]"
                                                 onClick={() => handleViewOrder(order)}
                                             >
                                                 <Eye className="w-4 h-4" />
@@ -497,6 +497,7 @@ export default function DashboardContent({ stats }: DashboardContentProps) {
                         totalAmount={selectedOrder.totalAmount}
                         remise={selectedOrder.remise}
                         paymentMethod={selectedOrder.paymentMethod}
+                        totalClientDebt={selectedOrder.totalClientDebt}
                     />
                 </div>
             )}

@@ -1,6 +1,6 @@
 import { cacheIncr, cacheExpire, cacheDel, CACHE_TTL, redis } from "@/lib/redis";
 
-const MAX_ATTEMPTS = 5;
+const DEFAULT_MAX_ATTEMPTS = 5;
 
 /**
  * Service Layer for Rate Limiting.
@@ -13,11 +13,11 @@ export class RateLimitService {
      * Checks if a key is currently blocked.
      * Returns { isBlocked: boolean, remaining: number, blockedUntil?: Date }
      */
-    static async checkLimit(key: string) {
+    static async checkLimit(key: string, maxAttempts = DEFAULT_MAX_ATTEMPTS) {
         try {
             const raw = await redis.get(key);
             const count = raw !== null ? parseInt(raw, 10) : 0;
-            const isBlocked = count >= MAX_ATTEMPTS;
+            const isBlocked = count >= maxAttempts;
 
             let blockedUntil: Date | undefined;
             if (isBlocked) {
@@ -32,11 +32,11 @@ export class RateLimitService {
 
             return {
                 isBlocked,
-                remaining: Math.max(0, MAX_ATTEMPTS - count),
+                remaining: Math.max(0, maxAttempts - count),
                 blockedUntil,
             };
         } catch {
-            return { isBlocked: false, remaining: MAX_ATTEMPTS };
+            return { isBlocked: false, remaining: maxAttempts };
         }
     }
 

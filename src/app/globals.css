@@ -41,6 +41,10 @@ body {
 }
 
 /* Global Focus Reset to prevent white highlights */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
 :focus {
   outline: none !important;
   box-shadow: none !important;

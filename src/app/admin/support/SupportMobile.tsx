@@ -24,6 +24,7 @@ import { getSupportTickets, updateTicketStatus } from "./actions";
 import { replaceOrderItemCode, refundOrderItem, refundFullOrder } from "../caisse/actions";
 import OrderDetailModal from "@/components/admin/modals/OrderDetailModal";
 import { toast } from "react-hot-toast";
+import { formatWhatsApp } from "@/lib/formatters";
 
 interface SupportMobileProps {
     initialTickets?: any[];
@@ -139,7 +140,7 @@ export default function SupportMobile({ initialTickets = [] }: SupportMobileProp
                             {ticket.customerPhone && (
                                 <div className="flex items-center gap-2 px-1">
                                     <Phone size={12} className="text-primary" />
-                                    <span className="text-xs font-bold text-slate-400">+213 {ticket.customerPhone}</span>
+                                    <span className="text-xs font-bold text-slate-400">{formatWhatsApp(ticket.customerPhone)}</span>
                                 </div>
                             )}
 
@@ -157,7 +158,7 @@ export default function SupportMobile({ initialTickets = [] }: SupportMobileProp
                                 {ticket.status === 'OUVERT' && ticket.customerPhone && (
                                     <Button
                                         as="a"
-                                        href={`https://wa.me/213${ticket.customerPhone.replace(/\s+/g, '')}`}
+                                        href={`https://wa.me/${formatWhatsApp(ticket.customerPhone).replace(/\+/g, '')}`}
                                         target="_blank"
                                         className="bg-emerald-500/20 text-emerald-500 font-black text-[10px] uppercase rounded-2xl h-12 px-5"
                                     >

@@ -118,7 +118,7 @@ export default function AdminLayout({
                 </header>
             )}
             <main className="flex-1 h-screen overflow-y-auto scrollbar-hide bg-background-dark text-slate-100 pb-20 md:pb-0">
-                <div className={`${isMobile ? 'p-4' : 'p-8'} max-w-7xl mx-auto min-h-full`}>
+                <div className={`${pathname === "/admin/caisse" ? 'w-full px-2 py-2' : (isMobile ? 'p-4' : 'p-8') + ' max-w-7xl mx-auto'} min-h-full`}>
                     {children}
                 </div>
             </main>

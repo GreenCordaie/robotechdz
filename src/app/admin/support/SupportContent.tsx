@@ -7,6 +7,7 @@ import { getSupportTickets, updateTicketStatus } from "./actions";
 import { replaceOrderItemCode, refundOrderItem, refundFullOrder } from "../caisse/actions";
 import OrderDetailModal from "@/components/admin/modals/OrderDetailModal";
 import { toast } from "react-hot-toast";
+import { formatWhatsApp } from "@/lib/formatters";
 
 interface SupportContentProps {
     initialTickets?: any[];
@@ -156,7 +157,7 @@ export default function SupportContent({ initialTickets = [] }: SupportContentPr
                                         {ticket.customerPhone && (
                                             <div className="flex flex-col">
                                                 <span className="text-[10px] text-slate-500 font-black uppercase tracking-widest leading-none">Contact</span>
-                                                <span className="text-sm font-black text-[#ec5b13]">+213 {ticket.customerPhone}</span>
+                                                <span className="text-sm font-black text-[#ec5b13]">{formatWhatsApp(ticket.customerPhone)}</span>
                                             </div>
                                         )}
                                         <div className="flex items-center gap-2 text-slate-500 text-[10px] font-bold">
@@ -191,7 +192,7 @@ export default function SupportContent({ initialTickets = [] }: SupportContentPr
                                             <Button
                                                 size="sm"
                                                 as="a"
-                                                href={`https://wa.me/213${ticket.customerPhone.replace(/\s+/g, '')}`}
+                                                href={`https://wa.me/${formatWhatsApp(ticket.customerPhone).replace(/\+/g, '')}`}
                                                 target="_blank"
                                                 className="w-full bg-[#25D366] text-white font-black text-[11px] uppercase tracking-wider h-10 rounded-xl shadow-lg shadow-emerald-500/20"
                                                 startContent={<MessageSquare size={14} />}

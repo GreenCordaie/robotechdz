@@ -22,6 +22,8 @@ const GS = 0x1d;
 
 const CMD = {
     INIT: Buffer.from([ESC, 0x40]),
+    KANJI_OFF: Buffer.from([0x1c, 0x2e]),          // Désactiver le mode Kanji (fini le chinois)
+    CODE_TABLE_PC850: Buffer.from([0x1b, 0x74, 0x02]), // Sélectionner la table de caractères PC850
     ALIGN_LEFT: Buffer.from([ESC, 0x61, 0x00]),
     ALIGN_CENTER: Buffer.from([ESC, 0x61, 0x01]),
     ALIGN_RIGHT: Buffer.from([ESC, 0x61, 0x02]),
@@ -34,9 +36,36 @@ const CMD = {
     CUT_FULL: Buffer.from([GS, 0x56, 0x00]),
 };
 
+// ─── Encodage PC850 (Latino 1 étendu) pour imprimante thermique ───────────────
+
+const MAP_PC850 = {
+    'é': 0x82, 'à': 0x85, 'è': 0x8a, 'ç': 0x87, 'ù': 0x97,
+    'â': 0x83, 'ê': 0x88, 'î': 0x8c, 'ô': 0x93, 'û': 0x96,
+    'ë': 0x89, 'ï': 0x8b, 'ü': 0x81, '°': 0xf8, '€': 0xd5
+};
+
+/** Encode une chaîne en Buffer compatible PC850 */
+function encodePC850(str) {
+    if (!str) return Buffer.alloc(0);
+    const buf = Buffer.alloc(str.length);
+    for (let i = 0; i < str.length; i++) {
+        const char = str[i];
+        if (MAP_PC850[char]) {
+            buf[i] = MAP_PC850[char];
+        } else {
+            const code = str.charCodeAt(i);
+            // On reste en ASCII si possible, sinon '?'
+            buf[i] = (code < 256) ? code : 0x3f;
+        }
+    }
+    return buf;
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function txt(str) { return Buffer.from(str + '\n', 'utf8'); }
+function txt(str) {
+    return Buffer.concat([encodePC850(str), CMD.LF]);
+}
 
 function center(str, cols = COLS) {
     const pad = Math.max(0, Math.floor((cols - str.length) / 2));
@@ -59,16 +88,16 @@ function credentialLines(label, value) {
     const header = `  ${label.padEnd(7)}: `;
 
     if (value.length <= MAX) {
-        parts.push(Buffer.from(header, 'utf8'));
+        parts.push(encodePC850(header));
         parts.push(CMD.BOLD_ON);
-        parts.push(Buffer.from(value + '\n', 'utf8'));
+        parts.push(Buffer.concat([encodePC850(value), CMD.LF]));
         parts.push(CMD.BOLD_OFF);
     } else {
-        parts.push(Buffer.from(header + '\n', 'utf8'));
+        parts.push(Buffer.concat([encodePC850(header), CMD.LF]));
         let rem = value;
         while (rem.length > 0) {
             parts.push(CMD.BOLD_ON);
-            parts.push(Buffer.from(indent + rem.slice(0, MAX) + '\n', 'utf8'));
+            parts.push(Buffer.concat([encodePC850(indent + rem.slice(0, MAX)), CMD.LF]));
             parts.push(CMD.BOLD_OFF);
             rem = rem.slice(MAX);
         }
@@ -105,6 +134,8 @@ function generateTicket(data) {
 
     // ── INIT ─────────────────────────────────────────────────────────────────
     p.push(CMD.INIT);
+    p.push(CMD.KANJI_OFF);        // Bye bye Chinois
+    p.push(CMD.CODE_TABLE_PC850); // Bonjour les accents
 
     // ── HEADER : Nom boutique (piloté par ReceiptSettings) ───────────────────
     p.push(CMD.ALIGN_CENTER);
@@ -217,6 +248,15 @@ function generateTicket(data) {
         p.push(CMD.SIZE_NORMAL);
         p.push(CMD.BOLD_OFF);
         p.push(CMD.LF);
+
+        // ── DETTE TOTALE DU CLIENT ──────────────────────────────────────────────
+        if (data.totalClientDebt && parseFloat(data.totalClientDebt) > 0) {
+            p.push(txt('-'.repeat(COLS)));
+            p.push(CMD.BOLD_ON);
+            p.push(txt(cols2('RESTE DE DETTE', `${parseFloat(data.totalClientDebt).toFixed(2)} DZD`)));
+            p.push(CMD.BOLD_OFF);
+        }
+
         p.push(txt('='.repeat(COLS)));
     }
 

@@ -62,7 +62,8 @@ export async function createKioskOrder(
                 status: "EN_ATTENTE",
                 totalAmount: realTotalAmount.toFixed(2),
                 deliveryMethod,
-                customerPhone
+                customerPhone,
+                printStatus: "print_pending"
             }).returning();
 
             await tx.insert(orderItems).values(

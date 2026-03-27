@@ -15,7 +15,7 @@ export default function ClientsMobile({ initialStats, initialClients }: any) {
     const [searchTerm, setSearchTerm] = useState("");
     const [clients, setClients] = useState(initialClients);
     const [selectedClient, setSelectedClient] = useState<any>(null);
-    const [history, setHistory] = useState<{ payments: any[], orders: any[] }>({ payments: [], orders: [] });
+    const [history, setHistory] = useState<{ payments: any[], orders: any[], returns: any[] }>({ payments: [], orders: [], returns: [] });
     const [repaymentAmount, setRepaymentAmount] = useState("");
     const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -35,11 +35,11 @@ export default function ClientsMobile({ initialStats, initialClients }: any) {
     const handleViewClient = async (client: any) => {
         setSelectedClient(client);
         onOpen();
-        const data = await getClientHistory({ clientId: client.id });
-        const typedData = data as any;
+        const data = await getClientHistory({ clientId: client.id }) as any;
         setHistory({
-            payments: typedData.payments.map((p: any) => ({ ...p, createdAt: new Date(p.createdAt) })),
-            orders: typedData.orders.map((o: any) => ({ ...o, createdAt: new Date(o.createdAt) }))
+            payments: (data.payments || []).map((p: any) => ({ ...p, createdAt: new Date(p.createdAt) })),
+            orders: (data.orders || []).map((o: any) => ({ ...o, createdAt: new Date(o.createdAt) })),
+            returns: data.returns || []
         });
     };
 
@@ -242,29 +242,101 @@ export default function ClientsMobile({ initialStats, initialClients }: any) {
                                     </div>
 
                                     <div className="space-y-4">
-                                        <h4 className="text-[10px] font-black uppercase text-slate-500">Historique des Flux</h4>
+                                        <h4 className="text-[10px] font-black uppercase text-slate-500">Journal des Flux</h4>
                                         <div className="space-y-3">
-                                            {history.orders.filter((o: any) => Number(o.resteAPayer) > 0).map((o: any) => (
-                                                <div key={o.id} className="p-4 bg-white/5 rounded-2xl border border-white/5 flex justify-between">
-                                                    <div>
-                                                        <p className="text-xs font-black">Achat #{o.orderNumber}</p>
-                                                        <p className="text-[9px] text-slate-500">{format(new Date(o.createdAt), "dd MMM yyyy", { locale: fr })}</p>
+                                            {React.useMemo(() => {
+                                                const entries: any[] = [
+                                                    ...history.payments.map(p => ({
+                                                        id: `pay-${p.id}`,
+                                                        date: p.createdAt,
+                                                        type: 'PAYMENT',
+                                                        amount: p.montantDzd,
+                                                        label: p.typeAction === 'REMBOURSEMENT' ? 'Remboursement (Retour)' : 'Encaissement',
+                                                        icon: WalletIcon,
+                                                        color: 'text-emerald-500',
+                                                        bgColor: 'bg-emerald-500/10'
+                                                    })),
+                                                    ...history.orders.map(o => ({
+                                                        id: `order-${o.id}`,
+                                                        date: o.createdAt,
+                                                        type: 'ORDER',
+                                                        amount: o.totalAmount,
+                                                        resteAPayer: o.resteAPayer,
+                                                        label: `Achat #${o.orderNumber}`,
+                                                        icon: ShoppingCart,
+                                                        color: 'text-red-500',
+                                                        bgColor: 'bg-red-500/10',
+                                                        items: o.items || []
+                                                    })),
+                                                    ...history.returns.filter(r => r.returnRequest.status !== 'APPROUVE').map(r => ({
+                                                        id: `return-${r.orderId}`,
+                                                        date: new Date(r.returnRequest.initiatedAt),
+                                                        type: 'RETURN',
+                                                        amount: r.returnRequest.montant,
+                                                        status: r.returnRequest.status,
+                                                        label: `Retour #${r.orderNumber}`,
+                                                        icon: X,
+                                                        color: r.returnRequest.status === 'REJETE' ? 'text-slate-400' : 'text-yellow-500',
+                                                        bgColor: r.returnRequest.status === 'REJETE' ? 'bg-slate-500/10' : 'bg-yellow-500/10',
+                                                        motifRejet: r.returnRequest.motifRejet
+                                                    }))
+                                                ];
+                                                return entries.sort((a, b) => {
+                                                    const dateA = a.date instanceof Date ? a.date.getTime() : new Date(a.date).getTime();
+                                                    const dateB = b.date instanceof Date ? b.date.getTime() : new Date(b.date).getTime();
+                                                    return dateB - dateA;
+                                                });
+                                            }, [history]).map((entry: any) => {
+                                                const Icon = entry.icon;
+                                                return (
+                                                    <div key={entry.id} className="p-4 bg-white/5 rounded-2xl border border-white/5 space-y-3">
+                                                        <div className="flex justify-between items-start">
+                                                            <div className="flex gap-3">
+                                                                <div className={`${entry.bgColor} ${entry.color} p-2 rounded-xl`}>
+                                                                    <Icon size={16} />
+                                                                </div>
+                                                                <div>
+                                                                    <p className="text-xs font-black">{entry.label}</p>
+                                                                    <p className="text-[8px] text-slate-500 uppercase">
+                                                                        {entry.date ? format(new Date(entry.date), "dd MMM yyyy HH:mm", { locale: fr }) : "---"}
+                                                                    </p>
+                                                                </div>
+                                                            </div>
+                                                            <div className="text-right">
+                                                                <p className={`text-xs font-black ${entry.color}`}>
+                                                                    {entry.type === 'ORDER' ? '-' : '+'}{formatCurrency(entry.amount, 'DZD')}
+                                                                </p>
+                                                                {entry.type === 'ORDER' && Number(entry.resteAPayer) > 0 && (
+                                                                    <p className="text-[8px] text-orange-500 font-black uppercase">Dette: {formatCurrency(entry.resteAPayer, 'DZD')}</p>
+                                                                )}
+                                                            </div>
+                                                        </div>
+
+                                                        {entry.type === 'ORDER' && entry.items?.length > 0 && (
+                                                            <div className="pl-9 space-y-1">
+                                                                {entry.items.map((item: any, idx: number) => (
+                                                                    <p key={idx} className="text-[10px] text-slate-400">
+                                                                        • {item.name} <span className="opacity-50">x{item.quantity}</span>
+                                                                    </p>
+                                                                ))}
+                                                            </div>
+                                                        )}
+
+                                                        {entry.type === 'RETURN' && (
+                                                            <div className="pl-9 mt-1 flex flex-col gap-1">
+                                                                <span className={`text-[8px] font-black uppercase w-fit px-2 py-0.5 rounded-md border ${entry.status === 'EN_ATTENTE' ? 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20' :
+                                                                        'bg-red-500/10 text-red-500 border-red-500/20'
+                                                                    }`}>
+                                                                    {entry.status === 'EN_ATTENTE' ? 'En attente' : 'Rejeté'}
+                                                                </span>
+                                                                {entry.motifRejet && (
+                                                                    <p className="text-[9px] text-red-400 italic">Motif: {entry.motifRejet}</p>
+                                                                )}
+                                                            </div>
+                                                        )}
                                                     </div>
-                                                    <div className="text-right">
-                                                        <p className="text-xs font-black text-red-500">-{formatCurrency(o.totalAmount, 'DZD')}</p>
-                                                        <p className="text-[8px] text-slate-500 italic">Reste: {formatCurrency(o.resteAPayer || 0, 'DZD')}</p>
-                                                    </div>
-                                                </div>
-                                            ))}
-                                            {history.payments.map((p: any) => (
-                                                <div key={p.id} className="p-4 bg-emerald-500/5 rounded-2xl border border-emerald-500/10 flex justify-between">
-                                                    <div>
-                                                        <p className="text-xs font-black text-emerald-500">Encaissement</p>
-                                                        <p className="text-[9px] text-slate-500">{format(new Date(p.createdAt), "dd MMM yyyy", { locale: fr })}</p>
-                                                    </div>
-                                                    <p className="text-xs font-black text-emerald-500">+{formatCurrency(p.montantDzd, 'DZD')}</p>
-                                                </div>
-                                            ))}
+                                                );
+                                            })}
                                         </div>
                                     </div>
                                 </div>

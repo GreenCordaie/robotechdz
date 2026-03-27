@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Spinner } from "@heroui/react";
 import { toast } from "react-hot-toast";
-import { getPaidOrders, getFinishedOrders, processOrder, markOrderAsTermine, cancelOrderAction, resendWhatsAppAction, requeueForPrint } from "../caisse/actions";
+import { getPaidOrders, getFinishedOrders, processOrder, markOrderAsTermine, cancelOrderAction, resendWhatsAppAction, requeueForPrint, updateItemPurchasePrice } from "../caisse/actions";
 import { attribuerSlotAutomatiqueAction } from "../comptes-partages/actions";
 import { ThermalReceiptV2 } from "@/components/admin/receipt/ThermalReceiptV2";
 import OrderDetailModal from "@/components/admin/modals/OrderDetailModal";
@@ -15,7 +15,8 @@ import { useWebUSBPrinter } from "@/hooks/useWebUSBPrinter";
 import { generateOrderEscPos } from "@/lib/escpos";
 import { useSettingsStore } from "@/store/useSettingsStore";
 import { useAuthStore } from "@/store/useAuthStore";
-import { Wifi, WifiOff, Usb, Loader2, MessageSquare } from "lucide-react";
+import { Wifi, WifiOff, Usb, Loader2, MessageSquare, AlertTriangle } from "lucide-react";
+import { ConfirmModal } from "@/components/admin/modals/ConfirmModal";
 
 interface TraitementContentProps {
     initialOrders?: any[];
@@ -42,6 +43,23 @@ export default function TraitementContent({ initialOrders = [], initialFinished 
     const { user } = useAuthStore();
 
     const [isAssigning, setIsAssigning] = useState<Record<string, boolean>>({});
+    const [confirmModal, setConfirmModal] = useState<{
+        isOpen: boolean;
+        title: string;
+        description: string;
+        onConfirm: () => void;
+        variant: "danger" | "warning" | "info" | "success";
+    }>({
+        isOpen: false,
+        title: "",
+        description: "",
+        onConfirm: () => { },
+        variant: "danger"
+    });
+    const [editingPurchaseItemId, setEditingPurchaseItemId] = useState<number | null>(null);
+    const [tempPurchasePrice, setTempPurchasePrice] = useState("");
+    const [tempPurchaseCurrency, setTempPurchaseCurrency] = useState("USD");
+    const [isActionLoading, setIsActionLoading] = useState(false);
     const handlePrint = async (data: any) => {
         if (!data?.id) return;
         const res: any = await requeueForPrint({ orderId: data.id });
@@ -49,6 +67,33 @@ export default function TraitementContent({ initialOrders = [], initialFinished 
             toast.success(`🖨️ Ticket #${data.orderNumber} en file d'impression`);
         } else {
             toast.error(`🖨️ Erreur: ${res?.error || 'Impossible de mettre en file'}`);
+        }
+    };
+
+    const handleSavePurchasePrice = async (orderItemId: number) => {
+        if (!tempPurchasePrice) return;
+
+        setIsActionLoading(true);
+        try {
+            const res: any = await updateItemPurchasePrice({
+                orderItemId,
+                newPurchasePrice: tempPurchasePrice,
+                newPurchaseCurrency: tempPurchaseCurrency
+            });
+
+            if (res && res.success) {
+                toast.success("Prix d'achat mis à jour");
+                setEditingPurchaseItemId(null);
+                // Update local state to reflect change without full reload if possible,
+                // but loadOrders is safer for consistency.
+                loadOrders();
+            } else {
+                toast.error(res?.error || "Erreur de mise à jour");
+            }
+        } catch (error: any) {
+            toast.error(error.message);
+        } finally {
+            setIsActionLoading(false);
         }
     };
 
@@ -234,22 +279,27 @@ export default function TraitementContent({ initialOrders = [], initialFinished 
     };
 
     const handleCancelOrder = async (orderId: number) => {
-        // TODO: Replace window.confirm with a proper modal dialog for better UX
-        if (!window.confirm("Êtes-vous sûr de vouloir annuler/rembourser cette commande ? Cette action est irréversible et libérera les codes digitaux associés.")) return;
-
-        try {
-            const res = await cancelOrderAction({ orderId });
-            if (res.success) {
-                toast.success("Commande annulée avec succès");
-                setIsDetailModalOpen(false);
-                loadOrders();
-            } else {
-                toast.error("Erreur: " + (res as any).error);
+        setConfirmModal({
+            isOpen: true,
+            title: "Annuler la commande",
+            description: "Êtes-vous sûr de vouloir annuler/rembourser cette commande ? Cette action est irréversible et libérera les codes digitaux associés.",
+            variant: "danger",
+            onConfirm: async () => {
+                try {
+                    const res = await cancelOrderAction({ orderId });
+                    if (res.success) {
+                        toast.success("Commande annulée avec succès");
+                        setIsDetailModalOpen(false);
+                        loadOrders();
+                    } else {
+                        toast.error("Erreur: " + (res as any).error);
+                    }
+                } catch (error) {
+                    console.error("Cancel failed:", error);
+                    toast.error("Erreur technique lors de l'annulation");
+                }
             }
-        } catch (error) {
-            console.error("Cancel failed:", error);
-            toast.error("Erreur technique lors de l'annulation");
-        }
+        });
     };
 
     const filteredOrders = orders.filter(o =>
@@ -290,16 +340,16 @@ export default function TraitementContent({ initialOrders = [], initialFinished 
     };
 
     return (
-        <div className="flex h-[calc(100vh-64px)] w-full overflow-hidden bg-[#1a0f0a] mx-[-32px] my-[-32px] font-sans antialiased">
+        <div className="flex h-[calc(100vh-64px)] w-full overflow-hidden bg-background-light dark:bg-[#1a0f0a] mx-[-32px] my-[-32px] font-sans antialiased text-slate-900 dark:text-white">
             <style jsx global>{`
                 .custom-scrollbar::-webkit-scrollbar { width: 6px; }
                 .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
                 .custom-scrollbar::-webkit-scrollbar-thumb { background: #4b2e24; border-radius: 10px; }
             `}</style>
 
-            <main className="flex-1 flex flex-col min-w-0 bg-[#1a0f0a]/95">
+            <main className="flex-1 flex flex-col min-w-0 bg-transparent">
                 {/* Header */}
-                <header className="h-20 border-b border-[#ec5b13]/10 px-8 flex items-center justify-between shrink-0">
+                <header className="h-20 border-b border-slate-200 dark:border-[#ec5b13]/10 px-8 flex items-center justify-between shrink-0">
                     <div className="flex items-center gap-4">
                         <div className="size-10 bg-[#ec5b13]/10 rounded-xl flex items-center justify-center text-[#ec5b13]">
                             <span className="material-symbols-outlined font-light">history_edu</span>
@@ -310,14 +360,14 @@ export default function TraitementContent({ initialOrders = [], initialFinished 
                         <div className="relative w-64">
                             <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-sm">search</span>
                             <input
-                                className="w-full bg-[#2a1b15] border-none rounded-xl pl-10 pr-4 py-2 text-sm focus:ring-2 focus:ring-[#ec5b13]/50 text-slate-200 outline-none"
+                                className="w-full bg-white dark:bg-[#2a1b15] border border-slate-200 dark:border-none rounded-xl pl-10 pr-4 py-2 text-sm focus:ring-2 focus:ring-[#ec5b13]/50 text-slate-900 dark:text-slate-200 outline-none"
                                 placeholder="Rechercher une commande..."
                                 type="text"
                                 value={searchTerm}
                                 onChange={(e) => setSearchTerm(e.target.value)}
                             />
                         </div>
-                        <div className="flex gap-2 bg-[#2a1b15] p-1 rounded-xl">
+                        <div className="flex gap-2 bg-slate-100 dark:bg-[#2a1b15] p-1 rounded-xl">
                             <button
                                 onClick={() => setView("pending")}
                                 className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all ${view === "pending" ? "bg-[#ec5b13] text-white" : "text-slate-500 hover:text-white"}`}
@@ -337,7 +387,7 @@ export default function TraitementContent({ initialOrders = [], initialFinished 
                 {/* Dual Column Layout */}
                 <div className="flex-1 flex overflow-hidden">
                     {/* Left Column: Queue */}
-                    <section className="w-96 flex flex-col border-r border-[#ec5b13]/5 shrink-0">
+                    <section className="w-96 flex flex-col border-r border-slate-200 dark:border-[#ec5b13]/5 shrink-0 bg-slate-50/50 dark:bg-transparent">
                         <div className="p-6 shrink-0">
                             <h3 className="text-lg font-bold mb-1">File d&apos;attente</h3>
                             <p className="text-sm text-slate-500 uppercase tracking-widest text-[10px] font-bold">
@@ -355,7 +405,7 @@ export default function TraitementContent({ initialOrders = [], initialFinished 
                                     onClick={() => setSelectedOrder(order)}
                                     className={`p-4 rounded-2xl border transition-all cursor-pointer group ${selectedOrder?.id === order.id
                                         ? "bg-[#ec5b13]/10 border-[#ec5b13]/30 ring-1 ring-[#ec5b13]/20"
-                                        : "bg-[#2a1b15]/40 border-white/5 hover:border-[#ec5b13]/20"
+                                        : "bg-white dark:bg-[#2a1b15]/40 border-slate-200 dark:border-white/5 hover:border-[#ec5b13]/20 shadow-sm dark:shadow-none"
                                         }`}
                                 >
                                     <div className="flex justify-between items-start mb-2 gap-2">
@@ -406,7 +456,7 @@ export default function TraitementContent({ initialOrders = [], initialFinished 
                                 <div className="p-8 border-b border-white/5 shrink-0 flex justify-between items-center">
                                     <div>
                                         <h4 className="text-2xl font-bold tracking-tight mb-1 truncate">Détails de la Commande {selectedOrder.orderNumber}</h4>
-                                        <p className="text-slate-500 text-sm flex items-center gap-2">
+                                        <p className="text-slate-500 dark:text-slate-400 text-sm flex items-center gap-2">
                                             <span className="material-symbols-outlined text-sm">calendar_today</span>
                                             {new Date(selectedOrder.createdAt).toLocaleDateString("fr-FR", { day: 'numeric', month: 'long', year: 'numeric' })} • {new Date(selectedOrder.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                         </p>
@@ -426,11 +476,11 @@ export default function TraitementContent({ initialOrders = [], initialFinished 
                                         <button
                                             aria-label="Réimprimer le ticket"
                                             onClick={() => handlePrint(selectedOrder)}
-                                            className="p-2.5 rounded-xl bg-[#2a1b15] border border-white/5 text-slate-400 hover:text-white transition-colors"
+                                            className="p-2.5 rounded-xl bg-white dark:bg-[#2a1b15] border border-slate-200 dark:border-white/5 text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors"
                                         >
                                             <span className="material-symbols-outlined">print</span>
                                         </button>
-                                        <button aria-label="Désélectionner la commande" className="p-2.5 rounded-xl bg-[#2a1b15] border border-white/5 text-slate-400 hover:text-red-400 transition-colors" onClick={() => setSelectedOrder(null)}>
+                                        <button aria-label="Désélectionner la commande" className="p-2.5 rounded-xl bg-white dark:bg-[#2a1b15] border border-slate-200 dark:border-white/5 text-slate-400 hover:text-red-400 transition-colors" onClick={() => setSelectedOrder(null)}>
                                             <span className="material-symbols-outlined">block</span>
                                         </button>
                                     </div>
@@ -448,7 +498,7 @@ export default function TraitementContent({ initialOrders = [], initialFinished 
                                                         <div>
                                                             <h5 className="font-bold text-lg truncate">{item.name}</h5>
                                                             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-0.5">
-                                                                <p className="text-slate-500 text-sm">Quantité: <span className="text-white font-medium">{item.quantity}</span></p>
+                                                                <p className="text-slate-500 text-sm">Quantité: <span className="text-slate-900 dark:text-white font-medium">{item.quantity}</span></p>
                                                                 {item.customData && (
                                                                     <span className="text-[10px] text-[#ec5b13] font-black uppercase tracking-widest border-l border-white/10 pl-3">ID: {item.customData}</span>
                                                                 )}
@@ -458,7 +508,62 @@ export default function TraitementContent({ initialOrders = [], initialFinished 
                                                             </div>
                                                         </div>
                                                     </div>
-                                                    <p className="text-xl font-bold whitespace-nowrap text-[#ec5b13]">{formatCurrency(item.price, 'DZD')}</p>
+                                                    <div className="flex flex-col items-end">
+                                                        <p className="text-xl font-bold whitespace-nowrap text-[#ec5b13]">{formatCurrency(item.price, 'DZD')}</p>
+
+                                                        {/* Purchase Price Section */}
+                                                        <div className="flex flex-col items-end gap-1 mt-1 border-t border-white/5 pt-1 w-full min-w-[120px]">
+                                                            <div className="flex items-center gap-1.5 group/edit">
+                                                                <span className="text-[10px] text-slate-500 font-bold uppercase whitespace-nowrap">Achat: </span>
+                                                                {editingPurchaseItemId === item.id ? (
+                                                                    <div className="flex items-center gap-1">
+                                                                        <input
+                                                                            type="text"
+                                                                            className="w-16 h-6 bg-black border border-[#ec5b13]/50 rounded text-[10px] px-1 text-white outline-none"
+                                                                            value={tempPurchasePrice}
+                                                                            onChange={(e) => setTempPurchasePrice(e.target.value)}
+                                                                            autoFocus
+                                                                        />
+                                                                        <select
+                                                                            className="h-6 bg-black border border-[#ec5b13]/50 rounded text-[10px] text-white outline-none px-0.5"
+                                                                            value={tempPurchaseCurrency}
+                                                                            onChange={(e) => setTempPurchaseCurrency(e.target.value)}
+                                                                        >
+                                                                            <option value="USD">USD</option>
+                                                                            <option value="DZD">DZD</option>
+                                                                        </select>
+                                                                        <button
+                                                                            onClick={() => handleSavePurchasePrice(item.id)}
+                                                                            disabled={isActionLoading}
+                                                                            className="size-6 flex items-center justify-center bg-emerald-500/20 text-emerald-500 rounded hover:bg-emerald-500/30 transition-colors"
+                                                                        >
+                                                                            <span className="material-symbols-outlined text-sm">check_circle</span>
+                                                                        </button>
+                                                                        <button
+                                                                            onClick={() => setEditingPurchaseItemId(null)}
+                                                                            className="size-6 flex items-center justify-center bg-white/5 text-slate-400 rounded hover:bg-white/10 transition-colors"
+                                                                        >
+                                                                            <span className="material-symbols-outlined text-sm">close</span>
+                                                                        </button>
+                                                                    </div>
+                                                                ) : (
+                                                                    <button
+                                                                        onClick={() => {
+                                                                            setEditingPurchaseItemId(item.id);
+                                                                            setTempPurchasePrice(item.purchasePrice || "0");
+                                                                            setTempPurchaseCurrency(item.purchaseCurrency || 'USD');
+                                                                        }}
+                                                                        className="flex items-center gap-1.5 hover:text-[#ec5b13] transition-colors"
+                                                                    >
+                                                                        <span className="text-[11px] text-slate-400 font-black">
+                                                                            {item.purchasePrice ? formatCurrency(item.purchasePrice, item.purchaseCurrency || 'USD') : "Non défini"}
+                                                                        </span>
+                                                                        <span className="material-symbols-outlined text-[12px] text-slate-600 transition-transform group-hover/edit:rotate-180">sync</span>
+                                                                    </button>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    </div>
                                                 </div>
                                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pl-18">
                                                     {Array.from({ length: item.quantity }).map((_, i) => {
@@ -471,7 +576,7 @@ export default function TraitementContent({ initialOrders = [], initialFinished 
                                                                 <div className="relative">
                                                                     <div className={`absolute inset-y-0 left-0 w-1 ${isPreassigned ? 'bg-emerald-500' : 'bg-[#ec5b13]/40'} rounded-full`}></div>
                                                                     <input
-                                                                        className={`w-full bg-[#2a1b15] border-white/5 rounded-xl px-4 py-3 text-sm focus:ring-1 focus:ring-[#ec5b13] focus:border-[#ec5b13] outline-none text-white placeholder:text-slate-600 transition-all ${isPreassigned ? 'opacity-60 cursor-not-allowed border-emerald-500/30' : ''}`}
+                                                                        className={`w-full bg-slate-50 dark:bg-[#2a1b15] border border-slate-200 dark:border-white/5 rounded-xl px-4 py-3 text-sm focus:ring-1 focus:ring-[#ec5b13] focus:border-[#ec5b13] outline-none text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-600 transition-all ${isPreassigned ? 'opacity-60 cursor-not-allowed border-emerald-500/30' : ''}`}
                                                                         placeholder={isPreassigned ? "Code automatique assigné" : `Entrez le code #${i + 1} pour ${item.name}...`}
                                                                         type="text"
                                                                         value={codes[`${item.id}-${i}`] || ""}
@@ -501,12 +606,12 @@ export default function TraitementContent({ initialOrders = [], initialFinished 
                                             </div>
                                         ))}
 
-                                        <div className="mt-12 p-6 rounded-2xl bg-[#2a1b15]/30 border border-white/5 space-y-3">
+                                        <div className="mt-12 p-6 rounded-2xl bg-slate-50 dark:bg-[#2a1b15]/30 border border-slate-200 dark:border-white/5 space-y-3">
                                             <div className="flex justify-between text-slate-400 text-sm">
                                                 <span>Validation des codes</span>
                                                 <span>{Object.keys(codes).length} injectés</span>
                                             </div>
-                                            <div className="pt-3 border-t border-white/5 flex justify-between items-center text-white">
+                                            <div className="pt-3 border-t border-slate-200 dark:border-white/5 flex justify-between items-center text-slate-900 dark:text-white">
                                                 <span className="font-bold text-lg">Total à valider</span>
                                                 <span className="text-2xl font-black">{formatCurrency(selectedOrder.totalAmount, 'DZD')}</span>
                                             </div>
@@ -515,11 +620,11 @@ export default function TraitementContent({ initialOrders = [], initialFinished 
                                 </div>
 
                                 {view === "pending" && (
-                                    <footer className="p-8 border-t border-white/5 bg-[#1a0f0a] shrink-0">
+                                    <footer className="p-8 border-t border-slate-200 dark:border-white/5 bg-white dark:bg-[#1a0f0a] shrink-0">
                                         <button
                                             onClick={handleProcess}
                                             disabled={!isOrderReady() || isProcessing}
-                                            className={`w-full font-bold py-4 rounded-2xl shadow-xl transition-all flex items-center justify-center gap-3 active:scale-[0.98] ${isOrderReady() ? 'bg-gradient-to-r from-[#ec5b13] to-orange-600 text-white shadow-[#ec5b13]/20 hover:from-[#ec5b13] hover:to-[#ec5b13]' : 'bg-slate-800 text-slate-500 cursor-not-allowed'}`}
+                                            className={`w-full font-bold py-4 rounded-2xl shadow-xl transition-all flex items-center justify-center gap-3 active:scale-[0.98] ${isOrderReady() ? 'bg-gradient-to-r from-[#ec5b13] to-orange-600 text-white shadow-[#ec5b13]/20 hover:from-[#ec5b13] hover:to-[#ec5b13]' : 'bg-slate-200 dark:bg-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed'}`}
                                         >
                                             {isProcessing ? <Spinner size="sm" color="white" /> : (
                                                 <>
@@ -533,7 +638,7 @@ export default function TraitementContent({ initialOrders = [], initialFinished 
                             </div>
                         ) : (
                             <div className="flex-1 flex flex-col items-center justify-center p-20 text-center group opacity-40">
-                                <div className="size-48 rounded-[64px] bg-[#2a1b15]/40 border border-white/5 flex items-center justify-center mb-10 shadow-2xl relative overflow-hidden">
+                                <div className="size-48 rounded-[64px] bg-white dark:bg-[#2a1b15]/40 border border-slate-200 dark:border-white/5 flex items-center justify-center mb-10 shadow-2xl relative overflow-hidden">
                                     <div className="absolute inset-0 bg-[#ec5b13]/5" />
                                     <span className="material-symbols-outlined text-8xl text-[#ec5b13]/20 group-hover:scale-110 transition-all duration-700">order_approve</span>
                                 </div>
@@ -566,6 +671,7 @@ export default function TraitementContent({ initialOrders = [], initialFinished 
                         totalAmount={selectedOrder?.totalAmount || orderForDetail?.totalAmount}
                         remise={selectedOrder?.remise || orderForDetail?.remise}
                         paymentMethod={(selectedOrder || orderForDetail)?.paymentMethod}
+                        totalClientDebt={(selectedOrder || orderForDetail)?.totalClientDebt}
                     />
                 </div>
             )}
@@ -576,6 +682,15 @@ export default function TraitementContent({ initialOrders = [], initialFinished 
                 order={orderForDetail}
                 onRefund={() => handleCancelOrder(orderForDetail.id)}
                 onReprint={() => handlePrint(orderForDetail)}
+            />
+
+            <ConfirmModal
+                isOpen={confirmModal.isOpen}
+                onClose={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
+                onConfirm={confirmModal.onConfirm}
+                title={confirmModal.title}
+                description={confirmModal.description}
+                variant={confirmModal.variant}
             />
         </div>
     );

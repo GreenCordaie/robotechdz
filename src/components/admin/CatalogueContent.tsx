@@ -54,6 +54,7 @@ import { getShopSettingsAction } from "@/app/admin/settings/actions";
 import toast from "react-hot-toast";
 import Link from "next/link";
 import { formatCurrency } from "@/lib/formatters";
+import { ConfirmModal } from "@/components/admin/modals/ConfirmModal";
 
 interface Product {
     id: number;
@@ -127,6 +128,19 @@ export default function CatalogueContent({
     const [variantStockCounts, setVariantStockCounts] = useState<Record<number, number>>({});
     const [stockAlertThreshold, setStockAlertThreshold] = useState(5);
     const [showLowStockOnly, setShowLowStockOnly] = useState(false);
+    const [confirmModal, setConfirmModal] = useState<{
+        isOpen: boolean;
+        title: string;
+        description: string;
+        onConfirm: () => void;
+        variant: "danger" | "warning" | "info" | "success";
+    }>({
+        isOpen: false,
+        title: "",
+        description: "",
+        onConfirm: () => { },
+        variant: "danger"
+    });
 
     React.useEffect(() => {
         const allVariantIds = initialProducts.flatMap((p: Product) => p.variants.map((v: any) => v.id));
@@ -220,34 +234,44 @@ export default function CatalogueContent({
     };
 
     const handleDeleteProduct = async (id: number) => {
-        // TODO: Replace window.confirm with a proper modal dialog for better UX
-        if (window.confirm("Êtes-vous sûr de vouloir supprimer ce produit ?")) {
-            const res = await deleteProductAction({ id });
-            if (res.success) {
-                toast.success("Produit supprimé");
-                router.refresh();
-            } else {
-                toast.error(res.error || "Erreur lors de la suppression");
+        setConfirmModal({
+            isOpen: true,
+            title: "Supprimer le produit",
+            description: "Êtes-vous sûr de vouloir supprimer ce produit ? Cette action est irréversible.",
+            variant: "danger",
+            onConfirm: async () => {
+                const res = await deleteProductAction({ id });
+                if (res.success) {
+                    toast.success("Produit supprimé");
+                    router.refresh();
+                } else {
+                    toast.error(res.error || "Erreur lors de la suppression");
+                }
             }
-        }
+        });
     };
 
     const handleToggleStatus = async (id: number, currentStatus: string) => {
         const newStatus = currentStatus === "ACTIVE" ? "ARCHIVED" : "ACTIVE";
-        const msg = newStatus === "ARCHIVED"
-            ? "Archiver ce produit ? Il ne sera plus visible sur le Kiosque."
-            : "Réactiver ce produit ?";
+        const isArchiving = newStatus === "ARCHIVED";
 
-        // TODO: Replace window.confirm with a proper modal dialog for better UX
-        if (window.confirm(msg)) {
-            const res = await toggleProductStatusAction({ id, status: newStatus });
-            if (res.success) {
-                toast.success(newStatus === "ARCHIVED" ? "Produit archivé" : "Produit activé");
-                router.refresh();
-            } else {
-                toast.error(res.error || "Erreur de statut");
+        setConfirmModal({
+            isOpen: true,
+            title: isArchiving ? "Archiver le produit" : "Réactiver le produit",
+            description: isArchiving
+                ? "Le produit ne sera plus visible par les clients sur le Kiosque."
+                : "Le produit sera de nouveau disponible à la vente.",
+            variant: isArchiving ? "warning" : "success",
+            onConfirm: async () => {
+                const res = await toggleProductStatusAction({ id, status: newStatus });
+                if (res.success) {
+                    toast.success(isArchiving ? "Produit archivé" : "Produit activé");
+                    router.refresh();
+                } else {
+                    toast.error(res.error || "Erreur de statut");
+                }
             }
-        }
+        });
     };
 
     const handleOpenMassImport = (product: Product) => {
@@ -301,11 +325,11 @@ export default function CatalogueContent({
     const EXCHANGE_RATE_USD_DZD = 245;
 
     return (
-        <div className="flex flex-col min-h-full space-y-8 bg-[#0a0a0a]">
+        <div className="flex flex-col min-h-full space-y-8 bg-transparent">
             <header className="flex items-center justify-between">
                 <div className="flex items-center gap-6">
-                    <h2 className="text-xl font-bold text-white tracking-tight">Catalogue & Fournisseurs</h2>
-                    <div className="hidden md:flex bg-[#161616] p-1 rounded-xl border border-[#262626]">
+                    <h2 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">Catalogue & Fournisseurs</h2>
+                    <div className="hidden md:flex bg-slate-100 dark:bg-[#161616] p-1 rounded-xl border border-slate-200 dark:border-[#262626]">
                         <button
                             onClick={() => {
                                 setStatus("ACTIVE");
@@ -334,8 +358,8 @@ export default function CatalogueContent({
                     <Select
                         className="w-full sm:w-48 shrink-0"
                         classNames={{
-                            trigger: "bg-[#161616] border border-[#262626] rounded-xl h-10 min-h-10",
-                            value: "text-white text-sm"
+                            trigger: "bg-white dark:bg-[#161616] border border-slate-200 dark:border-[#262626] rounded-xl h-10 min-h-10",
+                            value: "text-slate-900 dark:text-white text-sm"
                         }}
                         placeholder="Catégorie"
                         selectedKeys={[selectedCategoryId]}
@@ -354,7 +378,7 @@ export default function CatalogueContent({
                     <Button
                         isIconOnly
                         aria-label="Notifications"
-                        className="size-10 rounded-xl bg-[#161616] border border-[#262626] flex items-center justify-center hover:bg-[#262626] transition-colors"
+                        className="size-10 rounded-xl bg-white dark:bg-[#161616] border border-slate-200 dark:border-[#262626] flex items-center justify-center hover:bg-slate-50 dark:hover:bg-[#262626] transition-colors"
                         onClick={() => toast.success("Aucune nouvelle notification")}
                     >
                         <Bell className="w-5 h-5 text-slate-400 shrink-0" />
@@ -365,7 +389,7 @@ export default function CatalogueContent({
             {/* Section 1: Portefeuilles Fournisseurs */}
             <section>
                 <div className="flex items-center justify-between mb-6">
-                    <h3 className="text-lg font-bold flex items-center gap-2 text-white">
+                    <h3 className="text-lg font-bold flex items-center gap-2 text-slate-900 dark:text-white">
                         <Landmark className="text-primary w-5 h-5 shrink-0" />
                         Portefeuilles Fournisseurs
                     </h3>
@@ -378,7 +402,7 @@ export default function CatalogueContent({
                         const isLowBalance = currency === 'USD' ? bal < 100 : bal < 5000;
 
                         return (
-                            <div key={supplier.id} className={`bg-[#161616] p-5 rounded-xl border ${isLowBalance ? 'border-red-500/50' : 'border-[#262626]'} shadow-sm flex flex-col justify-between h-44 relative overflow-hidden group hover:border-primary/30 transition-colors`}>
+                            <div key={supplier.id} className={`bg-white dark:bg-[#161616] p-5 rounded-xl border ${isLowBalance ? 'border-red-500/50' : 'border-slate-200 dark:border-[#262626]'} shadow-sm flex flex-col justify-between h-44 relative overflow-hidden group hover:border-primary/30 transition-colors`}>
                                 {isLowBalance && (
                                     <div className="absolute top-0 right-0 p-2">
                                         <span className="flex items-center gap-1 px-2 py-1 bg-red-500/10 text-red-500 text-[10px] font-bold rounded-full uppercase shrink-0">
@@ -390,7 +414,7 @@ export default function CatalogueContent({
                                 <div className="flex justify-between items-start">
                                     <div>
                                         <p className="text-sm text-slate-500 font-medium uppercase tracking-wider">{supplier.name}</p>
-                                        <h4 className={`text-2xl font-black mt-2 leading-none tracking-tighter ${isLowBalance ? 'text-red-500' : 'text-white'}`}>
+                                        <h4 className={`text-2xl font-black mt-2 leading-none tracking-tighter ${isLowBalance ? 'text-red-500' : 'text-slate-900 dark:text-white'}`}>
                                             {formatCurrency(bal, currency)}
                                         </h4>
                                         {currency === 'USD' && (
@@ -418,7 +442,7 @@ export default function CatalogueContent({
             {/* Section 2: Catalogue Produits */}
             <section>
                 <div className="flex items-center justify-between mb-6">
-                    <h3 className="text-lg font-bold flex items-center gap-2 text-white">
+                    <h3 className="text-lg font-bold flex items-center gap-2 text-slate-900 dark:text-white">
                         <Package className="text-primary w-5 h-5 shrink-0" />
                         Catalogue Produits
                     </h3>
@@ -427,8 +451,8 @@ export default function CatalogueContent({
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 w-4 h-4 shrink-0" />
                             <Input
                                 classNames={{
-                                    input: "pl-10 text-white",
-                                    inputWrapper: "bg-[#161616] border border-[#262626] rounded-xl h-10 text-sm focus-within:ring-2 focus-within:ring-primary/50"
+                                    input: "pl-10 text-slate-900 dark:text-white",
+                                    inputWrapper: "bg-white dark:bg-[#161616] border border-slate-200 dark:border-[#262626] rounded-xl h-10 text-sm focus-within:ring-2 focus-within:ring-primary/50"
                                 }}
                                 placeholder="Rechercher..."
                                 value={searchTerm}
@@ -463,18 +487,18 @@ export default function CatalogueContent({
                     </div>
                 </div>
 
-                <div className="bg-[#161616] border border-[#262626] rounded-2xl overflow-hidden shadow-sm">
+                <div className="bg-white dark:bg-[#161616] border border-slate-200 dark:border-[#262626] rounded-2xl overflow-hidden shadow-sm">
                     <div className="overflow-x-auto">
                         <table className="w-full text-left border-collapse">
                             <thead>
-                                <tr className="bg-[#262626]/50 border-b border-[#262626]">
+                                <tr className="bg-slate-50 dark:bg-[#262626]/50 border-b border-slate-200 dark:border-[#262626]">
                                     <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-500">Produit</th>
                                     <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-500">Catégorie</th>
                                     <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-500 text-right">Prix de Vente</th>
                                     <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-500 text-center">Actions</th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-[#262626]">
+                            <tbody className="divide-y divide-slate-100 dark:divide-[#262626]">
                                 {paginatedProducts.map((product) => {
                                     const category = categories.find(c => c.id === product.categoryId);
                                     const minPrice = product.variants.length > 0
@@ -483,10 +507,10 @@ export default function CatalogueContent({
 
 
                                     return (
-                                        <tr key={product.id} className="hover:bg-white/5 transition-colors group">
+                                        <tr key={product.id} className="hover:bg-slate-50 dark:hover:bg-white/5 transition-colors group">
                                             <td className="px-6 py-4">
                                                 <div className="flex items-center gap-3">
-                                                    <div className="size-12 rounded-xl bg-[#262626] flex items-center justify-center shrink-0 overflow-hidden border border-white/5">
+                                                    <div className="size-12 rounded-xl bg-slate-100 dark:bg-[#262626] flex items-center justify-center shrink-0 overflow-hidden border border-slate-200 dark:border-white/5">
                                                         {product.imageUrl ? (
                                                             <NextImage src={product.imageUrl} alt={product.name} width={48} height={48} className="w-full h-full object-cover shrink-0" />
                                                         ) : (
@@ -495,7 +519,7 @@ export default function CatalogueContent({
                                                     </div>
                                                     <div className="min-w-0">
                                                         <div className="flex flex-col">
-                                                            <p className="text-slate-100 font-bold text-sm tracking-tight group-hover:text-primary transition-colors truncate">{product.name}</p>
+                                                            <p className="text-slate-900 dark:text-slate-100 font-bold text-sm tracking-tight group-hover:text-primary transition-colors truncate">{product.name}</p>
                                                             {product.status === "ARCHIVED" && (
                                                                 <Chip size="sm" variant="flat" color="default" className="mt-1 h-4 text-[8px] border-none uppercase font-black">Archivé</Chip>
                                                             )}
@@ -513,15 +537,15 @@ export default function CatalogueContent({
                                                 </div>
                                             </td>
                                             <td className="px-6 py-4">
-                                                <Chip size="sm" variant="flat" className="font-bold text-[10px] uppercase bg-[#262626] text-slate-400 border border-white/5">
+                                                <Chip size="sm" variant="flat" className="font-bold text-[10px] uppercase bg-slate-100 dark:bg-[#262626] text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-white/5">
                                                     {category?.name || "Sans catégorie"}
                                                 </Chip>
                                             </td>
                                             <td className="px-6 py-4 text-right">
-                                                <p className="text-sm font-black text-white whitespace-nowrap">{formatCurrency(minPrice, 'DZD')}</p>
+                                                <p className="text-sm font-black text-slate-900 dark:text-white whitespace-nowrap">{formatCurrency(minPrice, 'DZD')}</p>
                                             </td>
                                             <td className="px-6 py-4 text-center">
-                                                <Dropdown classNames={{ content: "bg-[#161616] border border-[#262626]" }}>
+                                                <Dropdown classNames={{ content: "bg-white dark:bg-[#161616] border border-slate-200 dark:border-[#262626]" }}>
                                                     <DropdownTrigger>
                                                         <Button
                                                             isIconOnly
@@ -537,7 +561,7 @@ export default function CatalogueContent({
                                                         <DropdownItem
                                                             key="edit"
                                                             startContent={<Edit className="w-4 h-4 shrink-0 text-primary" />}
-                                                            className="text-white hover:bg-white/5"
+                                                            className="text-slate-700 dark:text-white hover:bg-slate-50 dark:hover:bg-white/5"
                                                             onPress={() => handleEditProduct(product)}
                                                         >
                                                             Modifier
@@ -545,7 +569,7 @@ export default function CatalogueContent({
                                                         <DropdownItem
                                                             key="stock"
                                                             startContent={<PlusCircle className="w-4 h-4 shrink-0 text-emerald-500" />}
-                                                            className="text-white hover:bg-white/5"
+                                                            className="text-slate-700 dark:text-white hover:bg-slate-50 dark:hover:bg-white/5"
                                                             onPress={() => handleOpenMassImport(product)}
                                                             endContent={(() => {
                                                                 const total = product.variants.reduce((acc: number, v: any) => acc + (variantStockCounts[v.id] || 0), 0);
@@ -561,7 +585,7 @@ export default function CatalogueContent({
                                                         <DropdownItem
                                                             key="status"
                                                             startContent={product.status === "ACTIVE" ? <Bell className="w-4 h-4 shrink-0 text-amber-500" /> : <ArrowUpCircle className="w-4 h-4 shrink-0 text-emerald-500" />}
-                                                            className="text-white hover:bg-white/5"
+                                                            className="text-slate-700 dark:text-white hover:bg-slate-50 dark:hover:bg-white/5"
                                                             onPress={() => handleToggleStatus(product.id, product.status)}
                                                         >
                                                             {product.status === "ACTIVE" ? "Archiver (Cacher)" : "Réactiver"}
@@ -583,7 +607,7 @@ export default function CatalogueContent({
                             </tbody>
                         </table>
                     </div>
-                    <div className="px-6 py-4 border-t border-[#262626] bg-[#262626]/20 flex items-center justify-between">
+                    <div className="px-6 py-4 border-t border-slate-200 dark:border-[#262626] bg-slate-50/50 dark:bg-[#262626]/20 flex items-center justify-between">
                         <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">
                             Page {initialPage} sur {totalPages || 1} ({initialTotal} produits au total)
                         </p>
@@ -591,7 +615,7 @@ export default function CatalogueContent({
                             <Button
                                 size="sm"
                                 variant="flat"
-                                className="bg-[#262626] text-white font-bold h-8 px-4 rounded-lg disabled:opacity-50"
+                                className="bg-slate-100 dark:bg-[#262626] text-slate-900 dark:text-white font-bold h-8 px-4 rounded-lg disabled:opacity-50"
                                 onClick={() => handlePageChange(Math.max(1, initialPage - 1))}
                                 disabled={initialPage === 1 || isPending}
                             >
@@ -600,7 +624,7 @@ export default function CatalogueContent({
                             <Button
                                 size="sm"
                                 variant="flat"
-                                className="bg-[#262626] text-white font-bold h-8 px-4 rounded-lg disabled:opacity-50"
+                                className="bg-slate-100 dark:bg-[#262626] text-slate-900 dark:text-white font-bold h-8 px-4 rounded-lg disabled:opacity-50"
                                 onClick={() => handlePageChange(Math.min(totalPages, initialPage + 1))}
                                 disabled={initialPage >= totalPages || isPending}
                             >
@@ -655,6 +679,15 @@ export default function CatalogueContent({
                     baseCurrency={(selectedSupplier.currency as 'USD' | 'DZD') || 'USD'}
                 />
             )}
+
+            <ConfirmModal
+                isOpen={confirmModal.isOpen}
+                onClose={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
+                onConfirm={confirmModal.onConfirm}
+                title={confirmModal.title}
+                description={confirmModal.description}
+                variant={confirmModal.variant}
+            />
         </div>
     );
 }

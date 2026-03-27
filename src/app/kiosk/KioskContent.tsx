@@ -5,7 +5,6 @@ import { useKioskStore } from "@/store/useKioskStore";
 import { useSettingsStore } from "@/store/useSettingsStore";
 import IdleView from "./views/IdleView";
 import CatalogueView from "./views/CatalogueView";
-import CartView from "./views/CartView";
 import ConfirmationView from "./views/ConfirmationView";
 import { getKioskData } from "./actions";
 import { useIsMobile } from "@/hooks/useIsMobile";
@@ -71,7 +70,6 @@ export default function KioskContent() {
         <div className="h-full w-full relative overflow-hidden bg-white">
             {step === "IDLE" && <IdleView products={data.products.slice(0, 4)} />}
             {step === "CATALOGUE" && <CatalogueView products={data.products} categories={data.categories} />}
-            {step === "CART" && <CartView />}
             {step === "CONFIRMATION" && <ConfirmationView />}
         </div>
     );

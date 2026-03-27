@@ -2,7 +2,7 @@
 
 import { db } from "@/db";
 import { clients, clientPayments, orders, users, webhookEvents, supportTickets } from "@/db/schema";
-import { eq, sql, desc, and } from "drizzle-orm";
+import { eq, sql, desc, and, gte } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { withAuth } from "@/lib/security";
 import { z } from "zod";
@@ -12,19 +12,31 @@ export const getClientStats = withAuth(
     { roles: [UserRole.ADMIN, UserRole.CAISSIER] },
     async () => {
         const [totalClientsCount] = await db.select({ count: sql<number>`count(*)` }).from(clients);
-        const [totalDetteSum] = await db.select({ sum: sql<string>`sum(cast(total_dette_dzd as decimal))` }).from(clients);
+        const [totalDetteSum] = await db.select({ sum: sql<string>`sum(cast(total_dette_dzd as numeric))` }).from(clients);
 
         // Count clients with active debt
         const [indebtedCount] = await db.select({ count: sql<number>`count(*)` })
             .from(clients)
-            .where(sql`cast(total_dette_dzd as decimal) > 0`);
+            .where(sql`cast(total_dette_dzd as numeric) > 0`);
+
+        // Compute recoveredThisMonth (ACOMPTE payments this month)
+        const startOfMonth = new Date();
+        startOfMonth.setDate(1);
+        startOfMonth.setHours(0, 0, 0, 0);
+
+        const [recoveredSum] = await db.select({ sum: sql<string>`sum(cast(montant_dzd as numeric))` })
+            .from(clientPayments)
+            .where(and(
+                eq(clientPayments.typeAction, 'ACOMPTE'),
+                gte(clientPayments.createdAt, startOfMonth)
+            ));
 
         return {
             success: true,
             totalClients: Number(totalClientsCount.count),
             totalDebt: totalDetteSum.sum || "0",
             indebtedCount: Number(indebtedCount.count),
-            recoveredThisMonth: "0" // Placeholder or compute from clientPayments
+            recoveredThisMonth: recoveredSum.sum || "0"
         };
     }
 );
@@ -33,7 +45,7 @@ export const getIndebtedClients = withAuth(
     { roles: [UserRole.ADMIN, UserRole.CAISSIER] },
     async () => {
         return await db.query.clients.findMany({
-            where: sql`cast(total_dette_dzd as decimal) > 0`,
+            where: sql`cast(total_dette_dzd as numeric) > 0`,
             orderBy: [desc(clients.totalDetteDzd)]
         });
     }
@@ -67,6 +79,39 @@ export const recordPayment = withAuth(
                 await tx.update(clients)
                     .set({ totalDetteDzd: newDette })
                     .where(eq(clients.id, data.clientId));
+
+                // --- NEW: Settle unpaid/partial orders ---
+                // We fetch orders that are not yet fully paid
+                const unpaidOrders = await tx.query.orders.findMany({
+                    where: and(
+                        eq(orders.clientId, data.clientId),
+                        sql`${orders.status} IN ('NON_PAYE', 'PARTIEL', 'EN_ATTENTE')`
+                    ),
+                    orderBy: (o, { asc }) => [asc(o.createdAt)]
+                });
+
+                let amountToAllocate = parseFloat(data.amount);
+                for (const order of unpaidOrders) {
+                    if (amountToAllocate <= 0) break;
+
+                    const orderTotal = parseFloat(String(order.totalAmount)) - parseFloat(String(order.remise || 0));
+
+                    // Simple logic: if we have enough to cover most of it, or if it was the target of the payment
+                    // In this simplified system, we mark as PAYE (or TERMINE if delivered) 
+                    // if the total payment amount covers the remaining balance (here we assume full balance for simplicity)
+                    if (amountToAllocate >= orderTotal) {
+                        amountToAllocate -= orderTotal;
+                        await tx.update(orders)
+                            .set({ status: "TERMINE" })
+                            .where(eq(orders.id, order.id));
+                    } else {
+                        // Partial payment on this order
+                        await tx.update(orders)
+                            .set({ status: "PARTIEL" })
+                            .where(eq(orders.id, order.id));
+                        amountToAllocate = 0;
+                    }
+                }
             });
 
             revalidatePath("/admin/clients");
@@ -102,7 +147,33 @@ export const getClientHistory = withAuth(
             with: { items: true }
         });
 
-        return { payments, orders: clientOrders };
+        // Fetch returns as well
+        const clientReturns = await db.query.orders.findMany({
+            where: and(
+                eq(orders.clientId, clientId),
+                sql`return_request IS NOT NULL`
+            ),
+            columns: {
+                id: true,
+                orderNumber: true,
+                totalAmount: true,
+                returnRequest: true,
+                createdAt: true,
+            },
+            orderBy: [desc(orders.createdAt)],
+        });
+
+        return {
+            payments,
+            orders: clientOrders,
+            returns: clientReturns.map(o => ({
+                orderId: o.id,
+                orderNumber: o.orderNumber,
+                totalAmount: o.totalAmount,
+                returnRequest: o.returnRequest as ReturnRequest,
+                orderCreatedAt: o.createdAt,
+            }))
+        };
     }
 );
 

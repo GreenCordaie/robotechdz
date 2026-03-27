@@ -96,7 +96,7 @@ export const AdminSidebar = () => {
     });
 
     return (
-        <aside className="w-64 flex flex-col border-r border-[#2d2622] h-screen sticky top-0 bg-[#1a1614] shrink-0 shadow-2xl">
+        <aside className="w-64 flex flex-col border-r border-slate-200 dark:border-[#2d2622] h-screen sticky top-0 bg-white dark:bg-[#1a1614] shrink-0 shadow-xl transition-colors">
             <div className="p-6 flex items-center gap-3">
                 <div className="size-10 rounded-lg bg-[#ec5b13] flex items-center justify-center text-white shadow-lg shadow-[#ec5b13]/20 overflow-hidden relative">
                     {dashboardLogoUrl ? (
@@ -106,7 +106,7 @@ export const AdminSidebar = () => {
                     )}
                 </div>
                 <div className="min-w-0 flex-1">
-                    <h1 className="text-base font-bold leading-tight text-white truncate">{shopName}</h1>
+                    <h1 className="text-base font-bold leading-tight text-slate-900 dark:text-white truncate">{shopName}</h1>
                     <div className="flex flex-col gap-0.5 mt-0.5">
                         <p className="text-[11px] text-[#ec5b13]/60 font-medium tracking-widest uppercase">Digital SaaS Admin</p>
                         <Link
@@ -130,7 +130,7 @@ export const AdminSidebar = () => {
                             href={item.href}
                             className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all group ${isActive
                                 ? "bg-[#ec5b13] text-white shadow-lg shadow-[#ec5b13]/20"
-                                : "text-slate-400 hover:bg-white/5 hover:text-white"
+                                : "text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-white/5 hover:text-slate-900 dark:hover:text-white"
                                 }`}
                         >
                             <item.icon
@@ -149,7 +149,7 @@ export const AdminSidebar = () => {
                 })}
             </nav>
 
-            <div className="p-4 border-t border-[#2d2622]">
+            <div className="p-4 border-t border-slate-200 dark:border-[#2d2622]">
                 <div className="flex items-center gap-3 p-2">
                     <div className="size-8 rounded-full bg-[#2d2622] flex items-center justify-center overflow-hidden border border-white/10 shrink-0 relative">
                         <Image
@@ -161,12 +161,12 @@ export const AdminSidebar = () => {
                         />
                     </div>
                     <div className="min-w-0 flex-1">
-                        <p className="text-xs font-bold truncate text-slate-100">{user?.nom || 'Admin'}</p>
+                        <p className="text-xs font-bold truncate text-slate-900 dark:text-slate-100">{user?.nom || 'Admin'}</p>
                         <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider">{user?.role || 'SYSTEM'}</p>
                     </div>
                     <button
                         onClick={handleLogout}
-                        className="text-slate-400 hover:text-[#ec5b13] transition-colors p-1.5 rounded-lg hover:bg-white/5 flex items-center justify-center transition-transform active:scale-95"
+                        className="text-slate-400 hover:text-[#ec5b13] transition-colors p-1.5 rounded-lg hover:bg-slate-50 dark:hover:bg-white/5 flex items-center justify-center transition-transform active:scale-95"
                         title="Déconnexion"
                     >
                         <LogOut className="size-5" />

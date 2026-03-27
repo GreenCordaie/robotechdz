@@ -23,6 +23,7 @@ interface ThermalReceiptProps {
     totalAmount: string | number;
     remise?: string | number;
     paymentMethod?: string;
+    totalClientDebt?: string | number;
     isPreview?: boolean; // Prop to control preview styles
     settings?: {
         shopName: string;
@@ -44,6 +45,7 @@ export const ThermalReceiptV2 = ({
     totalAmount,
     remise = 0,
     paymentMethod = "Espèces",
+    totalClientDebt = 0,
     isPreview = false,
     settings
 }: ThermalReceiptProps) => {
@@ -222,8 +224,8 @@ export const ThermalReceiptV2 = ({
                 <div style={{ fontSize: '8pt', marginTop: '1mm' }}>
                     #{orderNumber} {showDateTime ? `- ${formattedDate}` : ''}
                 </div>
-                {showCashier && user && (
-                    <div style={{ fontSize: '7pt', marginTop: '0.5mm' }}>Caissier: {user.nom}</div>
+                {showCashier && user?.nom && (
+                    <div style={{ fontSize: '7pt', marginTop: '0.5mm' }}>Caissier: {user?.nom}</div>
                 )}
             </header>
 
@@ -268,9 +270,17 @@ export const ThermalReceiptV2 = ({
                     </>
                 )}
 
+
                 <div style={{ fontSize: '10pt', fontWeight: 700, marginTop: '3mm', borderTop: '0.5px solid #eee', paddingTop: '1mm' }}>
                     PAIEMENT: {paymentMethod.toUpperCase()}
                 </div>
+
+                {Number(totalClientDebt) > 0 && (
+                    <div className="receipt-v2-total-row" style={{ fontSize: '11pt', fontWeight: 900, borderTop: '1px dashed black', marginTop: '2mm', paddingTop: '2mm' }}>
+                        <span>RESTE DE DETTE :</span>
+                        <span>{formatCurrency(totalClientDebt, 'DZD')}</span>
+                    </div>
+                )}
             </div>
 
             <div className="receipt-v2-tech-details">

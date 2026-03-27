@@ -64,8 +64,9 @@ export const clients = pgTable("clients", {
     totalDetteDzd: numeric("total_dette_dzd", { precision: 12, scale: 2 }).default("0"),
     totalSpentDzd: numeric("total_spent_dzd", { precision: 12, scale: 2 }).default("0"),
     loyaltyPoints: integer("loyalty_points").default(0).notNull(),
+    notes: text("notes"),
     createdAt: timestamp("created_at", { mode: 'date' }).defaultNow(),
-});
+})
 
 export const orders = pgTable("orders", {
     id: serial("id").primaryKey(),
@@ -87,6 +88,7 @@ export const orders = pgTable("orders", {
     isDelivered: boolean("is_delivered").default(false),
     whatsappSentAt: timestamp("whatsapp_sent_at", { mode: 'date' }),
     pointsEarned: integer("points_earned").default(0).notNull(),
+    totalClientDebt: numeric("total_client_debt", { precision: 12, scale: 2 }).default("0"),
     createdAt: timestamp("created_at", { mode: 'date' }).defaultNow(),
 }, (table) => {
     return {
@@ -157,6 +159,7 @@ export const clientPayments = pgTable("client_payments", {
     orderId: integer("order_id").references(() => orders.id, { onDelete: "set null" }),
     montantDzd: numeric("montant_dzd", { precision: 12, scale: 2 }).notNull(),
     typeAction: actionTypeEnum("type_action").notNull(), // ACOMPTE, REMBOURSEMENT, RETOUR
+    note: text("note"),
     createdAt: timestamp("created_at", { mode: 'date' }).defaultNow(),
 }, (table) => {
     return {

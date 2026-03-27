@@ -115,8 +115,6 @@ export default function KioskMobile({ products: initialProducts, categories: ini
                         setSearchQuery={setSearchQuery}
                         onProductClick={openProductModal}
                     />
-                ) : step === "CART" ? (
-                    <MobileCartView onValidate={() => setIsDeliveryModalOpen(true)} />
                 ) : (
                     <SuccessView lastOrderNumber={lastOrderNumber || ""} onReset={() => {
                         setLastOrderNumber("");
@@ -128,7 +126,7 @@ export default function KioskMobile({ products: initialProducts, categories: ini
             {/* Floating Cart Button (Visible in Catalogue) */}
             {(step === "IDLE" || step === "CATALOGUE") && cart.length > 0 && (
                 <button
-                    onClick={() => setStep("CART")}
+                    onClick={() => setIsDeliveryModalOpen(true)}
                     className="fixed bottom-10 right-6 bg-primary text-white size-16 rounded-full shadow-2xl shadow-primary/30 flex items-center justify-center hover:scale-110 active:scale-95 transition-all z-40 group"
                 >
                     <div className="absolute -top-1 -right-1 size-7 bg-white text-primary rounded-full flex items-center justify-center text-xs font-black shadow-lg border-2 border-primary">
@@ -337,112 +335,6 @@ function CategoryCard({ label, active, onClick, icon }: any) {
     );
 }
 
-function MobileCartView({ onValidate }: { onValidate: () => void }) {
-    const { cart, updateQuantity, removeFromCart, setStep } = useKioskStore();
-
-    const total = cart.reduce((acc, item) => acc + (Number(item.price) * item.quantity), 0);
-
-    if (cart.length === 0) {
-        return (
-            <div className="p-8 flex flex-col items-center justify-center min-h-[calc(100vh-200px)] text-center animate-in fade-in zoom-in duration-500">
-                <div className="relative mb-8">
-                    <div className="absolute -inset-4 bg-primary/10 rounded-full blur-2xl"></div>
-                    <div className="relative size-32 bg-white rounded-[40px] shadow-xl flex items-center justify-center">
-                        <span className="material-symbols-outlined !text-6xl text-slate-200">shopping_basket</span>
-                    </div>
-                    <div className="absolute bottom-2 right-2 size-8 bg-primary rounded-full flex items-center justify-center text-white border-4 border-white">
-                        <span className="material-symbols-outlined !text-sm font-black text-white">close</span>
-                    </div>
-                </div>
-                <h2 className="text-2xl font-black mb-3">Panier vide</h2>
-                <p className="text-slate-400 font-medium text-sm mb-10 max-w-[200px]">On dirait que vous n'avez pas encore trouvé votre bonheur.</p>
-                <button
-                    onClick={() => setStep("CATALOGUE")}
-                    className="bg-[#0c121e] text-white px-10 py-5 rounded-3xl font-black uppercase tracking-widest shadow-xl shadow-slate-900/10 active:scale-95 transition-all"
-                >
-                    Commencer mes achats
-                </button>
-            </div>
-        );
-    }
-
-    return (
-        <div className="p-6 animate-in slide-in-from-right duration-500">
-            <div className="flex items-center justify-between mb-8">
-                <button onClick={() => setStep("CATALOGUE")} className="size-12 bg-white rounded-2xl flex items-center justify-center shadow-sm border border-slate-100 active:scale-90 transition-transform">
-                    <span className="material-symbols-outlined">arrow_back</span>
-                </button>
-                <div className="text-center">
-                    <h1 className="text-xl font-black text-[#0c121e]">Mon Panier</h1>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{cart.length} articles</p>
-                </div>
-                <button disabled className="size-12 bg-red-50 rounded-2xl flex items-center justify-center shadow-sm border border-red-100 text-red-500 opacity-0 pointer-events-none">
-                    <span className="material-symbols-outlined">delete_sweep</span>
-                </button>
-            </div>
-
-            <div className="space-y-4 mb-8">
-                {cart.map((item) => (
-                    <div key={`${item.variantId}-${item.customData}`} className="bg-white rounded-[32px] p-5 shadow-sm border border-slate-50 flex gap-5 group relative overflow-hidden">
-                        <div className="size-24 bg-slate-50 rounded-[24px] flex-shrink-0 flex items-center justify-center overflow-hidden relative">
-                            {item.imageUrl ? (
-                                <Image src={item.imageUrl} alt={item.productName} fill className="object-cover transition-transform group-hover:scale-110" />
-                            ) : (
-                                <span className="material-symbols-outlined text-slate-200 !text-3xl">inventory_2</span>
-                            )}
-                        </div>
-                        <div className="flex-1 flex flex-col justify-between py-1">
-                            <div className="space-y-1">
-                                <div className="flex justify-between items-start">
-                                    <h4 className="font-black text-sm text-[#0c121e] leading-tight pr-8">{item.productName}</h4>
-                                    <button
-                                        onClick={() => removeFromCart(item.variantId, item.customData)}
-                                        className="absolute top-4 right-4 text-slate-200 hover:text-red-500 transition-colors p-1"
-                                    >
-                                        <span className="material-symbols-outlined !text-[22px]">close</span>
-                                    </button>
-                                </div>
-                                <p className="text-primary text-[10px] font-black uppercase tracking-widest">{item.name}</p>
-                            </div>
-
-                            <div className="flex items-center justify-between mt-4">
-                                <div className="flex items-center gap-1 bg-slate-50 rounded-2xl p-1">
-                                    <button onClick={() => updateQuantity(item.variantId, -1, item.customData)} className="size-8 rounded-xl flex items-center justify-center font-black text-slate-400 active:bg-white active:shadow-sm transition-all"><span className="material-symbols-outlined !text-sm">remove</span></button>
-                                    <span className="w-8 text-center font-black text-sm">{item.quantity}</span>
-                                    <button onClick={() => updateQuantity(item.variantId, 1, item.customData)} className="size-8 rounded-xl flex items-center justify-center font-black text-slate-400 active:bg-white active:shadow-sm transition-all"><span className="material-symbols-outlined !text-sm">add</span></button>
-                                </div>
-                                <span className="font-black text-[#0c121e] text-base">{formatCurrency(Number(item.price) * item.quantity, 'DZD')}</span>
-                            </div>
-                        </div>
-                    </div>
-                ))}
-            </div>
-
-            {/* Checkout Summary */}
-            <div className="fixed bottom-10 left-6 right-6 p-6 bg-[#0c121e] rounded-[40px] text-white shadow-2xl shadow-slate-900/40 space-y-6">
-                <div className="space-y-3">
-                    <div className="flex justify-between items-center px-2">
-                        <span className="text-white/40 text-xs font-bold uppercase tracking-widest">Sous-total</span>
-                        <span className="font-black text-sm tracking-tight">{formatCurrency(total, 'DZD')}</span>
-                    </div>
-                    <div className="h-px bg-white/10 mx-2"></div>
-                    <div className="flex justify-between items-center px-2">
-                        <span className="text-lg font-black tracking-tight text-white/60">Total</span>
-                        <span className="text-2xl font-black text-primary font-['Plus_Jakarta_Sans'] tracking-tighter text-white">{formatCurrency(total, 'DZD')}</span>
-                    </div>
-                </div>
-
-                <button
-                    onClick={onValidate}
-                    className="w-full bg-primary text-white py-5 rounded-[26px] font-black uppercase tracking-widest shadow-xl shadow-primary/20 active:scale-95 transition-all text-sm flex items-center justify-center gap-3"
-                >
-                    <span>Valider la commande</span>
-                    <span className="material-symbols-outlined !text-lg">navigate_next</span>
-                </button>
-            </div>
-        </div>
-    );
-}
 
 function SuccessView({ lastOrderNumber, onReset }: { lastOrderNumber: string, onReset: () => void }) {
     return (

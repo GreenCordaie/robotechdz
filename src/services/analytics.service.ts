@@ -1,10 +1,11 @@
 import { db } from "@/db";
 import { orderItems, orders, products, productVariants, clients } from "@/db/schema";
-import { desc, sql, and, gte, lte } from "drizzle-orm";
+import { desc, sql, and, gte, lte, inArray } from "drizzle-orm";
 import { subDays, startOfMonth, endOfMonth } from "date-fns";
+import { OrderStatus } from "@/lib/constants";
 
 // Orders that count as revenue: paid, delivered, or completed
-const PAID_STATUSES = `('PAYE', 'LIVRE', 'TERMINE')`;
+const PAID_STATUSES = [OrderStatus.PAYE, OrderStatus.LIVRE, OrderStatus.TERMINE];
 const EXCHANGE_RATE_USD_DZD = 245;
 
 // SQL fragment: convert purchasePrice to DZD based on purchaseCurrency
@@ -25,7 +26,7 @@ export class AnalyticsService {
             .innerJoin(orders, sql`${orderItems.orderId} = ${orders.id}`)
             .where(
                 and(
-                    sql`${orders.status} IN ${sql.raw(PAID_STATUSES)}`,
+                    inArray(orders.status, PAID_STATUSES),
                     gte(orders.createdAt, start),
                     lte(orders.createdAt, end)
                 )
@@ -59,8 +60,8 @@ export class AnalyticsService {
             .from(orderItems)
             .innerJoin(orders, sql`${orderItems.orderId} = ${orders.id}`)
             .innerJoin(clients, sql`${orders.clientId} = ${clients.id}`)
-            .where(sql`${orders.status} IN ${sql.raw(PAID_STATUSES)}`)
-            .groupBy(clients.id)
+            .where(inArray(orders.status, PAID_STATUSES))
+            .groupBy(clients.id, clients.nomComplet, clients.telephone, clients.loyaltyPoints)
             .orderBy(desc(sql`SUM(${orderItems.price} * ${orderItems.quantity})`))
             .limit(limit);
     }
@@ -80,8 +81,8 @@ export class AnalyticsService {
             .innerJoin(productVariants, sql`${orderItems.variantId} = ${productVariants.id}`)
             .innerJoin(products, sql`${productVariants.productId} = ${products.id}`)
             .innerJoin(orders, sql`${orderItems.orderId} = ${orders.id}`)
-            .where(sql`${orders.status} IN ${sql.raw(PAID_STATUSES)}`)
-            .groupBy(products.id, productVariants.id)
+            .where(inArray(orders.status, PAID_STATUSES))
+            .groupBy(products.id, products.name, productVariants.id, productVariants.name)
             .orderBy(desc(sql`SUM(${orderItems.price} * ${orderItems.quantity}) - COALESCE(SUM(${costInDzd} * ${orderItems.quantity}), 0)`))
             .limit(limit);
     }
@@ -99,12 +100,12 @@ export class AnalyticsService {
             .innerJoin(orders, sql`${orderItems.orderId} = ${orders.id}`)
             .where(
                 and(
-                    sql`${orders.status} IN ${sql.raw(PAID_STATUSES)}`,
+                    inArray(orders.status, PAID_STATUSES),
                     gte(orders.createdAt, thirtyDaysAgo)
                 )
             )
-            .groupBy(sql`DATE(${orders.createdAt})`)
-            .orderBy(sql`DATE(${orders.createdAt})`);
+            .groupBy(sql`${orders.createdAt}::date`)
+            .orderBy(sql`${orders.createdAt}::date`);
     }
 
     static async getMarketingInsights() {

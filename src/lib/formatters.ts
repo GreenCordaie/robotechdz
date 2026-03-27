@@ -36,3 +36,15 @@ export function formatDate(date: Date | string) {
         minute: '2-digit'
     }).format(d);
 }
+
+export function formatWhatsApp(phone: string | null) {
+    if (!phone) return "";
+    let cleaned = phone.replace(/\D/g, '');
+    if (cleaned.startsWith('0')) {
+        cleaned = '213' + cleaned.substring(1);
+    } else if (cleaned.length === 9) {
+        cleaned = '213' + cleaned;
+    }
+    // If it already starts with 213, keep it as is (after cleanup)
+    return `+${cleaned}`;
+}

@@ -1,10 +1,15 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect, useRef } from "react";
 import { useKioskStore } from "@/store/useKioskStore";
 import { useSettingsStore } from "@/store/useSettingsStore";
 import ProductModal from "../components/ProductModal";
+import DeliveryMethodModal from "../components/DeliveryMethodModal";
+import { createKioskOrder } from "../actions";
+import { useDisclosure } from "@heroui/react";
 import { formatCurrency } from "@/lib/formatters";
+import { toast } from "react-hot-toast";
+import { Loader2 } from "lucide-react";
 
 interface CatalogueViewProps {
     products: any[];
@@ -49,13 +54,55 @@ function getCategoryIcon(name: string): string {
 export default function CatalogueView({ products, categories }: CatalogueViewProps) {
 
     // T007 — Brancher les stores
-    const { cart, setStep, updateQuantity, removeFromCart, getTotalAmount } = useKioskStore();
-    useSettingsStore(); // shopName disponible si besoin
+    const { cart, setStep, updateQuantity, removeFromCart, getTotalAmount, setLastOrderNumber, clearCart } = useKioskStore();
+    const settings = useSettingsStore();
+
+    // Checkout Logic
+    const { isOpen: isCheckoutOpen, onOpen: onCheckoutOpen, onOpenChange: onCheckoutOpenChange, onClose: onCheckoutClose } = useDisclosure();
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
     // T006 — States locaux
     const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null);
     const [searchTerm, setSearchTerm] = useState("");
     const [selectedProduct, setSelectedProduct] = useState<any | null>(null);
+    const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+    // Reset scroll and search on category change
+    useEffect(() => {
+        if (scrollContainerRef.current) {
+            scrollContainerRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+        setSearchTerm("");
+    }, [selectedCategoryId]);
+
+    const confirmOrder = async (deliveryMethod: "TICKET" | "WHATSAPP", phone?: string) => {
+        setIsSubmitting(true);
+        try {
+            const formattedItems = cart.map(i => ({
+                variantId: i.variantId,
+                name: i.name,
+                price: i.price,
+                quantity: i.quantity,
+                customData: i.customData,
+                playerNickname: i.playerNickname
+            }));
+            const order = await createKioskOrder(formattedItems, totalAmount.toFixed(2), deliveryMethod, phone);
+
+            if (deliveryMethod === "TICKET") {
+                toast.success("Demande transmise à la caisse.");
+            }
+
+            setLastOrderNumber(order.orderNumber);
+            setStep("CONFIRMATION");
+            clearCart();
+            onCheckoutClose();
+        } catch (error: any) {
+            console.error("Order failed:", error);
+            toast.error(error.message || "Échec de la validation");
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
 
     // Catégories à afficher — fallback si la DB est vide
     const displayCategories = categories.length > 0 ? categories : FALLBACK_CATEGORIES;
@@ -142,6 +189,7 @@ export default function CatalogueView({ products, categories }: CatalogueViewPro
 
                 {/* T010-T015 — Product Grid */}
                 <section
+                    ref={scrollContainerRef}
                     className="flex-1 overflow-y-auto px-8 pb-8"
                     style={{ scrollbarWidth: "none" }}
                 >
@@ -243,9 +291,9 @@ export default function CatalogueView({ products, categories }: CatalogueViewPro
             </main>
 
             {/* ══════════════════════════════════════════════════════════════
-                SIDEBAR — "Ma Sélection" (desktop lg+) — T022-T028
+                SIDEBAR — "Ma Sélection" (desktop md+) — T022-T028
             ══════════════════════════════════════════════════════════════ */}
-            <aside className="hidden lg:flex flex-col w-[25%] min-w-[280px] max-w-[380px] bg-white border-l border-gray-200 shadow-2xl shrink-0 h-full">
+            <aside className="hidden md:flex flex-col w-[25%] min-w-[280px] max-w-[380px] bg-white border-l border-gray-200 shadow-2xl shrink-0 h-full">
 
                 {/* T023 — Header */}
                 <div className="p-6 xl:p-8 border-b border-gray-100 shrink-0">
@@ -332,7 +380,7 @@ export default function CatalogueView({ products, categories }: CatalogueViewPro
                         </span>
                     </div>
                     <button
-                        onClick={() => setStep("CART")}
+                        onClick={onCheckoutOpen}
                         disabled={cart.length === 0}
                         className="w-full py-4 xl:py-5 bg-[#FF8000] hover:bg-[#E67300] disabled:bg-gray-200 disabled:cursor-not-allowed text-white rounded-[24px] font-bold text-base xl:text-lg uppercase tracking-wider shadow-xl shadow-[#FF8000]/20 transition-all active:scale-[0.98]"
                     >
@@ -342,11 +390,11 @@ export default function CatalogueView({ products, categories }: CatalogueViewPro
             </aside>
 
             {/* ══════════════════════════════════════════════════════════════
-                MOBILE — FAB panier (lg:hidden)
+                MOBILE — FAB panier (md:hidden)
             ══════════════════════════════════════════════════════════════ */}
-            <div className="lg:hidden fixed bottom-28 right-6 z-40">
+            <div className="md:hidden fixed bottom-28 right-6 z-40">
                 <button
-                    onClick={() => setStep("CART")}
+                    onClick={onCheckoutOpen}
                     className="w-16 h-16 bg-gray-900 rounded-full shadow-2xl flex items-center justify-center relative active:scale-90 transition-all duration-300"
                 >
                     <span className="material-symbols-outlined text-white !text-3xl">shopping_bag</span>
@@ -359,15 +407,15 @@ export default function CatalogueView({ products, categories }: CatalogueViewPro
             </div>
 
             {/* ══════════════════════════════════════════════════════════════
-                MOBILE — BottomNavBar (lg:hidden)
+                MOBILE — BottomNavBar (md:hidden)
             ══════════════════════════════════════════════════════════════ */}
-            <nav className="lg:hidden fixed bottom-0 left-0 w-full h-24 bg-white/90 backdrop-blur-2xl rounded-t-[32px] z-50 flex justify-around items-center px-4 border-t border-gray-100 shadow-[0px_-10px_40px_rgba(0,0,0,0.04)]">
+            <nav className="md:hidden fixed bottom-0 left-0 w-full h-24 bg-white/90 backdrop-blur-2xl rounded-t-[32px] z-50 flex justify-around items-center px-4 border-t border-gray-100 shadow-[0px_-10px_40px_rgba(0,0,0,0.04)]">
                 <div className="flex flex-col items-center justify-center bg-gradient-to-br from-[#924700] to-[#FF8000] text-white rounded-[20px] px-6 py-2">
                     <span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1" }}>storefront</span>
                     <span className="font-semibold text-[11px] uppercase tracking-widest mt-1">Shop</span>
                 </div>
                 <button
-                    onClick={() => setStep("CART")}
+                    onClick={onCheckoutOpen}
                     className="flex flex-col items-center justify-center text-gray-600 opacity-60 px-6 py-2 hover:opacity-100 transition-opacity active:scale-95"
                 >
                     <span className="material-symbols-outlined">shopping_bag</span>
@@ -381,6 +429,15 @@ export default function CatalogueView({ products, categories }: CatalogueViewPro
                 onClose={() => setSelectedProduct(null)}
                 product={selectedProduct}
             />
+
+            <DeliveryMethodModal
+                isOpen={isCheckoutOpen}
+                onClose={onCheckoutClose}
+                onConfirm={confirmOrder}
+                isSubmitting={isSubmitting}
+            />
+
+
         </div>
     );
 }

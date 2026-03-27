@@ -88,6 +88,7 @@ export function ReceiptSettings() {
         date: new Date(),
         totalAmount: 15000,
         paymentMethod: "Espèces",
+        totalClientDebt: 2500,
         items: [
             { name: "Netflix Premium (1 Mois)", quantity: 1, price: 1500, codes: ["A1B2-C3D4-E5F6"] },
             { name: "PSN 50$ (US)", quantity: 3, price: 13500, codes: ["P8X2-L9M3-QW12", "Z4V7-K0J5-RT99", "N1Y4-U6B8-GH44"] }

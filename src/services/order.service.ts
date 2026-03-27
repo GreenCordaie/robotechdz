@@ -2,7 +2,7 @@ import { db } from "@/db";
 import { orders, clients, clientPayments, digitalCodes, orderItems, resellers } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { allocateOrderStock } from "@/lib/orders";
-import { decrypt } from "@/lib/encryption";
+import { decrypt, encrypt } from "@/lib/encryption";
 import { triggerOrderDelivery } from "@/lib/delivery";
 import { sendPushToRoleAction, sendPushToUserAction } from "@/app/admin/push/actions";
 import { OrderStatus, UserRole, ClientActionType, DigitalCodeStatus, OrderSource } from "@/lib/constants";
@@ -22,7 +22,7 @@ export class OrderService {
         paymentMethod?: string;
     }) {
         const remise = options.remise || 0;
-        const montantPaye = options.montantPaye || 0;
+        const montantRecuMaintenant = options.montantPaye || 0;
         const clientId = options.clientId;
 
         const result = await db.transaction(async (tx) => {
@@ -32,15 +32,19 @@ export class OrderService {
 
             if (!order) throw new Error("Commande introuvable");
 
+            const currentCumulativePaid = parseFloat(order.montantPaye || "0");
+            const newTotalPaid = currentCumulativePaid + montantRecuMaintenant;
             const totalApresRemise = parseFloat(order.totalAmount) - remise;
-            const resteAPayer = Math.max(0, totalApresRemise - montantPaye);
+
+            const resteAPayer = Math.max(0, totalApresRemise - newTotalPaid);
+            const extraPayment = Math.max(0, newTotalPaid - totalApresRemise);
 
             let status: OrderStatus = OrderStatus.PAYE;
             if (resteAPayer > 0) {
-                status = montantPaye === 0 ? OrderStatus.NON_PAYE : OrderStatus.PARTIEL;
+                status = (newTotalPaid === 0) ? OrderStatus.NON_PAYE : OrderStatus.PARTIEL;
             }
 
-            // 3. Fetch Enriched Order for credential checks and return
+            // ... (rest of the fetching logic) ...
             const finalOrder = await tx.query.orders.findFirst({
                 where: eq(orders.id, id),
                 with: {
@@ -68,7 +72,7 @@ export class OrderService {
                     status,
                     userId,
                     remise: remise.toString(),
-                    montantPaye: montantPaye.toString(),
+                    montantPaye: newTotalPaid.toString(),
                     resteAPayer: resteAPayer.toString(),
                     clientId: clientId || null,
                     paymentMethod: options.paymentMethod || null,
@@ -77,23 +81,45 @@ export class OrderService {
                 .where(eq(orders.id, id));
 
             // 6. Manage Client Debt
-            if (clientId && resteAPayer > 0) {
+            if (clientId) {
                 const client = await tx.query.clients.findFirst({
                     where: (c, { eq }) => eq(c.id, clientId)
                 });
                 if (client) {
-                    const newTotalDebt = (parseFloat(client.totalDetteDzd || "0") + resteAPayer).toString();
+                    let newClientTotalDebt = parseFloat(client.totalDetteDzd || "0");
+
+                    if (order.status === OrderStatus.EN_ATTENTE) {
+                        // First payment/settlement: add the whole remaining balance to debt
+                        newClientTotalDebt += resteAPayer;
+                        // And if there was an overpayment (unlikely on first pay but possible), deduct it
+                        if (extraPayment > 0) {
+                            newClientTotalDebt = Math.max(0, newClientTotalDebt - extraPayment);
+                        }
+                    } else {
+                        // Subsequent payment: adjust by the difference in remaining balances
+                        const previousRemaining = parseFloat(order.resteAPayer || "0");
+                        const adjustment = resteAPayer - previousRemaining; // Usually negative if paying
+                        newClientTotalDebt = Math.max(0, newClientTotalDebt + adjustment);
+
+                        // If we paid MORE than the remaining balance, resteAPayer is 0,
+                        // and adjustment is -previousRemaining.
+                        // We also need to deduct the extraPayment from the overall debt.
+                        if (extraPayment > 0) {
+                            newClientTotalDebt = Math.max(0, newClientTotalDebt - extraPayment);
+                        }
+                    }
+
                     await tx.update(clients)
-                        .set({ totalDetteDzd: newTotalDebt })
+                        .set({ totalDetteDzd: newClientTotalDebt.toString() })
                         .where(eq(clients.id, clientId));
                 }
             }
 
-            if (clientId && montantPaye > 0) {
+            if (clientId && montantRecuMaintenant > 0) {
                 await tx.insert(clientPayments).values({
                     clientId,
                     orderId: id,
-                    montantDzd: montantPaye.toString(),
+                    montantDzd: montantRecuMaintenant.toString(),
                     typeAction: ClientActionType.ACOMPTE
                 });
             }
@@ -151,23 +177,43 @@ export class OrderService {
             (item.codes && item.codes.length > 0) || (item.slots && item.slots.length > 0)
         );
 
-        // --- NEW: TOULOULOU LOYALTY LOGIC ---
-        const totalAmount = parseFloat(order.totalAmount);
-        const points = Math.floor(totalAmount / 100);
+        // --- TOULOULOU LOYALTY LOGIC (DISABLED) ---
+        const eligibleAmount = 0; // Disabled as per request
+        /*
+        const eligibleAmount = (order as any).items.reduce((acc: number, item: any) => {
+            const isEligible = item.variant?.product?.loyaltyPointsEnabled ?? true;
+            if (isEligible) {
+                return acc + (parseFloat(item.priceDzd) * item.quantity);
+            }
+            return acc;
+        }, 0);
+        */
+
+        // Apply a proportional remise to the eligible amount if there is a global remise
+        const totalRawAmount = parseFloat(order.totalAmount);
+        const globalRemise = parseFloat(order.remise || "0");
+        const netEligibleAmount = totalRawAmount > 0
+            ? eligibleAmount * (1 - (globalRemise / totalRawAmount))
+            : 0;
+
+        const points = Math.floor(netEligibleAmount / 100);
+        const netTotal = totalRawAmount - globalRemise;
 
         if (order.status === OrderStatus.PAYE || isFullyAuto) {
             await db.transaction(async (tx) => {
+                // 1. Mark points on the order
                 await tx.update(orders)
                     .set({ pointsEarned: points })
                     .where(eq(orders.id, orderId));
 
+                // 2. Update client total spent & points
                 if (order.clientId) {
                     const currentClient = await tx.query.clients.findFirst({
                         where: eq(clients.id, order.clientId)
                     });
 
                     if (currentClient) {
-                        const newTotalSpent = (parseFloat(currentClient.totalSpentDzd || "0") + totalAmount).toString();
+                        const newTotalSpent = (parseFloat(currentClient.totalSpentDzd || "0") + netTotal).toString();
                         const newPoints = currentClient.loyaltyPoints + points;
 
                         await tx.update(clients)
@@ -246,7 +292,7 @@ export class OrderService {
                             await tx.insert(digitalCodes).values({
                                 variantId: oi.variantId,
                                 orderItemId: oi.id,
-                                code: codeContent,
+                                code: encrypt(codeContent),
                                 status: DigitalCodeStatus.VENDU
                             });
                         }
@@ -329,7 +375,7 @@ export class OrderService {
                         await tx.insert(digitalCodes).values({
                             variantId: item.variantId,
                             orderItemId: item.id,
-                            code: code,
+                            code: encrypt(code),
                             status: DigitalCodeStatus.VENDU
                         });
                         insertedCount++;

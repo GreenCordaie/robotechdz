@@ -46,6 +46,8 @@ export class OrderQueries {
         const mappedItems = (result as any).items.map((item: any) => {
             return {
                 ...item,
+                purchasePrice: item.purchasePrice,
+                purchaseCurrency: item.purchaseCurrency,
                 fullCodes: (item.codes || []).map((c: any) => ({ id: c.id, code: decrypt(c.code) || "[ERREUR DÉCRYPTAGE]" })),
                 fullSlots: (item.slots || []).map((s: any) => ({
                     id: s.id,
@@ -90,7 +92,12 @@ export class OrderQueries {
                 if (s.code) slotInfo += ` | PIN: ${decryptedSlotPin || "[ERREUR PIN]"}`;
                 return slotInfo;
             });
-            return { ...item, codes: [...standardCodes, ...slotCodes] };
+            return {
+                ...item,
+                purchasePrice: item.purchasePrice,
+                purchaseCurrency: item.purchaseCurrency,
+                codes: [...standardCodes, ...slotCodes]
+            };
         });
 
         return { ...result, items: mappedItems };
@@ -157,7 +164,7 @@ export class OrderQueries {
                         return "[Erreur Profil]";
                     }
                 });
-                return { ...item, codes: [...standardCodes, ...slotCodes] };
+                return { ...item, purchasePrice: item.purchasePrice, purchaseCurrency: item.purchaseCurrency, codes: [...standardCodes, ...slotCodes] };
             })
         }));
     });
@@ -196,7 +203,12 @@ export class OrderQueries {
                     if (s.code) slotInfo += ` | PIN: ${decryptedSlotPin || "[ERREUR PIN]"}`;
                     return slotInfo;
                 });
-                return { ...item, codes: [...standardCodes, ...slotCodes] };
+                return {
+                    ...item,
+                    purchasePrice: item.purchasePrice,
+                    purchaseCurrency: item.purchaseCurrency,
+                    codes: [...standardCodes, ...slotCodes]
+                };
             })
         }));
     });
@@ -236,7 +248,12 @@ export class OrderQueries {
                         return "[Erreur Profil]";
                     }
                 });
-                return { ...item, codes: [...standardCodes, ...slotCodes] };
+                return {
+                    ...item,
+                    purchasePrice: item.purchasePrice,
+                    purchaseCurrency: item.purchaseCurrency,
+                    codes: [...standardCodes, ...slotCodes]
+                };
             })
         }));
     });

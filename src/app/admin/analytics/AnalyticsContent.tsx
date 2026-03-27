@@ -319,7 +319,6 @@ export default function AnalyticsContent({ initialOverview, initialRankings }: A
                                 <TableColumn>CLIENT</TableColumn>
                                 <TableColumn>COMMANDES</TableColumn>
                                 <TableColumn>TOTAL DÉPENSÉ</TableColumn>
-                                <TableColumn>POINTS FIDÉLITÉ</TableColumn>
                                 <TableColumn>ACTION</TableColumn>
                             </TableHeader>
                             <TableBody>
@@ -336,11 +335,6 @@ export default function AnalyticsContent({ initialOverview, initialRankings }: A
                                             <span className="text-orange-500 font-bold">
                                                 {formatCurrency(parseFloat(client.totalSpent))}
                                             </span>
-                                        </TableCell>
-                                        <TableCell>
-                                            <Chip variant="flat" color="warning" size="sm">
-                                                {client.points} pts
-                                            </Chip>
                                         </TableCell>
                                         <TableCell>
                                             <Button size="sm" variant="light" color="primary">Profil</Button>

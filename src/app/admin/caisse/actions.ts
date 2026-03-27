@@ -1,4 +1,4 @@
-"use server";
+﻿"use server";
 
 import { db } from "@/db";
 import { orders, digitalCodes, digitalCodeSlots, orderItems, suppliers, supplierTransactions, productVariantSuppliers, clients, clientPayments, shopSettings, resellers } from "@/db/schema";
@@ -13,6 +13,8 @@ import { sendPushToRoleAction, sendPushToUserAction } from "../push/actions";
 import { decrypt } from "@/lib/encryption";
 import { OrderService } from "@/services/order.service";
 import { N8nService } from "@/services/n8n.service";
+import { checkRateLimit, recordFailure } from "@/lib/rate-limit";
+
 // Dynamic Query loader to prevent client-side leakage
 const getQueries = async () => {
     const { OrderQueries } = await import("@/services/queries/order.queries");
@@ -62,7 +64,14 @@ export const payOrder = withAuth(
         })
     },
     async ({ id, options }, user) => {
+        const rateLimitKey = `action:payOrder:${user.id}`;
         try {
+            // 0. Rate Limit Check (Payment is sensitive)
+            const limit = await checkRateLimit(rateLimitKey, 20); // 20 tentatives max pour le paiement
+            if (limit.isBlocked) {
+                throw new Error(`Trop de tentatives de paiement. Veuillez patienter.`);
+            }
+
             const result = await OrderService.payOrder(id, user.id, options);
 
             revalidatePath("/admin/caisse");
@@ -71,6 +80,7 @@ export const payOrder = withAuth(
 
             return { success: true, order: result };
         } catch (error) {
+            await recordFailure(rateLimitKey); // IncrÃ©menter le compteur en cas d'erreur
             logger.error((error as Error).message, { userId: user.id, action: "PAY_ORDER_FAILED", metadata: { orderId: id } });
             return { success: false, error: (error as Error).message };
         }
@@ -165,8 +175,8 @@ export const markOrderAsTermine = withAuth(
             });
             if (reseller) {
                 sendPushToUserAction(reseller.userId, {
-                    title: "✅ Commande Prête",
-                    body: `Votre commande ${order.orderNumber} est terminée et prête !`,
+                    title: "âœ… Commande PrÃªte",
+                    body: `Votre commande ${order.orderNumber} est terminÃ©e et prÃªte !`,
                     url: "/reseller/orders"
                 }).catch(err => console.error("Push to reseller failed:", err));
             }
@@ -194,8 +204,13 @@ export const replaceOrderItemCode = withAuth(
             reason: z.string().optional()
         })
     },
-    async ({ orderItemId, oldCodeId, oldSlotId }) => {
+    async ({ orderItemId, oldCodeId, oldSlotId }, user) => {
+        const rateLimitKey = `action:replaceCode:${user.id}`;
         try {
+            // Rate limit to prevent rapid code cycling
+            const limit = await checkRateLimit(rateLimitKey, 10);
+            if (limit.isBlocked) throw new Error("Trop de tentatives de remplacement. Veuillez patienter.");
+
             return await db.transaction(async (tx) => {
                 const item = await tx.query.orderItems.findFirst({
                     where: eq(orderItems.id, orderItemId),
@@ -291,7 +306,7 @@ export const refundOrderItem = withAuth(
                         .where(inArray(digitalCodeSlots.id, item.slots.map(s => s.id)));
                 }
 
-                // --- 🔄 BALANCE REVERSAL LOGIC ---
+                // --- ðŸ”„ BALANCE REVERSAL LOGIC ---
                 await reverseSupplierDebits(tx, { orderItemId }, "Remboursement Article");
             });
 
@@ -311,10 +326,8 @@ export const refundFullOrder = withAuth(
     async ({ id, returnToStock }) => {
         try {
             await db.transaction(async (tx) => {
-                const order = await tx.query.orders.findFirst({
-                    where: eq(orders.id, id),
-                    with: { items: true }
-                });
+                const { OrderQueries } = await import("@/services/queries/order.queries");
+                const order = await OrderQueries.getById(id);
 
                 if (!order) throw new Error("Commande introuvable");
 
@@ -326,7 +339,7 @@ export const refundFullOrder = withAuth(
 
                 await tx.update(orders).set({ status: OrderStatus.REMBOURSE }).where(eq(orders.id, id));
 
-                // --- 🔄 BALANCE REVERSAL LOGIC ---
+                // --- ðŸ”„ BALANCE REVERSAL LOGIC ---
                 await reverseSupplierDebits(tx, { orderId: id }, "Remboursement Commande Totale");
             });
 
@@ -370,7 +383,7 @@ export const cancelOrderAction = withAuth(
                     }
                 }
 
-                // --- 🔄 BALANCE REVERSAL LOGIC ---
+                // --- ðŸ”„ BALANCE REVERSAL LOGIC ---
                 await reverseSupplierDebits(tx, { orderId: orderId }, "Annulation Commande");
             });
 
@@ -426,13 +439,18 @@ export const initiateReturn = withAuth(
         roles: [UserRole.ADMIN, UserRole.CAISSIER],
         schema: z.object({
             orderId: z.number().int().positive(),
-            motif: z.string().min(5, "Motif requis (min 5 caractères)"),
+            motif: z.string().min(5, "Motif requis (min 5 caractÃ¨res)"),
             typeRemboursement: z.enum(["ESPECES", "CREDIT_WALLET"] as [RemboursementType, RemboursementType]),
             montant: z.number().positive(),
         })
     },
     async ({ orderId, motif, typeRemboursement, montant }, user) => {
+        const rateLimitKey = `action:initiateReturn:${user.id}`;
         try {
+            // Rate limit return initiation
+            const limit = await checkRateLimit(rateLimitKey, 10);
+            if (limit.isBlocked) throw new Error("Trop de demandes de retour. Veuillez patienter.");
+
             const order = await db.query.orders.findFirst({ where: eq(orders.id, orderId) });
             if (!order) return { success: false, error: "Commande introuvable" };
 
@@ -441,13 +459,13 @@ export const initiateReturn = withAuth(
                 return { success: false, error: "Cette commande ne peut pas faire l'objet d'un retour" };
             }
             if ((order as any).returnRequest !== null) {
-                return { success: false, error: "Une demande de retour existe déjà pour cette commande" };
+                return { success: false, error: "Une demande de retour existe dÃ©jÃ  pour cette commande" };
             }
-            if (montant > parseFloat(order.totalAmount as string)) {
-                return { success: false, error: "Le montant ne peut pas dépasser le total de la commande" };
+            if (montant > parseFloat(order.montantPaye as string)) {
+                return { success: false, error: `Le montant ne peut pas dÃ©passer le montant dÃ©jÃ  payÃ© (${parseFloat(order.montantPaye as string).toLocaleString("fr-DZ")} DA)` };
             }
             if (typeRemboursement === "CREDIT_WALLET" && !order.clientId) {
-                return { success: false, error: "Le crédit wallet nécessite un client associé à la commande" };
+                return { success: false, error: "Le crÃ©dit wallet nÃ©cessite un client associÃ© Ã  la commande" };
             }
 
             const returnRequest: ReturnRequest = {
@@ -471,7 +489,7 @@ export const initiateReturn = withAuth(
                 newData: { returnRequest },
             });
 
-            logger.info("Retour initié", { userId: user.id, action: "INITIATE_RETURN", metadata: { orderId } });
+            logger.info("Retour initiÃ©", { userId: user.id, action: "INITIATE_RETURN", metadata: { orderId } });
             revalidatePath("/admin/caisse");
             return { success: true, orderId };
         } catch (error) {
@@ -541,11 +559,11 @@ export const approveReturn = withAuth(
                         paidAt: new Date(),
                         amount: returnReq.montant,
                         currency: "DZD",
-                        reason: `Remboursement Commande #${order.id} (Retour Approuvé)`
+                        reason: `Remboursement Commande #${order.id} (Retour ApprouvÃ©)`
                     } as any);
                 }
 
-                // 5. Restore VENDU digital codes → DISPONIBLE
+                // 5. Restore VENDU digital codes â†’ DISPONIBLE
                 const itemIds = (order.items || []).map((i: any) => i.id);
                 if (itemIds.length > 0) {
                     await tx.update(digitalCodes)
@@ -562,8 +580,8 @@ export const approveReturn = withAuth(
                         ));
                 }
 
-                // --- 🔄 BALANCE REVERSAL LOGIC ---
-                await reverseSupplierDebits(tx, { orderId }, "Remboursement (Retour Approuvé)");
+                // --- ðŸ”„ BALANCE REVERSAL LOGIC ---
+                await reverseSupplierDebits(tx, { orderId }, "Remboursement (Retour ApprouvÃ©)");
 
                 // 6. Update order status and returnRequest
                 const updatedReturnRequest: ReturnRequest = {
@@ -573,7 +591,11 @@ export const approveReturn = withAuth(
                     approvedAt: new Date().toISOString(),
                 };
                 await tx.update(orders)
-                    .set({ status: OrderStatus.REMBOURSE, returnRequest: updatedReturnRequest } as any)
+                    .set({
+                        status: OrderStatus.REMBOURSE,
+                        resteAPayer: "0",
+                        returnRequest: updatedReturnRequest
+                    } as any)
                     .where(eq(orders.id, orderId));
 
                 // 7. Audit log
@@ -589,11 +611,11 @@ export const approveReturn = withAuth(
                 // 8. Telegram notification
                 const clientName = order.clientId ? `Client #${order.clientId}` : "Anonyme";
                 sendTelegramNotification(
-                    `✅ *Retour Approuvé*\nCommande: #${order.orderNumber}\nMontant: ${returnReq.montant.toLocaleString("fr-DZ")} DA\nType: ${returnReq.typeRemboursement === "ESPECES" ? "Espèces" : "Crédit Wallet"}\nClient: ${clientName}\nPar: ${user.nom}`,
+                    `âœ… *Retour ApprouvÃ©*\nCommande: #${order.orderNumber}\nMontant: ${returnReq.montant.toLocaleString("fr-DZ")} DA\nType: ${returnReq.typeRemboursement === "ESPECES" ? "EspÃ¨ces" : "CrÃ©dit Wallet"}\nClient: ${clientName}\nPar: ${user.nom}`,
                     ["ADMIN"]
                 ).catch(err => console.error("Telegram failed:", err));
 
-                logger.info("Retour approuvé", { userId: user.id, action: "APPROVE_RETURN", metadata: { orderId } });
+                logger.info("Retour approuvÃ©", { userId: user.id, action: "APPROVE_RETURN", metadata: { orderId } });
                 revalidatePath("/admin/caisse");
                 revalidatePath("/admin/clients");
                 revalidatePath("/admin/resellers");
@@ -612,7 +634,7 @@ export const rejectReturn = withAuth(
         roles: [UserRole.SUPER_ADMIN],
         schema: z.object({
             orderId: z.number().int().positive(),
-            motifRejet: z.string().min(5, "Motif de rejet requis (min 5 caractères)"),
+            motifRejet: z.string().min(5, "Motif de rejet requis (min 5 caractÃ¨res)"),
         })
     },
     async ({ orderId, motifRejet }, user) => {
@@ -649,7 +671,7 @@ export const rejectReturn = withAuth(
                 newData: { status: returnReq.previousOrderStatus, returnRequest: updatedReturnRequest },
             });
 
-            logger.info("Retour rejeté", { userId: user.id, action: "REJECT_RETURN", metadata: { orderId } });
+            logger.info("Retour rejetÃ©", { userId: user.id, action: "REJECT_RETURN", metadata: { orderId } });
             revalidatePath("/admin/caisse");
             return { success: true };
         } catch (error) {
@@ -658,9 +680,10 @@ export const rejectReturn = withAuth(
     }
 );
 
+
 export const notifyTraiteurAction = withAuth(
     {
-        roles: [UserRole.ADMIN, UserRole.CAISSIER],
+        roles: [UserRole.ADMIN, UserRole.CAISSIER, UserRole.TRAITEUR],
         schema: z.object({ orderId: z.number() })
     },
     async ({ orderId }) => {
@@ -675,13 +698,112 @@ export const notifyTraiteurAction = withAuth(
 
             // Also send Push notification
             await sendPushToRoleAction(UserRole.TRAITEUR, {
-                title: "🛎️ Commande à Traiter",
-                body: `La commande #${order.orderNumber} est prête pour traitement manuel.`,
+                title: " Commande à Traiter",
+                body: "La commande # est prête pour traitement manuel.",
                 url: "/admin/traitement"
             });
 
             return { success: true };
         } catch (error) {
+            return { success: false, error: (error as Error).message };
+        }
+    }
+);
+
+export const updateItemPurchasePrice = withAuth(
+    {
+        roles: [UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.TRAITEUR],
+        schema: z.object({
+            orderItemId: z.number(),
+            newPurchasePrice: z.string(),
+            newPurchaseCurrency: z.string()
+        })
+    },
+    async ({ orderItemId, newPurchasePrice, newPurchaseCurrency }, user) => {
+        try {
+            return await db.transaction(async (tx) => {
+                // 1. Get the item and its current supplier info
+                const item = await tx.query.orderItems.findFirst({
+                    where: eq(orderItems.id, orderItemId)
+                });
+
+                if (!item) throw new Error("Article introuvable");
+                if (!item.supplierId) throw new Error("Cet article n'est pas associé à un fournisseur");
+
+                const supplier = await tx.query.suppliers.findFirst({
+                    where: eq(suppliers.id, item.supplierId)
+                });
+
+                if (!supplier) throw new Error("Fournisseur introuvable");
+
+                const settings = await tx.query.shopSettings.findFirst();
+                const EXCHANGE_RATE = settings?.usdExchangeRate ? parseFloat(settings.usdExchangeRate) : 245;
+
+                const oldPriceNum = parseFloat(item.purchasePrice || "0");
+                const newPriceNum = parseFloat(newPurchasePrice);
+                const quantity = item.quantity || 1;
+
+                // Helper to convert price to supplier currency
+                const convertToSupplierCurrency = (price: number, originalCurrency: string) => {
+                    let cost = price;
+                    if (supplier.currency !== originalCurrency) {
+                        if (supplier.currency === 'DZD' && originalCurrency === 'USD') cost *= EXCHANGE_RATE;
+                        else if (supplier.currency === 'USD' && originalCurrency === 'DZD') cost /= EXCHANGE_RATE;
+                    }
+                    return cost;
+                };
+
+                const oldCostInSupplierCurrency = convertToSupplierCurrency(oldPriceNum, item.purchaseCurrency || 'USD') * quantity;
+                const newCostInSupplierCurrency = convertToSupplierCurrency(newPriceNum, newPurchaseCurrency) * quantity;
+
+                // Price difference (positive if cost increased, negative if cost decreased)
+                const diff = newCostInSupplierCurrency - oldCostInSupplierCurrency;
+
+                if (Math.abs(diff) > 0.01) {
+                    // Update supplier balance
+                    // balance = balance - diff
+                    await tx.update(suppliers)
+                        .set({ balance: sql`${suppliers.balance} - ${diff}` })
+                        .where(eq(suppliers.id, item.supplierId));
+
+                    // Log adjustment transaction
+                    await tx.insert(supplierTransactions).values({
+                        supplierId: item.supplierId,
+                        orderId: item.orderId,
+                        type: SupplierTransactionType.AJUSTEMENT,
+                        amount: Math.abs(diff).toFixed(2),
+                        currency: supplier.currency!,
+                        reason: `Ajustement prix: ${oldPriceNum} ${item.purchaseCurrency} -> ${newPriceNum} ${newPurchaseCurrency} (${item.name})`,
+                        paymentStatus: "PAID",
+                        paidAt: new Date()
+                    });
+                }
+
+                // 2. Update the item
+                await tx.update(orderItems)
+                    .set({
+                        purchasePrice: newPurchasePrice,
+                        purchaseCurrency: newPurchaseCurrency
+                    })
+                    .where(eq(orderItems.id, orderItemId));
+
+                // 3. Revalidate and Audit
+                revalidatePath("/admin/caisse");
+                revalidatePath("/admin/traitement");
+
+                await logSecurityAction({
+                    userId: user.id,
+                    action: "UPDATE_PURCHASE_PRICE",
+                    entityType: "ORDER_ITEM",
+                    entityId: String(orderItemId),
+                    oldData: { price: item.purchasePrice, currency: item.purchaseCurrency },
+                    newData: { price: newPurchasePrice, currency: newPurchaseCurrency },
+                });
+
+                return { success: true };
+            });
+        } catch (error) {
+            console.error("Failed to update purchase price:", error);
             return { success: false, error: (error as Error).message };
         }
     }

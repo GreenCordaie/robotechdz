@@ -33,14 +33,14 @@ import {
     Trash2
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { getIndebtedClients, recordPayment, getClientHistory, createClient, getReturnsByClient, getAllClients, updateClient, deleteClient } from "@/app/admin/clients/actions";
+import { getIndebtedClients, recordPayment, getClientHistory, createClient, getReturnsByClient, getAllClients, updateClient, deleteClient, getClientStats } from "@/app/admin/clients/actions";
 import { ReturnRequest } from "@/lib/constants";
 import WhatsAppHistoryModal from "@/components/admin/modals/WhatsAppHistoryModal";
 
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
 import { toast } from "react-hot-toast";
-import { formatCurrency } from "@/lib/formatters";
+import { formatCurrency, formatWhatsApp } from "@/lib/formatters";
 
 interface ClientOrder {
     id: number;
@@ -117,11 +117,23 @@ export default function ClientsContent({ initialStats, initialClients }: Clients
 
     // Polling or refresh logic
     const refreshData = React.useCallback(async () => {
-        const res = await getAllClients({});
-        if (res.success && Array.isArray(res.clients)) {
-            setClients(res.clients as Client[]);
+        const [resClients, resStats] = await Promise.all([
+            getAllClients({}),
+            getClientStats({})
+        ]);
+
+        if (resClients.success && Array.isArray(resClients.clients)) {
+            setClients(resClients.clients as Client[]);
         } else {
             toast.error("Erreur lors de la récupération des clients");
+        }
+
+        if (resStats.success) {
+            setStats({
+                totalDebt: parseFloat(resStats.totalDebt || "0"),
+                recoveredThisMonth: parseFloat(resStats.recoveredThisMonth || "0"),
+                indebtedCount: resStats.indebtedCount || 0
+            });
         }
     }, []);
 
@@ -135,18 +147,15 @@ export default function ClientsContent({ initialStats, initialClients }: Clients
     const handleViewClient = async (client: Client) => {
         setSelectedClient(client);
         setClientReturns([]);
-        const [data, returnsData] = await Promise.all([
-            getClientHistory({ clientId: client.id }),
-            getReturnsByClient({ clientId: client.id }),
-        ]);
-        const typedData = data as { payments: any[], orders: any[] };
+        const data = await getClientHistory({ clientId: client.id }) as { success?: boolean; payments: any[], orders: any[], returns: any[] };
+
         setHistory({
-            payments: typedData.payments.map(p => ({ ...p, createdAt: new Date(p.createdAt) })),
-            orders: typedData.orders.map(o => ({ ...o, createdAt: new Date(o.createdAt) }))
+            payments: data.payments.map(p => ({ ...p, createdAt: new Date(p.createdAt) })),
+            orders: data.orders.map(o => ({ ...o, createdAt: new Date(o.createdAt) }))
         });
-        const typedReturns = returnsData as { success: boolean; returns?: any[] };
-        if (typedReturns.success && typedReturns.returns) {
-            setClientReturns(typedReturns.returns);
+
+        if (data.returns) {
+            setClientReturns(data.returns);
         }
         onOpen();
     };
@@ -234,11 +243,11 @@ export default function ClientsContent({ initialStats, initialClients }: Clients
     };
 
     return (
-        <div className="flex-1 flex flex-col max-w-7xl mx-auto w-full px-6 py-8 gap-8 bg-[#0a0a0a]">
+        <div className="flex-1 flex flex-col max-w-7xl mx-auto w-full px-6 py-8 gap-8 bg-background-light dark:bg-[#0a0a0a]">
             {/* Page Header */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div className="flex flex-col gap-1">
-                    <h1 className="text-white text-3xl font-bold tracking-tight">Clients & Crédits</h1>
+                    <h1 className="text-slate-900 dark:text-white text-3xl font-bold tracking-tight">Clients & Crédits</h1>
                     <p className="text-slate-400 text-base">Suivi des paiements partiels et de l&apos;argent en attente.</p>
 
                 </div>
@@ -278,7 +287,7 @@ export default function ClientsContent({ initialStats, initialClients }: Clients
                 <div className="bg-[#161616] border border-[#262626] rounded-2xl p-6 flex flex-col gap-2">
                     <p className="text-slate-400 text-sm font-medium">Clients endettés</p>
                     <div className="flex items-baseline gap-2">
-                        <span className="text-white text-3xl font-black">{stats.indebtedCount} clients</span>
+                        <span className="text-slate-900 dark:text-white text-3xl font-black">{stats.indebtedCount} clients</span>
                     </div>
                     <div className="mt-2 flex items-center gap-1 text-slate-400 text-xs">
                         <Users className="w-3 h-3" />
@@ -288,9 +297,9 @@ export default function ClientsContent({ initialStats, initialClients }: Clients
             </div>
 
             {/* Main Table Section */}
-            <div className="bg-[#161616] border border-[#262626] rounded-2xl overflow-hidden shadow-2xl">
+            <div className="bg-white dark:bg-[#161616] border border-slate-200 dark:border-[#262626] rounded-2xl overflow-hidden shadow-sm dark:shadow-2xl">
                 <div className="p-6 border-b border-[#262626] flex justify-between items-center">
-                    <h3 className="font-bold text-lg text-white">Liste des clients</h3>
+                    <h3 className="font-bold text-lg text-slate-900 dark:text-white">Liste des clients</h3>
 
                     <div className="relative w-full max-w-xs md:w-64">
                         <Input
@@ -299,16 +308,16 @@ export default function ClientsContent({ initialStats, initialClients }: Clients
                             value={search}
                             onValueChange={setSearch}
                             classNames={{
-                                inputWrapper: "bg-[#0a0a0a] border-[#262626] hover:bg-[#111] transition-colors"
+                                inputWrapper: "bg-slate-50 dark:bg-[#0a0a0a] border-slate-200 dark:border-[#262626] hover:bg-slate-100 dark:hover:bg-[#111] transition-colors"
                             }}
                         />
                     </div>
                 </div>
 
-                <div className="overflow-x-auto text-white">
+                <div className="overflow-x-auto text-slate-900 dark:text-white">
                     <table className="w-full text-left">
                         <thead>
-                            <tr className="bg-[#262626]/30 text-slate-400 text-xs uppercase tracking-wider">
+                            <tr className="bg-slate-50 dark:bg-[#262626]/30 text-slate-400 text-xs uppercase tracking-wider">
                                 <th className="px-6 py-4 font-semibold">Client</th>
                                 <th className="px-6 py-4 font-semibold text-center">Dernière Commande</th>
                                 <th className="px-6 py-4 font-semibold text-center">Total Dette</th>
@@ -316,19 +325,19 @@ export default function ClientsContent({ initialStats, initialClients }: Clients
                                 <th className="px-6 py-4 font-semibold text-right">Actions</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-[#262626]">
+                        <tbody className="divide-y divide-slate-100 dark:divide-[#262626]">
                             {clients.map((client) => {
                                 const lastOrder = client.orders?.[0];
                                 return (
-                                    <tr key={client.id} className="hover:bg-[#262626]/20 transition-colors group">
+                                    <tr key={client.id} className="hover:bg-slate-50 dark:hover:bg-[#262626]/20 transition-colors group">
                                         <td className="px-6 py-4">
                                             <div className="flex items-center gap-3">
                                                 <div className="size-10 rounded-full bg-[#ec5b13]/20 flex items-center justify-center text-[#ec5b13] font-bold">
                                                     {client.nomComplet.substring(0, 2).toUpperCase()}
                                                 </div>
                                                 <div className="flex flex-col min-w-0">
-                                                    <span className="text-white font-semibold truncate">{client.nomComplet}</span>
-                                                    <span className="text-slate-500 text-xs truncate">{client.telephone}</span>
+                                                    <span className="text-slate-900 dark:text-white font-semibold truncate">{client.nomComplet}</span>
+                                                    <span className="text-slate-500 text-xs truncate">{formatWhatsApp(client.telephone)}</span>
                                                 </div>
                                             </div>
                                         </td>
@@ -339,13 +348,23 @@ export default function ClientsContent({ initialStats, initialClients }: Clients
                                             {formatCurrency(client.totalDetteDzd || 0, 'DZD')}
                                         </td>
                                         <td className="px-6 py-4 text-center">
-                                            <Chip
-                                                size="sm"
-                                                variant="flat"
-                                                className="bg-[#ec5b13]/10 text-[#ec5b13] border border-[#ec5b13]/20"
-                                            >
-                                                Paiement Partiel
-                                            </Chip>
+                                            {Number(client.totalDetteDzd) > 0 ? (
+                                                <Chip
+                                                    size="sm"
+                                                    variant="flat"
+                                                    className="bg-[#ec5b13]/10 text-[#ec5b13] border border-[#ec5b13]/20 font-bold"
+                                                >
+                                                    En Dette
+                                                </Chip>
+                                            ) : (
+                                                <Chip
+                                                    size="sm"
+                                                    variant="flat"
+                                                    className="bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 font-bold"
+                                                >
+                                                    Dette Réglée
+                                                </Chip>
+                                            )}
                                         </td>
                                         <td className="px-6 py-4 text-right">
                                             <div className="flex items-center justify-end gap-2">
@@ -405,10 +424,10 @@ export default function ClientsContent({ initialStats, initialClients }: Clients
                 onClose={onClose}
                 size="lg"
                 classNames={{
-                    base: "bg-[#161616] border border-[#262626] rounded-[24px]",
-                    header: "border-b border-[#262626] p-6",
+                    base: "bg-white dark:bg-[#161616] border border-slate-200 dark:border-[#262626] rounded-[24px]",
+                    header: "border-b border-slate-200 dark:border-[#262626] p-6",
                     body: "p-0",
-                    footer: "bg-[#0a0a0a] border-t border-[#262626] p-6"
+                    footer: "bg-slate-50 dark:bg-[#0a0a0a] border-t border-slate-200 dark:border-[#262626] p-6 text-slate-900 dark:text-white"
                 }}
             >
                 <ModalContent>
@@ -416,13 +435,13 @@ export default function ClientsContent({ initialStats, initialClients }: Clients
                         <>
                             <ModalHeader className="flex justify-between items-start">
                                 <div>
-                                    <h2 className="text-xl font-bold text-white">Dossier Client : {selectedClient?.nomComplet}</h2>
+                                    <h2 className="text-xl font-bold text-slate-900 dark:text-white">Dossier Client : {selectedClient?.nomComplet}</h2>
                                     <p className="text-slate-400 text-sm">Historique des transactions et règlements</p>
                                 </div>
                             </ModalHeader>
                             <ModalBody>
                                 {/* Repayment Section */}
-                                <div className="p-6 bg-[#262626]/10">
+                                <div className="p-6 bg-slate-50 dark:bg-[#262626]/10">
                                     <label className="block text-slate-400 text-sm font-medium mb-2">Montant reçu (DZD)</label>
                                     <div className="flex flex-col sm:flex-row gap-3">
                                         <Input
@@ -431,7 +450,7 @@ export default function ClientsContent({ initialStats, initialClients }: Clients
                                             value={repaymentAmount}
                                             onValueChange={setRepaymentAmount}
                                             classNames={{
-                                                inputWrapper: "bg-[#0a0a0a] border-[#262626] h-12"
+                                                inputWrapper: "bg-white dark:bg-[#0a0a0a] border-slate-200 dark:border-[#262626] h-12"
                                             }}
                                             className="flex-1"
                                         />
@@ -445,86 +464,108 @@ export default function ClientsContent({ initialStats, initialClients }: Clients
                                     </div>
                                 </div>
 
-                                {/* Transaction History */}
-                                <div className="p-6 flex flex-col gap-4 max-h-[300px] overflow-y-auto">
-                                    <h4 className="text-slate-100 font-semibold text-sm uppercase tracking-wider">Historique Récent</h4>
+                                {/* Consolidated Movement journal */}
+                                <div className="p-6 flex flex-col gap-4 max-h-[450px] overflow-y-auto">
+                                    <h4 className="text-slate-700 dark:text-slate-100 font-semibold text-sm uppercase tracking-wider">Journal des Flux</h4>
+
                                     <div className="space-y-4">
-                                        {/* Show Unpaid Orders as negative balance */}
-                                        {history.orders.filter(o => Number(o.resteAPayer) > 0).map(order => (
-                                            <div key={`order-${order.id}`} className="flex justify-between items-center">
-                                                <div className="flex items-center gap-3">
-                                                    <div className="bg-red-500/10 p-2 rounded-lg text-red-500">
-                                                        <ShoppingCart className="w-5 h-5" />
-                                                    </div>
-                                                    <div>
-                                                        <p className="text-white text-sm font-medium">Achat Commande #{order.orderNumber}</p>
-                                                        <p className="text-slate-500 text-xs">
-                                                            {order.createdAt ? format(new Date(order.createdAt), "dd MMMM yyyy", { locale: fr }) : "---"}
-                                                        </p>
-                                                    </div>
-                                                </div>
-                                                <div className="text-right">
-                                                    <span className="text-red-500 font-bold block">-{formatCurrency(order.totalAmount, 'DZD')}</span>
-                                                    <span className="text-slate-500 text-[10px] uppercase font-bold italic">Reste: {formatCurrency(order.resteAPayer || 0, 'DZD')}</span>
-                                                </div>
-                                            </div>
-                                        ))}
+                                        {React.useMemo(() => {
+                                            const entries: any[] = [
+                                                ...history.payments.map(p => ({
+                                                    id: `pay-${p.id}`,
+                                                    date: p.createdAt,
+                                                    type: 'PAYMENT',
+                                                    amount: p.montantDzd || "0",
+                                                    label: p.typeAction === 'REMBOURSEMENT' ? 'Remboursement (Retour)' : 'Règlement de dette',
+                                                    icon: Wallet,
+                                                    color: 'text-emerald-500',
+                                                    bgColor: 'bg-emerald-500/10'
+                                                })),
+                                                ...history.orders.map(o => ({
+                                                    id: `order-${o.id}`,
+                                                    date: o.createdAt,
+                                                    type: 'ORDER',
+                                                    amount: o.totalAmount || "0",
+                                                    resteAPayer: o.resteAPayer || "0",
+                                                    label: `Achat Commande #${o.orderNumber}`,
+                                                    icon: ShoppingCart,
+                                                    color: 'text-red-500',
+                                                    bgColor: 'bg-red-500/10',
+                                                    items: (o as any).items || []
+                                                })),
+                                                ...clientReturns.filter(r => r.returnRequest && r.returnRequest.status !== 'APPROUVE').map(r => ({
+                                                    id: `return-${r.orderId}`,
+                                                    date: new Date(r.returnRequest.initiatedAt),
+                                                    type: 'RETURN',
+                                                    amount: r.returnRequest.montant,
+                                                    status: r.returnRequest.status,
+                                                    label: `Retour Commande #${r.orderNumber}`,
+                                                    icon: X,
+                                                    color: r.returnRequest.status === 'REJETE' ? 'text-slate-400' : 'text-yellow-500',
+                                                    bgColor: r.returnRequest.status === 'REJETE' ? 'bg-slate-500/10' : 'bg-yellow-500/10',
+                                                    motifRejet: r.returnRequest.motifRejet
+                                                }))
+                                            ];
+                                            return entries.sort((a, b) => {
+                                                const dateA = a.date instanceof Date ? a.date.getTime() : new Date(a.date).getTime();
+                                                const dateB = b.date instanceof Date ? b.date.getTime() : new Date(b.date).getTime();
+                                                return dateB - dateA;
+                                            });
+                                        }, [history, clientReturns]).map((entry: any) => {
+                                            const Icon = entry.icon;
+                                            return (
+                                                <div key={entry.id} className="group border-b border-slate-100 dark:border-slate-800/50 pb-4 last:border-0 last:pb-0">
+                                                    <div className="flex justify-between items-start">
+                                                        <div className="flex gap-3">
+                                                            <div className={`${entry.bgColor} ${entry.color} p-2.5 rounded-xl transition-transform group-hover:scale-110`}>
+                                                                <Icon className="w-5 h-5" />
+                                                            </div>
+                                                            <div>
+                                                                <p className="text-slate-900 dark:text-white text-sm font-bold">{entry.label}</p>
+                                                                <p className="text-slate-500 text-[10px] font-medium uppercase mt-0.5">
+                                                                    {entry.date ? format(new Date(entry.date), "dd MMMM yyyy HH:mm", { locale: fr }) : "---"}
+                                                                </p>
 
-                                        {/* Show Payments as positive balance */}
-                                        {history.payments.map(payment => (
-                                            <div key={`pay-${payment.id}`} className="flex justify-between items-center">
-                                                <div className="flex items-center gap-3">
-                                                    <div className="bg-emerald-500/10 p-2 rounded-lg text-emerald-500">
-                                                        <Wallet className="w-5 h-5" />
-                                                    </div>
-                                                    <div>
-                                                        <p className="text-white text-sm font-medium">Règlement de dette</p>
-                                                        <p className="text-slate-500 text-xs">
-                                                            {payment.createdAt ? format(new Date(payment.createdAt), "dd MMMM yyyy", { locale: fr }) : "---"}
-                                                        </p>
+                                                                {entry.type === 'ORDER' && entry.items?.length > 0 && (
+                                                                    <div className="mt-2 pl-2 border-l-2 border-slate-100 dark:border-slate-800 space-y-1">
+                                                                        {entry.items.map((item: any, idx: number) => (
+                                                                            <p key={idx} className="text-slate-600 dark:text-slate-400 text-[11px] leading-tight">
+                                                                                • {item.name} <span className="text-slate-400">x{item.quantity}</span>
+                                                                            </p>
+                                                                        ))}
+                                                                    </div>
+                                                                )}
 
-                                                    </div>
-                                                </div>
-                                                <span className="text-emerald-500 font-bold">+{formatCurrency(payment.montantDzd, 'DZD')}</span>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                                {/* Returns History */}
-                                {clientReturns.length > 0 && (
-                                    <div className="mt-4 border-t border-slate-700 pt-4">
-                                        <h3 className="text-xs font-black uppercase tracking-wider text-slate-400 mb-3">Historique des Retours</h3>
-                                        <div className="space-y-2">
-                                            {clientReturns.map((r) => {
-                                                const statusConfig = {
-                                                    EN_ATTENTE: { label: "En attente", classes: "bg-yellow-500/10 text-yellow-400 border-yellow-500/20" },
-                                                    APPROUVE: { label: "Approuvé", classes: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" },
-                                                    REJETE: { label: "Rejeté", classes: "bg-red-500/10 text-red-400 border-red-500/20" },
-                                                }[r.returnRequest.status] || { label: r.returnRequest.status, classes: "bg-slate-500/10 text-slate-400" };
-
-                                                return (
-                                                    <div key={r.orderId} className="flex justify-between items-center text-sm py-2 border-b border-slate-700/50 last:border-0">
-                                                        <div>
-                                                            <span className="font-bold text-white">#{r.orderNumber}</span>
-                                                            <span className="ml-2 text-slate-400 text-xs">
-                                                                {r.returnRequest.typeRemboursement === "ESPECES" ? "Espèces" : "Crédit Wallet"}
+                                                                {entry.type === 'RETURN' && (
+                                                                    <div className="mt-1">
+                                                                        <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-md border ${entry.status === 'EN_ATTENTE' ? 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20' :
+                                                                            'bg-red-500/10 text-red-500 border-red-500/20'
+                                                                            }`}>
+                                                                            {entry.status === 'EN_ATTENTE' ? 'En attente' : 'Rejeté'}
+                                                                        </span>
+                                                                        {entry.motifRejet && (
+                                                                            <p className="text-[10px] text-red-400 italic mt-1">Motif: {entry.motifRejet}</p>
+                                                                        )}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                        <div className="text-right">
+                                                            <span className={`${entry.color} font-black text-sm`}>
+                                                                {entry.type === 'ORDER' ? '-' : '+'}{formatCurrency(entry.amount, 'DZD')}
                                                             </span>
-                                                            {r.returnRequest.status === "REJETE" && r.returnRequest.motifRejet && (
-                                                                <p className="text-xs text-red-400 mt-0.5">{r.returnRequest.motifRejet}</p>
+                                                            {entry.type === 'ORDER' && Number(entry.resteAPayer) > 0 && (
+                                                                <span className="text-orange-500 text-[9px] font-black uppercase block mt-1 tracking-tighter italic">
+                                                                    Dette: {formatCurrency(entry.resteAPayer, 'DZD')}
+                                                                </span>
                                                             )}
                                                         </div>
-                                                        <div className="flex items-center gap-2">
-                                                            <span className="font-bold text-white">{parseFloat(String(r.returnRequest.montant)).toLocaleString("fr-DZ")} DA</span>
-                                                            <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${statusConfig.classes}`}>
-                                                                {statusConfig.label}
-                                                            </span>
-                                                        </div>
                                                     </div>
-                                                );
-                                            })}
-                                        </div>
+                                                </div>
+                                            );
+                                        })}
                                     </div>
-                                )}
+                                </div>
                             </ModalBody>
                             <ModalFooter className="flex justify-between items-center">
                                 <span className="text-slate-400 font-medium">Dette actuelle</span>
@@ -541,7 +582,7 @@ export default function ClientsContent({ initialStats, initialClients }: Clients
             <Modal
                 isOpen={isNewOpen}
                 onClose={onNewClose}
-                classNames={{ base: "bg-[#161616] text-white border border-[#262626]" }}
+                classNames={{ base: "bg-white dark:bg-[#161616] text-slate-900 dark:text-white border border-slate-200 dark:border-[#262626]" }}
             >
                 <ModalContent>
                     {(onClose) => {
@@ -577,7 +618,7 @@ export default function ClientsContent({ initialStats, initialClients }: Clients
                                         placeholder="06..."
                                         value={newTel}
                                         onValueChange={setNewTel}
-                                        classNames={{ inputWrapper: "bg-[#0a0a0a]" }}
+                                        classNames={{ inputWrapper: "bg-slate-50 dark:bg-[#0a0a0a] border-slate-200 dark:border-[#262626]" }}
                                     />
                                 </ModalBody>
                                 <ModalFooter>
@@ -612,7 +653,7 @@ export default function ClientsContent({ initialStats, initialClients }: Clients
             <Modal
                 isOpen={isEditOpen}
                 onClose={() => setIsEditOpen(false)}
-                classNames={{ base: "bg-[#161616] text-white border border-[#262626]" }}
+                classNames={{ base: "bg-white dark:bg-[#161616] text-slate-900 dark:text-white border border-slate-200 dark:border-[#262626]" }}
             >
                 <ModalContent>
                     {(onClose) => (
@@ -629,7 +670,7 @@ export default function ClientsContent({ initialStats, initialClients }: Clients
                                     label="Téléphone"
                                     value={editTel}
                                     onValueChange={setEditTel}
-                                    classNames={{ inputWrapper: "bg-[#0a0a0a]" }}
+                                    classNames={{ inputWrapper: "bg-slate-50 dark:bg-[#0a0a0a] border-slate-200 dark:border-[#262626]" }}
                                 />
                             </ModalBody>
                             <ModalFooter>
@@ -651,15 +692,15 @@ export default function ClientsContent({ initialStats, initialClients }: Clients
             <Modal
                 isOpen={isDeleteOpen}
                 onClose={() => setIsDeleteOpen(false)}
-                classNames={{ base: "bg-[#161616] text-white border border-[#262626]" }}
+                classNames={{ base: "bg-white dark:bg-[#161616] text-slate-900 dark:text-white border border-slate-200 dark:border-[#262626]" }}
             >
                 <ModalContent>
                     {(onClose) => (
                         <>
                             <ModalHeader>Confirmer la suppression</ModalHeader>
                             <ModalBody>
-                                <p className="text-slate-300">
-                                    Êtes-vous sûr de vouloir supprimer le client <span className="text-white font-bold">{clientToDelete?.nomComplet}</span> ?
+                                <p className="text-slate-600 dark:text-slate-300">
+                                    Êtes-vous sûr de vouloir supprimer le client <span className="text-slate-900 dark:text-white font-bold">{clientToDelete?.nomComplet}</span> ?
                                 </p>
                                 <p className="text-red-400 text-xs mt-2 italic">
                                     Note : La suppression échouera si le client possède déjà des commandes enregistrées (historique protégé).

@@ -5,18 +5,18 @@
  */
 
 const PRINT_SERVICE_URL = 'http://127.0.0.1:6543';
-const PRINT_SECRET      = process.env.PRINT_SECRET || 'robotech-print-secret-change-moi';
-const TIMEOUT_MS        = 10_000;
+const PRINT_SECRET = process.env.PRINT_SECRET || 'robotech-print-secret-change-moi';
+const TIMEOUT_MS = 10_000;
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 export interface PrintShop {
-    name:         string;
-    address?:     string;
-    tel?:         string;
+    name: string;
+    address?: string;
+    tel?: string;
     footerMessage?: string;
     showDateTime: boolean;
-    showCashier:  boolean;
+    showCashier: boolean;
 }
 
 export interface PrintCredential {
@@ -25,30 +25,31 @@ export interface PrintCredential {
 }
 
 export interface PrintItem {
-    productName:  string;
-    quantity:     number;
-    price:        number;
-    credentials:  PrintCredential[];
+    productName: string;
+    quantity: number;
+    price: number;
+    credentials: PrintCredential[];
 }
 
 export interface PrintData {
-    orderNumber:   string;
-    date:          string;
-    time:          string;
+    orderNumber: string;
+    date: string;
+    time: string;
     paymentMethod?: string;
-    cashierName?:  string;
+    cashierName?: string;
     customer: {
-        name:  string;
+        name: string;
         phone: string;
     };
-    shop:          PrintShop;        // ← piloté par ReceiptSettings
-    items:         PrintItem[];
-    trackingUrl:   string;
+    shop: PrintShop;        // ← piloté par ReceiptSettings
+    items: PrintItem[];
+    trackingUrl: string;
+    totalClientDebt?: number;
 }
 
 export interface PrintResult {
     success: boolean;
-    error?:  string;
+    error?: string;
 }
 
 // ─── Client HTTP ─────────────────────────────────────────────────────────────
@@ -60,15 +61,15 @@ export interface PrintResult {
 export async function printReceipt(data: PrintData): Promise<PrintResult> {
     try {
         const controller = new AbortController();
-        const timeout    = setTimeout(() => controller.abort(), TIMEOUT_MS);
+        const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
         const res = await fetch(`${PRINT_SERVICE_URL}/print`, {
-            method:  'POST',
+            method: 'POST',
             headers: {
-                'Content-Type':   'application/json',
+                'Content-Type': 'application/json',
                 'x-print-secret': PRINT_SECRET,
             },
-            body:   JSON.stringify(data),
+            body: JSON.stringify(data),
             signal: controller.signal,
         });
 
@@ -121,19 +122,19 @@ export async function isPrintServiceAvailable(): Promise<boolean> {
  * @param cashierName - Nom du caissier (optionnel)
  */
 export function buildPrintData(
-    order:       any,
-    settings:    {
-        shopName?:      string;
-        shopTel?:       string;
-        shopAddress?:   string;
+    order: any,
+    settings: {
+        shopName?: string;
+        shopTel?: string;
+        shopAddress?: string;
         footerMessage?: string;
-        showCashier?:   boolean;
-        showDateTime?:  boolean;
+        showCashier?: boolean;
+        showDateTime?: boolean;
     },
-    appUrl:      string,
+    appUrl: string,
     cashierName?: string,
 ): PrintData {
-    const now  = new Date();
+    const now = new Date();
     const date = now.toLocaleDateString('fr-FR');
     const time = now.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
 
@@ -149,40 +150,41 @@ export function buildPrintData(
         // Slots de comptes partagés (email + pass + profil + pin)
         (item.slots || []).forEach((s: any) => {
             const parent = s.digitalCode || {};
-            if (parent.email)    credentials.push({ label: 'Email',  value: String(parent.email) });
-            if (parent.password) credentials.push({ label: 'Pass',   value: String(parent.password) });
-            if (s.slotNumber)    credentials.push({ label: 'Profil', value: String(s.slotNumber) });
-            if (s.code)          credentials.push({ label: 'Code',   value: String(s.code) });
+            if (parent.email) credentials.push({ label: 'Email', value: String(parent.email) });
+            if (parent.password) credentials.push({ label: 'Pass', value: String(parent.password) });
+            if (s.slotNumber) credentials.push({ label: 'Profil', value: String(s.slotNumber) });
+            if (s.code) credentials.push({ label: 'Code', value: String(s.code) });
         });
 
         return {
             productName: item.product?.name || item.name || 'Article',
-            quantity:    item.quantity ?? 1,
-            price:       Number(item.price ?? 0),
+            quantity: item.quantity ?? 1,
+            price: Number(item.price ?? 0),
             credentials,
         };
     });
 
     return {
-        orderNumber:   order.orderNumber,
+        orderNumber: order.orderNumber,
         date,
         time,
         paymentMethod: order.paymentMethod || undefined,
-        cashierName:   cashierName || undefined,
+        cashierName: cashierName || undefined,
         customer: {
-            name:  order.client?.name  || order.reseller?.name  || 'Client',
+            name: order.client?.name || order.reseller?.name || 'Client',
             phone: order.client?.telephone || order.reseller?.telephone || '',
         },
         // ── Toutes les infos boutique viennent des settings ReceiptSettings ──
         shop: {
-            name:          settings.shopName    || 'MA BOUTIQUE',
-            address:       settings.shopAddress || undefined,
-            tel:           settings.shopTel     || undefined,
+            name: settings.shopName || 'MA BOUTIQUE',
+            address: settings.shopAddress || undefined,
+            tel: settings.shopTel || undefined,
             footerMessage: settings.footerMessage || undefined,
-            showDateTime:  settings.showDateTime  ?? true,
-            showCashier:   settings.showCashier   ?? true,
+            showDateTime: settings.showDateTime ?? true,
+            showCashier: settings.showCashier ?? true,
         },
         items,
         trackingUrl: `${appUrl}/suivi/${order.orderNumber}`,
+        totalClientDebt: order.totalClientDebt ?? 0,
     };
 }
