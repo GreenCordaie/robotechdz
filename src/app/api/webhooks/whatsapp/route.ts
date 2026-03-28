@@ -476,6 +476,8 @@ RÈGLE : Aide concrètement. Ne dis jamais "je ne peux pas aider". Termine par l
                 console.error(`[WHATSAPP_WEBHOOK] ❌ Ticket creation failed:`, ticketErr.message);
             }
         }
+
+        return NextResponse.json({ success: true });
     } catch (err: any) {
         const msg = err?.message || String(err);
         console.error("[WHATSAPP_WEBHOOK] Error:", msg);

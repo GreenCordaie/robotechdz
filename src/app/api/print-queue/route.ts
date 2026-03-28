@@ -292,29 +292,9 @@ export async function PATCH(req: NextRequest) {
                     });
 
                     if (order) {
-                        // Prepare items with formatted credentials for n8n
-                        const preparedItems = order.items.map((item: any) => {
-                            const credentials: { label: string; value: string }[] = [];
-                            if (item.customData) credentials.push({ label: "ID", value: item.customData });
-                            (item.codes || []).forEach((c: any) => {
-                                const decrypted = decrypt(c.code);
-                                if (decrypted) credentials.push({ label: "Code", value: decrypted });
-                            });
-                            (item.slots || []).forEach((s: any) => {
-                                const parentData = s.digitalCode?.code ? decrypt(s.digitalCode.code) : null;
-                                if (parentData) credentials.push({ label: "Accès", value: parentData });
-                                if (s.code) credentials.push({ label: "Pin", value: decrypt(s.code) || "" });
-                            });
-
-                            return {
-                                name: item.variant?.product?.name || item.name,
-                                quantity: item.quantity,
-                                credentials
-                            };
-                        });
-
-                        console.log(`[Print Queue PATCH] Triggering Auto-WhatsApp for order ${orderId}`);
-                        await N8nService.notifyOrderPrinted(order, preparedItems);
+                        // Publish event to the bus (Background worker will handle the n8n logic)
+                        const { eventBus, SystemEvent } = await import("@/lib/events");
+                        eventBus.publish(SystemEvent.TICKET_PRINTED, { orderId: order.id });
                     }
                 } catch (waErr: any) {
                     console.error(`[Print Queue PATCH] Order WhatsApp trigger failed:`, waErr.message);

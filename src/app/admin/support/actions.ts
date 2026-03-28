@@ -1,7 +1,7 @@
 "use server";
 
 import { db } from "@/db";
-import { supportTickets, webhookEvents } from "@/db/schema";
+import { supportTickets, webhookEvents, supportConversationMetadata } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { withAuth } from "@/lib/security";
@@ -122,10 +122,6 @@ export const markConversationAsReadAction = withAuth(
             });
 
             // Update local lastSeenAt
-            const { supportConversationMetadata } = await import("@/db/schema");
-            const { db } = await import("@/db");
-            const { eq } = await import("drizzle-orm");
-
             await db.insert(supportConversationMetadata)
                 .values({ phone, lastSeenAt: new Date() })
                 .onConflictDoUpdate({

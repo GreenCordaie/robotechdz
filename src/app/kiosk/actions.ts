@@ -77,23 +77,14 @@ export async function createKioskOrder(
 
         revalidatePath("/admin/caisse");
 
-        console.log(`[KIOSK] Order created: ${orderNumber}. Notifying admins...`);
-
-        // Telegram Notification (Non-blocking)
-        const itemsMsg = items.map(i => `• ${i.name} (x${i.quantity})`).join("\n");
-        const msg = `📦 *Nouvelle Commande : ${orderNumber}*\n💰 *Total* : ${(newOrder as any).verifiedTotal.toLocaleString()} DZD\n🛒 *Articles* :\n${itemsMsg}`;
-
-        // Fire and forget, don't block the client
-        sendTelegramNotification(msg, ['ADMIN', 'CAISSIER']).catch(err =>
-            console.error("[KIOSK] Telegram notification failed:", err)
-        );
-
-        // Push Notification for Cashiers
-        sendPushToRoleAction("CAISSIER", {
-            title: "💎 Nouveau client (Kiosque)",
-            body: `Commande ${orderNumber} en attente de paiement (${(newOrder as any).verifiedTotal.toLocaleString()} DZD)`,
-            url: "/admin/caisse"
-        }).catch(err => console.error("[KIOSK] Push notification failed:", err));
+        // Publish ORDER_CREATED event (Background worker will handle Telegram/Push)
+        const { eventBus, SystemEvent } = await import("@/lib/events");
+        eventBus.publish(SystemEvent.ORDER_CREATED, {
+            orderId: newOrder.id,
+            orderNumber: orderNumber,
+            totalAmount: (newOrder as any).verifiedTotal,
+            items: items.map(i => ({ name: i.name, quantity: i.quantity }))
+        });
 
         return newOrder;
     } catch (error) {

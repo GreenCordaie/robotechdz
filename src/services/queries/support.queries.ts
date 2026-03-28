@@ -114,7 +114,7 @@ export class SupportQueries {
                 FROM ${webhookEvents} 
                 WHERE customer_phone = ${phone} 
                 AND (payload->'payload'->>'fromMe')::boolean = false 
-                AND processed_at > ${lastSeen}
+                AND processed_at > ${lastSeen.toISOString()}
             `);
             const phoneUnreadCount = Number((unreadRes[0] as any)?.count || 0);
 
@@ -133,7 +133,7 @@ export class SupportQueries {
             } else {
                 const existing = mergedConversations.get(canonicalKey);
                 // Keep the latest message info
-                if (lastMessageAt.getTime() > existing.lastMessageAt.getTime()) {
+                if (lastMessageAt && existing.lastMessageAt && lastMessageAt.getTime() > existing.lastMessageAt.getTime()) {
                     existing.lastMessageAt = lastMessageAt;
                     existing.lastMessageText = lastMessageText;
                 }

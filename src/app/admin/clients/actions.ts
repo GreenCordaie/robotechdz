@@ -74,77 +74,12 @@ export const recordPayment = withAuth(
     },
     async (data) => {
         try {
-            await db.transaction(async (tx) => {
-                const client = await tx.query.clients.findFirst({ where: eq(clients.id, data.clientId) });
-                if (!client) throw new Error("Client introuvable");
-
-                const currentDette = parseFloat(client.totalDetteDzd || "0");
-                const newDette = Math.max(0, currentDette - parseFloat(data.amount)).toFixed(2);
-
-                await tx.insert(clientPayments).values({
-                    clientId: data.clientId,
-                    montantDzd: data.amount,
-                    typeAction: data.typeAction,
-                    receiptNumber: `PAY-${Math.floor(Math.random() * 100000).toString().padStart(5, '0')}`,
-                    printStatus: "print_pending",
-                    oldBalanceDzd: currentDette.toFixed(2),
-                    newBalanceDzd: newDette,
-                });
-
-                await tx.update(clients)
-                    .set({ totalDetteDzd: newDette })
-                    .where(eq(clients.id, data.clientId));
-
-                // --- NEW: Settle unpaid/partial orders ---
-                // We fetch orders that are not yet fully paid
-                const unpaidOrders = await tx.query.orders.findMany({
-                    where: and(
-                        eq(orders.clientId, data.clientId),
-                        sql`${orders.status} IN ('NON_PAYE', 'PARTIEL', 'EN_ATTENTE')`
-                    ),
-                    orderBy: (o, { asc }) => [asc(o.createdAt)]
-                });
-
-                let amountToAllocate = parseFloat(data.amount);
-                for (const order of unpaidOrders) {
-                    if (amountToAllocate <= 0) break;
-
-                    const orderTotal = parseFloat(String(order.totalAmount)) - parseFloat(String(order.remise || 0));
-
-                    // Simple logic: if we have enough to cover most of it, or if it was the target of the payment
-                    // In this simplified system, we mark as PAYE (or TERMINE if delivered) 
-                    // if the total payment amount covers the remaining balance (here we assume full balance for simplicity)
-                    if (amountToAllocate >= orderTotal) {
-                        amountToAllocate -= orderTotal;
-                        await tx.update(orders)
-                            .set({ status: "TERMINE" })
-                            .where(eq(orders.id, order.id));
-                    } else {
-                        // Partial payment on this order
-                        await tx.update(orders)
-                            .set({ status: "PARTIEL" })
-                            .where(eq(orders.id, order.id));
-                        amountToAllocate = 0;
-                    }
-                }
-            });
-
-            // Trigger automated WhatsApp notification immediately on validation
-            const latestPay = await db.query.clientPayments.findFirst({
-                where: eq(clientPayments.clientId, data.clientId),
-                orderBy: (p, { desc }) => [desc(p.createdAt)]
-            });
-
-            if (latestPay?.id) {
-                // Background trigger
-                triggerDebtPaymentNotification(latestPay.id).catch(err => {
-                    console.error(`[recordPayment] Background notification failed:`, err);
-                });
-            }
+            const { ClientService } = await import("@/services/client.service");
+            await ClientService.recordPayment(data);
 
             revalidatePath("/admin/clients");
 
-            // Sync update to CRM
+            // Optional: CRM Sync (Should probably be an EventBus listener too, but keeping consistency)
             const client = await db.query.clients.findFirst({ where: eq(clients.id, data.clientId) });
             if (client) {
                 const { N8nService } = await import("@/services/n8n.service");
@@ -152,7 +87,7 @@ export const recordPayment = withAuth(
             }
 
             return { success: true };
-        } catch (error) {
+        } catch (error: any) {
             return { success: false, error: (error as Error).message };
         }
     }
@@ -263,16 +198,15 @@ export const updateClient = withAuth(
     },
     async (data) => {
         try {
-            await db.update(clients)
-                .set({
-                    nomComplet: data.nomComplet,
-                    telephone: data.telephone
-                })
-                .where(eq(clients.id, data.id));
+            const { ClientService } = await import("@/services/client.service");
+            await ClientService.updateClient(data.id, {
+                nomComplet: data.nomComplet,
+                telephone: data.telephone
+            });
 
             revalidatePath("/admin/clients");
             return { success: true };
-        } catch (error) {
+        } catch (error: any) {
             return { success: false, error: (error as Error).message };
         }
     }
