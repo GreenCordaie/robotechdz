@@ -241,6 +241,9 @@ function generateTicket(data) {
             p.push(CMD.BOLD_OFF);
         }
 
+        const verse = parseFloat(data.montantPaye || data.verse || 0).toFixed(2);
+        const reste = parseFloat(data.resteAPayer || 0).toFixed(2);
+
         const isHighlight = (parseFloat(remise) > 0 || parseFloat(reste) === 0);
         if (isHighlight) {
             p.push(CMD.LF);
@@ -255,9 +258,6 @@ function generateTicket(data) {
         }
 
         // --- NOUVEAU : Détail du paiement ---
-        const verse = parseFloat(data.montantPaye || data.verse || 0).toFixed(2);
-        const reste = parseFloat(data.resteAPayer || 0).toFixed(2);
-
         if (parseFloat(verse) > 0) {
             p.push(CMD.BOLD_ON);
             p.push(txt(cols2('MONTANT VERSÉ', `${verse} DZD`)));
