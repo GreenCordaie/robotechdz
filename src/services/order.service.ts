@@ -5,7 +5,7 @@ import { allocateOrderStock } from "@/lib/orders";
 import { decrypt, encrypt } from "@/lib/encryption";
 import { triggerOrderDelivery } from "@/lib/delivery";
 import { sendPushToRoleAction, sendPushToUserAction } from "@/app/admin/push/actions";
-import { OrderStatus, UserRole, ClientActionType, DigitalCodeStatus, OrderSource } from "@/lib/constants";
+import { OrderStatus, UserRole, ClientActionType, DigitalCodeStatus, OrderSource, DeliveryMethod } from "@/lib/constants";
 import { N8nService } from "./n8n.service";
 
 export class OrderService {
@@ -62,9 +62,10 @@ export class OrderService {
 
             if (!finalOrder) return null;
 
-            // 4. Check for manual products
+            // 4. Check for manual products or WhatsApp delivery
             const hasManualProducts = (finalOrder as any).items.some((item: any) => item.variant?.product?.isManualDelivery);
-            const printStatus = hasManualProducts ? "idle" : "print_pending";
+            const isWhatsApp = finalOrder.deliveryMethod === DeliveryMethod.WHATSAPP;
+            const printStatus = (hasManualProducts || isWhatsApp) ? "idle" : "print_pending";
 
             // 5. Update Order Status and Print Status
             await tx.update(orders)

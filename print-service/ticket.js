@@ -241,13 +241,33 @@ function generateTicket(data) {
             p.push(CMD.BOLD_OFF);
         }
 
-        p.push(CMD.LF);
-        p.push(CMD.SIZE_2HW);
-        p.push(CMD.BOLD_ON);
-        p.push(txt(cols2('NET A PAYER', `${net}`)));
-        p.push(CMD.SIZE_NORMAL);
-        p.push(CMD.BOLD_OFF);
-        p.push(CMD.LF);
+        p.push(txt(cols2('NET A PAYER', `${net} DZD`)));
+
+        // --- NOUVEAU : Détail du paiement ---
+        const verse = parseFloat(data.montantPaye || data.verse || 0).toFixed(2);
+        const reste = parseFloat(data.resteAPayer || 0).toFixed(2);
+
+        if (parseFloat(verse) > 0) {
+            p.push(CMD.BOLD_ON);
+            p.push(txt(cols2('MONTANT VERSÉ', `${verse} DZD`)));
+            p.push(CMD.BOLD_OFF);
+        }
+
+        if (parseFloat(reste) > 0) {
+            p.push(CMD.LF);
+            p.push(CMD.SIZE_2HW);
+            p.push(CMD.BOLD_ON);
+            p.push(txt(cols2('RESTE À PAYER', `${reste}`)));
+            p.push(CMD.SIZE_NORMAL);
+            p.push(CMD.BOLD_OFF);
+            p.push(CMD.LF);
+        } else {
+            p.push(CMD.ALIGN_CENTER);
+            p.push(CMD.BOLD_ON);
+            p.push(txt('*** COMMANDE SOLDEE ***'));
+            p.push(CMD.BOLD_OFF);
+            p.push(CMD.ALIGN_LEFT);
+        }
 
         // ── DETTE TOTALE DU CLIENT ──────────────────────────────────────────────
         if (data.totalClientDebt && parseFloat(data.totalClientDebt) > 0) {

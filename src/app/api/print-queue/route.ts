@@ -135,6 +135,8 @@ export async function GET(req: NextRequest) {
 
             const totalAmount = Number(order.totalAmount ?? 0);
             const remise = Number(order.remise ?? 0);
+            const montantPaye = Number(order.montantPaye ?? 0);
+            const resteAPayer = Number(order.resteAPayer ?? 0);
             const netTotal = Math.max(0, totalAmount - remise);
 
             return {
@@ -143,19 +145,23 @@ export async function GET(req: NextRequest) {
                 date: createdAt.toLocaleDateString("fr-FR"),
                 time: createdAt.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }),
                 totalAmount: totalAmount,
-                total: totalAmount, // Fallback alias 1
+                total: totalAmount,
                 brutTotal: totalAmount,
                 remise: remise,
-                remiseGlobale: remise, // Explicit alias
-                discount: remise, // Alias for some services
+                remiseGlobale: remise,
+                discount: remise,
+                montantPaye: montantPaye,
+                verse: montantPaye,
+                resteAPayer: resteAPayer,
                 netTotal: netTotal,
                 finalTotal: netTotal,
-                totalNet: netTotal, // Another common alias
-                resteAPayer: Number(order.resteAPayer || 0), // Show if there is remaining debt
-                // String variants for safety
+                totalNet: netTotal,
                 totalStr: String(totalAmount),
                 remiseStr: String(remise),
                 discountStr: String(remise),
+                montantPayeStr: String(montantPaye),
+                verseStr: String(montantPaye),
+                resteAPayerStr: String(resteAPayer),
                 netTotalStr: String(netTotal),
                 totalClientDebt: order.client?.totalDetteDzd || "0",
                 paymentMethod: order.paymentMethod || undefined,

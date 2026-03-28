@@ -51,7 +51,7 @@ export function formatOrderItemsText(items: any[]): string {
 
 // ─── Message builder ─────────────────────────────────────────────────────────
 
-function buildWhatsAppMessage(order: any, shopName: string, appUrl: string): string {
+function buildWhatsAppMessage(order: any, shopName: string, appUrl: string, totalDebtClient: number = 0): string {
     const sep = "━━━━━━━━━━━━━━━━━━━━";
     const lines: string[] = [];
 
@@ -65,10 +65,34 @@ function buildWhatsAppMessage(order: any, shopName: string, appUrl: string): str
     lines.push(``);
 
     // ── Récapitulatif ──
-    lines.push(`📋 *Récapitulatif*`);
+    lines.push(`📋 *Récapitulatif Financier*`);
     lines.push(`┌ Commande : *${order.orderNumber}*`);
     lines.push(`├ Date : ${formatDate(order.createdAt)}`);
-    lines.push(`└ Total payé : *${formatAmount(order.totalAmount)}*`);
+    lines.push(`├ Total Brut : ${formatAmount(order.totalAmount)}`);
+
+    const remise = parseFloat(order.remise) || 0;
+    if (remise > 0) {
+        lines.push(`├ Remise : -${formatAmount(remise)}`);
+    }
+
+    const net = (parseFloat(order.totalAmount) || 0) - remise;
+    lines.push(`├ *Net à payer : ${formatAmount(net)}*`);
+
+    const verse = parseFloat(order.montantPaye) || 0;
+    lines.push(`├ Montant versé : ${formatAmount(verse)}`);
+
+    const reste = parseFloat(order.resteAPayer) || 0;
+    if (reste > 0) {
+        lines.push(`├ *Reste à payer : ${formatAmount(reste)} ⚠️*`);
+    } else {
+        lines.push(`├ *Statut : Commande soldée ✅*`);
+    }
+
+    if (totalDebtClient > 0) {
+        lines.push(`└ *Dette totale client : ${formatAmount(totalDebtClient)}*`);
+    } else {
+        lines.push(`└ *Dette totale client : 0 DZD*`);
+    }
     lines.push(``);
 
     // ── Produits & codes ──
@@ -182,7 +206,8 @@ export async function triggerOrderDelivery(orderId: number) {
     try {
         const settings = await db.query.shopSettings.findFirst();
         const shopName = settings?.shopName || 'FLEXBOX DIRECT';
-        const message = buildWhatsAppMessage(order, shopName, appUrl);
+        const totalDebt = parseFloat(order.client?.totalDetteDzd || "0");
+        const message = buildWhatsAppMessage(order, shopName, appUrl, totalDebt);
 
         const result = await sendWhatsAppMessage(customerPhone, message, {
             whatsappApiUrl: settings?.whatsappApiUrl ?? undefined,

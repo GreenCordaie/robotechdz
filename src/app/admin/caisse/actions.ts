@@ -80,7 +80,7 @@ export const payOrder = withAuth(
 
             return { success: true, order: result };
         } catch (error) {
-            await recordFailure(rateLimitKey); // IncrÃ©menter le compteur en cas d'erreur
+            await recordFailure(rateLimitKey); // Incrémenter le compteur en cas d'erreur
             logger.error((error as Error).message, { userId: user.id, action: "PAY_ORDER_FAILED", metadata: { orderId: id } });
             return { success: false, error: (error as Error).message };
         }
@@ -175,8 +175,8 @@ export const markOrderAsTermine = withAuth(
             });
             if (reseller) {
                 sendPushToUserAction(reseller.userId, {
-                    title: "âœ… Commande PrÃªte",
-                    body: `Votre commande ${order.orderNumber} est terminÃ©e et prÃªte !`,
+                    title: "✅ Commande Prête",
+                    body: `Votre commande ${order.orderNumber} est terminée et prête !`,
                     url: "/reseller/orders"
                 }).catch(err => console.error("Push to reseller failed:", err));
             }
@@ -306,7 +306,7 @@ export const refundOrderItem = withAuth(
                         .where(inArray(digitalCodeSlots.id, item.slots.map(s => s.id)));
                 }
 
-                // --- ðŸ”„ BALANCE REVERSAL LOGIC ---
+                // --- 🔄 BALANCE REVERSAL LOGIC ---
                 await reverseSupplierDebits(tx, { orderItemId }, "Remboursement Article");
             });
 
@@ -339,7 +339,7 @@ export const refundFullOrder = withAuth(
 
                 await tx.update(orders).set({ status: OrderStatus.REMBOURSE }).where(eq(orders.id, id));
 
-                // --- ðŸ”„ BALANCE REVERSAL LOGIC ---
+                // --- 🔄 BALANCE REVERSAL LOGIC ---
                 await reverseSupplierDebits(tx, { orderId: id }, "Remboursement Commande Totale");
             });
 
@@ -383,7 +383,7 @@ export const cancelOrderAction = withAuth(
                     }
                 }
 
-                // --- ðŸ”„ BALANCE REVERSAL LOGIC ---
+                // --- 🔄 BALANCE REVERSAL LOGIC ---
                 await reverseSupplierDebits(tx, { orderId: orderId }, "Annulation Commande");
             });
 
@@ -439,7 +439,7 @@ export const initiateReturn = withAuth(
         roles: [UserRole.ADMIN, UserRole.CAISSIER],
         schema: z.object({
             orderId: z.number().int().positive(),
-            motif: z.string().min(5, "Motif requis (min 5 caractÃ¨res)"),
+            motif: z.string().min(5, "Motif requis (min 5 caractères)"),
             typeRemboursement: z.enum(["ESPECES", "CREDIT_WALLET"] as [RemboursementType, RemboursementType]),
             montant: z.number().positive(),
         })
@@ -459,13 +459,13 @@ export const initiateReturn = withAuth(
                 return { success: false, error: "Cette commande ne peut pas faire l'objet d'un retour" };
             }
             if ((order as any).returnRequest !== null) {
-                return { success: false, error: "Une demande de retour existe dÃ©jÃ  pour cette commande" };
+                return { success: false, error: "Une demande de retour existe déjà pour cette commande" };
             }
             if (montant > parseFloat(order.montantPaye as string)) {
-                return { success: false, error: `Le montant ne peut pas dÃ©passer le montant dÃ©jÃ  payÃ© (${parseFloat(order.montantPaye as string).toLocaleString("fr-DZ")} DA)` };
+                return { success: false, error: `Le montant ne peut pas dépasser le montant déjà payé (${parseFloat(order.montantPaye as string).toLocaleString("fr-DZ")} DA)` };
             }
             if (typeRemboursement === "CREDIT_WALLET" && !order.clientId) {
-                return { success: false, error: "Le crÃ©dit wallet nÃ©cessite un client associÃ© Ã  la commande" };
+                return { success: false, error: "Le crédit wallet nécessite un client associé à la commande" };
             }
 
             const returnRequest: ReturnRequest = {
@@ -489,7 +489,7 @@ export const initiateReturn = withAuth(
                 newData: { returnRequest },
             });
 
-            logger.info("Retour initiÃ©", { userId: user.id, action: "INITIATE_RETURN", metadata: { orderId } });
+            logger.info("Retour initié", { userId: user.id, action: "INITIATE_RETURN", metadata: { orderId } });
             revalidatePath("/admin/caisse");
             return { success: true, orderId };
         } catch (error) {
@@ -559,11 +559,11 @@ export const approveReturn = withAuth(
                         paidAt: new Date(),
                         amount: returnReq.montant,
                         currency: "DZD",
-                        reason: `Remboursement Commande #${order.id} (Retour ApprouvÃ©)`
+                        reason: `Remboursement Commande #${order.id} (Retour Approuvé)`
                     } as any);
                 }
 
-                // 5. Restore VENDU digital codes â†’ DISPONIBLE
+                // 5. Restore VENDU digital codes → DISPONIBLE
                 const itemIds = (order.items || []).map((i: any) => i.id);
                 if (itemIds.length > 0) {
                     await tx.update(digitalCodes)
@@ -580,8 +580,8 @@ export const approveReturn = withAuth(
                         ));
                 }
 
-                // --- ðŸ”„ BALANCE REVERSAL LOGIC ---
-                await reverseSupplierDebits(tx, { orderId }, "Remboursement (Retour ApprouvÃ©)");
+                // --- 🔄 BALANCE REVERSAL LOGIC ---
+                await reverseSupplierDebits(tx, { orderId }, "Remboursement (Retour Approuvé)");
 
                 // 6. Update order status and returnRequest
                 const updatedReturnRequest: ReturnRequest = {
@@ -610,12 +610,10 @@ export const approveReturn = withAuth(
 
                 // 8. Telegram notification
                 const clientName = order.clientId ? `Client #${order.clientId}` : "Anonyme";
-                sendTelegramNotification(
-                    `âœ… *Retour ApprouvÃ©*\nCommande: #${order.orderNumber}\nMontant: ${returnReq.montant.toLocaleString("fr-DZ")} DA\nType: ${returnReq.typeRemboursement === "ESPECES" ? "EspÃ¨ces" : "CrÃ©dit Wallet"}\nClient: ${clientName}\nPar: ${user.nom}`,
-                    ["ADMIN"]
-                ).catch(err => console.error("Telegram failed:", err));
+                const message = `✅ *Retour Approuvé*\nCommande: #${order.orderNumber}\nMontant: ${returnReq.montant.toLocaleString("fr-DZ")} DA\nType: ${returnReq.typeRemboursement === "ESPECES" ? "Espèces" : "Crédit Wallet"}\nClient: ${clientName}\nPar: ${user.nom}`;
+                sendTelegramNotification(message, ["ADMIN"]).catch(err => console.error("Telegram failed:", err));
 
-                logger.info("Retour approuvÃ©", { userId: user.id, action: "APPROVE_RETURN", metadata: { orderId } });
+                logger.info("Retour approuvé", { userId: user.id, action: "APPROVE_RETURN", metadata: { orderId } });
                 revalidatePath("/admin/caisse");
                 revalidatePath("/admin/clients");
                 revalidatePath("/admin/resellers");
@@ -634,7 +632,7 @@ export const rejectReturn = withAuth(
         roles: [UserRole.SUPER_ADMIN],
         schema: z.object({
             orderId: z.number().int().positive(),
-            motifRejet: z.string().min(5, "Motif de rejet requis (min 5 caractÃ¨res)"),
+            motifRejet: z.string().min(5, "Motif de rejet requis (min 5 caractères)"),
         })
     },
     async ({ orderId, motifRejet }, user) => {
@@ -671,7 +669,7 @@ export const rejectReturn = withAuth(
                 newData: { status: returnReq.previousOrderStatus, returnRequest: updatedReturnRequest },
             });
 
-            logger.info("Retour rejetÃ©", { userId: user.id, action: "REJECT_RETURN", metadata: { orderId } });
+            logger.info("Retour rejeté", { userId: user.id, action: "REJECT_RETURN", metadata: { orderId } });
             revalidatePath("/admin/caisse");
             return { success: true };
         } catch (error) {
