@@ -30,7 +30,8 @@ import {
     ShoppingCart,
     Wallet,
     Edit2,
-    Trash2
+    Trash2,
+    MessageSquare
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { getIndebtedClients, recordPayment, getClientHistory, createClient, getReturnsByClient, getAllClients, updateClient, deleteClient, getClientStats } from "@/app/admin/clients/actions";
@@ -57,6 +58,9 @@ interface ClientPayment {
     montantDzd: string;
     createdAt: Date | null;
     typeAction: string;
+    oldBalanceDzd?: string | null;
+    newBalanceDzd?: string | null;
+    receiptNumber?: string | null;
 }
 
 
@@ -122,13 +126,13 @@ export default function ClientsContent({ initialStats, initialClients }: Clients
             getClientStats({})
         ]);
 
-        if (resClients.success && Array.isArray(resClients.clients)) {
+        if (resClients && resClients.success && Array.isArray(resClients.clients)) {
             setClients(resClients.clients as Client[]);
-        } else {
+        } else if (resClients) {
             toast.error("Erreur lors de la récupération des clients");
         }
 
-        if (resStats.success) {
+        if (resStats && resStats.success) {
             setStats({
                 totalDebt: parseFloat(resStats.totalDebt || "0"),
                 recoveredThisMonth: parseFloat(resStats.recoveredThisMonth || "0"),
@@ -149,9 +153,14 @@ export default function ClientsContent({ initialStats, initialClients }: Clients
         setClientReturns([]);
         const data = await getClientHistory({ clientId: client.id }) as { success?: boolean; payments: any[], orders: any[], returns: any[] };
 
+        if (!data || !data.success) {
+            toast.error("Erreur lors de la récupération de l'historique");
+            return;
+        }
+
         setHistory({
-            payments: data.payments.map(p => ({ ...p, createdAt: new Date(p.createdAt) })),
-            orders: data.orders.map(o => ({ ...o, createdAt: new Date(o.createdAt) }))
+            payments: (data.payments || []).map(p => ({ ...p, createdAt: p.createdAt ? new Date(p.createdAt) : null })),
+            orders: (data.orders || []).map(o => ({ ...o, createdAt: o.createdAt ? new Date(o.createdAt) : null }))
         });
 
         if (data.returns) {
@@ -240,6 +249,33 @@ export default function ClientsContent({ initialStats, initialClients }: Clients
         } finally {
             setIsDeleting(false);
         }
+    };
+
+    const handleShareWhatsApp = (payment: any) => {
+        if (!selectedClient?.telephone) {
+            toast.error("Téléphone du client manquant");
+            return;
+        }
+
+        const phone = selectedClient.telephone.startsWith('0')
+            ? '213' + selectedClient.telephone.slice(1)
+            : selectedClient.telephone;
+
+        const dateStr = payment.date ? format(new Date(payment.date), "dd/MM/yyyy HH:mm", { locale: fr }) : "";
+
+        const message = `*REÇU DE PAIEMENT - FLEXBOX DIRECT*\n\n` +
+            `Client: ${selectedClient.nomComplet}\n` +
+            `Date: ${dateStr}\n` +
+            `Reçu N°: ${payment.receiptNumber || '---'}\n` +
+            `---------------------------\n` +
+            `*MONTANT VERSÉ: ${formatCurrency(payment.amount, 'DZD')}*\n` +
+            `---------------------------\n` +
+            `Ancien Solde: ${formatCurrency(payment.oldBalance || 0, 'DZD')}\n` +
+            `*NOUVEAU SOLDE: ${formatCurrency(payment.newBalance || 0, 'DZD')}*\n\n` +
+            `Merci de votre confiance !`;
+
+        const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+        window.open(url, '_blank');
     };
 
     return (
@@ -479,7 +515,10 @@ export default function ClientsContent({ initialStats, initialClients }: Clients
                                                     label: p.typeAction === 'REMBOURSEMENT' ? 'Remboursement (Retour)' : 'Règlement de dette',
                                                     icon: Wallet,
                                                     color: 'text-emerald-500',
-                                                    bgColor: 'bg-emerald-500/10'
+                                                    bgColor: 'bg-emerald-500/10',
+                                                    oldBalance: p.oldBalanceDzd,
+                                                    newBalance: p.newBalanceDzd,
+                                                    receiptNumber: p.receiptNumber
                                                 })),
                                                 ...history.orders.map(o => ({
                                                     id: `order-${o.id}`,
@@ -525,6 +564,18 @@ export default function ClientsContent({ initialStats, initialClients }: Clients
                                                                 <p className="text-slate-500 text-[10px] font-medium uppercase mt-0.5">
                                                                     {entry.date ? format(new Date(entry.date), "dd MMMM yyyy HH:mm", { locale: fr }) : "---"}
                                                                 </p>
+
+                                                                {entry.type === 'PAYMENT' && (
+                                                                    <Button
+                                                                        size="sm"
+                                                                        variant="flat"
+                                                                        className="h-7 px-2 mt-2 bg-[#25D366]/10 text-[#25D366] hover:bg-[#25D366]/20 font-bold border border-[#25D366]/20"
+                                                                        onPress={() => handleShareWhatsApp(entry)}
+                                                                        startContent={<MessageSquare className="w-3 h-3" />}
+                                                                    >
+                                                                        Partager WhatsApp
+                                                                    </Button>
+                                                                )}
 
                                                                 {entry.type === 'ORDER' && entry.items?.length > 0 && (
                                                                     <div className="mt-2 pl-2 border-l-2 border-slate-100 dark:border-slate-800 space-y-1">

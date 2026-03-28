@@ -167,6 +167,45 @@ export class N8nService {
     }
 
     /**
+     * Specialized: Triggered when an order ticket is successfully printed.
+     * This allows for automated delivery of codes or digital tickets.
+     */
+    static async notifyOrderPrinted(order: any, items: any[]) {
+        return this.triggerEvent("ORDER_PRINTED", {
+            orderId: order.id,
+            orderNumber: order.orderNumber,
+            customer: order.client?.nomComplet || order.reseller?.name || order.customerName || "Client",
+            customerPhone: order.client?.telephone || order.reseller?.telephone || order.customerPhone || "",
+            total: order.totalAmount,
+            status: order.status,
+            items: items.map(it => ({
+                name: it.name || it.productName,
+                quantity: it.quantity,
+                credentials: it.credentials || []
+            })),
+            isAutoDelivery: order.status === 'TERMINE'
+        });
+    }
+
+    /**
+     * Specialized: Triggered when a debt payment ticket is successfully printed.
+     * This allows sending an automated WhatsApp confirmation to the client.
+     */
+    static async notifyDebtPaymentPrinted(payment: any, client: any) {
+        return this.triggerEvent("DEBT_PAYMENT_PRINTED", {
+            paymentId: payment.id,
+            receiptNumber: payment.receiptNumber,
+            clientId: client.id,
+            customer: client.nomComplet, // Align with Delivery pattern
+            customerPhone: client.telephone, // Align with Waha/Delivery pattern
+            amountPaid: payment.montantDzd,
+            oldBalance: payment.oldBalanceDzd,
+            newBalance: payment.newBalanceDzd,
+            date: payment.createdAt || new Date().toISOString()
+        });
+    }
+
+    /**
      * Notifies about an approaching expiry (usually 3 days before).
      */
     static async notifyApproachingExpiry(data: {
@@ -227,7 +266,7 @@ export class N8nService {
                     clientPhone: slot.phone!,
                     clientName: slot.clientName || "Client"
                 }).then(() => { results.notified++; })
-            ));
+                ));
 
             // Mark SLOTs and CODEs as EXPIRED in parallel
             await Promise.all([

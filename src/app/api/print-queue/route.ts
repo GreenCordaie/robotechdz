@@ -9,10 +9,13 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { orders, shopSettings } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { orders, clientPayments, shopSettings } from "@/db/schema";
+import { eq, or } from "drizzle-orm";
 import { decrypt } from "@/lib/encryption";
 import crypto from "crypto";
+import { N8nService } from "@/services/n8n.service";
+
+export const dynamic = "force-dynamic";
 
 const PRINT_SECRET = process.env.PRINT_SECRET;
 
@@ -38,7 +41,8 @@ export async function GET(req: NextRequest) {
 
     try {
         // Fetch pending orders with all required relations
-        const pendingOrders = await db.query.orders.findMany({
+        // Fetch pending orders
+        const pendingOrdersPromise = db.query.orders.findMany({
             where: eq(orders.printStatus, "print_pending"),
             with: {
                 client: true,
@@ -54,6 +58,21 @@ export async function GET(req: NextRequest) {
             orderBy: (o, { asc }) => [asc(o.createdAt)],
             limit: 20,
         });
+
+        // Fetch pending payments
+        const pendingPaymentsPromise = db.query.clientPayments.findMany({
+            where: eq(clientPayments.printStatus, "print_pending"),
+            with: {
+                client: true,
+            },
+            orderBy: (p, { asc }) => [asc(p.createdAt)],
+            limit: 20,
+        });
+
+        const [pendingOrders, pendingPayments] = await Promise.all([
+            pendingOrdersPromise,
+            pendingPaymentsPromise
+        ]);
 
         // Fetch shop settings (one row)
         const settings = await db.query.shopSettings.findFirst();
@@ -72,7 +91,7 @@ export async function GET(req: NextRequest) {
         });
 
         // Map each order to PrintData format (with decrypted credentials)
-        const jobs = ordersToPrint.map((order: any) => {
+        const orderJobs = ordersToPrint.map((order: any) => {
             const createdAt = new Date(order.createdAt);
 
             const items = (order.items || []).map((item: any) => {
@@ -182,6 +201,48 @@ export async function GET(req: NextRequest) {
             };
         });
 
+        // Map payments to jobs
+        const paymentJobs = pendingPayments.map((pay: any) => {
+            const createdAt = new Date(pay.createdAt);
+            const amount = Number(pay.montantDzd || 0);
+
+            return {
+                _paymentId: pay.id, // for ack
+                _type: 'PAYMENT',
+                orderNumber: pay.receiptNumber || `PAY-${pay.id}`,
+                date: createdAt.toLocaleDateString("fr-FR"),
+                time: createdAt.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }),
+                totalAmount: amount,
+                amountPaid: amount,
+                oldBalance: pay.oldBalanceDzd,
+                newBalance: pay.newBalanceDzd,
+                typeAction: pay.typeAction,
+                customer: {
+                    name: pay.client?.nomComplet || "Client",
+                    phone: pay.client?.telephone || ""
+                },
+                shop: {
+                    name: settings?.shopName || "MA BOUTIQUE",
+                    address: settings?.shopAddress || undefined,
+                    tel: settings?.shopTel || undefined,
+                    footerMessage: settings?.footerMessage || undefined,
+                    showDateTime: settings?.showDateTimeOnReceipt ?? true,
+                    showCashier: settings?.showCashierOnReceipt ?? true,
+                },
+                items: [{
+                    productName: `VERSEMENT DETTE (${pay.typeAction})`,
+                    quantity: 1,
+                    price: amount,
+                    total: amount,
+                    totalStr: String(amount),
+                    credentials: []
+                }]
+            };
+        });
+
+        // Combine jobs
+        const jobs = [...orderJobs, ...paymentJobs];
+
         return NextResponse.json({ jobs });
     } catch (err: any) {
         console.error("[print-queue GET]", err);
@@ -196,18 +257,95 @@ export async function PATCH(req: NextRequest) {
     }
 
     try {
-        const { orderId, status } = await req.json() as { orderId: number; status: "printed" | "failed" };
+        const payload = await req.json() as { orderId?: number; paymentId?: number; status: "printed" | "failed" };
+        const { orderId, paymentId, status } = payload;
 
-        if (!orderId || !["printed", "failed"].includes(status)) {
-            return NextResponse.json({ error: "orderId et status requis" }, { status: 400 });
+        console.log(`[Print Queue PATCH] Received ACK: orderId=${orderId}, paymentId=${paymentId}, status=${status}`);
+
+        if ((!orderId && !paymentId) || !["printed", "failed"].includes(status)) {
+            console.error(`[Print Queue PATCH] Invalid payload:`, payload);
+            return NextResponse.json({ error: "orderId ou paymentId et status requis" }, { status: 400 });
         }
 
-        await db.update(orders)
-            .set({ printStatus: status })
-            .where(eq(orders.id, orderId));
+        if (orderId) {
+            console.log(`[Print Queue PATCH] Updating order ${orderId} to ${status}`);
+            await db.update(orders)
+                .set({ printStatus: status })
+                .where(eq(orders.id, orderId));
+
+            // Automated WhatsApp trigger on successful print (Delivery style)
+            if (status === "printed") {
+                try {
+                    const order = await db.query.orders.findFirst({
+                        where: eq(orders.id, orderId),
+                        with: {
+                            client: true,
+                            reseller: true,
+                            items: {
+                                with: {
+                                    codes: true,
+                                    slots: { with: { digitalCode: true } },
+                                    variant: { with: { product: true } },
+                                }
+                            }
+                        }
+                    });
+
+                    if (order) {
+                        // Prepare items with formatted credentials for n8n
+                        const preparedItems = order.items.map((item: any) => {
+                            const credentials: { label: string; value: string }[] = [];
+                            if (item.customData) credentials.push({ label: "ID", value: item.customData });
+                            (item.codes || []).forEach((c: any) => {
+                                const decrypted = decrypt(c.code);
+                                if (decrypted) credentials.push({ label: "Code", value: decrypted });
+                            });
+                            (item.slots || []).forEach((s: any) => {
+                                const parentData = s.digitalCode?.code ? decrypt(s.digitalCode.code) : null;
+                                if (parentData) credentials.push({ label: "Accès", value: parentData });
+                                if (s.code) credentials.push({ label: "Pin", value: decrypt(s.code) || "" });
+                            });
+
+                            return {
+                                name: item.variant?.product?.name || item.name,
+                                quantity: item.quantity,
+                                credentials
+                            };
+                        });
+
+                        console.log(`[Print Queue PATCH] Triggering Auto-WhatsApp for order ${orderId}`);
+                        await N8nService.notifyOrderPrinted(order, preparedItems);
+                    }
+                } catch (waErr: any) {
+                    console.error(`[Print Queue PATCH] Order WhatsApp trigger failed:`, waErr.message);
+                }
+            }
+        } else if (paymentId) {
+            console.log(`[Print Queue PATCH] Updating payment ${paymentId} to ${status}`);
+            await db.update(clientPayments)
+                .set({ printStatus: status })
+                .where(eq(clientPayments.id, paymentId));
+
+            // Automated WhatsApp trigger on successful print
+            if (status === "printed") {
+                try {
+                    const pay = await db.query.clientPayments.findFirst({
+                        where: eq(clientPayments.id, paymentId),
+                        with: { client: true }
+                    });
+                    if (pay && pay.client) {
+                        console.log(`[Print Queue PATCH] Triggering Auto-WhatsApp for payment ${paymentId}`);
+                        await N8nService.notifyDebtPaymentPrinted(pay, pay.client);
+                    }
+                } catch (waErr: any) {
+                    console.error(`[Print Queue PATCH] Payment WhatsApp trigger failed:`, waErr.message);
+                }
+            }
+        }
 
         return NextResponse.json({ success: true });
     } catch (err: any) {
+        console.error(`[Print Queue PATCH] Critical error:`, err.message);
         return NextResponse.json({ error: err.message }, { status: 500 });
     }
 }

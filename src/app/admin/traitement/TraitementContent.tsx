@@ -185,9 +185,19 @@ export default function TraitementContent({ initialOrders = [], initialFinished 
                             const orderToPrint = data.find((o: any) => o.status === "LIVRE" && !processedIds.current.has(o.id));
                             if (orderToPrint) {
                                 processedIds.current.add(orderToPrint.id);
-                                toast.success(`Impression automatique : ${orderToPrint.orderNumber}`, { icon: '🖨️' });
-                                setOrderForDetail(orderToPrint);
-                                setShouldPrint(true);
+
+                                // Conditional Auto-Print: 
+                                // - If method is TICKET: Always print.
+                                // - If method is WHATSAPP: Only print if it contains "shop products" (isManualDelivery = true).
+                                const isShopProduct = orderToPrint.items.some((item: any) => item.variant?.product?.isManualDelivery);
+                                const method = orderToPrint.deliveryMethod?.toUpperCase();
+                                const shouldActuallyPrint = method === 'TICKET' || (method === 'WHATSAPP' && isShopProduct);
+
+                                if (shouldActuallyPrint) {
+                                    toast.success(`Impression automatique : ${orderToPrint.orderNumber}`, { icon: '🖨️' });
+                                    setOrderForDetail(orderToPrint);
+                                    setShouldPrint(true);
+                                }
                             }
                         }
                     }

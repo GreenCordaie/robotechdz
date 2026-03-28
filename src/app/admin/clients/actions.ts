@@ -44,10 +44,17 @@ export const getClientStats = withAuth(
 export const getIndebtedClients = withAuth(
     { roles: [UserRole.ADMIN, UserRole.CAISSIER] },
     async () => {
-        return await db.query.clients.findMany({
+        const list = await db.query.clients.findMany({
             where: sql`cast(total_dette_dzd as numeric) > 0`,
             orderBy: [desc(clients.totalDetteDzd)]
         });
+        return {
+            success: true,
+            clients: list.map(c => ({
+                ...c,
+                createdAt: c.createdAt ? c.createdAt.toISOString() : null
+            }))
+        };
     }
 );
 
@@ -68,14 +75,19 @@ export const recordPayment = withAuth(
                 const client = await tx.query.clients.findFirst({ where: eq(clients.id, data.clientId) });
                 if (!client) throw new Error("Client introuvable");
 
+                const currentDette = parseFloat(client.totalDetteDzd || "0");
+                const newDette = Math.max(0, currentDette - parseFloat(data.amount)).toFixed(2);
+
                 await tx.insert(clientPayments).values({
                     clientId: data.clientId,
                     montantDzd: data.amount,
                     typeAction: data.typeAction,
+                    receiptNumber: `PAY-${Math.floor(Math.random() * 100000).toString().padStart(5, '0')}`,
+                    printStatus: "print_pending",
+                    oldBalanceDzd: currentDette.toFixed(2),
+                    newBalanceDzd: newDette,
                 });
 
-                const currentDette = parseFloat(client.totalDetteDzd || "0");
-                const newDette = Math.max(0, currentDette - parseFloat(data.amount)).toFixed(2);
                 await tx.update(clients)
                     .set({ totalDetteDzd: newDette })
                     .where(eq(clients.id, data.clientId));
@@ -164,14 +176,21 @@ export const getClientHistory = withAuth(
         });
 
         return {
-            payments,
-            orders: clientOrders,
+            success: true,
+            payments: payments.map(p => ({
+                ...p,
+                createdAt: p.createdAt ? p.createdAt.toISOString() : null
+            })),
+            orders: clientOrders.map(o => ({
+                ...o,
+                createdAt: o.createdAt ? o.createdAt.toISOString() : null
+            })),
             returns: clientReturns.map(o => ({
                 orderId: o.id,
                 orderNumber: o.orderNumber,
                 totalAmount: o.totalAmount,
                 returnRequest: o.returnRequest as ReturnRequest,
-                orderCreatedAt: o.createdAt,
+                orderCreatedAt: o.createdAt ? o.createdAt.toISOString() : null,
             }))
         };
     }
@@ -204,7 +223,13 @@ export const getAllClients = withAuth(
     async () => {
         try {
             const list = await db.query.clients.findMany({ orderBy: [desc(clients.createdAt)] });
-            return { success: true, clients: list };
+            return {
+                success: true,
+                clients: list.map(c => ({
+                    ...c,
+                    createdAt: c.createdAt ? (c.createdAt instanceof Date ? c.createdAt.toISOString() : String(c.createdAt)) : null
+                }))
+            };
         } catch (error) {
             return { success: false, error: (error as Error).message };
         }
@@ -299,11 +324,21 @@ export const getClientWhatsAppHistory = withAuth(
                     fromMe: inner?.fromMe ?? false,
                     body: inner?.body || '[Message non textuel]',
                     messageType: inner?.type || 'text',
-                    timestamp: e.processedAt,
+                    timestamp: e.processedAt ? e.processedAt.toISOString() : null,
                 };
             }).filter(Boolean).reverse();
 
-            return { success: true, data: { messages, tickets, phone: intlPhone } };
+            return {
+                success: true,
+                data: {
+                    messages,
+                    tickets: tickets.map(t => ({
+                        ...t,
+                        createdAt: t.createdAt ? t.createdAt.toISOString() : null
+                    })),
+                    phone: intlPhone
+                }
+            };
         } catch (error) {
             return { success: false, error: (error as Error).message };
         }

@@ -136,12 +136,13 @@ async function fetchPendingJobs() {
 }
 
 async function processJob(job) {
-    const id = job._orderId;
-    log(`PRINT #${job.orderNumber} (orderId=${id})`);
+    const orderId = job._orderId;
+    const paymentId = job._paymentId;
+    log(`PRINT #${job.orderNumber} (orderId=${orderId}, paymentId=${paymentId})`);
     try {
         const buffer = generateTicket(job);
         await sendToPrinter(buffer);
-        await ackJob(id, 'printed');
+        await ackJob({ orderId, paymentId, status: 'printed' });
         log(`OK    #${job.orderNumber}`);
     } catch (err) {
         // Ne pas marquer 'failed' — laisser en print_pending pour réessayer au prochain poll
@@ -149,7 +150,7 @@ async function processJob(job) {
     }
 }
 
-async function ackJob(orderId, status) {
+async function ackJob({ orderId, paymentId, status }) {
     const url = `${SERVER_URL}/api/print-queue`;
     await fetchWithTimeout(url, {
         method: 'PATCH',
@@ -157,7 +158,7 @@ async function ackJob(orderId, status) {
             'Content-Type': 'application/json',
             'x-print-secret': PRINT_SECRET
         },
-        body: JSON.stringify({ orderId, status })
+        body: JSON.stringify({ orderId, paymentId, status })
     }, 5000);
 }
 

@@ -141,7 +141,8 @@ export class OrderQueries {
                 items: {
                     with: {
                         codes: true,
-                        slots: { with: { digitalCode: true } }
+                        slots: { with: { digitalCode: true } },
+                        variant: { with: { product: true } }
                     }
                 }
             }
@@ -223,7 +224,8 @@ export class OrderQueries {
                 items: {
                     with: {
                         codes: true,
-                        slots: { with: { digitalCode: true } }
+                        slots: { with: { digitalCode: true } },
+                        variant: { with: { product: true } }
                     }
                 }
             },

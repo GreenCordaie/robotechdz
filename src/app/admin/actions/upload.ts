@@ -5,13 +5,14 @@ import { join, basename, extname } from "path";
 import { randomUUID } from "crypto";
 import { withAuth } from "@/lib/security";
 import { z } from "zod";
+import { UserRole } from "@/lib/constants";
 
-const ALLOWED_MIME_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+const ALLOWED_MIME_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif", "image/avif"];
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 
 export const uploadImage = withAuth(
     {
-        roles: ["ADMIN", "CAISSIER"],
+        roles: [UserRole.ADMIN, UserRole.CAISSIER],
         // Schema empty because we use FormData
     },
     async (formData: any) => {

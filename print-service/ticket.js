@@ -160,135 +160,189 @@ function generateTicket(data) {
     p.push(CMD.ALIGN_LEFT);
     p.push(txt('='.repeat(COLS)));
 
-    const orderLeft = `TICKET #${data.orderNumber}`;
-    const orderRight = (shop.showDateTime !== false)
-        ? `${data.date} ${data.time}`
-        : data.date;
-    p.push(CMD.BOLD_ON);
-    p.push(txt(cols2(orderLeft, orderRight)));
-    p.push(CMD.BOLD_OFF);
-
-    if (shop.showCashier && data.cashierName) {
-        p.push(txt(`Vendeur  : ${data.cashierName}`));
-    }
-    if (data.paymentMethod) {
-        p.push(txt(`Paiement : ${data.paymentMethod}`));
-    }
-    p.push(txt('-'.repeat(COLS)));
-
-    // ── CLIENT ────────────────────────────────────────────────────────────────
-    if (data.customer?.name || data.customer?.phone) {
-        const clientName = (data.customer.name || 'CLIENT COMPTOIR').toUpperCase();
-        p.push(txt(`CLIENT   : ${clientName}`));
-        if (data.customer.phone) {
-            p.push(txt(`TEL      : ${data.customer.phone}`));
-        }
-        p.push(txt('-'.repeat(COLS)));
-    }
-
-    // ── ARTICLES ──────────────────────────────────────────────────────────────
-    p.push(CMD.BOLD_ON);
-    p.push(txt(cols2('DESIGNATION', 'TOTAL (DZD)')));
-    p.push(CMD.BOLD_OFF);
-    p.push(txt('-'.repeat(COLS)));
-
-    const ORDER_LABELS = ['Email', 'Pass', 'Profil', 'Code'];
-
-    data.items.forEach((item, idx) => {
-        // Ligne 1 : Nom du produit
-        const prodName = `${idx + 1}. ${item.productName}`.toUpperCase();
+    if (data._type === 'PAYMENT') {
+        // ─── TEMPLATE PAIEMENT ────────────────────────────────────────────────
+        p.push(CMD.ALIGN_CENTER);
         p.push(CMD.BOLD_ON);
-        p.push(txt(prodName));
+        p.push(CMD.SIZE_2HW);
+        p.push(txt('RECU DE PAIEMENT'));
+        p.push(CMD.SIZE_NORMAL);
         p.push(CMD.BOLD_OFF);
+        p.push(CMD.LF);
+        p.push(CMD.ALIGN_LEFT);
 
-        // Ligne 2 : Détails prix et Total ligne
-        const itemTotal = item.totalStr || (item.quantity * parseFloat(item.price)).toFixed(2);
-        const detailLeft = `   ${item.quantity} x ${parseFloat(item.price).toFixed(2)}`;
-        const detailRight = `${itemTotal}`;
-        p.push(txt(cols2(detailLeft, detailRight)));
+        const recuLeft = `RECU #${data.orderNumber}`;
+        const recuRight = (shop.showDateTime !== false) ? `${data.date} ${data.time}` : data.date;
+        p.push(txt(cols2(recuLeft, recuRight)));
+        p.push(txt('-'.repeat(COLS)));
 
-        // Credentials (Infos de compte, codes, etc.)
-        const credMap = {};
-        (item.credentials || []).forEach(c => { credMap[c.label] = c.value; });
-
-        ORDER_LABELS.forEach(label => {
-            if (credMap[label] !== undefined) {
-                credentialLines(label, String(credMap[label])).forEach(b => p.push(b));
-            }
-        });
-
-        (item.credentials || []).forEach(c => {
-            if (!ORDER_LABELS.includes(c.label)) {
-                credentialLines(c.label, String(c.value)).forEach(b => p.push(b));
-            }
-        });
+        if (data.customer?.name) {
+            p.push(txt(`CLIENT   : ${data.customer.name.toUpperCase()}`));
+            if (data.customer.phone) p.push(txt(`TEL      : ${data.customer.phone}`));
+            p.push(txt('-'.repeat(COLS)));
+        }
 
         p.push(CMD.LF);
-    });
-
-    p.push(txt('='.repeat(COLS)));
-
-    // ── RÉCAPITULATIF FINANCIER ──────────────────────────────────────────────
-    if (data.totalAmount || data.netTotal) {
-        const brut = parseFloat(data.totalAmount || 0).toFixed(2);
-        const remise = parseFloat(data.remise || data.discount || 0).toFixed(2);
-        const net = parseFloat(data.netTotal || data.finalTotal || brut).toFixed(2);
-
-        p.push(txt(cols2('TOTAL BRUT', `${brut} DZD`)));
-        if (parseFloat(remise) > 0) {
-            p.push(CMD.BOLD_ON);
-            p.push(txt(cols2('REMISE', `-${remise} DZD`)));
-            p.push(CMD.BOLD_OFF);
-        }
-
-        const verse = parseFloat(data.montantPaye || data.verse || 0).toFixed(2);
-        const reste = parseFloat(data.resteAPayer || 0).toFixed(2);
-
-        const isHighlight = (parseFloat(remise) > 0 || parseFloat(reste) === 0);
-        if (isHighlight) {
-            p.push(CMD.LF);
-            p.push(CMD.BOLD_ON);
-            p.push(CMD.SIZE_2HW);
-            p.push(txt(cols2('TOTAL A PAYER', `${net}`, 24))); // Largeur divisé par 2 en mode double
-            p.push(CMD.SIZE_NORMAL);
-            p.push(CMD.BOLD_OFF);
-            p.push(CMD.LF);
-        } else {
-            p.push(txt(cols2('NET A PAYER', `${net} DZD`)));
-        }
-
-        // --- NOUVEAU : Détail du paiement ---
-        if (parseFloat(verse) > 0) {
-            p.push(CMD.BOLD_ON);
-            p.push(txt(cols2('MONTANT VERSÉ', `${verse} DZD`)));
-            p.push(CMD.BOLD_OFF);
-        }
-
-        if (parseFloat(reste) > 0) {
-            p.push(CMD.LF);
-            p.push(CMD.SIZE_2HW);
-            p.push(CMD.BOLD_ON);
-            p.push(txt(cols2('RESTE À PAYER', `${reste}`)));
-            p.push(CMD.SIZE_NORMAL);
-            p.push(CMD.BOLD_OFF);
-            p.push(CMD.LF);
-        } else {
-            p.push(CMD.ALIGN_CENTER);
-            p.push(CMD.BOLD_ON);
-            p.push(txt('*** COMMANDE SOLDEE ***'));
-            p.push(CMD.BOLD_OFF);
-            p.push(CMD.ALIGN_LEFT);
-        }
-
-        // ── DETTE TOTALE DU CLIENT ──────────────────────────────────────────────
-        if (data.totalClientDebt && parseFloat(data.totalClientDebt) > 0) {
-            p.push(txt('-'.repeat(COLS)));
-            p.push(CMD.BOLD_ON);
-            p.push(txt(cols2('RESTE DE DETTE', `${parseFloat(data.totalClientDebt).toFixed(2)} DZD`)));
-            p.push(CMD.BOLD_OFF);
-        }
+        p.push(CMD.ALIGN_CENTER);
+        p.push(CMD.BOLD_ON);
+        p.push(CMD.SIZE_2HW);
+        p.push(txt(`${parseFloat(data.totalAmount || 0).toFixed(2)} DZD`));
+        p.push(CMD.SIZE_NORMAL);
+        p.push(CMD.LF);
+        p.push(txt(`(${data.typeAction || 'ACOMPTE'})`));
+        p.push(CMD.BOLD_OFF);
+        p.push(CMD.LF);
+        p.push(CMD.ALIGN_LEFT);
 
         p.push(txt('='.repeat(COLS)));
+        if (data.oldBalance !== undefined) {
+            p.push(txt(cols2('SOLDE PRECEDENT', `${parseFloat(data.oldBalance).toFixed(2)} DZD`)));
+            p.push(CMD.BOLD_ON);
+            p.push(txt(cols2('MONTANT VERSE', `-${parseFloat(data.totalAmount).toFixed(2)} DZD`)));
+            p.push(CMD.BOLD_OFF);
+            p.push(txt('-'.repeat(COLS)));
+            p.push(CMD.BOLD_ON);
+            p.push(CMD.SIZE_2HW);
+            p.push(txt(cols2('NOUVEAU SOLDE', `${parseFloat(data.newBalance || 0).toFixed(2)}`, 24)));
+            p.push(CMD.SIZE_NORMAL);
+            p.push(CMD.BOLD_OFF);
+        }
+        p.push(CMD.LF);
+        p.push(txt('='.repeat(COLS)));
+
+    } else {
+        // ─── TEMPLATE COMMANDE (EXISTANT) ──────────────────────────────────────
+        const orderLeft = `TICKET #${data.orderNumber}`;
+        const orderRight = (shop.showDateTime !== false)
+            ? `${data.date} ${data.time}`
+            : data.date;
+        p.push(CMD.BOLD_ON);
+        p.push(txt(cols2(orderLeft, orderRight)));
+        p.push(CMD.BOLD_OFF);
+
+        if (shop.showCashier && data.cashierName) {
+            p.push(txt(`Vendeur  : ${data.cashierName}`));
+        }
+        if (data.paymentMethod) {
+            p.push(txt(`Paiement : ${data.paymentMethod}`));
+        }
+        p.push(txt('-'.repeat(COLS)));
+
+        // ── CLIENT ────────────────────────────────────────────────────────────────
+        if (data.customer?.name || data.customer?.phone) {
+            const clientName = (data.customer.name || 'CLIENT COMPTOIR').toUpperCase();
+            p.push(txt(`CLIENT   : ${clientName}`));
+            if (data.customer.phone) {
+                p.push(txt(`TEL      : ${data.customer.phone}`));
+            }
+            p.push(txt('-'.repeat(COLS)));
+        }
+
+        // ── ARTICLES ──────────────────────────────────────────────────────────────
+        p.push(CMD.BOLD_ON);
+        p.push(txt(cols2('DESIGNATION', 'TOTAL (DZD)')));
+        p.push(CMD.BOLD_OFF);
+        p.push(txt('-'.repeat(COLS)));
+
+        const ORDER_LABELS = ['Email', 'Pass', 'Profil', 'Code'];
+
+        data.items.forEach((item, idx) => {
+            // Ligne 1 : Nom du produit
+            const prodName = `${idx + 1}. ${item.productName}`.toUpperCase();
+            p.push(CMD.BOLD_ON);
+            p.push(txt(prodName));
+            p.push(CMD.BOLD_OFF);
+
+            // Ligne 2 : Détails prix et Total ligne
+            const itemTotal = item.totalStr || (item.quantity * parseFloat(item.price)).toFixed(2);
+            const detailLeft = `   ${item.quantity} x ${parseFloat(item.price).toFixed(2)}`;
+            const detailRight = `${itemTotal}`;
+            p.push(txt(cols2(detailLeft, detailRight)));
+
+            // Credentials (Infos de compte, codes, etc.)
+            const credMap = {};
+            (item.credentials || []).forEach(c => { credMap[c.label] = c.value; });
+
+            ORDER_LABELS.forEach(label => {
+                if (credMap[label] !== undefined) {
+                    credentialLines(label, String(credMap[label])).forEach(b => p.push(b));
+                }
+            });
+
+            (item.credentials || []).forEach(c => {
+                if (!ORDER_LABELS.includes(c.label)) {
+                    credentialLines(c.label, String(c.value)).forEach(b => p.push(b));
+                }
+            });
+
+            p.push(CMD.LF);
+        });
+
+        p.push(txt('='.repeat(COLS)));
+
+        // ── RÉCAPITULATIF FINANCIER ──────────────────────────────────────────────
+        if (data.totalAmount || data.netTotal) {
+            const brut = parseFloat(data.totalAmount || 0).toFixed(2);
+            const remise = parseFloat(data.remise || data.discount || 0).toFixed(2);
+            const net = parseFloat(data.netTotal || data.finalTotal || brut).toFixed(2);
+
+            p.push(txt(cols2('TOTAL BRUT', `${brut} DZD`)));
+            if (parseFloat(remise) > 0) {
+                p.push(CMD.BOLD_ON);
+                p.push(txt(cols2('REMISE', `-${remise} DZD`)));
+                p.push(CMD.BOLD_OFF);
+            }
+
+            const verse = parseFloat(data.montantPaye || data.verse || 0).toFixed(2);
+            const reste = parseFloat(data.resteAPayer || 0).toFixed(2);
+
+            const isHighlight = (parseFloat(remise) > 0 || parseFloat(reste) === 0);
+            if (isHighlight) {
+                p.push(CMD.LF);
+                p.push(CMD.BOLD_ON);
+                p.push(CMD.SIZE_2HW);
+                p.push(txt(cols2('TOTAL A PAYER', `${net}`, 24))); // Largeur divisé par 2 en mode double
+                p.push(CMD.SIZE_NORMAL);
+                p.push(CMD.BOLD_OFF);
+                p.push(CMD.LF);
+            } else {
+                p.push(txt(cols2('NET A PAYER', `${net} DZD`)));
+            }
+
+            // --- NOUVEAU : Détail du paiement ---
+            if (parseFloat(verse) > 0) {
+                p.push(CMD.BOLD_ON);
+                p.push(txt(cols2('MONTANT VERSÉ', `${verse} DZD`)));
+                p.push(CMD.BOLD_OFF);
+            }
+
+            if (parseFloat(reste) > 0) {
+                p.push(CMD.LF);
+                p.push(CMD.SIZE_2HW);
+                p.push(CMD.BOLD_ON);
+                p.push(txt(cols2('RESTE À PAYER', `${reste}`)));
+                p.push(CMD.SIZE_NORMAL);
+                p.push(CMD.BOLD_OFF);
+                p.push(CMD.LF);
+            } else {
+                p.push(CMD.ALIGN_CENTER);
+                p.push(CMD.BOLD_ON);
+                p.push(txt('*** COMMANDE SOLDEE ***'));
+                p.push(CMD.BOLD_OFF);
+                p.push(CMD.ALIGN_LEFT);
+            }
+
+            // ── DETTE TOTALE DU CLIENT ──────────────────────────────────────────────
+            if (data.totalClientDebt && parseFloat(data.totalClientDebt) > 0) {
+                p.push(txt('-'.repeat(COLS)));
+                p.push(CMD.BOLD_ON);
+                p.push(txt(cols2('RESTE DE DETTE', `${parseFloat(data.totalClientDebt).toFixed(2)} DZD`)));
+                p.push(CMD.BOLD_OFF);
+            }
+
+            p.push(txt('='.repeat(COLS)));
+        }
+        p.push(CMD.LF);
     }
 
     // ── QR CODE ───────────────────────────────────────────────────────────────
@@ -329,3 +383,4 @@ function generateTicket(data) {
 }
 
 module.exports = { generateTicket };
+

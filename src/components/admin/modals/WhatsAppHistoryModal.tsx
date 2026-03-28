@@ -63,12 +63,14 @@ export default function WhatsAppHistoryModal({
         setTickets([]);
 
         getClientWhatsAppHistory({ clientId }).then(res => {
-            if (res.success && res.data) {
+            if (res && res.success && res.data) {
                 setMessages(res.data.messages as Message[]);
                 setTickets(res.data.tickets as Ticket[]);
             } else {
-                setError((res as any).error || "Erreur lors du chargement");
+                setError((res as any)?.error || "Erreur lors du chargement ou accès non autorisé");
             }
+        }).catch(err => {
+            setError(err.message || "Erreur réseau lors du chargement");
         }).finally(() => setIsLoading(false));
     }, [isOpen, clientId]);
 
@@ -140,8 +142,8 @@ export default function WhatsAppHistoryModal({
                                                 <span className="text-[9px] font-black uppercase text-[#ec5b13]/60 px-1">Bot</span>
                                             )}
                                             <div className={`px-3 py-2 rounded-2xl text-sm leading-relaxed ${msg.fromMe
-                                                    ? "bg-[#ec5b13]/20 text-orange-100 rounded-tr-sm"
-                                                    : "bg-[#262626] text-slate-200 rounded-tl-sm"
+                                                ? "bg-[#ec5b13]/20 text-orange-100 rounded-tr-sm"
+                                                : "bg-[#262626] text-slate-200 rounded-tl-sm"
                                                 }`}>
                                                 {msg.messageType !== "text"
                                                     ? <span className="italic text-slate-400">[{msg.messageType === "image" ? "Image" : msg.messageType === "audio" ? "Audio" : "Fichier"}]</span>

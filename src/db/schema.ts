@@ -160,6 +160,10 @@ export const clientPayments = pgTable("client_payments", {
     montantDzd: numeric("montant_dzd", { precision: 12, scale: 2 }).notNull(),
     typeAction: actionTypeEnum("type_action").notNull(), // ACOMPTE, REMBOURSEMENT, RETOUR
     note: text("note"),
+    receiptNumber: text("receipt_number").unique(),
+    printStatus: text("print_status").default("not_required"),
+    oldBalanceDzd: numeric("old_balance_dzd", { precision: 12, scale: 2 }),
+    newBalanceDzd: numeric("new_balance_dzd", { precision: 12, scale: 2 }),
     createdAt: timestamp("created_at", { mode: 'date' }).defaultNow(),
 }, (table) => {
     return {
