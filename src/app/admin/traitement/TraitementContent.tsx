@@ -143,6 +143,9 @@ export default function TraitementContent({ initialOrders = [], initialFinished 
         else setOrders(initialFinished);
     }, [view, initialOrders, initialFinished]);
 
+    const [isAutoPrintEnabled, setIsAutoPrintEnabled] = useState(true);
+    const isFirstPoll = React.useRef(true);
+
     useEffect(() => {
         const interval = setInterval(async () => {
             try {
@@ -170,13 +173,23 @@ export default function TraitementContent({ initialOrders = [], initialFinished 
                     }
                     prevOrderIds.current = currentIds;
 
-                    // Auto-Print Logic for Webhook-delivered orders
-                    const orderToPrint = data.find((o: any) => o.status === "LIVRE" && !processedIds.current.has(o.id));
-                    if (orderToPrint) {
-                        processedIds.current.add(orderToPrint.id);
-                        toast.success(`Impression automatique : ${orderToPrint.orderNumber}`, { icon: '🖨️' });
-                        setOrderForDetail(orderToPrint);
-                        setShouldPrint(true);
+                    // Auto-Print Logic for orders that just turned LIVRE
+                    if (isAutoPrintEnabled) {
+                        // If it's the first poll, mark all current LIVRE orders as "processed" so we don't print history
+                        if (isFirstPoll.current) {
+                            data.forEach((o: any) => {
+                                if (o.status === "LIVRE") processedIds.current.add(o.id);
+                            });
+                            isFirstPoll.current = false;
+                        } else {
+                            const orderToPrint = data.find((o: any) => o.status === "LIVRE" && !processedIds.current.has(o.id));
+                            if (orderToPrint) {
+                                processedIds.current.add(orderToPrint.id);
+                                toast.success(`Impression automatique : ${orderToPrint.orderNumber}`, { icon: '🖨️' });
+                                setOrderForDetail(orderToPrint);
+                                setShouldPrint(true);
+                            }
+                        }
                     }
                 }
 
@@ -388,6 +401,15 @@ export default function TraitementContent({ initialOrders = [], initialFinished 
                                 className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all ${view === "finished" ? "bg-[#ec5b13] text-white" : "text-slate-500 hover:text-white"}`}
                             >
                                 Finies
+                            </button>
+                        </div>
+                        <div className="flex items-center gap-2 bg-slate-100 dark:bg-[#2a1b15] p-1 px-3 rounded-xl ml-2">
+                            <span className="text-[10px] font-black uppercase text-slate-500">Auto-Print</span>
+                            <button
+                                onClick={() => setIsAutoPrintEnabled(!isAutoPrintEnabled)}
+                                className={`size-6 rounded-full flex items-center justify-center transition-all ${isAutoPrintEnabled ? 'bg-emerald-500 text-white' : 'bg-red-500/20 text-red-500'}`}
+                            >
+                                <span className="material-symbols-outlined text-sm">{isAutoPrintEnabled ? 'print' : 'print_disabled'}</span>
                             </button>
                         </div>
                     </div>

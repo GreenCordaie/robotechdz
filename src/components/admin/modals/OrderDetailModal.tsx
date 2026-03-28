@@ -6,7 +6,8 @@ import { X, Gamepad2, Key, Copy, Printer, RotateCcw, CreditCard, User, RefreshCw
 import { formatCurrency, formatWhatsApp } from "@/lib/formatters";
 import { toast } from "react-hot-toast";
 import { useAuthStore } from "@/store/useAuthStore";
-import { updateItemPurchasePrice } from "@/app/admin/caisse/actions";
+import { updateItemPurchasePrice, resendWhatsAppAction } from "@/app/admin/caisse/actions";
+import { MessageSquare } from "lucide-react";
 
 interface OrderItem {
     id: number;
@@ -449,6 +450,17 @@ export default function OrderDetailModal({
                                     </DropdownItem>
                                 </DropdownMenu>
                             </Dropdown>
+
+                            {order.deliveryMethod === "WHATSAPP" && (
+                                <Button
+                                    className="bg-[#25D366] text-white hover:bg-[#128C7E] px-6 py-2.5 rounded-lg transition-all font-black text-[11px] flex items-center gap-2 shadow-lg active:scale-95 shrink-0 h-10 uppercase tracking-widest"
+                                    isLoading={isActionLoading}
+                                    onClick={() => handleAction(() => resendWhatsAppAction({ orderId: order.id }), "Envoyé sur WhatsApp")}
+                                >
+                                    <MessageSquare size={14} className="mr-1" />
+                                    Renvoie sur WhatsApp
+                                </Button>
+                            )}
 
                             <Button
                                 className="bg-white text-black hover:bg-[#ec5b13] hover:text-white px-6 py-2.5 rounded-lg transition-all font-black text-[11px] flex items-center gap-2 shadow-lg active:scale-95 shrink-0 h-10 uppercase tracking-widest border border-white"

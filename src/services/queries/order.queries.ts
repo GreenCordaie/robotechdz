@@ -288,4 +288,45 @@ export class OrderQueries {
 
         return { count: result[0]?.count || 0 };
     });
+
+    /**
+     * Gets all orders for the history view.
+     */
+    static getHistory = cache(async (limit = 100) => {
+        const results = await db.query.orders.findMany({
+            with: {
+                items: {
+                    with: {
+                        codes: true,
+                        slots: { with: { digitalCode: true } }
+                    }
+                },
+                client: true
+            },
+            limit,
+            orderBy: (orders, { desc }) => [desc(orders.createdAt)]
+        });
+
+        return (results as any[]).map(res => ({
+            ...res,
+            clientName: res.client?.nomComplet || res.customerName || "Anonyme",
+            items: (res.items || []).map((item: any) => {
+                const standardCodes = (item.codes || []).map((c: any) => {
+                    try { return decrypt(c.code) || "[Invalide]"; } catch { return "[Erreur]"; }
+                });
+                const slotCodes = (item.slots || []).map((s: any) => {
+                    try {
+                        const decryptedParent = decrypt(s.digitalCode.code);
+                        const decryptedSlotPin = s.code ? decrypt(s.code) : null;
+                        let slotInfo = `${decryptedParent} | Profil ${s.slotNumber}`;
+                        if (decryptedSlotPin) slotInfo += ` | PIN: ${decryptedSlotPin}`;
+                        return slotInfo;
+                    } catch {
+                        return "[Erreur Profil]";
+                    }
+                });
+                return { ...item, codes: [...standardCodes, ...slotCodes] };
+            })
+        }));
+    });
 }
