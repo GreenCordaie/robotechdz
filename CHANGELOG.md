@@ -6,6 +6,7 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ### 🖨️ Logique d'Impression & WhatsApp
 - **Impression Intelligente** : Désactivation de l'impression automatique pour les commandes avec livraison "WhatsApp" afin d'éviter le gaspillage de papier.
+- **Visibilité Totale** : Le montant final est désormais affiché sous le libellé "**TOTAL A PAYER**" en majuscules et en grand format (Gras + Double Taille) pour les commandes soldées ou avec remise.
 - **Correction Kiosk** : Suppression du déclenchement d'impression prématuré lors de la création d'une commande au Kiosk.
 - **WhatsApp Enrichment** : Ajout du "Total Dette Client" dans les notifications de paiement WhatsApp pour une meilleure transparence.
 

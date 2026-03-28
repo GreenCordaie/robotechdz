@@ -241,7 +241,18 @@ function generateTicket(data) {
             p.push(CMD.BOLD_OFF);
         }
 
-        p.push(txt(cols2('NET A PAYER', `${net} DZD`)));
+        const isHighlight = (parseFloat(remise) > 0 || parseFloat(reste) === 0);
+        if (isHighlight) {
+            p.push(CMD.LF);
+            p.push(CMD.BOLD_ON);
+            p.push(CMD.SIZE_2HW);
+            p.push(txt(cols2('TOTAL A PAYER', `${net}`, 24))); // Largeur divisé par 2 en mode double
+            p.push(CMD.SIZE_NORMAL);
+            p.push(CMD.BOLD_OFF);
+            p.push(CMD.LF);
+        } else {
+            p.push(txt(cols2('NET A PAYER', `${net} DZD`)));
+        }
 
         // --- NOUVEAU : Détail du paiement ---
         const verse = parseFloat(data.montantPaye || data.verse || 0).toFixed(2);
