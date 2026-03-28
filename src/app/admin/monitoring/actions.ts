@@ -24,3 +24,26 @@ export const getMonitoringLogs = withAuth(
         };
     }
 );
+export const getQueueStats = withAuth(
+    { roles: [UserRole.ADMIN, UserRole.SUPER_ADMIN], schema: z.any().optional() },
+    async () => {
+        try {
+            const { notificationQueue } = await import("@/lib/queue");
+            const counts = await notificationQueue.getJobCounts('wait', 'active', 'completed', 'failed', 'delayed');
+
+            return {
+                success: true,
+                counts: {
+                    waiting: counts.wait,
+                    active: counts.active,
+                    completed: counts.completed,
+                    failed: counts.failed,
+                    delayed: counts.delayed
+                }
+            };
+        } catch (error) {
+            console.error("Failed to fetch queue stats:", error);
+            return { success: false, error: "Failed to fetch queue stats" };
+        }
+    }
+);

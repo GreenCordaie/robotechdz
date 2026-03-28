@@ -306,10 +306,11 @@ async function syncAll(forceWaha = false) {
             await sql`
                 UPDATE shop_settings SET
                     webhook_url = ${appUrl},
-                    whatsapp_webhook_url = ${appUrl + '/api/webhooks/whatsapp'}
+                    whatsapp_webhook_url = ${appUrl + '/api/webhooks/whatsapp'},
+                    n8n_webhook_url = ${n8nUrl ? n8nUrl + '/webhook/flexbox-gateway' : s.n8n_webhook_url}
                 WHERE id = ${s.id}
             `;
-            console.log("   ✅ DB → webhook_url + whatsapp_webhook_url mis à jour");
+            console.log("   ✅ DB → webhook_url + whatsapp_webhook_url + n8n_webhook_url mis à jour");
 
             if (s.telegram_bot_token) {
                 const tgWebhookUrl = `${appUrl}/api/telegram/webhook`;

@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/security";
 import { UserRole } from "@/lib/constants";
-import { getMonitoringLogs } from "./actions";
+import { getMonitoringLogs, getQueueStats } from "./actions";
 import MonitoringContent from "./MonitoringContent";
 
 export const metadata = {
@@ -18,16 +18,21 @@ export default async function MonitoringPage() {
 
     const baseUrl = process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
 
-    const [healthResponse, logsResponse] = await Promise.all([
+    const [healthResponse, logsResponse, queueResponse] = await Promise.all([
         fetch(`${baseUrl}/api/health`, { cache: "no-store" })
             .then((res) => res.json())
             .catch(() => ({ status: "degraded", uptime: 0, timestamp: new Date().toISOString(), services: [] })),
         getMonitoringLogs({}),
+        getQueueStats({}),
     ]);
 
     const logsData = "logs" in logsResponse
         ? logsResponse
         : { logs: [], counts: { info: 0, warn: 0, error: 0, critical: 0 }, uptime: process.uptime() };
+
+    const queueData = "success" in queueResponse && queueResponse.success
+        ? queueResponse.counts
+        : { waiting: 0, active: 0, completed: 0, failed: 0, delayed: 0 };
 
     return (
         <MonitoringContent
@@ -35,6 +40,7 @@ export default async function MonitoringPage() {
             initialCounts={(logsData as any).counts ?? { info: 0, warn: 0, error: 0, critical: 0 }}
             initialUptime={(logsData as any).uptime ?? process.uptime()}
             initialServices={healthResponse.services ?? []}
+            initialQueueStats={queueData as any}
         />
     );
 }

@@ -1,6 +1,15 @@
 # Changelog - FLEXBOX DIRECT
 
 Toutes les modifications notables de ce projet seront documentées dans ce fichier.
+
+## [8.0.1] - 2026-03-28
+
+### 🛡️ Architecture & Synchronisation (Stable Release)
+- **Auto-Sync n8n** : L'orchestrateur (`scripts/start-dev.js`) détecte et sauvegarde désormais automatiquement l'URL Cloudflare de n8n en base de données.
+- **Chemin Unifié** : Alignement du service n8n sur le gateway de production (`flexbox-gateway`) et passage à un format de données "plat" pour une compatibilité totale.
+- **Garantie Livraison** : Implémentation d'un fallback direct WhatsApp (WAHA) si le workflow n8n est injoignable.
+- **Persistance Singletons** : Correction des fuites de mémoire et pertes d'écouteurs d'événements grâce au pattern `globalThis`.
+- **Fix Monitoring** : Résolution de l'erreur de compilation sur le tableau de bord de monitoring (Client Component).
  
 ## [8.0.0] - 2026-03-28
 

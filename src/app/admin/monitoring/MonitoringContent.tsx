@@ -1,8 +1,9 @@
 "use client";
 
-import React, { useState } from "react";
-import { getMonitoringLogs } from "./actions";
+import React, { useState, useEffect } from "react";
+import { getMonitoringLogs, getQueueStats } from "./actions";
 import { LogEntry, LogLevel } from "@/lib/logger";
+import { useLiveEvents } from "@/hooks/useLiveEvents";
 
 interface ServiceStatus {
     name: string;
@@ -11,11 +12,20 @@ interface ServiceStatus {
     errorMessage?: string;
 }
 
+interface QueueStats {
+    waiting: number;
+    active: number;
+    completed: number;
+    failed: number;
+    delayed: number;
+}
+
 interface Props {
     initialLogs: LogEntry[];
     initialCounts: { info: number; warn: number; error: number; critical: number };
     initialUptime: number;
     initialServices: ServiceStatus[];
+    initialQueueStats: QueueStats;
 }
 
 function formatUptime(seconds: number): string {
@@ -57,13 +67,42 @@ export default function MonitoringContent({
     initialCounts,
     initialUptime,
     initialServices,
+    initialQueueStats,
 }: Props) {
+    const { isConnected } = useLiveEvents();
     const [logs, setLogs] = useState<LogEntry[]>(initialLogs);
     const [counts, setCounts] = useState(initialCounts);
     const [uptime, setUptime] = useState(initialUptime);
     const [services] = useState<ServiceStatus[]>(initialServices);
+    const [queueStats, setQueueStats] = useState<QueueStats>(initialQueueStats);
     const [selectedLevel, setSelectedLevel] = useState<LogLevel | undefined>(undefined);
     const [isRefreshing, setIsRefreshing] = useState(false);
+
+    // Auto-refresh when system events occur (handled by hook)
+    // Here we just use the isConnected state to show status
+
+    const handleRefresh = async () => {
+        setIsRefreshing(true);
+        try {
+            const [logRes, queueRes] = await Promise.all([
+                getMonitoringLogs({ level: selectedLevel, limit: 50 }),
+                getQueueStats({})
+            ]);
+
+            if ("logs" in logRes) {
+                setLogs((logRes as any).logs);
+                setCounts((logRes as any).counts);
+                setUptime((logRes as any).uptime);
+            }
+            if ("success" in queueRes && queueRes.success) {
+                setQueueStats(queueRes.counts as any);
+            }
+        } catch (err) {
+            console.error("Failed to refresh monitoring:", err);
+        } finally {
+            setIsRefreshing(false);
+        }
+    };
 
     const handleFilterChange = async (level: LogLevel | undefined) => {
         setSelectedLevel(level);
@@ -82,29 +121,19 @@ export default function MonitoringContent({
         }
     };
 
-    const handleRefresh = async () => {
-        setIsRefreshing(true);
-        try {
-            const response = await getMonitoringLogs({ level: selectedLevel, limit: 50 });
-            if ("logs" in response) {
-                setLogs((response as any).logs);
-                setCounts((response as any).counts);
-                setUptime((response as any).uptime);
-            }
-        } catch (err) {
-            console.error("Failed to refresh logs:", err);
-        } finally {
-            setIsRefreshing(false);
-        }
-    };
-
     return (
         <div className="p-6 space-y-6 max-w-7xl mx-auto">
             {/* Header */}
             <div className="flex items-center justify-between">
-                <div>
-                    <h1 className="text-2xl font-bold text-white">Monitoring</h1>
-                    <p className="text-slate-400 text-sm mt-1">Statut des services et logs système</p>
+                <div className="flex items-center gap-4">
+                    <div>
+                        <h1 className="text-2xl font-bold text-white">Monitoring</h1>
+                        <p className="text-slate-400 text-sm mt-1">Statut des services et logs système</p>
+                    </div>
+                    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/5 border border-white/10">
+                        <div className={`size-2 rounded-full ${isConnected ? "bg-green-500 animate-pulse" : "bg-slate-500"}`} />
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{isConnected ? "Live" : "Static"}</span>
+                    </div>
                 </div>
                 <button
                     onClick={handleRefresh}
@@ -120,10 +149,37 @@ export default function MonitoringContent({
                 </button>
             </div>
 
-            {/* Uptime */}
-            <div className="bg-[#1a1614] border border-[#2d2622] rounded-xl p-4">
-                <p className="text-slate-400 text-xs uppercase tracking-widest font-semibold mb-1">Uptime Serveur</p>
-                <p className="text-white text-3xl font-mono font-bold">{formatUptime(uptime)}</p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                {/* Uptime */}
+                <div className="bg-[#1a1614] border border-[#2d2622] rounded-xl p-4">
+                    <p className="text-slate-400 text-xs uppercase tracking-widest font-semibold mb-1">Uptime Serveur</p>
+                    <p className="text-white text-3xl font-mono font-bold">{formatUptime(uptime)}</p>
+                </div>
+
+                {/* Queue Stats (Wait + Active) */}
+                <div className="bg-[#1a1614] border border-[#2d2622] rounded-xl p-4 flex flex-col justify-center">
+                    <p className="text-slate-400 text-xs uppercase tracking-widest font-semibold mb-1">Queue Notification</p>
+                    <div className="flex items-center gap-6">
+                        <div>
+                            <p className="text-white text-2xl font-mono font-bold">{queueStats.waiting}</p>
+                            <p className="text-slate-500 text-[10px] uppercase font-bold">En attente</p>
+                        </div>
+                        <div className="w-px h-8 bg-[#2d2622]" />
+                        <div>
+                            <p className="text-[#ec5b13] text-2xl font-mono font-bold">{queueStats.active}</p>
+                            <p className="text-slate-500 text-[10px] uppercase font-bold">En cours</p>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Status indicator for Workers */}
+                <div className="bg-[#1a1614] border border-[#2d2622] rounded-xl p-4">
+                    <p className="text-slate-400 text-xs uppercase tracking-widest font-semibold mb-1">Santé des Workers</p>
+                    <div className="flex items-center gap-2 mt-2">
+                        <span className="size-2.5 rounded-full bg-green-500 shadow-lg shadow-green-500/20" />
+                        <p className="text-white text-sm font-medium">Notification Worker : <span className="text-green-400">Actif</span></p>
+                    </div>
+                </div>
             </div>
 
             {/* Log Counts */}
@@ -139,9 +195,28 @@ export default function MonitoringContent({
                 ))}
             </div>
 
+            {/* Background Workers Details */}
+            <div>
+                <p className="text-sm text-slate-400">Suivi des tâches en arrière-plan en temps réel</p>
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                    {[
+                        { label: "En attente", value: queueStats.waiting, color: "text-slate-400" },
+                        { label: "Actives", value: queueStats.active, color: "text-blue-400" },
+                        { label: "Terminées", value: queueStats.completed, color: "text-green-400" },
+                        { label: "Échouées", value: queueStats.failed, color: "text-red-400" },
+                        { label: "Différées", value: queueStats.delayed, color: "text-yellow-400" },
+                    ].map((s) => (
+                        <div key={s.label} className="bg-[#1a1614] border border-[#2d2622] rounded-xl p-3">
+                            <p className="text-[10px] uppercase font-bold text-slate-500 mb-1">{s.label}</p>
+                            <p className={`text-xl font-mono font-bold ${s.color}`}>{s.value}</p>
+                        </div>
+                    ))}
+                </div>
+            </div>
+
             {/* Service Cards */}
             <div>
-                <h2 className="text-lg font-bold text-white mb-3">Services</h2>
+                <h3 className="text-xl font-bold text-white tracking-tight">Santé des Workers BullMQ</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
                     {services.map((service) => (
                         <div
@@ -151,11 +226,10 @@ export default function MonitoringContent({
                             <div className="flex items-center justify-between">
                                 <p className="text-white font-semibold text-sm">{service.name}</p>
                                 <span
-                                    className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border ${
-                                        service.status === "ok"
-                                            ? "bg-green-500/20 text-green-300 border-green-500/30"
-                                            : "bg-red-500/20 text-red-300 border-red-500/30"
-                                    }`}
+                                    className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border ${service.status === "ok"
+                                        ? "bg-green-500/20 text-green-300 border-green-500/30"
+                                        : "bg-red-500/20 text-red-300 border-red-500/30"
+                                        }`}
                                 >
                                     {service.status === "ok" ? "OK" : "Dégradé"}
                                 </span>
@@ -176,17 +250,16 @@ export default function MonitoringContent({
             {/* Logs Section */}
             <div>
                 <div className="flex items-center justify-between mb-3">
-                    <h2 className="text-lg font-bold text-white">Logs</h2>
+                    <h2 className="text-lg font-bold text-white">Logs Système</h2>
                     <div className="flex gap-2 flex-wrap">
                         {FILTER_BUTTONS.map(({ label, value }) => (
                             <button
                                 key={label}
                                 onClick={() => handleFilterChange(value)}
-                                className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
-                                    selectedLevel === value
-                                        ? "bg-[#ec5b13] text-white border-[#ec5b13]"
-                                        : "bg-[#1a1614] text-slate-400 border-[#2d2622] hover:text-white hover:border-slate-500"
-                                }`}
+                                className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${selectedLevel === value
+                                    ? "bg-[#ec5b13] text-white border-[#ec5b13]"
+                                    : "bg-[#1a1614] text-slate-400 border-[#2d2622] hover:text-white hover:border-slate-500"
+                                    }`}
                             >
                                 {label}
                             </button>

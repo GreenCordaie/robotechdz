@@ -1,49 +1,55 @@
-import { Queue, Worker, Job, QueueEvents } from 'bullmq';
+import { Queue } from 'bullmq';
 import IORedis from 'ioredis';
 
-/**
- * Shared Redis connection for BullMQ
- */
-const connection = new IORedis(process.env.REDIS_URL || 'redis://localhost:6379', {
-    maxRetriesPerRequest: null, // Critical for BullMQ
-});
-
-/**
- * System Queues
- */
 export const NOTIFICATION_QUEUE = 'notification-tasks';
 
 /**
- * Job Types for the Notification Queue
+ * BullMQ Connection Configuration
+ * Prefers REDIS_URL from .env
  */
-export enum NotificationJobType {
-    SEND_WHATSAPP = 'SEND_WHATSAPP',
-    SEND_TELEGRAM = 'SEND_TELEGRAM',
-    SEND_PUSH = 'SEND_PUSH',
-    TRIGGER_N8N = 'TRIGGER_N8N',
-}
+export const connection = process.env.REDIS_URL
+    ? new IORedis(process.env.REDIS_URL, { maxRetriesPerRequest: null })
+    : new IORedis({
+        host: process.env.REDIS_HOST || 'localhost',
+        port: parseInt(process.env.REDIS_PORT || '6379'),
+        maxRetriesPerRequest: null,
+    });
 
 /**
- * Unified Queue Instance
+ * Unified Queue Instance (Singleton pattern with globalThis for HMR)
  */
-export const notificationQueue = new Queue(NOTIFICATION_QUEUE, {
-    connection,
-    defaultJobOptions: {
-        attempts: 5,
-        backoff: {
-            type: 'exponential',
-            delay: 5000, // Start with 5s
-        },
-        removeOnComplete: true,
-        removeOnFail: false,
-    }
-});
+const globalAny = globalThis as any;
+
+export const notificationQueue: Queue = globalAny.notificationQueue ||
+    new Queue(NOTIFICATION_QUEUE, {
+        connection,
+        defaultJobOptions: {
+            attempts: 5,
+            backoff: {
+                type: 'exponential',
+                delay: 5000,
+            },
+            removeOnComplete: true,
+            removeOnFail: false,
+        }
+    });
+
+if (process.env.NODE_ENV === "development") {
+    globalAny.notificationQueue = notificationQueue;
+}
 
 /**
  * Utility to add a job to the queue
  */
-export async function addNotificationJob(type: NotificationJobType, data: any) {
-    return await notificationQueue.add(type, data);
+export enum NotificationJobType {
+    SEND_PUSH = 'send-push',
+    SEND_WHATSAPP = 'send-whatsapp',
+    SEND_TELEGRAM = 'send-telegram',
+    TRIGGER_N8N = 'trigger-n8n',
+    GENERATE_PDF = 'generate-pdf'
 }
 
-export { connection };
+export async function addNotificationJob(type: NotificationJobType, data: any) {
+    console.log(`[Queue] Adding job: ${type} for data:`, data);
+    return await notificationQueue.add(type, data);
+}

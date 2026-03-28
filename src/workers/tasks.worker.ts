@@ -9,35 +9,48 @@ import { decrypt } from '@/lib/encryption';
  * Initialize the persistent worker
  */
 export function initTasksWorker() {
+    const globalAny = globalThis as any;
+    if (globalAny.__tasksWorkerInitialized) {
+        console.log(`[QueueWorker] Worker already initialized for: ${NOTIFICATION_QUEUE}. Skipping.`);
+        return;
+    }
+    globalAny.__tasksWorkerInitialized = true;
+
     console.log(`[QueueWorker] Initializing persistent worker for: ${NOTIFICATION_QUEUE}`);
 
     const worker = new Worker(
         NOTIFICATION_QUEUE,
-        async (job: Job) => {
-            const { name, data } = job as { name: NotificationJobType; data: any };
-
-            console.log(`[QueueWorker] Processing job ${job.id} of type ${name}`);
-
-            switch (name) {
-                case NotificationJobType.SEND_WHATSAPP:
-                    await handleWhatsApp(data);
-                    break;
-                case NotificationJobType.SEND_TELEGRAM:
-                    await handleTelegram(data);
-                    break;
-                case NotificationJobType.SEND_PUSH:
-                    await handlePush(data);
-                    break;
-                case NotificationJobType.TRIGGER_N8N:
-                    await handleN8n(data);
-                    break;
-                default:
-                    console.warn(`[QueueWorker] Unknown job type: ${job.name}`);
+        async (job) => {
+            console.log(`[QueueWorker] Processing job: ${job.name} (ID: ${job.id})`);
+            try {
+                switch (job.name) {
+                    case NotificationJobType.SEND_PUSH:
+                        await handlePush(job.data);
+                        break;
+                    case NotificationJobType.SEND_WHATSAPP:
+                        await handleWhatsApp(job.data);
+                        break;
+                    case NotificationJobType.TRIGGER_N8N:
+                        await handleN8n(job.data);
+                        break;
+                    case NotificationJobType.GENERATE_PDF:
+                        // await handlePdf(job.data);
+                        break;
+                    case NotificationJobType.SEND_TELEGRAM:
+                        await handleTelegram(job.data);
+                        break;
+                    default:
+                        console.warn(`[QueueWorker] Unknown job type: ${job.name}`);
+                }
+                console.log(`[QueueWorker] Job completed: ${job.id}`);
+            } catch (error: any) {
+                console.error(`[QueueWorker] Job failed: ${job.id}`, error.message);
+                throw error; // Re-throw to allow BullMQ to handle retries
             }
         },
         {
             connection,
-            concurrency: 2, // Process 2 jobs at once
+            concurrency: 5
         }
     );
 
@@ -72,7 +85,7 @@ async function handlePush(data: { role: string; payload: any }) {
     await sendPushToRoleAction(data.role as any, data.payload);
 }
 
-async function handleN8n(data: { orderId: number }) {
+async function handleN8n(data: { orderId: number; context?: string }) {
     const { N8nService } = await import("@/services/n8n.service");
 
     const order = await db.query.orders.findFirst({
@@ -113,5 +126,13 @@ async function handleN8n(data: { orderId: number }) {
         };
     });
 
-    await N8nService.notifyOrderPrinted(order as any, preparedItems);
+    // Strategy based on context
+    if (data.context === 'ARCHIVAL') {
+        await N8nService.notifyOrderArchival(order as any);
+    } else if (data.context === 'DELIVERY') {
+        await N8nService.notifyOrderEvent("ORDER_DELIVERED", order as any, preparedItems);
+    } else {
+        // Default to Order Printed which usually sends the codes as backup
+        await N8nService.notifyOrderEvent("ORDER_PRINTED", order as any, preparedItems);
+    }
 }

@@ -6,14 +6,24 @@ import { EventEmitter } from "events";
  */
 class AppEventBus extends EventEmitter {
     private static instance: AppEventBus;
+    public instanceId: string;
 
     private constructor() {
         super();
+        this.instanceId = Math.random().toString(36).substring(7);
         this.setMaxListeners(20);
-        console.log("[EventBus] Initialized");
+        console.log(`[EventBus] Initialized (InstanceID: ${this.instanceId})`);
     }
 
     public static getInstance(): AppEventBus {
+        if (process.env.NODE_ENV === "development") {
+            const globalAny = globalThis as any;
+            if (!globalAny.__eventBus) {
+                globalAny.__eventBus = new AppEventBus();
+            }
+            return globalAny.__eventBus;
+        }
+
         if (!AppEventBus.instance) {
             AppEventBus.instance = new AppEventBus();
         }
@@ -24,7 +34,7 @@ class AppEventBus extends EventEmitter {
      * Typed emit helper
      */
     public publish(event: SystemEvent, payload: any) {
-        console.log(`[EventBus] Publishing: ${event}`);
+        console.log(`[EventBus] Publishing: ${event} (InstanceID: ${this.instanceId})`);
         this.emit(event, payload);
     }
 }

@@ -30,8 +30,10 @@ import { useSettingsStore } from "@/store/useSettingsStore";
 import Image from "next/image";
 import { getSupportCounts } from "@/app/admin/support/actions";
 import { getPendingOrdersCount, getPaidOrdersCount } from "@/app/admin/caisse/actions";
+import { useLiveEvents } from "@/hooks/useLiveEvents";
 
 export const AdminSidebar = () => {
+    const { isConnected } = useLiveEvents();
     const pathname = usePathname();
     const router = useRouter();
     const clearAuth = useAuthStore((state) => state.clearAuth);
@@ -110,7 +112,13 @@ export const AdminSidebar = () => {
                 <div className="min-w-0 flex-1">
                     <h1 className="text-base font-bold leading-tight text-slate-900 dark:text-white truncate">{shopName}</h1>
                     <div className="flex flex-col gap-0.5 mt-0.5">
-                        <p className="text-[11px] text-[#ec5b13]/60 font-medium tracking-widest uppercase">Digital SaaS Admin</p>
+                        <div className="flex items-center gap-1.5">
+                            <p className="text-[11px] text-[#ec5b13]/60 font-medium tracking-widest uppercase text-nowrap">Digital SaaS Admin</p>
+                            <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10">
+                                <div className={`size-1.5 rounded-full ${isConnected ? "bg-green-500 animate-pulse" : "bg-slate-400"}`} />
+                                <span className="text-[9px] font-bold text-slate-500 uppercase">{isConnected ? "Live" : "OFF"}</span>
+                            </div>
+                        </div>
                         <Link
                             href="/kiosk"
                             target="_blank"

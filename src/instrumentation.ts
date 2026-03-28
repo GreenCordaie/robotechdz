@@ -1,9 +1,7 @@
-/**
- * Next.js Instrumentation
- * This file is executed once on server startup.
- * We use it to initialize our Event Bus listeners (Workers).
- */
+console.log(">> [Instrumentation] File Loaded");
+
 export async function register() {
+    console.log(">> [Instrumentation] Registering...");
     if (process.env.NEXT_RUNTIME === 'nodejs') {
         const { initNotificationWorker } = await import('./workers/notification.worker');
         const { initTasksWorker } = await import('./workers/tasks.worker');

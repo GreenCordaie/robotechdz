@@ -72,11 +72,15 @@ import { useWebUSBPrinter } from "@/hooks/useWebUSBPrinter";
 import { generateOrderEscPos } from "@/lib/escpos";
 import { useSettingsStore } from "@/store/useSettingsStore";
 import { ThermalReceiptV2 } from "@/components/admin/receipt/ThermalReceiptV2";
-import { Usb, Loader2 } from "lucide-react";
+import { Usb, Loader2, Activity } from "lucide-react";
+import { LiveActivityFeed } from "./dashboard/LiveActivityFeed";
+import { useLiveEvents } from "@/hooks/useLiveEvents";
 
 export default function DashboardContent({ stats }: DashboardContentProps) {
     const { user } = useAuthStore();
     const router = useRouter();
+    const { isConnected } = useLiveEvents(); // Centrally handles global refresh on events
+
     const [selectedOrder, setSelectedOrder] = React.useState<any>(null);
     const [isDetailModalOpen, setIsDetailModalOpen] = React.useState(false);
     const [searchTerm, setSearchTerm] = React.useState("");
@@ -85,10 +89,12 @@ export default function DashboardContent({ stats }: DashboardContentProps) {
     const settings = useSettingsStore();
     const webusb = useWebUSBPrinter();
 
+    // The useLiveEvents hook already handles router.refresh() on relevant events.
+    // We can remove the local setInterval or keep it as a very slow fallback (e.g. 2 mins).
     React.useEffect(() => {
         const interval = setInterval(() => {
             router.refresh();
-        }, 30000); // Sustainable 30s refresh
+        }, 120000); // Slow fallback 2m
         return () => clearInterval(interval);
     }, [router]);
 
@@ -383,72 +389,82 @@ export default function DashboardContent({ stats }: DashboardContentProps) {
                 </div>
             )}
 
-            {/* Latest Orders Section - 161616 Background */}
-            <div className="bg-white dark:bg-[#161616] border border-slate-200 dark:border-[#262626] rounded-xl shadow-sm overflow-hidden">
-                <div className="p-6 border-b border-[#262626] flex items-center justify-between">
-                    <h3 className="text-lg font-bold text-slate-900 dark:text-white">Dernières Commandes</h3>
-                    <Button
-                        variant="light"
-                        color="primary"
-                        className="font-bold text-sm"
-                        as={Link}
-                        href="/admin/traitement"
-                    >
-                        Voir tout
-                    </Button>
-                </div>
-                <div className="overflow-x-auto">
-                    <table className="w-full text-left border-collapse">
-                        <thead>
-                            <tr className="text-slate-500 text-[10px] font-black uppercase tracking-widest bg-slate-50 dark:bg-[#262626]/50">
-                                <th className="px-6 py-4">Commande ID</th>
-                                <th className="px-6 py-4">Heure</th>
-                                <th className="px-6 py-4 text-right">Montant</th>
-                                <th className="px-6 py-4">Statut</th>
-                                <th className="px-6 py-4 text-center">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100 dark:divide-[#262626]">
-                            {filteredOrders.length > 0 ? (
-                                filteredOrders.map((order) => (
-                                    <tr key={order.id} className="hover:bg-slate-50 dark:hover:bg-white/5 transition-colors text-slate-900 dark:text-white">
-                                        <td className="px-6 py-4 font-bold text-sm text-white">{order.orderNumber}</td>
-                                        <td className="px-6 py-4 text-xs text-slate-500 font-medium">
-                                            {new Date(order.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                        </td>
-                                        <td className="px-6 py-4 text-right font-black text-sm whitespace-nowrap text-white">
-                                            {user?.role === 'ADMIN' ? formatCurrency(order.totalAmount, 'DZD') : '************'}
-                                        </td>
-                                        <td className="px-6 py-4">
-                                            <Chip
-                                                size="sm"
-                                                variant="flat"
-                                                className="font-black text-[10px] uppercase"
-                                                color={order.status === "TERMINE" ? "success" : order.status === "EN_ATTENTE" ? "warning" : order.status === "PAYE" ? "primary" : "danger"}
-                                            >
-                                                {order.status === "EN_ATTENTE" ? "En attente" : order.status === "PAYE" ? "Payé" : order.status === "TERMINE" ? "Terminé" : "Annulé"}
-                                            </Chip>
-                                        </td>
-                                        <td className="px-6 py-4 text-center">
-                                            <Button
-                                                isIconOnly
-                                                size="sm"
-                                                variant="light"
-                                                className="text-slate-500 hover:text-slate-700 dark:hover:text-white transition-colors hover:bg-slate-100 dark:hover:bg-[#262626]"
-                                                onClick={() => handleViewOrder(order)}
-                                            >
-                                                <Eye className="w-4 h-4" />
-                                            </Button>
-                                        </td>
-                                    </tr>
-                                ))
-                            ) : (
-                                <tr>
-                                    <td colSpan={5} className="px-6 py-8 text-center text-slate-500 text-sm">Aucune commande récente</td>
+            <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+                {/* Latest Orders Section - Now 3/4 width */}
+                <div className="lg:col-span-3 bg-white dark:bg-[#161616] border border-slate-200 dark:border-[#262626] rounded-xl shadow-sm overflow-hidden">
+                    <div className="p-6 border-b border-[#262626] flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                            <h3 className="text-lg font-bold text-slate-900 dark:text-white">Dernières Commandes</h3>
+                            {isConnected && <div className="size-2 rounded-full bg-green-500 animate-pulse" />}
+                        </div>
+                        <Button
+                            variant="light"
+                            color="primary"
+                            className="font-bold text-sm"
+                            as={Link}
+                            href="/admin/traitement"
+                        >
+                            Voir tout
+                        </Button>
+                    </div>
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-left border-collapse">
+                            <thead>
+                                <tr className="text-slate-500 text-[10px] font-black uppercase tracking-widest bg-slate-50 dark:bg-[#262626]/50">
+                                    <th className="px-6 py-4">Commande ID</th>
+                                    <th className="px-6 py-4">Heure</th>
+                                    <th className="px-6 py-4 text-right">Montant</th>
+                                    <th className="px-6 py-4">Statut</th>
+                                    <th className="px-6 py-4 text-center">Actions</th>
                                 </tr>
-                            )}
-                        </tbody>
-                    </table>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100 dark:divide-[#262626]">
+                                {filteredOrders.length > 0 ? (
+                                    filteredOrders.map((order) => (
+                                        <tr key={order.id} className="hover:bg-slate-50 dark:hover:bg-white/5 transition-colors text-slate-900 dark:text-white">
+                                            <td className="px-6 py-4 font-bold text-sm text-slate-900 dark:text-white">{order.orderNumber}</td>
+                                            <td className="px-6 py-4 text-xs text-slate-500 font-medium">
+                                                {new Date(order.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                            </td>
+                                            <td className="px-6 py-4 text-right font-black text-sm whitespace-nowrap text-slate-900 dark:text-white">
+                                                {user?.role === 'ADMIN' ? formatCurrency(order.totalAmount, 'DZD') : '************'}
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                <Chip
+                                                    size="sm"
+                                                    variant="flat"
+                                                    className="font-black text-[10px] uppercase"
+                                                    color={order.status === "TERMINE" ? "success" : order.status === "EN_ATTENTE" ? "warning" : order.status === "PAYE" ? "primary" : "danger"}
+                                                >
+                                                    {order.status === "EN_ATTENTE" ? "En attente" : order.status === "PAYE" ? "Payé" : order.status === "TERMINE" ? "Terminé" : "Annulé"}
+                                                </Chip>
+                                            </td>
+                                            <td className="px-6 py-4 text-center">
+                                                <Button
+                                                    isIconOnly
+                                                    size="sm"
+                                                    variant="light"
+                                                    className="text-slate-500 hover:text-slate-700 dark:hover:text-white transition-colors hover:bg-slate-100 dark:hover:bg-[#262626]"
+                                                    onClick={() => handleViewOrder(order)}
+                                                >
+                                                    <Eye className="w-4 h-4" />
+                                                </Button>
+                                            </td>
+                                        </tr>
+                                    ))
+                                ) : (
+                                    <tr>
+                                        <td colSpan={5} className="px-6 py-8 text-center text-slate-500 text-sm">Aucune commande récente</td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                {/* Live Activity Feed - 1/4 width */}
+                <div className="lg:col-span-1 border-l border-white/5 pl-4 md:pl-0">
+                    <LiveActivityFeed />
                 </div>
             </div>
             {/* SAV Detail Modal */}
