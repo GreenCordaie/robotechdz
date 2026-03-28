@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { sendWhatsAppMessage } from "@/lib/whatsapp";
-import { clients, orders, products, webhookEvents, whatsappFaqs, supportTickets } from "@/db/schema";
-import { eq, or, like, and, desc } from "drizzle-orm";
+import { sendWhatsAppMessage, resolveJID } from "@/lib/whatsapp";
+import { clients, orders, products, webhookEvents, whatsappFaqs, supportTickets, whatsappLidMapping } from "@/db/schema";
+import { eq, or, like, and, desc, sql } from "drizzle-orm";
 import { getGeminiResponse } from "@/lib/gemini";
 import { ProductStatus, OrderStatus } from "@/lib/constants";
 import { decrypt } from "@/lib/encryption";
@@ -164,13 +164,157 @@ export async function POST(req: NextRequest) {
         const body = await req.json();
 
         const event = body.event;
+        const payload = body.payload;
+
+        // Handle Status Acknowledgements (delivered, read, etc.)
+        if (event === "message.ack") {
+            const msgId = payload?.id;
+            const ackStatus = payload?.status; // delivered, read, etc.
+            if (msgId && ackStatus) {
+                // Find and update the original message event
+                const existing = await db.query.webhookEvents.findFirst({
+                    where: and(
+                        eq(webhookEvents.provider, "whatsapp"),
+                        eq(webhookEvents.externalId, msgId)
+                    )
+                });
+
+                if (existing) {
+                    const newPayload = { ...(existing.payload as any) };
+                    if (newPayload.payload) {
+                        newPayload.payload.status = ackStatus;
+                    }
+                    await db.update(webhookEvents)
+                        .set({ payload: newPayload })
+                        .where(eq(webhookEvents.id, existing.id));
+                }
+            }
+            return NextResponse.json({ success: true });
+        }
+
         if (event !== "message") return NextResponse.json({ success: true });
 
-        const payload = body.payload;
         const messageId = payload?.id;
 
-        const senderPhone = payload?.from;
-        if (!senderPhone) return NextResponse.json({ success: true });
+        // Resolve LID → real @c.us JID if needed
+        const rawSender = payload?.from;
+        if (!rawSender) return NextResponse.json({ success: true });
+
+        // 1. Check hardcoded map first
+        let senderPhone = resolveJID(rawSender);
+
+        // 2. If still a LID, check database mapping table
+        if (senderPhone.endsWith("@lid")) {
+            const mapping = await db.query.whatsappLidMapping.findFirst({
+                where: eq(whatsappLidMapping.lid, senderPhone)
+            });
+            if (mapping) {
+                senderPhone = mapping.phone;
+            } else {
+                // AUTO-DISCOVERY 1: Reach out to WAHA Contact API (Most reliable)
+                try {
+                    const { getWhatsAppContact } = await import("@/lib/whatsapp");
+                    const settings = await db.query.shopSettings.findFirst();
+                    if (settings) {
+                        const contact = await getWhatsAppContact(rawSender, {
+                            whatsappApiUrl: settings.whatsappApiUrl || undefined,
+                            whatsappApiKey: settings.whatsappApiKey || undefined,
+                            whatsappInstanceName: settings.whatsappInstanceName || undefined
+                        });
+
+                        if (contact?.number) {
+                            const discoveredPhone = contact.number.replace(/\D/g, '') + '@c.us';
+                            senderPhone = discoveredPhone;
+
+                            // Save mapping
+                            await db.insert(whatsappLidMapping).values({
+                                lid: rawSender,
+                                phone: discoveredPhone,
+                                clientName: contact.pushname || contact.name || null
+                            }).onConflictDoUpdate({
+                                target: [whatsappLidMapping.lid],
+                                set: { phone: discoveredPhone, clientName: contact.pushname || contact.name || null }
+                            }).catch(() => { });
+
+                            console.log(`[WHATSAPP_WEBHOOK] 📱 WAHA discovered mapping: ${rawSender} → ${discoveredPhone}`);
+                        }
+                    }
+                } catch (e) {
+                    console.error("[WHATSAPP_WEBHOOK] WAHA Discovery failed:", e);
+                }
+
+                // AUTO-DISCOVERY 2 (Fallback): Check if there's a ticket for this LID that has an order
+                if (senderPhone.endsWith("@lid")) {
+                    const ticket = await db.query.supportTickets.findFirst({
+                        where: eq(supportTickets.customerPhone, senderPhone),
+                        with: {
+                            order: {
+                                with: { client: true }
+                            }
+                        }
+                    });
+
+                    if (ticket?.order?.customerPhone) {
+                        const discoveredPhone = ticket.order.customerPhone.replace(/\D/g, '') + '@c.us';
+                        senderPhone = discoveredPhone;
+
+                        // Save mapping
+                        await db.insert(whatsappLidMapping).values({
+                            lid: rawSender,
+                            phone: discoveredPhone,
+                            clientName: ticket.order.client?.nomComplet || null
+                        }).onConflictDoUpdate({
+                            target: [whatsappLidMapping.lid],
+                            set: { phone: discoveredPhone, clientName: ticket.order.client?.nomComplet || null }
+                        }).catch(() => { });
+
+                        console.log(`[WHATSAPP_WEBHOOK] 🎯 Ticket discovered mapping: ${rawSender} → ${discoveredPhone}`);
+                    }
+                }
+
+                // SECONDARY FALLBACK: Scan ALL recent messages (in/out) for Order Numbers
+                if (senderPhone.endsWith("@lid")) {
+                    const recentMsgs = await db.query.webhookEvents.findMany({
+                        where: eq(webhookEvents.customerPhone, rawSender),
+                        orderBy: [desc(webhookEvents.processedAt)],
+                        limit: 20
+                    });
+
+                    for (const msg of recentMsgs) {
+                        const bodyMsg = (msg.payload as any)?.payload?.body || "";
+                        const match = bodyMsg.match(/Commande(?:\s*:\s*)?#([A-Z0-9]+)/);
+                        if (match?.[1]) {
+                            const scavengedOrder = await db.query.orders.findFirst({
+                                where: eq(orders.orderNumber, match[1]),
+                                with: { client: true }
+                            });
+                            if (scavengedOrder?.customerPhone) {
+                                const discoveredPhone = scavengedOrder.customerPhone.replace(/\D/g, '') + '@c.us';
+                                senderPhone = discoveredPhone;
+
+                                // Save mapping PERMANENTLY
+                                await db.insert(whatsappLidMapping).values({
+                                    lid: rawSender,
+                                    phone: discoveredPhone,
+                                    clientName: scavengedOrder.client?.nomComplet || null
+                                }).onConflictDoUpdate({
+                                    target: [whatsappLidMapping.lid],
+                                    set: { phone: discoveredPhone, clientName: scavengedOrder.client?.nomComplet || null }
+                                }).catch(() => { });
+
+                                console.log(`[WHATSAPP_WEBHOOK] 🛡️ Scavenged identity for ${rawSender} → ${senderPhone} via Order #${match[1]}`);
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Log resolution for unknown LIDs to help build the mapping table
+        if (rawSender !== senderPhone) {
+            console.log(`[WHATSAPP_WEBHOOK] LID resolved: ${rawSender} → ${senderPhone}`);
+        }
 
         if (messageId) {
             const alreadyProcessed = await isEventProcessed("whatsapp", messageId, senderPhone, body);
@@ -297,11 +441,13 @@ RÈGLE : Aide concrètement. Ne dis jamais "je ne peux pas aider". Termine par l
         // ── Créer ticket si escalade ───────────────────────────────────────────
         if (needsTicket) {
             try {
-                // Chercher la commande la plus récente du client
+                // Use the last 9 digits of the RESOLVED senderPhone (after WAHA resolution)
+                const resolvedDigits = senderPhone.replace(/\D/g, '').slice(-9);
+
                 const recentOrder = await db.query.orders.findFirst({
                     where: client?.id
-                        ? or(eq(orders.clientId, client.id), like(orders.customerPhone, `%${phoneDigits.slice(-9)}%`))
-                        : like(orders.customerPhone, `%${phoneDigits.slice(-9)}%`),
+                        ? or(eq(orders.clientId, client.id), like(orders.customerPhone, `%${resolvedDigits}%`))
+                        : like(orders.customerPhone, `%${resolvedDigits}%`),
                     orderBy: (o, { desc }) => [desc(o.createdAt)]
                 });
 

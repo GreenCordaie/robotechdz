@@ -88,7 +88,7 @@ export default function TraitementMobile({ initialOrders = [], initialFinished =
         } finally {
             setIsLoading(false);
         }
-    }, [view, orders.length]);
+    }, [view]); // Removed orders.length to stabilize reference
 
     // Sync initial state on view change
     useEffect(() => {
@@ -98,40 +98,42 @@ export default function TraitementMobile({ initialOrders = [], initialFinished =
 
     useEffect(() => {
         const interval = setInterval(async () => {
-            const res: any = view === "pending" ? await getPaidOrders({}) : await getFinishedOrders({});
-            const data = Array.isArray(res) ? res : [];
+            try {
+                const res: any = view === "pending" ? await getPaidOrders({}) : await getFinishedOrders({});
+                const data = Array.isArray(res) ? res : [];
 
-            // Visual Notification for Mobile
-            if (view === "pending") {
-                const currentIds = new Set(data.map((o: any) => o.id));
-                const newOrders = data.filter((o: any) => !prevOrderIds.current.has(o.id));
+                if (view === "pending") {
+                    const currentIds = new Set(data.map((o: any) => o.id));
+                    const newOrders = data.filter((o: any) => !prevOrderIds.current.has(o.id));
 
-                if (newOrders.length > 0 && prevOrderIds.current.size > 0) {
-                    newOrders.forEach((o: any) => {
-                        toast.success(`NOUVELLE COMMANDE : ${o.orderNumber}`, {
-                            icon: '🛎️',
-                            duration: 5000,
-                            position: 'top-center'
+                    if (newOrders.length > 0 && prevOrderIds.current.size > 0) {
+                        newOrders.forEach((o: any) => {
+                            toast.success(`NOUVELLE COMMANDE : ${o.orderNumber}`, {
+                                icon: '🛎️',
+                                duration: 5000,
+                                position: 'top-center'
+                            });
                         });
-                    });
-                }
-                prevOrderIds.current = currentIds;
-            }
+                    }
+                    prevOrderIds.current = currentIds;
 
-            setOrders(data);
-
-            if (view === "pending") {
-                const orderToPrint = data.find((o: any) => o.status === "LIVRE" && !processedIds.current.has(o.id));
-                if (orderToPrint) {
-                    processedIds.current.add(orderToPrint.id);
-                    toast.success(`Impression automatique : ${orderToPrint.orderNumber}`, { icon: '🖨️' });
-                    setOrderForDetail(orderToPrint);
-                    setShouldPrint(true);
+                    // Auto-Print
+                    const orderToPrint = data.find((o: any) => o.status === "LIVRE" && !processedIds.current.has(o.id));
+                    if (orderToPrint) {
+                        processedIds.current.add(orderToPrint.id);
+                        toast.success(`Impression automatique : ${orderToPrint.orderNumber}`, { icon: '🖨️' });
+                        setOrderForDetail(orderToPrint);
+                        setShouldPrint(true);
+                    }
                 }
+
+                setOrders(data);
+            } catch (err) {
+                console.error("Polling fail:", err);
             }
-        }, 3000);
+        }, 5000); // 5s poll
         return () => clearInterval(interval);
-    }, [view, loadOrders]);
+    }, [view]); // Stable polling
 
     // Consolidated Effect for Auto-Print trigger (Cloud Print Mode)
     useEffect(() => {
@@ -230,9 +232,16 @@ export default function TraitementMobile({ initialOrders = [], initialFinished =
         }
     };
 
-    const filteredOrders = orders.filter(o =>
-        o.orderNumber.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    const filteredOrders = React.useMemo(() => {
+        return orders.filter(o => {
+            const val = searchTerm.toLowerCase();
+            return (
+                o.orderNumber.toLowerCase().includes(val) ||
+                o.user?.name?.toLowerCase().includes(val) ||
+                o.client?.name?.toLowerCase().includes(val)
+            );
+        }).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    }, [orders, searchTerm]);
 
     const getTimeAgo = (date: any) => {
         const diffMs = new Date().getTime() - new Date(date).getTime();

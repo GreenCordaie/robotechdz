@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import {
     getSharedAccountsInventory,
     addSharedAccount,
@@ -10,6 +10,7 @@ import {
     getSharingVariants,
     getAvailableVariantsForLinking,
     linkProductToSharing,
+    getSharedAccountsHistory
 } from "./actions";
 import {
     Users, Mail, LayoutGrid, CheckCircle2, Search, User, Calendar,
@@ -20,15 +21,19 @@ import toast from "react-hot-toast";
 import {
     Input, Button, Chip, Card, CardBody, Tooltip, Spinner,
     Modal, ModalContent, ModalHeader, ModalBody, ModalFooter,
-    useDisclosure, Select, SelectItem, Progress, Textarea, Tabs, Tab
+    useDisclosure, Select, SelectItem, Progress, Textarea, Tabs, Tab,
+    Table, TableHeader, TableColumn, TableBody, TableRow, TableCell
 } from "@heroui/react";
+import React from "react";
 
 export default function SharedAccountsContent() {
     // ── Data ─────────────────────────────────────────────────────────────────
     const [inventory, setInventory] = useState<any[]>([]);
+    const [history, setHistory] = useState<any[]>([]);
     const [sharingVariants, setSharingVariants] = useState<any[]>([]);
     const [linkableVariants, setLinkableVariants] = useState<any[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [isLoadingHistory, setIsLoadingHistory] = useState(false);
     const [activeProduct, setActiveProduct] = useState<string | null>(null);
     const [searchTerm, setSearchTerm] = useState("");
 
@@ -40,6 +45,7 @@ export default function SharedAccountsContent() {
     const [addPurchaseCurrency, setAddPurchaseCurrency] = useState("DZD");
     const [addSlotsData, setAddSlotsData] = useState<{ profileName: string; pinCode: string }[]>([]);
     const [isAdding, setIsAdding] = useState(false);
+    const lastAddVariantId = React.useRef("");
 
     // ── Multi-line quick insert ───────────────────────────────────────────────
     const [quickVariantId, setQuickVariantId] = useState("");
@@ -90,6 +96,18 @@ export default function SharedAccountsContent() {
         }
     }, []);
 
+    const loadHistory = useCallback(async () => {
+        setIsLoadingHistory(true);
+        try {
+            const res = await getSharedAccountsHistory();
+            if (Array.isArray(res)) setHistory(res);
+        } catch {
+            toast.error("Échec du chargement de l'historique");
+        } finally {
+            setIsLoadingHistory(false);
+        }
+    }, []);
+
     useEffect(() => {
         loadInventory();
         const interval = setInterval(loadInventory, 30_000);
@@ -99,11 +117,15 @@ export default function SharedAccountsContent() {
     // ── Slot auto-fill on add variant change ──────────────────────────────────
     useEffect(() => {
         if (!addVariantId || !sharingVariants.length) return;
+        if (addVariantId === lastAddVariantId.current) return; // Prevent wipe on polling
+
         const variant = sharingVariants.find(v => v.id.toString() === addVariantId);
         if (!variant) return;
+
         setAddSlotsData(Array.from({ length: variant.totalSlots || 0 }, (_, i) => ({
             profileName: `Profil ${i + 1}`, pinCode: ""
         })));
+        lastAddVariantId.current = addVariantId;
     }, [addVariantId, sharingVariants]);
 
     // ── Computed ──────────────────────────────────────────────────────────────
@@ -635,192 +657,276 @@ export default function SharedAccountsContent() {
                 </CardBody>
             </Card>
 
-            {/* ── Product Tabs ── */}
-            {productNames.length > 1 && (
-                <div className="flex gap-2 flex-wrap">
-                    <button
-                        onClick={() => setActiveProduct(null)}
-                        className={`px-4 py-2 rounded-xl text-xs font-black uppercase transition-all border ${!activeProduct
-                            ? 'bg-primary text-white border-primary'
-                            : 'bg-white/5 text-slate-400 border-white/10 hover:bg-white/10'}`}
-                    >
-                        Tous ({inventory.length})
-                    </button>
-                    {productNames.map(name => {
-                        const count = groupedInventory[name]?.length || 0;
-                        return (
-                            <button key={name}
-                                onClick={() => setActiveProduct(name)}
-                                className={`px-4 py-2 rounded-xl text-xs font-black uppercase transition-all border ${activeProduct === name
-                                    ? 'bg-primary text-white border-primary'
-                                    : 'bg-white/5 text-slate-400 border-white/10 hover:bg-white/10'}`}
-                            >
-                                {name} ({count})
-                            </button>
-                        );
-                    })}
-                </div>
-            )}
+            {/* ── Main Tabs ── */}
+            <Tabs
+                aria-label="Main View"
+                variant="bordered"
+                classNames={{
+                    tabList: "bg-[#111] p-1 rounded-2xl border border-white/5 w-full sm:w-auto",
+                    cursor: "bg-primary",
+                    tab: "font-black uppercase text-xs tracking-wider h-10 px-8",
+                }}
+                onSelectionChange={(key) => {
+                    if (key === "history") loadHistory();
+                }}
+            >
+                <Tab key="inventory" title="Inventaire">
+                    <div className="space-y-10 mt-6">
+                        {/* ── Product Tabs ── */}
+                        {productNames.length > 1 && (
+                            <div className="flex gap-2 flex-wrap">
+                                <button
+                                    onClick={() => setActiveProduct(null)}
+                                    className={`px-4 py-2 rounded-xl text-xs font-black uppercase transition-all border ${!activeProduct
+                                        ? 'bg-primary text-white border-primary'
+                                        : 'bg-white/5 text-slate-400 border-white/10 hover:bg-white/10'}`}
+                                >
+                                    Tous ({inventory.length})
+                                </button>
+                                {productNames.map(name => {
+                                    const count = groupedInventory[name]?.length || 0;
+                                    return (
+                                        <button key={name}
+                                            onClick={() => setActiveProduct(name)}
+                                            className={`px-4 py-2 rounded-xl text-xs font-black uppercase transition-all border ${activeProduct === name
+                                                ? 'bg-primary text-white border-primary'
+                                                : 'bg-white/5 text-slate-400 border-white/10 hover:bg-white/10'}`}
+                                        >
+                                            {name} ({count})
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        )}
 
-            {/* ── Inventory ── */}
-            <div className="space-y-10">
-                {Object.keys(filteredInventory).length === 0 ? (
-                    <div className="py-24 text-center border-2 border-dashed border-white/5 rounded-3xl bg-[#111]">
-                        <AlertCircle className="w-10 h-10 text-slate-700 mx-auto mb-4" />
-                        <h3 className="text-lg font-bold text-white mb-1">Aucun compte trouvé</h3>
-                        <p className="text-slate-500 text-sm">Modifiez votre recherche ou ajoutez un compte.</p>
-                    </div>
-                ) : (
-                    Object.entries(filteredInventory).map(([productName, variants]) => {
-                        let pAccounts = 0, pSlots = 0, pSold = 0;
-                        variants.forEach(v => v.digitalCodes?.forEach((acc: any) => {
-                            pAccounts++;
-                            acc.slots?.forEach((s: any) => { pSlots++; if (s.status === "VENDU") pSold++; });
-                        }));
+                        {Object.keys(filteredInventory).length === 0 ? (
+                            <div className="py-24 text-center border-2 border-dashed border-white/5 rounded-3xl bg-[#111]">
+                                <AlertCircle className="w-10 h-10 text-slate-700 mx-auto mb-4" />
+                                <h3 className="text-lg font-bold text-white mb-1">Aucun compte trouvé</h3>
+                                <p className="text-slate-500 text-sm">Modifiez votre recherche ou ajoutez un compte.</p>
+                            </div>
+                        ) : (
+                            Object.entries(filteredInventory).map(([productName, variants]) => {
+                                let pAccounts = 0, pSlots = 0, pSold = 0;
+                                variants.forEach(v => v.digitalCodes?.forEach((acc: any) => {
+                                    pAccounts++;
+                                    acc.slots?.forEach((s: any) => { pSlots++; if (s.status === "VENDU") pSold++; });
+                                }));
 
-                        return (
-                            <section key={productName} className="space-y-4">
-                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#262626] pb-3">
-                                    <div className="flex items-center gap-3">
-                                        <div className="size-2.5 rounded-full bg-primary shadow-[0_0_8px_rgba(236,91,19,0.4)]" />
-                                        <h2 className="text-lg font-black text-white uppercase tracking-tighter italic">{productName}</h2>
-                                        <Chip size="sm" variant="flat" color="primary" className="font-black bg-primary/10 text-[9px]">
-                                            {pAccounts} comptes
-                                        </Chip>
-                                    </div>
-                                    <div className="flex items-center gap-3 text-[10px] font-bold">
-                                        <span className="text-emerald-400">{pSlots - pSold} libres</span>
-                                        <span className="text-slate-600">·</span>
-                                        <span className="text-orange-400">{pSold} occupés</span>
-                                        <span className="text-slate-600">·</span>
-                                        <span className="text-slate-500">{pSlots} total</span>
-                                    </div>
-                                </div>
+                                return (
+                                    <section key={productName} className="space-y-4">
+                                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#262626] pb-3">
+                                            <div className="flex items-center gap-3">
+                                                <div className="size-2.5 rounded-full bg-primary shadow-[0_0_8px_rgba(236,91,19,0.4)]" />
+                                                <h2 className="text-lg font-black text-white uppercase tracking-tighter italic">{productName}</h2>
+                                                <Chip size="sm" variant="flat" color="primary" className="font-black bg-primary/10 text-[9px]">
+                                                    {pAccounts} comptes
+                                                </Chip>
+                                            </div>
+                                            <div className="flex items-center gap-3 text-[10px] font-bold">
+                                                <span className="text-emerald-400">{pSlots - pSold} libres</span>
+                                                <span className="text-slate-600">·</span>
+                                                <span className="text-orange-400">{pSold} occupés</span>
+                                                <span className="text-slate-600">·</span>
+                                                <span className="text-slate-500">{pSlots} total</span>
+                                            </div>
+                                        </div>
 
-                                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                                    {variants.map(variant => variant.digitalCodes?.map((account: any, accIndex: number) => {
-                                        const soldCount = account.slots?.filter((s: any) => s.status === "VENDU").length ?? 0;
-                                        const total = account.slots?.length ?? 0;
-                                        const rate = total > 0 ? (soldCount / total) * 100 : 0;
-                                        const isFull = total > 0 && soldCount === total;
-                                        const hasExpiry = !!account.expiresAt;
-                                        const isExpired = hasExpiry && new Date(account.expiresAt) < new Date();
+                                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                                            {variants.map(variant => variant.digitalCodes?.map((account: any, accIndex: number) => {
+                                                const soldCount = account.slots?.filter((s: any) => s.status === "VENDU").length ?? 0;
+                                                const total = account.slots?.length ?? 0;
+                                                const rate = total > 0 ? (soldCount / total) * 100 : 0;
+                                                const isFull = total > 0 && soldCount === total;
+                                                const hasExpiry = !!account.expiresAt;
+                                                const isExpired = hasExpiry && new Date(account.expiresAt) < new Date();
 
-                                        return (
-                                            <Card key={account.id}
-                                                className={`bg-[#121212] border group hover:border-primary/40 transition-all duration-200 ${isFull ? 'border-red-500/30' : 'border-[#222]'}`}
-                                                shadow="none">
-                                                <CardBody className="p-5 space-y-4">
-                                                    {/* Card header */}
-                                                    <div className="flex justify-between items-center">
-                                                        <div className="flex items-center gap-2 flex-wrap">
-                                                            <span className="text-base font-black text-primary italic">#{accIndex + 1}</span>
-                                                            <Chip size="sm" className="h-4 text-[9px] font-black bg-white/5 text-slate-400">{variant.name}</Chip>
-                                                            {isFull && <Chip size="sm" className="h-4 text-[9px] font-black bg-red-500/10 text-red-400">Complet</Chip>}
-                                                            {isExpired && <Chip size="sm" className="h-4 text-[9px] font-black bg-yellow-500/10 text-yellow-400">Expiré</Chip>}
-                                                        </div>
+                                                return (
+                                                    <Card key={account.id}
+                                                        className={`bg-[#121212] border group hover:border-primary/40 transition-all duration-200 ${isFull ? 'border-red-500/30' : 'border-[#222]'}`}
+                                                        shadow="none">
+                                                        <CardBody className="p-5 space-y-4">
+                                                            {/* Card header */}
+                                                            <div className="flex justify-between items-center">
+                                                                <div className="flex items-center gap-2 flex-wrap">
+                                                                    <span className="text-base font-black text-primary italic">#{accIndex + 1}</span>
+                                                                    <Chip size="sm" className="h-4 text-[9px] font-black bg-white/5 text-slate-400">{variant.name}</Chip>
+                                                                    {isFull && <Chip size="sm" className="h-4 text-[9px] font-black bg-red-500/10 text-red-400">Complet</Chip>}
+                                                                    {isExpired && <Chip size="sm" className="h-4 text-[9px] font-black bg-yellow-500/10 text-yellow-400">Expiré</Chip>}
+                                                                </div>
 
-                                                        <div className="flex flex-col items-end gap-1">
-                                                            <div className="flex gap-1 bg-[#1a1a1a] p-1 rounded-xl border border-white/5">
-                                                                <Button isIconOnly size="sm" variant="light"
-                                                                    className="h-7 w-7 text-slate-400 hover:text-primary hover:bg-primary/10"
-                                                                    onClick={() => handleEditClick(account, variant)}>
-                                                                    <Edit3 size={13} />
-                                                                </Button>
-                                                                <Button isIconOnly size="sm" variant="light"
-                                                                    isDisabled={soldCount > 0}
-                                                                    className={`h-7 w-7 ${soldCount > 0 ? 'opacity-20 cursor-not-allowed text-slate-600' : 'text-slate-400 hover:text-danger hover:bg-danger/10'}`}
-                                                                    onClick={() => soldCount === 0 && handleDeleteClick(account.id)}>
-                                                                    <Trash2 size={13} />
-                                                                </Button>
-                                                            </div>
-                                                            {account.purchasePrice && (
-                                                                <span className="text-[10px] font-black text-slate-500 tabular-nums">
-                                                                    COST: {account.purchasePrice} {account.purchaseCurrency}
-                                                                </span>
-                                                            )}
-                                                        </div>
-                                                    </div>
-
-                                                    {/* Occupation */}
-                                                    <div className="space-y-1.5">
-                                                        <div className="flex justify-between items-center">
-                                                            <span className="text-[9px] text-slate-500 font-black uppercase tracking-widest">Profils</span>
-                                                            <span className="text-base font-black text-white tabular-nums">
-                                                                {soldCount}<span className="text-slate-600 text-xs">/{total}</span>
-                                                            </span>
-                                                        </div>
-                                                        <Progress
-                                                            value={rate}
-                                                            size="sm"
-                                                            radius="full"
-                                                            classNames={{
-                                                                base: "bg-white/5 h-1.5",
-                                                                indicator: progressColor(rate)
-                                                            }}
-                                                        />
-                                                    </div>
-
-                                                    {/* Slots list */}
-                                                    <div className="space-y-1.5">
-                                                        {account.slots?.map((slot: any) => {
-                                                            const occupied = slot.status === "VENDU";
-                                                            return (
-                                                                <div key={slot.id}
-                                                                    className={`flex items-center gap-2.5 px-3 py-2 rounded-lg border text-[11px] font-bold
-                                                                        ${occupied
-                                                                            ? 'bg-orange-500/5 border-orange-500/20 text-orange-300'
-                                                                            : 'bg-white/[0.02] border-white/5 text-slate-500'}`}
-                                                                >
-                                                                    <div className={`size-1.5 rounded-full shrink-0 ${occupied ? 'bg-orange-400' : 'bg-emerald-500'}`} />
-                                                                    <span className="text-slate-400 text-[10px] w-14 shrink-0 font-black">
-                                                                        {slot.profileName || `Profil ${slot.slotNumber}`}
-                                                                    </span>
-                                                                    {occupied ? (
-                                                                        <div className="flex items-center gap-1.5 flex-1 min-w-0">
-                                                                            <span className="truncate text-orange-300">
-                                                                                {slot.orderItem?.order?.client?.nomComplet || "Client"}
-                                                                            </span>
-                                                                            <span className="text-slate-600 shrink-0">
-                                                                                #{slot.orderItem?.order?.orderNumber}
-                                                                            </span>
-                                                                        </div>
-                                                                    ) : (
-                                                                        <span className="text-emerald-600 text-[10px]">Disponible</span>
+                                                                <div className="flex flex-col items-end gap-1">
+                                                                    <div className="flex gap-1 bg-[#1a1a1a] p-1 rounded-xl border border-white/5">
+                                                                        <Button isIconOnly size="sm" variant="light"
+                                                                            className="h-7 w-7 text-slate-400 hover:text-primary hover:bg-primary/10"
+                                                                            onClick={() => handleEditClick(account, variant)}>
+                                                                            <Edit3 size={13} />
+                                                                        </Button>
+                                                                        <Button isIconOnly size="sm" variant="light"
+                                                                            isDisabled={soldCount > 0}
+                                                                            className={`h-7 w-7 ${soldCount > 0 ? 'opacity-20 cursor-not-allowed text-slate-600' : 'text-slate-400 hover:text-danger hover:bg-danger/10'}`}
+                                                                            onClick={() => soldCount === 0 && handleDeleteClick(account.id)}>
+                                                                            <Trash2 size={13} />
+                                                                        </Button>
+                                                                    </div>
+                                                                    {account.purchasePrice && (
+                                                                        <span className="text-[10px] font-black text-slate-500 tabular-nums">
+                                                                            COST: {account.purchasePrice} {account.purchaseCurrency}
+                                                                        </span>
                                                                     )}
                                                                 </div>
-                                                            );
-                                                        })}
-                                                    </div>
+                                                            </div>
 
-                                                    {/* Footer */}
-                                                    <div className="pt-2 border-t border-white/5 flex items-center justify-between">
-                                                        <div className="flex items-center gap-1.5 text-slate-500">
-                                                            <Calendar size={10} className="text-primary/40" />
-                                                            <span className="text-[9px] font-bold uppercase">
-                                                                {new Date(account.createdAt).toLocaleDateString("fr-FR")}
-                                                            </span>
+                                                            {/* Occupation */}
+                                                            <div className="space-y-1.5">
+                                                                <div className="flex justify-between items-center">
+                                                                    <span className="text-[9px] text-slate-500 font-black uppercase tracking-widest">Profils</span>
+                                                                    <span className="text-base font-black text-white tabular-nums">
+                                                                        {soldCount}<span className="text-slate-600 text-xs">/{total}</span>
+                                                                    </span>
+                                                                </div>
+                                                                <Progress
+                                                                    value={rate}
+                                                                    size="sm"
+                                                                    radius="full"
+                                                                    classNames={{
+                                                                        base: "bg-white/5 h-1.5",
+                                                                        indicator: progressColor(rate)
+                                                                    }}
+                                                                />
+                                                            </div>
+
+                                                            {/* Slots list */}
+                                                            <div className="space-y-1.5">
+                                                                {account.slots?.map((slot: any) => {
+                                                                    const occupied = slot.status === "VENDU";
+                                                                    return (
+                                                                        <div key={slot.id}
+                                                                            className={`flex items-center gap-2.5 px-3 py-2 rounded-lg border text-[11px] font-bold
+                                                                                ${occupied
+                                                                                    ? 'bg-orange-500/5 border-orange-500/20 text-orange-300'
+                                                                                    : 'bg-white/[0.02] border-white/5 text-slate-500'}`}
+                                                                        >
+                                                                            <div className={`size-1.5 rounded-full shrink-0 ${occupied ? 'bg-orange-400' : 'bg-emerald-500'}`} />
+                                                                            <span className="text-slate-400 text-[10px] w-14 shrink-0 font-black">
+                                                                                {slot.profileName || `Profil ${slot.slotNumber}`}
+                                                                            </span>
+                                                                            {occupied ? (
+                                                                                <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                                                                                    <span className="truncate text-orange-300">
+                                                                                        {slot.orderItem?.order?.client?.nomComplet || "Client"}
+                                                                                    </span>
+                                                                                    <span className="text-slate-600 shrink-0">
+                                                                                        #{slot.orderItem?.order?.orderNumber}
+                                                                                    </span>
+                                                                                </div>
+                                                                            ) : (
+                                                                                <span className="text-emerald-600 text-[10px]">Disponible</span>
+                                                                            )}
+                                                                        </div>
+                                                                    );
+                                                                })}
+                                                            </div>
+
+                                                            {/* Footer */}
+                                                            <div className="pt-2 border-t border-white/5 flex items-center justify-between">
+                                                                <div className="flex items-center gap-1.5 text-slate-500">
+                                                                    <Calendar size={10} className="text-primary/40" />
+                                                                    <span className="text-[9px] font-bold uppercase">
+                                                                        {new Date(account.createdAt).toLocaleDateString("fr-FR")}
+                                                                    </span>
+                                                                </div>
+                                                                {hasExpiry && (
+                                                                    <span className={`text-[9px] font-bold uppercase flex items-center gap-1 ${isExpired ? 'text-yellow-400' : 'text-slate-500'}`}>
+                                                                        <Clock size={9} />
+                                                                        {new Date(account.expiresAt).toLocaleDateString("fr-FR")}
+                                                                    </span>
+                                                                )}
+                                                                <div className={`h-2 w-2 rounded-full ${isFull
+                                                                    ? 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.5)]'
+                                                                    : 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]'}`} />
+                                                            </div>
+                                                        </CardBody>
+                                                    </Card>
+                                                );
+                                            }))}
+                                        </div>
+                                    </section>
+                                );
+                            })
+                        )}
+                    </div>
+                </Tab>
+
+                <Tab key="history" title="Historique">
+                    <div className="mt-6">
+                        {isLoadingHistory ? (
+                            <div className="flex justify-center py-24">
+                                <Spinner label="Chargement de l'historique..." />
+                            </div>
+                        ) : history.length === 0 ? (
+                            <div className="py-24 text-center border-2 border-dashed border-white/5 rounded-3xl bg-[#111]">
+                                <Clock className="w-10 h-10 text-slate-700 mx-auto mb-4" />
+                                <h3 className="text-lg font-bold text-white mb-1">Historique vide</h3>
+                                <p className="text-slate-500 text-sm">Les comptes entièrement vendus apparaîtront ici.</p>
+                            </div>
+                        ) : (
+                            <Table
+                                aria-label="Historique des ventes"
+                                className="dark"
+                                removeWrapper
+                                classNames={{
+                                    th: "bg-[#111] text-slate-500 font-black uppercase text-[10px] border-b border-white/5",
+                                    td: "py-4 border-b border-white/5 text-sm font-bold"
+                                }}
+                            >
+                                <TableHeader>
+                                    <TableColumn>COMPTE / PRODUIT</TableColumn>
+                                    <TableColumn>VENDU LE</TableColumn>
+                                    <TableColumn>CLIENTS / COMMANDES</TableColumn>
+                                </TableHeader>
+                                <TableBody>
+                                    {history.map((account) => (
+                                        <TableRow key={account.id}>
+                                            <TableCell>
+                                                <div className="flex flex-col">
+                                                    <span className="text-white font-black">{account.code}</span>
+                                                    <span className="text-[10px] text-primary font-bold uppercase">{account.variant?.product?.name} - {account.variant?.name}</span>
+                                                </div>
+                                            </TableCell>
+                                            <TableCell>
+                                                <div className="text-slate-400">
+                                                    {new Date(account.updatedAt || account.createdAt).toLocaleDateString("fr-FR", {
+                                                        day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit"
+                                                    })}
+                                                </div>
+                                            </TableCell>
+                                            <TableCell>
+                                                <div className="flex flex-col gap-2">
+                                                    {account.slots.filter((s: any) => s.status === "VENDU").map((s: any) => (
+                                                        <div key={s.id} className="flex items-center gap-2 bg-white/5 p-1 px-2 rounded-lg border border-white/5">
+                                                            <div className="flex-1">
+                                                                <span className="text-white text-xs">{s.profileName}: </span>
+                                                                <span className="text-orange-400 text-xs">{s.orderItem?.order?.client?.nomComplet}</span>
+                                                                {s.orderItem?.order?.client?.phoneNumber && (
+                                                                    <span className="text-slate-500 text-[10px] ml-2">({s.orderItem?.order?.client?.phoneNumber})</span>
+                                                                )}
+                                                            </div>
+                                                            <Chip size="sm" variant="flat" className="h-5 text-[9px] font-black bg-white/5">
+                                                                #{s.orderItem?.order?.orderNumber}
+                                                            </Chip>
                                                         </div>
-                                                        {hasExpiry && (
-                                                            <span className={`text-[9px] font-bold uppercase flex items-center gap-1 ${isExpired ? 'text-yellow-400' : 'text-slate-500'}`}>
-                                                                <Clock size={9} />
-                                                                {new Date(account.expiresAt).toLocaleDateString("fr-FR")}
-                                                            </span>
-                                                        )}
-                                                        <div className={`h-2 w-2 rounded-full ${isFull
-                                                            ? 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.5)]'
-                                                            : 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]'}`} />
-                                                    </div>
-                                                </CardBody>
-                                            </Card>
-                                        );
-                                    }))}
-                                </div>
-                            </section>
-                        );
-                    })
-                )}
-            </div>
+                                                    ))}
+                                                </div>
+                                            </TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        )}
+                    </div>
+                </Tab>
+            </Tabs>
 
             {/* ── Edit Modal ── */}
             <Modal isOpen={accountModal.isOpen} onClose={accountModal.onClose}

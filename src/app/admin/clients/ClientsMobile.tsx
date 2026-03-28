@@ -7,7 +7,7 @@ import { getAllClients, recordPayment, getClientHistory, createClient, updateCli
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
 import { useRouter } from "next/navigation";
-import { formatCurrency } from "@/lib/formatters";
+import { formatCurrency, formatPhoneNatural } from "@/lib/formatters";
 import toast from "react-hot-toast";
 
 export default function ClientsMobile({ initialStats, initialClients }: any) {
@@ -186,7 +186,7 @@ export default function ClientsMobile({ initialStats, initialClients }: any) {
                                     <p className="text-sm font-black text-white truncate max-w-[150px]">{client.nomComplet}</p>
                                     <div className="flex items-center gap-2 opacity-60">
                                         <Phone size={10} className="text-slate-400 shrink-0" />
-                                        <span className="text-[10px] font-bold text-slate-400 truncate">{client.telephone || "Aucun tel"}</span>
+                                        <span className="text-[10px] font-bold text-slate-400 truncate">{formatPhoneNatural(client.telephone) || "Aucun tel"}</span>
                                     </div>
                                 </div>
                             </div>
@@ -325,7 +325,7 @@ export default function ClientsMobile({ initialStats, initialClients }: any) {
                                                         {entry.type === 'RETURN' && (
                                                             <div className="pl-9 mt-1 flex flex-col gap-1">
                                                                 <span className={`text-[8px] font-black uppercase w-fit px-2 py-0.5 rounded-md border ${entry.status === 'EN_ATTENTE' ? 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20' :
-                                                                        'bg-red-500/10 text-red-500 border-red-500/20'
+                                                                    'bg-red-500/10 text-red-500 border-red-500/20'
                                                                     }`}>
                                                                     {entry.status === 'EN_ATTENTE' ? 'En attente' : 'Rejeté'}
                                                                 </span>

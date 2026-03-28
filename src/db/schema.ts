@@ -369,6 +369,18 @@ export const rateLimits = pgTable("rate_limits", {
     expiresAt: timestamp("expires_at", { mode: 'date' }).notNull(),
 });
 
+export const whatsappLidMapping = pgTable("whatsapp_lid_mapping", {
+    lid: text("lid").primaryKey(),
+    phone: text("phone").notNull(),
+    clientName: text("client_name"),
+    createdAt: timestamp("created_at", { mode: 'date' }).defaultNow(),
+});
+
+export const supportConversationMetadata = pgTable("support_conversation_metadata", {
+    phone: text("phone").primaryKey(), // Canonical phone identifier
+    lastSeenAt: timestamp("last_seen_at", { mode: 'date' }).defaultNow().notNull(),
+});
+
 export const partnerApiKeys = pgTable("partner_api_keys", {
     id: serial("id").primaryKey(),
     name: varchar("name", { length: 100 }).notNull(),

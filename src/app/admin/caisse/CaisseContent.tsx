@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { Spinner, Button, Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, Tooltip, Tabs, Tab } from "@heroui/react";
 import { useOrderStore } from "@/store/useOrderStore";
 import { payOrder, getTodayOrders, cancelOrderAction, replaceOrderItemCode, refundOrderItem, refundFullOrder, notifyTraiteurAction, requeueForPrint } from "./actions";
@@ -59,7 +59,7 @@ export default function CaisseContent() {
         }
     };
 
-    const loadOrders = async (silent = false) => {
+    const loadOrders = useCallback(async (silent = false) => {
         if (!silent) setIsLoading(true);
         try {
             const res: any = await getTodayOrders({});
@@ -76,7 +76,7 @@ export default function CaisseContent() {
         } finally {
             if (!silent) setIsLoading(false);
         }
-    };
+    }, []); // Stable reference
 
     useEffect(() => {
         loadOrders();
@@ -245,12 +245,17 @@ export default function CaisseContent() {
         }
     };
 
-    const filteredOrders = allTodayOrders.filter(o => {
-        const matchesSearch = o.orderNumber.toLowerCase().includes(searchQuery.toLowerCase());
-        if (!matchesSearch) return false;
-        if (filterStatus === "Toutes") return true;
-        return o.status === statusMap[filterStatus];
-    });
+    const filteredOrders = React.useMemo(() => {
+        return allTodayOrders.filter(o => {
+            const matchesSearch = o.orderNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                o.user?.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                o.client?.name?.toLowerCase().includes(searchQuery.toLowerCase());
+
+            if (!matchesSearch) return false;
+            if (filterStatus === "Toutes") return true;
+            return o.status === statusMap[filterStatus];
+        }).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    }, [allTodayOrders, searchQuery, filterStatus]);
 
     return (
         <main className="flex flex-1 min-w-0 overflow-hidden h-[calc(100vh-64px)] mx-[-32px] my-[-32px] bg-background-light dark:bg-background-dark font-sans antialiased">
@@ -392,7 +397,18 @@ export default function CaisseContent() {
                                                             <td className="px-6 py-4 text-sm text-slate-500 dark:text-slate-400">
                                                                 {new Date(o.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                                             </td>
-                                                            <td className="px-6 py-4 font-semibold whitespace-nowrap">{formatCurrency(o.totalAmount, 'DZD')}</td>
+                                                            <td className="px-6 py-4">
+                                                                <div className="flex flex-col">
+                                                                    <span className="font-semibold whitespace-nowrap text-slate-900 dark:text-white">
+                                                                        {formatCurrency(Number(o.totalAmount) - Number(o.remise || 0), 'DZD')}
+                                                                    </span>
+                                                                    {Number(o.remise || 0) > 0 && (
+                                                                        <span className="text-[10px] text-orange-400 font-bold uppercase tracking-wider">
+                                                                            -{formatCurrency(o.remise, 'DZD')} remise
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                            </td>
                                                             <td className="px-6 py-4 text-right">
                                                                 <div className="flex items-center justify-end gap-3">
                                                                     <span className={`inline-flex items-center px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide border shrink-0 ${config.classes}`}>
@@ -483,7 +499,16 @@ export default function CaisseContent() {
                                                     <div className="flex items-end justify-between">
                                                         <div>
                                                             <p className="text-xs text-slate-500 font-medium mb-1">Total à régler</p>
-                                                            <p className="text-lg font-black text-slate-900 dark:text-white">{formatCurrency(o.totalAmount, 'DZD')}</p>
+                                                            <div className="flex flex-col">
+                                                                <p className="text-lg font-black text-slate-900 dark:text-white">
+                                                                    {formatCurrency(Number(o.totalAmount) - Number(o.remise || 0), 'DZD')}
+                                                                </p>
+                                                                {Number(o.remise || 0) > 0 && (
+                                                                    <p className="text-[10px] text-orange-400 font-bold uppercase tracking-wider -mt-1">
+                                                                        -{formatCurrency(o.remise, 'DZD')} remise
+                                                                    </p>
+                                                                )}
+                                                            </div>
                                                         </div>
                                                         <div className="flex items-center gap-2">
                                                             <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-tighter border ${config.classes}`}>

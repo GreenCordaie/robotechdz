@@ -30,6 +30,7 @@ interface OrderDetailModalProps {
         status: string;
         createdAt: string | Date;
         totalAmount: string | number;
+        remise?: string | number;
         items: OrderItem[];
         deliveryMethod?: "TICKET" | "WHATSAPP";
         customerPhone?: string;
@@ -401,7 +402,16 @@ export default function OrderDetailModal({
                             <section className="flex flex-col items-end gap-1.5 pt-2 border-t border-white/5">
                                 <div className="flex flex-col items-end">
                                     <span className="text-slate-500 text-[10px] uppercase tracking-[0.2em] font-black">Total Payé</span>
-                                    <span className="text-white text-2xl font-black whitespace-nowrap tracking-tight">{formatCurrency(order.totalAmount, 'DZD')}</span>
+                                    <div className="flex flex-col items-end">
+                                        <span className="text-white text-2xl font-black whitespace-nowrap tracking-tight">
+                                            {formatCurrency(Number(order.totalAmount) - Number(order.remise || 0), 'DZD')}
+                                        </span>
+                                        {Number(order.remise || 0) > 0 && (
+                                            <span className="text-[10px] text-orange-400 font-bold uppercase tracking-wider">
+                                                Réduction: -{formatCurrency(order.remise!, 'DZD')}
+                                            </span>
+                                        )}
+                                    </div>
                                 </div>
                                 <div className="flex flex-col items-end gap-1 mt-1">
                                     <div className="flex items-center gap-2 text-slate-500 text-[11px] font-bold uppercase tracking-wider">

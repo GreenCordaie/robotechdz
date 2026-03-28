@@ -29,6 +29,7 @@ npm test; npm run lint
 TypeScript 5 / React 19 (Next.js 15 App Router): Follow standard conventions
 
 ## Recent Changes
+- 007-support-nav-notifications: Improved Support UI with cross-view navigation and unread status tracking.
 - 003-monitoring-observability: Added [e.g., Python 3.11, Swift 5.9, Rust 1.75 or NEEDS CLARIFICATION] + [e.g., FastAPI, UIKit, LLVM or NEEDS CLARIFICATION]
 - 003-monitoring-observability: Added [e.g., Python 3.11, Swift 5.9, Rust 1.75 or NEEDS CLARIFICATION] + [e.g., FastAPI, UIKit, LLVM or NEEDS CLARIFICATION]
 - 003-monitoring-observability: Added [e.g., Python 3.11, Swift 5.9, Rust 1.75 or NEEDS CLARIFICATION] + [e.g., FastAPI, UIKit, LLVM or NEEDS CLARIFICATION]

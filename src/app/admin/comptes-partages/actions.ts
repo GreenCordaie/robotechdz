@@ -445,3 +445,44 @@ export const attribuerSlotAutomatiqueAction = withAuth(
         }
     }
 );
+
+export const getSharedAccountsHistory = withAuth(
+    { roles: [UserRole.ADMIN] },
+    async () => {
+        const results = await db.query.digitalCodes.findMany({
+            where: eq(digitalCodes.status, "VENDU"),
+            with: {
+                variant: {
+                    with: {
+                        product: true
+                    }
+                },
+                slots: {
+                    with: {
+                        orderItem: {
+                            with: {
+                                order: {
+                                    with: {
+                                        client: true
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            orderBy: [desc(digitalCodes.updatedAt)],
+            limit: 50
+        });
+
+        // Decrypt for admin view
+        return results.map(dc => ({
+            ...dc,
+            code: decrypt(dc.code) || dc.code,
+            slots: dc.slots.map(s => ({
+                ...s,
+                code: s.code ? (decrypt(s.code) || s.code) : null
+            }))
+        }));
+    }
+);

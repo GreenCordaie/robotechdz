@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { Spinner, Button, Modal, ModalContent, ModalHeader, ModalBody, ModalFooter } from "@heroui/react";
 import { useOrderStore } from "@/store/useOrderStore";
 import { useAuthStore } from "@/store/useAuthStore";
@@ -41,17 +41,7 @@ export default function CaisseMobile() {
 
     const settings = useSettingsStore();
 
-    const handlePrint = async (data: any) => {
-        if (!data?.id) return;
-        const res: any = await requeueForPrint({ orderId: data.id });
-        if (res?.success) {
-            toast.success(`🖨️ Ticket #${data.orderNumber} en file d'impression`);
-        } else {
-            toast.error(`🖨️ Erreur: ${res?.error || 'Impossible de mettre en file'}`);
-        }
-    };
-
-    const loadOrders = async (silent = false) => {
+    const loadOrders = useCallback(async (silent = false) => {
         if (!silent) setIsLoading(true);
         try {
             const res: any = await getTodayOrders({});
@@ -64,7 +54,7 @@ export default function CaisseMobile() {
         } finally {
             if (!silent) setIsLoading(false);
         }
-    };
+    }, []); // Stable reference
 
     useEffect(() => {
         loadOrders();
@@ -172,13 +162,17 @@ export default function CaisseMobile() {
         "Remboursés": "REMBOURSE"
     };
 
-    const filteredOrders = allTodayOrders.filter(o => {
-        const matchesSearch = o.orderNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            o.id.toString().includes(searchQuery);
-        if (!matchesSearch) return false;
-        if (filterStatus === "Tous") return true;
-        return o.status === statusMap[filterStatus];
-    });
+    const filteredOrders = React.useMemo(() => {
+        return allTodayOrders.filter(o => {
+            const matchesSearch = o.orderNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                o.user?.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                o.client?.name?.toLowerCase().includes(searchQuery.toLowerCase());
+
+            if (!matchesSearch) return false;
+            if (filterStatus === "Tous") return true;
+            return o.status === statusMap[filterStatus as keyof typeof statusMap];
+        }).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    }, [allTodayOrders, searchQuery, filterStatus]);
 
     const getStatusColor = (status: string) => {
         switch (status) {
@@ -287,6 +281,38 @@ export default function CaisseMobile() {
 
                             {['EN_ATTENTE', 'PARTIEL', 'NON_PAYE'].includes(currentOrder.status) && (
                                 <div className="space-y-4 pt-4">
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div className="flex flex-col gap-1.5 p-3 bg-white/5 rounded-2xl border border-white/10">
+                                            <span className="text-[10px] uppercase font-bold text-slate-500">Remise (DZD)</span>
+                                            <input
+                                                className="bg-transparent border-none focus:ring-0 p-0 font-bold text-emerald-500 outline-none w-full text-base"
+                                                type="number"
+                                                placeholder="0"
+                                                value={remise}
+                                                onChange={(e) => setRemise(Number(e.target.value))}
+                                            />
+                                        </div>
+                                        <div className="flex flex-col gap-1.5 p-3 bg-white/5 rounded-2xl border border-white/10">
+                                            <span className="text-[10px] uppercase font-bold text-slate-500">Payé (DZD)</span>
+                                            <input
+                                                className="bg-transparent border-none focus:ring-0 p-0 font-bold text-[#ec5b13] outline-none w-full text-base"
+                                                type="number"
+                                                placeholder="0"
+                                                value={montantRecu}
+                                                onChange={(e) => setMontantRecu(e.target.value)}
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="flex justify-between items-center px-2">
+                                        <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Reste à payer</span>
+                                        <div className="text-right">
+                                            <span className={`text-xl font-black ${(Number(currentOrder.totalAmount) - remise - (montantRecu === "" ? (Number(currentOrder.totalAmount) - remise) : Number(montantRecu))) > 0 ? 'text-red-500' : 'text-[#ec5b13]'}`}>
+                                                {formatCurrency(Math.max(0, Number(currentOrder.totalAmount) - remise - (montantRecu === "" ? (Number(currentOrder.totalAmount) - remise) : Number(montantRecu))), 'DZD')}
+                                            </span>
+                                        </div>
+                                    </div>
+
                                     <div className="flex gap-2">
                                         <Button
                                             size="sm"

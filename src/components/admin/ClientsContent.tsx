@@ -40,7 +40,7 @@ import WhatsAppHistoryModal from "@/components/admin/modals/WhatsAppHistoryModal
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
 import { toast } from "react-hot-toast";
-import { formatCurrency, formatWhatsApp } from "@/lib/formatters";
+import { formatCurrency, formatWhatsApp, formatPhoneNatural } from "@/lib/formatters";
 
 interface ClientOrder {
     id: number;
@@ -337,7 +337,7 @@ export default function ClientsContent({ initialStats, initialClients }: Clients
                                                 </div>
                                                 <div className="flex flex-col min-w-0">
                                                     <span className="text-slate-900 dark:text-white font-semibold truncate">{client.nomComplet}</span>
-                                                    <span className="text-slate-500 text-xs truncate">{formatWhatsApp(client.telephone)}</span>
+                                                    <span className="text-slate-500 text-xs truncate">{formatPhoneNatural(client.telephone)}</span>
                                                 </div>
                                             </div>
                                         </td>

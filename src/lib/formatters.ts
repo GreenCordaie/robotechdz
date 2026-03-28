@@ -39,12 +39,45 @@ export function formatDate(date: Date | string) {
 
 export function formatWhatsApp(phone: string | null) {
     if (!phone) return "";
+
+    // If it's a known LID or contains @lid, we treat it as an ID
+    if (phone.includes('@lid')) {
+        return `ID: ${phone.split('@')[0]}`;
+    }
+
+    // Clean: remove everything that's not a digit
     let cleaned = phone.replace(/\D/g, '');
+
+    // LID-stripped numeric strings are usually very long (14-16 digits)
+    // Real phone numbers with 213 prefix are 12 digits.
+    if (cleaned.length > 13) {
+        return `ID: ${cleaned}`;
+    }
+
+    // If it starts with 0 (local Algerian format), replace with 213
     if (cleaned.startsWith('0')) {
         cleaned = '213' + cleaned.substring(1);
-    } else if (cleaned.length === 9) {
+    }
+    // If it's 9 digits, it's missing the prefix
+    else if (cleaned.length === 9) {
         cleaned = '213' + cleaned;
     }
-    // If it already starts with 213, keep it as is (after cleanup)
+
     return `+${cleaned}`;
+}
+
+/**
+ * Converts a WhatsApp number (213...) back to local natural format (0...) 
+ * if it matches the Algerian pattern.
+ */
+export function formatPhoneNatural(phone: string | null) {
+    if (!phone) return "";
+    let cleaned = phone.replace(/\D/g, '');
+    if (cleaned.startsWith('213') && cleaned.length === 12) {
+        return '0' + cleaned.substring(3);
+    }
+    if (cleaned.length === 9) {
+        return '0' + cleaned;
+    }
+    return phone;
 }

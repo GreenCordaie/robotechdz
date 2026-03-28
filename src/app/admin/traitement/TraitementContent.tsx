@@ -126,7 +126,8 @@ export default function TraitementContent({ initialOrders = [], initialFinished 
                 toast.error("Erreur de sécurité : " + res.error);
                 setOrders([]);
             } else {
-                setOrders(Array.isArray(res) ? res : []);
+                const newData = Array.isArray(res) ? res : [];
+                setOrders(newData);
             }
         } catch (error) {
             console.error("Load failed:", error);
@@ -134,7 +135,7 @@ export default function TraitementContent({ initialOrders = [], initialFinished 
         } finally {
             setIsLoading(false);
         }
-    }, [view, orders.length]);
+    }, [view]); // Removed orders.length to stabilize reference
 
     // Initial state sync when view changes
     useEffect(() => {
@@ -144,48 +145,49 @@ export default function TraitementContent({ initialOrders = [], initialFinished 
 
     useEffect(() => {
         const interval = setInterval(async () => {
-            const res: any = view === "pending" ? await getPaidOrders({}) : await getFinishedOrders({});
-            const data = Array.isArray(res) ? res : [];
+            try {
+                const res: any = view === "pending" ? await getPaidOrders({}) : await getFinishedOrders({});
+                const data = Array.isArray(res) ? res : [];
 
-            // Visual Notification for New Arrivals
-            if (view === "pending") {
-                const currentIds = new Set(data.map((o: any) => o.id));
-                const newOrders = data.filter((o: any) => !prevOrderIds.current.has(o.id));
+                if (view === "pending") {
+                    const currentIds = new Set(data.map((o: any) => o.id));
+                    const newOrders = data.filter((o: any) => !prevOrderIds.current.has(o.id));
 
-                if (newOrders.length > 0 && prevOrderIds.current.size > 0) {
-                    newOrders.forEach((o: any) => {
-                        toast.success(`NOUVELLE COMMANDE : ${o.orderNumber}`, {
-                            icon: '🛎️',
-                            duration: 8000,
-                            style: {
-                                borderRadius: '12px',
-                                background: '#ec5b13',
-                                color: '#fff',
-                                fontWeight: 'black',
-                                fontSize: '14px'
-                            }
+                    if (newOrders.length > 0 && prevOrderIds.current.size > 0) {
+                        newOrders.forEach((o: any) => {
+                            toast.success(`NOUVELLE COMMANDE : ${o.orderNumber}`, {
+                                icon: '🛎️',
+                                duration: 8000,
+                                style: {
+                                    borderRadius: '12px',
+                                    background: '#ec5b13',
+                                    color: '#fff',
+                                    fontWeight: 'black',
+                                    fontSize: '14px'
+                                }
+                            });
                         });
-                    });
-                }
-                prevOrderIds.current = currentIds;
-            }
+                    }
+                    prevOrderIds.current = currentIds;
 
-            setOrders(data);
-            setIsLoading(false);
-
-            // Auto-Print Logic for Webhook-delivered orders
-            if (view === "pending") {
-                const orderToPrint = data.find((o: any) => o.status === "LIVRE" && !processedIds.current.has(o.id));
-                if (orderToPrint) {
-                    processedIds.current.add(orderToPrint.id);
-                    toast.success(`Impression automatique : ${orderToPrint.orderNumber}`, { icon: '🖨️' });
-                    setOrderForDetail(orderToPrint);
-                    setShouldPrint(true);
+                    // Auto-Print Logic for Webhook-delivered orders
+                    const orderToPrint = data.find((o: any) => o.status === "LIVRE" && !processedIds.current.has(o.id));
+                    if (orderToPrint) {
+                        processedIds.current.add(orderToPrint.id);
+                        toast.success(`Impression automatique : ${orderToPrint.orderNumber}`, { icon: '🖨️' });
+                        setOrderForDetail(orderToPrint);
+                        setShouldPrint(true);
+                    }
                 }
+
+                setOrders(data);
+                setIsLoading(false);
+            } catch (err) {
+                console.error("Polling error:", err);
             }
-        }, 3000);
+        }, 5000); // Increased to 5s for better performance
         return () => clearInterval(interval);
-    }, [view, loadOrders]);
+    }, [view]); // Stable polling
 
     // Consolidated Effect for Auto-Print trigger (Cloud Print Mode)
     useEffect(() => {
@@ -302,9 +304,16 @@ export default function TraitementContent({ initialOrders = [], initialFinished 
         });
     };
 
-    const filteredOrders = orders.filter(o =>
-        o.orderNumber.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    const filteredOrders = React.useMemo(() => {
+        return orders.filter(o => {
+            const val = searchTerm.toLowerCase();
+            return (
+                o.orderNumber.toLowerCase().includes(val) ||
+                o.user?.name?.toLowerCase().includes(val) ||
+                o.client?.name?.toLowerCase().includes(val)
+            );
+        }).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    }, [orders, searchTerm]);
 
     const getTimeAgo = (date: any) => {
         const diffMs = new Date().getTime() - new Date(date).getTime();
@@ -650,8 +659,8 @@ export default function TraitementContent({ initialOrders = [], initialFinished 
                 </div>
             </main>
 
-            {/* Optimized Print Container (Off-screen source for the Iframe printer fallback) */}
-            {(selectedOrder || orderForDetail) && (
+            {/* Optimized Print Container - Only renders items calculation when actually printing or needed */}
+            {shouldPrint && (selectedOrder || orderForDetail) && (
                 <div
                     id="thermal-receipt-source"
                     className="fixed -top-[9999px] -left-[9999px] opacity-0 pointer-events-none text-black bg-white"
@@ -662,8 +671,6 @@ export default function TraitementContent({ initialOrders = [], initialFinished 
                         date={selectedOrder?.createdAt || orderForDetail?.createdAt}
                         items={(selectedOrder || orderForDetail)?.items.map((item: any) => ({
                             ...item,
-                            customData: item.customData,
-                            playerNickname: item.playerNickname,
                             codes: selectedOrder
                                 ? Array.from({ length: item.quantity }, (_, i) => codes[`${item.id}-${i}`]).filter(Boolean)
                                 : item.codes
