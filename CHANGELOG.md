@@ -2,6 +2,13 @@
 
 Toutes les modifications notables de ce projet seront documentées dans ce fichier.
  
+## [8.0.0] - 2026-03-28
+
+### 🛡️ Robustesse & Notifications (Stable Core)
+- **Pattern "N8n + Fallback"** : Implémentation d'une architecture de notification redondante. Si n8n est indisponible, le système bascule automatiquement sur l'API WhatsApp directe pour garantir la livraison.
+- **Versements Dettes** : Les remboursements manuels déclenchent désormais une notification immédiate incluant le montant versé et le **solde actualisé (Reste à payer)**.
+- **Centralisation** : Création de `src/lib/notifications.ts` pour uniformiser les alertes système.
+
 ## [7.3.6] - 2026-03-28
 
 ### 🖨️ Logique d'Impression & WhatsApp

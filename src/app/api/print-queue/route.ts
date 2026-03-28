@@ -325,22 +325,6 @@ export async function PATCH(req: NextRequest) {
             await db.update(clientPayments)
                 .set({ printStatus: status })
                 .where(eq(clientPayments.id, paymentId));
-
-            // Automated WhatsApp trigger on successful print
-            if (status === "printed") {
-                try {
-                    const pay = await db.query.clientPayments.findFirst({
-                        where: eq(clientPayments.id, paymentId),
-                        with: { client: true }
-                    });
-                    if (pay && pay.client) {
-                        console.log(`[Print Queue PATCH] Triggering Auto-WhatsApp for payment ${paymentId}`);
-                        await N8nService.notifyDebtPaymentPrinted(pay, pay.client);
-                    }
-                } catch (waErr: any) {
-                    console.error(`[Print Queue PATCH] Payment WhatsApp trigger failed:`, waErr.message);
-                }
-            }
         }
 
         return NextResponse.json({ success: true });

@@ -16,9 +16,8 @@ export class N8nService {
             const settings = await db.query.shopSettings.findFirst();
 
             // Strip /webhook/... suffix to prevent URL doubling when settings store full path
-            let baseUrl = settings?.n8nWebhookUrl || process.env.N8N_WEBHOOK_URL || "http://localhost:5678";
-            baseUrl = baseUrl.replace(/\/webhook\/.*$/, '');
-            const webhookUrl = `${baseUrl}/webhook/robotech-events-debug`;
+            // Use configured URL from settings/env or fallback to localhost
+            const webhookUrl = settings?.n8nWebhookUrl || process.env.N8N_WEBHOOK_URL || "http://localhost:5678/webhook/robotech-events-debug";
 
             const config = {
                 tg_token: settings?.telegramBotToken,
@@ -31,11 +30,15 @@ export class N8nService {
                 greeting: settings?.chatbotGreeting,
             };
 
+            console.log(`[N8nService] Full Config:`, JSON.stringify(config, null, 2));
             console.log(`[N8nService] Triggering event: ${eventName} at URL: ${webhookUrl}`);
+            const payload = { eventName, config, data };
+            console.log(`[N8nService] Payload Body:`, JSON.stringify(payload, null, 2));
+
             const response = await fetch(webhookUrl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ eventName, config, data }),
+                body: JSON.stringify(payload),
                 signal: AbortSignal.timeout(8_000)
             });
 

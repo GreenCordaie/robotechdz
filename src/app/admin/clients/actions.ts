@@ -7,6 +7,9 @@ import { revalidatePath } from "next/cache";
 import { withAuth } from "@/lib/security";
 import { z } from "zod";
 import { UserRole, ReturnRequest } from "@/lib/constants";
+import { N8nService } from "@/services/n8n.service";
+
+import { triggerDebtPaymentNotification } from "@/lib/notifications";
 
 export const getClientStats = withAuth(
     { roles: [UserRole.ADMIN, UserRole.CAISSIER] },
@@ -125,6 +128,19 @@ export const recordPayment = withAuth(
                     }
                 }
             });
+
+            // Trigger automated WhatsApp notification immediately on validation
+            const latestPay = await db.query.clientPayments.findFirst({
+                where: eq(clientPayments.clientId, data.clientId),
+                orderBy: (p, { desc }) => [desc(p.createdAt)]
+            });
+
+            if (latestPay?.id) {
+                // Background trigger
+                triggerDebtPaymentNotification(latestPay.id).catch(err => {
+                    console.error(`[recordPayment] Background notification failed:`, err);
+                });
+            }
 
             revalidatePath("/admin/clients");
 
