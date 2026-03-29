@@ -150,7 +150,11 @@ export class OrderService {
             (item.codes && item.codes.length > 0) || (item.slots && item.slots.length > 0)
         );
 
-        if (isFullyAuto || hasCodesOrSlots) {
+        // Also fire for WhatsApp delivery on paid/complete orders even if no codes yet
+        const isWhatsAppPaid = (result as any).deliveryMethod === DeliveryMethod.WHATSAPP
+            && (result.status === OrderStatus.PAYE || result.status === OrderStatus.TERMINE);
+
+        if (isFullyAuto || hasCodesOrSlots || isWhatsAppPaid) {
             eventBus.publish(SystemEvent.ORDER_DELIVERED, { orderId: result.id });
         }
 
@@ -260,6 +264,42 @@ export class OrderService {
             }
             throw new Error("Aucun code mappé");
         });
+    }
+
+    /**
+     * Post-payment triggers: fires ORDER_PAID and ORDER_DELIVERED events.
+     * Used by reseller checkout (and any flow that creates an order without calling payOrder).
+     */
+    static async finalizeOrderAfterPayment(orderId: number) {
+        const order = await db.query.orders.findFirst({
+            where: eq(orders.id, orderId),
+            with: {
+                items: {
+                    with: {
+                        codes: true,
+                        slots: { with: { digitalCode: true } },
+                        variant: { with: { product: true } }
+                    }
+                }
+            }
+        });
+
+        if (!order) return;
+
+        const hasManualProducts = (order as any).items?.some((item: any) => item.variant?.product?.isManualDelivery) || false;
+        const isFullyAuto = order.status === OrderStatus.TERMINE || (!hasManualProducts && order.status === OrderStatus.PAYE);
+
+        eventBus.publish(SystemEvent.ORDER_PAID, { orderId: order.id, isFullyAuto });
+
+        const hasCodesOrSlots = (order as any).items?.some((item: any) =>
+            (item.codes && item.codes.length > 0) || (item.slots && item.slots.length > 0)
+        );
+        const isWhatsAppPaid = (order as any).deliveryMethod === DeliveryMethod.WHATSAPP
+            && (order.status === OrderStatus.PAYE || order.status === OrderStatus.TERMINE);
+
+        if (isFullyAuto || hasCodesOrSlots || isWhatsAppPaid) {
+            eventBus.publish(SystemEvent.ORDER_DELIVERED, { orderId: order.id });
+        }
     }
 
     /**

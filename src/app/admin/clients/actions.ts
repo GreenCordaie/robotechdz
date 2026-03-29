@@ -9,8 +9,6 @@ import { z } from "zod";
 import { UserRole, ReturnRequest } from "@/lib/constants";
 import { N8nService } from "@/services/n8n.service";
 
-import { triggerDebtPaymentNotification } from "@/lib/notifications";
-
 export const getClientStats = withAuth(
     { roles: [UserRole.ADMIN, UserRole.CAISSIER] },
     async () => {

@@ -148,7 +148,7 @@ function buildWhatsAppMessage(order: any, shopName: string, appUrl: string, tota
 
 // ─── Main trigger ─────────────────────────────────────────────────────────────
 
-export async function triggerOrderDelivery(orderId: number) {
+export async function triggerOrderDelivery(orderId: number): Promise<{ success: boolean; error?: string; skipped?: boolean }> {
     const order = await db.query.orders.findFirst({
         where: (orders, { eq }) => eq(orders.id, orderId),
         with: {
@@ -165,7 +165,7 @@ export async function triggerOrderDelivery(orderId: number) {
 
     if (!order) {
         console.warn(`[DELIVERY] Order #${orderId} not found`);
-        return;
+        return { success: false, error: 'Order not found' };
     }
 
     const customerPhone = (order as any).customerPhone
@@ -175,52 +175,48 @@ export async function triggerOrderDelivery(orderId: number) {
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:1556';
     const formattedText = formatOrderItemsText((order as any).items);
 
-    // 1. Try n8n first
-    try {
-        const n8nResult = await N8nService.triggerEvent('CUSTOMER_DELIVERY', {
-            orderId: (order as any).id,
-            orderNumber: (order as any).orderNumber,
-            customerPhone,
-            deliveryMethod: (order as any).deliveryMethod,
-            appUrl,
-            items: (order as any).items,
-            formattedItemsText: formattedText
-        });
+    // 1. Direct WAHA (primary) — the app runs on the host and can always reach WAHA at localhost:3001.
+    //    n8n runs in Docker and cannot reliably reach localhost:3001 from inside the container.
+    let wahaResult: { success: boolean; error?: string } = { success: false, skipped: true } as any;
 
-        if (!n8nResult?.error) {
-            console.log(`[DELIVERY] ✅ n8n handled delivery for order #${orderId}`);
-            return;
+    if (customerPhone && (order as any).deliveryMethod === 'WHATSAPP') {
+        try {
+            const settings = await db.query.shopSettings.findFirst();
+            const shopName = settings?.shopName || 'FLEXBOX DIRECT';
+            const totalDebt = parseFloat((order as any).client?.totalDetteDzd || "0");
+            const message = buildWhatsAppMessage(order, shopName, appUrl, totalDebt);
+
+            wahaResult = await sendWhatsAppMessage(customerPhone, message, {
+                whatsappApiUrl: settings?.whatsappApiUrl ?? undefined,
+                whatsappApiKey: settings?.whatsappApiKey ?? undefined,
+                whatsappInstanceName: settings?.whatsappInstanceName ?? undefined,
+            });
+
+            if (wahaResult.success) {
+                console.log(`[DELIVERY] ✅ WhatsApp sent to ${customerPhone} for order #${orderId}`);
+            } else {
+                console.error(`[DELIVERY] ❌ WhatsApp failed: ${wahaResult.error}`);
+            }
+        } catch (err: any) {
+            console.error(`[DELIVERY] ❌ WhatsApp error:`, err.message);
+            wahaResult = { success: false, error: err.message };
         }
-
-        console.warn(`[DELIVERY] n8n failed (${n8nResult?.status || 'error'}), falling back to direct Waha`);
-    } catch (err: any) {
-        console.warn(`[DELIVERY] n8n unreachable, falling back to direct Waha:`, err.message);
+    } else {
+        console.log(`[DELIVERY] deliveryMethod=${(order as any).deliveryMethod}, phone=${customerPhone || 'none'} — skipping WhatsApp`);
+        return { success: true, skipped: true };
     }
 
-    // 2. Fallback: direct Waha
-    if (!customerPhone || (order as any).deliveryMethod !== 'WHATSAPP') {
-        console.log(`[DELIVERY] No phone or non-WhatsApp delivery, skipping fallback`);
-        return;
-    }
+    // 2. Notify n8n in background for other automations (Telegram, CRM, archival…)
+    N8nService.triggerEvent('CUSTOMER_DELIVERY', {
+        orderId: (order as any).id,
+        orderNumber: (order as any).orderNumber,
+        customerPhone,
+        deliveryMethod: (order as any).deliveryMethod,
+        appUrl,
+        formattedItemsText: formattedText
+    }).catch((err: any) => {
+        console.warn(`[DELIVERY] n8n notification failed (non-blocking):`, err.message);
+    });
 
-    try {
-        const settings = await db.query.shopSettings.findFirst();
-        const shopName = settings?.shopName || 'FLEXBOX DIRECT';
-        const totalDebt = parseFloat(order.client?.totalDetteDzd || "0");
-        const message = buildWhatsAppMessage(order, shopName, appUrl, totalDebt);
-
-        const result = await sendWhatsAppMessage(customerPhone, message, {
-            whatsappApiUrl: settings?.whatsappApiUrl ?? undefined,
-            whatsappApiKey: settings?.whatsappApiKey ?? undefined,
-            whatsappInstanceName: settings?.whatsappInstanceName ?? undefined,
-        });
-
-        if (result.success) {
-            console.log(`[DELIVERY] ✅ Waha sent to ${customerPhone} for order #${orderId}`);
-        } else {
-            console.error(`[DELIVERY] ❌ Waha failed: ${result.error}`);
-        }
-    } catch (err: any) {
-        console.error(`[DELIVERY] ❌ Waha error:`, err.message);
-    }
+    return wahaResult;
 }

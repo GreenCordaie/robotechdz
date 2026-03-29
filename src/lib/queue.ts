@@ -34,9 +34,7 @@ export const notificationQueue: Queue = globalAny.notificationQueue ||
         }
     });
 
-if (process.env.NODE_ENV === "development") {
-    globalAny.notificationQueue = notificationQueue;
-}
+globalAny.notificationQueue = notificationQueue;
 
 /**
  * Utility to add a job to the queue

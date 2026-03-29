@@ -1,6 +1,5 @@
 import { eventBus, SystemEvent } from "@/lib/events";
 import { NotificationJobType, addNotificationJob } from "@/lib/queue";
-import { db } from "@/db";
 
 /**
  * Initialize listeners that bridge the internal Event Bus to the persistent Queue.
@@ -17,20 +16,12 @@ export function initNotificationWorker() {
     const eb = eventBus as any;
     console.log(`[Worker] EventBus-to-Queue Bridge initialized (BusID: ${eb.instanceId})`);
 
-    // 1. Debt Payment Recorded (WhatsApp)
-    eventBus.on(SystemEvent.DEBT_PAYMENT_RECORDED, async (data: { paymentId: number; clientId: number }) => {
+    // 1. Debt Payment Recorded (WhatsApp via n8n → fallback direct WAHA)
+    eventBus.on(SystemEvent.DEBT_PAYMENT_RECORDED, async (data: { paymentId: number }) => {
         try {
             console.log(`[Worker] Handling DEBT_PAYMENT_RECORDED: ${data.paymentId}`);
-            const client = await db.query.clients.findFirst({
-                where: (table, { eq }) => eq(table.id, data.clientId)
-            });
-
-            if (client?.telephone) {
-                await addNotificationJob(NotificationJobType.SEND_WHATSAPP, {
-                    phone: client.telephone,
-                    message: `Paiement enregistré: ${data.paymentId}`
-                });
-            }
+            const { triggerDebtPaymentNotification } = await import("@/lib/notifications");
+            await triggerDebtPaymentNotification(data.paymentId);
         } catch (error: any) {
             console.error(`[Worker] Failed to handle DEBT_PAYMENT_RECORDED:`, error.message);
         }
@@ -66,13 +57,6 @@ export function initNotificationWorker() {
     eventBus.on(SystemEvent.ORDER_DELIVERED, async (data: { orderId: number }) => {
         try {
             console.log(`[Worker] Handling ORDER_DELIVERED for order: ${data.orderId} (BusID: ${eb.instanceId})`);
-
-            const settings = await db.query.shopSettings.findFirst();
-            if (!settings?.whatsappApiUrl || !settings?.whatsappInstanceName) {
-                console.warn(`[Worker] WhatsApp settings incomplete. Delivery might fail.`);
-            }
-
-            // Enqueue n8n trigger for delivery
             await addNotificationJob(NotificationJobType.TRIGGER_N8N, {
                 orderId: data.orderId,
                 context: 'DELIVERY'

@@ -14,9 +14,14 @@ export class N8nService {
             const settings = await db.query.shopSettings.findFirst();
             const webhookUrl = settings?.n8nWebhookUrl || process.env.N8N_WEBHOOK_URL || "http://localhost:5678/webhook/flexbox-gateway";
 
+            // n8n runs in Docker — replace localhost with host.docker.internal
+            // so n8n can reach WAHA (also in Docker) via the host bridge
+            const waUrl = (settings?.whatsappApiUrl || 'http://localhost:3001')
+                .replace('localhost', 'host.docker.internal');
+
             const config = {
                 shopTitle: settings?.shopName || "ROBOTECH DZ",
-                wa_url: settings?.whatsappApiUrl,
+                wa_url: waUrl,
                 wa_key: settings?.whatsappApiKey,
                 wa_instance: settings?.whatsappInstanceName || "default",
                 tg_token: settings?.telegramBotToken,
@@ -74,7 +79,13 @@ export class N8nService {
             customerName: order.client?.nomComplet || "Client Kiosque",
             totalAmount: order.totalAmount,
             itemsCount: items?.length || 0,
-            formattedItemsText: items?.map((it: any) => `- ${it.name} (x${it.quantity})`).join('\n') || "",
+            formattedItemsText: items?.map((it: any) => {
+                let line = `- ${it.name} (x${it.quantity})`;
+                if (it.credentials?.length) {
+                    line += '\n' + it.credentials.map((c: any) => `  ${c.label}: ${c.value}`).join('\n');
+                }
+                return line;
+            }).join('\n\n') || "",
             link: `${process.env.NEXT_PUBLIC_APP_URL}/admin/commandes`
         });
     }
@@ -103,5 +114,50 @@ export class N8nService {
      */
     static async notifyTraiteur(order: any) {
         return this.notifyOrderEvent("MANUAL_PROCESSING_REQUIRED", order, order.items || []);
+    }
+
+    /**
+     * Syncs a customer to CRM via n8n
+     */
+    static async syncCustomerToCRM(client: any, trigger: string) {
+        return this.triggerEvent("CRM_SYNC", {
+            clientId: client.id,
+            name: client.nomComplet,
+            phone: client.telephone,
+            trigger
+        });
+    }
+
+    /**
+     * Syncs a supplier to CRM via n8n
+     */
+    static async syncSupplierToCRM(supplier: any, trigger: string) {
+        return this.triggerEvent("CRM_SYNC_SUPPLIER", {
+            supplierId: supplier.id,
+            name: supplier.name,
+            trigger
+        });
+    }
+
+    /**
+     * Syncs a shared account to Notion via n8n
+     */
+    static async syncSharedAccountToNotion(data: {
+        productName: string;
+        email: string;
+        pass: string;
+        variantName: string;
+        slotsCount: number;
+    }) {
+        return this.triggerEvent("NOTION_SYNC_ACCOUNT", data);
+    }
+
+    /**
+     * Triggers the daily expiration scan workflow in n8n
+     */
+    static async runDailyExpirationScan() {
+        return this.triggerEvent("DAILY_EXPIRATION_SCAN", {
+            timestamp: new Date().toISOString()
+        });
     }
 }

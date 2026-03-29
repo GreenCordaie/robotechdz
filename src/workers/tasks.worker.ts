@@ -72,7 +72,12 @@ export function initTasksWorker() {
 
 async function handleWhatsApp(data: { phone: string; message: string }) {
     const { sendWhatsAppMessage } = await import("@/lib/whatsapp");
-    await sendWhatsAppMessage(data.phone, data.message, {}); // Add empty options to satisfy 3rd arg
+    const settings = await db.query.shopSettings.findFirst();
+    await sendWhatsAppMessage(data.phone, data.message, {
+        whatsappApiUrl: settings?.whatsappApiUrl ?? undefined,
+        whatsappApiKey: settings?.whatsappApiKey ?? undefined,
+        whatsappInstanceName: settings?.whatsappInstanceName ?? undefined,
+    });
 }
 
 async function handleTelegram(data: { message: string; roles: string[] }) {
@@ -103,7 +108,7 @@ async function handleN8n(data: { orderId: number; context?: string }) {
         }
     });
 
-    if (!order) return;
+    if (!order) throw new Error(`Order #${data.orderId} not found — job will retry`);
 
     // Prepare items for n8n
     const preparedItems = order.items.map((item: any) => {
@@ -130,7 +135,9 @@ async function handleN8n(data: { orderId: number; context?: string }) {
     if (data.context === 'ARCHIVAL') {
         await N8nService.notifyOrderArchival(order as any);
     } else if (data.context === 'DELIVERY') {
-        await N8nService.notifyOrderEvent("ORDER_DELIVERED", order as any, preparedItems);
+        // Direct WAHA (primary) — same logic as triggerOrderDelivery in delivery.ts
+        const { triggerOrderDelivery } = await import("@/lib/delivery");
+        await triggerOrderDelivery(order.id);
     } else {
         // Default to Order Printed which usually sends the codes as backup
         await N8nService.notifyOrderEvent("ORDER_PRINTED", order as any, preparedItems);

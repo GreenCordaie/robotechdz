@@ -63,7 +63,7 @@ export async function triggerDebtPaymentNotification(paymentId: number) {
             customerName: client.nomComplet,
             amountPaid: String(payment.montantDzd ?? "0"),
             newBalance: String(payment.newBalanceDzd ?? "0"),
-            receiptNumber: payment.receiptNumber
+            receiptNumber: payment.receiptNumber ?? ""
         });
 
         const result = await sendWhatsAppMessage(customerPhone, message, {

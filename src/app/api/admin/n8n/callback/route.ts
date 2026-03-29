@@ -35,7 +35,7 @@ export async function POST(req: Request) {
             if (data?.codes && Array.isArray(data.codes)) {
                 const parsed = z.array(CodeSchema).safeParse(data.codes);
                 if (!parsed.success) return NextResponse.json({ error: "Données invalides" }, { status: 400 });
-                await OrderService.deliverManualCodes(orderId, parsed.data);
+                await OrderService.deliverManualCodes(orderId, parsed.data.map((c: { code: string }) => c.code));
                 return NextResponse.json({ success: true });
             }
         }
