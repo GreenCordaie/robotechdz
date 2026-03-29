@@ -2,6 +2,29 @@
 
 Toutes les modifications notables de ce projet seront documentées dans ce fichier.
 
+## [9.0.1] - 2026-03-30
+
+### ⚡ Performance & Optimisation (Stable)
+Implémentation complète — build OK, zéro régression.
+
+**Phase 1 — Skeletons (13 fichiers créés)**
+- `src/components/admin/PageSkeleton.tsx` : composants réutilisables (`SkeletonBlock`, `SkeletonStat`, `SkeletonRow`, `SkeletonCard`, `SkeletonPageHeader`).
+- Ajout de `loading.tsx` sur toutes les routes : `admin/`, `dashboard`, `analytics`, `catalogue`, `clients`, `commandes`, `support`, `fournisseurs`, `traitement`, `b2b`, `comptes-partages`, `monitoring`, `settings`.
+
+**Phase 2 — Lazy loading (10 fichiers modifiés)**
+- Les 17 modals sont maintenant des chunks séparés, chargés uniquement à l'ouverture : `CommandesContent`, `ClientsContent`, `CatalogueMobile`, `SuppliersContent`, `SuppliersMobile`, `TraitementContent`, `TraitementMobile`, `B2bMobile`, `CaisseContent`, `CaisseMobile`.
+
+**Phase 3 — Incremental Static Regeneration (ISR) (7 pages modifiées)**
+- `dashboard` : revalidate=300 (au lieu de rien)
+- `analytics` : revalidate=300 (au lieu de rien)
+- `catalogue` : revalidate=60 (au lieu de force-dynamic)
+- `clients` : revalidate=60 (au lieu de force-dynamic)
+- `fournisseurs` : revalidate=60 (au lieu de force-dynamic)
+- `b2b` : revalidate=60 (au lieu de force-dynamic)
+- `commandes` : revalidate=120 (au lieu de rien)
+
+**Résultat attendu** : Navigation < 300ms, zéro écran blanc, bundle JS réduit de ~35–40% sur les pages avec modals.
+
 ## [9.0.0] - 2026-03-29
 
 ### 🚀 Release Majeure v9.0.0 (Stable)
