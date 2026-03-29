@@ -353,6 +353,51 @@ export async function POST(req: NextRequest) {
             whatsappInstanceName: settings.whatsappInstanceName ?? undefined
         };
 
+        // ── Auto-Résolution Netflix (Prioritaire) ──────────────────────────────
+        const netflixKeywords = /\b(foyer|household|appareil|code netflix|connexion|activer)\b/i;
+        if (netflixKeywords.test(text)) {
+            try {
+                const { AccountService } = await import("@/services/account.service");
+                const activeData = await AccountService.findActiveSlotByPhone(senderPhone);
+
+                if (activeData && activeData.account.outlookPassword) {
+                    await sendWhatsAppMessage(
+                        senderPhone,
+                        `⏳ Recherche de votre accès Netflix en cours...\nCela prend généralement 1 à 2 minutes. Veuillez patienter.`,
+                        waSettings
+                    );
+
+                    // Fire and forget resolution
+                    (async () => {
+                        try {
+                            const { NetflixResolverService } = await import("@/services/netflix-resolver.service");
+                            const outlookPass = decrypt(activeData.account.outlookPassword!);
+                            const [email] = decrypt(activeData.account.code).split('|').map(s => s.trim());
+
+                            console.log(`[NETFLIX_AUTO] Démarrage résolution pour ${email}`);
+                            const result = await NetflixResolverService.resolve(email, outlookPass);
+
+                            if (result.type === 'CODE') {
+                                await sendWhatsAppMessage(senderPhone, `✅ Voici votre code de vérification Netflix :\n*${result.value}*\n\nBon visionnage ! 🍿`, waSettings);
+                            } else if (result.type === 'LINK') {
+                                await sendWhatsAppMessage(senderPhone, `✅ Voici votre lien de mise à jour Netflix :\n${result.value}\n\n⚠️ Veuillez ouvrir ce lien en utilisant les données mobiles (4G/3G) et non le wifi.`, waSettings);
+                            } else {
+                                await sendWhatsAppMessage(senderPhone, `❌ Aucun email de vérification trouvé ces 15 dernières minutes.\n\nDemandez le code depuis votre TV, puis écrivez de nouveau "foyer" !`, waSettings);
+                            }
+                        } catch (resolverErr) {
+                            console.error('[NETFLIX_AUTO] Erreur:', resolverErr);
+                            await sendWhatsAppMessage(senderPhone, `❌ Une erreur technique est survenue lors de la vérification. L'équipe a été notifiée.`, waSettings);
+                        }
+                    })();
+
+                    await RateLimitService.resetLimit(rlKey);
+                    return NextResponse.json({ success: true, autorealized: true });
+                }
+            } catch (err) {
+                console.error('[NETFLIX_AUTO] Error checking active slot:', err);
+            }
+        }
+
         // ── Cloture de conversation ────────────────────────────────────────────
         const closingKeywords = /^(oui|ok|merci|résolu|reglé|ca marche|ça marche|nickel|parfait|top|c bon|c'est bon|good|done|resolved|thank|شكرا|تمام|واش|بركاتك|مزيان)/i;
         if (closingKeywords.test(text)) {

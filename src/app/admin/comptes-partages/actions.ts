@@ -471,7 +471,7 @@ export const getSharedAccountsHistory = withAuth(
                     }
                 }
             },
-            orderBy: [desc(digitalCodes.updatedAt)],
+            orderBy: [desc(digitalCodes.id)],
             limit: 50
         });
 
@@ -484,5 +484,71 @@ export const getSharedAccountsHistory = withAuth(
                 code: s.code ? (decrypt(s.code) || s.code) : null
             }))
         }));
+    }
+);
+
+export const resolveHouseholdAction = withAuth(
+    {
+        roles: [UserRole.ADMIN],
+        schema: z.object({
+            slotId: z.number()
+        })
+    },
+    async ({ slotId }) => {
+        try {
+            const slot = await db.query.digitalCodeSlots.findFirst({
+                where: eq(digitalCodeSlots.id, slotId),
+                with: {
+                    digitalCode: true,
+                    orderItem: {
+                        with: {
+                            order: {
+                                with: { client: true }
+                            }
+                        }
+                    }
+                }
+            });
+
+            if (!slot) throw new Error("Slot introuvable");
+            if (slot.status !== "VENDU") throw new Error("Le slot n'est pas au statut VENDU");
+            if (!slot.digitalCode?.outlookPassword) throw new Error("Le mot de passe Outlook est manquant pour ce compte");
+            if (!slot.orderItem?.order?.customerPhone) throw new Error("Le client n'a pas de numéro de téléphone associé");
+
+            const phone = slot.orderItem!.order!.customerPhone!.replace(/\D/g, '') + '@c.us';
+
+            const { NetflixResolverService } = await import("@/services/netflix-resolver.service");
+            const outlookPass = decrypt(slot.digitalCode.outlookPassword!) || "";
+            const codeRaw = decrypt(slot.digitalCode.code!) || "";
+            const [email] = codeRaw.split('|').map(s => s.trim());
+
+            const result = await NetflixResolverService.resolve(email, outlookPass);
+
+            if (result.type === 'NOT_FOUND') {
+                return { success: false, error: "Aucun email de vérification trouvé ces 15 dernières minutes" };
+            }
+            if (result.type === 'ERROR') {
+                return { success: false, error: "Erreur technique lors de la connexion IMAP: " + result.error };
+            }
+
+            const { sendWhatsAppMessage } = await import("@/lib/whatsapp");
+            const settings = await db.query.shopSettings.findFirst();
+            const waSettings = {
+                whatsappApiUrl: settings?.whatsappApiUrl ?? undefined,
+                whatsappApiKey: settings?.whatsappApiKey ?? undefined,
+                whatsappInstanceName: settings?.whatsappInstanceName ?? undefined
+            };
+
+            if (result.type === 'CODE') {
+                await sendWhatsAppMessage(phone, `✅ Voici votre code de vérification Netflix :\n*${result.value}*`, waSettings);
+            } else if (result.type === 'LINK') {
+                await sendWhatsAppMessage(phone, `✅ Voici votre lien de mise à jour Netflix :\n${result.value}\n\n⚠️ Veuillez ouvrir ce lien en utilisant les données mobiles et non le wifi.`, waSettings);
+            }
+
+            return { success: true, result };
+
+        } catch (error) {
+            return { success: false, error: (error as Error).message };
+        }
     }
 );

@@ -10,7 +10,8 @@ import {
     getSharingVariants,
     getAvailableVariantsForLinking,
     linkProductToSharing,
-    getSharedAccountsHistory
+    getSharedAccountsHistory,
+    resolveHouseholdAction
 } from "./actions";
 import {
     Users, Mail, LayoutGrid, CheckCircle2, Search, User, Calendar,
@@ -36,6 +37,7 @@ export default function SharedAccountsContent() {
     const [isLoadingHistory, setIsLoadingHistory] = useState(false);
     const [activeProduct, setActiveProduct] = useState<string | null>(null);
     const [searchTerm, setSearchTerm] = useState("");
+    const [resolvingSlotId, setResolvingSlotId] = useState<number | null>(null);
 
     // ── Inline add form (single account) ─────────────────────────────────────
     const [addVariantId, setAddVariantId] = useState("");
@@ -321,6 +323,30 @@ export default function SharedAccountsContent() {
             toast.error("Erreur technique");
         } finally {
             setIsLinking(false);
+        }
+    };
+
+    const handleResolveHousehold = async (slotId: number) => {
+        setResolvingSlotId(slotId);
+        try {
+            const res = await resolveHouseholdAction(slotId);
+            if (res.success) {
+                if (res.result?.type === "VERIFICATION") {
+                    toast.success("Lien de vérification envoyé !");
+                } else if (res.result?.code) {
+                    toast.success(`Code envoyé : ${res.result.code}`);
+                } else if (res.result?.link) {
+                    toast.success("Lien de foyer envoyé !");
+                } else {
+                    toast.success("Action réussie");
+                }
+            } else {
+                toast.error(res.error || "Échec de la résolution");
+            }
+        } catch {
+            toast.error("Erreur serveur lors de la résolution");
+        } finally {
+            setResolvingSlotId(null);
         }
     };
 
@@ -819,6 +845,18 @@ export default function SharedAccountsContent() {
                                                                                     <span className="text-slate-600 shrink-0">
                                                                                         #{slot.orderItem?.order?.orderNumber}
                                                                                     </span>
+                                                                                    {productName.toLowerCase().includes("netflix") && (
+                                                                                        <Button
+                                                                                            size="sm"
+                                                                                            color="primary"
+                                                                                            variant="shadow"
+                                                                                            isLoading={resolvingSlotId === slot.id}
+                                                                                            onClick={() => handleResolveHousehold(slot.id)}
+                                                                                            className="h-6 px-2 text-[9px] font-black uppercase rounded bg-primary/20 hover:bg-primary/40 text-primary border border-primary/20 ml-auto shrink-0"
+                                                                                        >
+                                                                                            {resolvingSlotId === slot.id ? "" : "Résoudre"}
+                                                                                        </Button>
+                                                                                    )}
                                                                                 </div>
                                                                             ) : (
                                                                                 <span className="text-emerald-600 text-[10px]">Disponible</span>
