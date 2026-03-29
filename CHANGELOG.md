@@ -2,6 +2,29 @@
 
 Toutes les modifications notables de ce projet seront documentées dans ce fichier.
 
+## [9.0.2] - 2026-03-30
+
+### 🎨 White-Label Branding (Identité Dynamique)
+Implémentation complète de la personnalisation de la boutique.
+
+**Phase 1 & 2 — Infrastructure Foundations**
+- **Injection CSS Dynamique** : Création de `BrandingInjector.tsx` pour injecter la variable `--primary` à l'exécution (SSR).
+- **Store de Paramètres** : Extension du `useSettingsStore` pour supporter `accentColor`, `logoUrl` et `faviconUrl`.
+- **Refactoring Couleurs** : Remplacement massif (520+ instances) des tokens Tailwind hardcodés `[#ec5b13]` par `[var(--primary)]`.
+
+**Phase 3 & 4 — Interfaces & Kiosk**
+- **Panel Admin** : Validation Regex Hex pour les couleurs et mise à jour live de l'interface lors du changement de thème.
+- **Kiosk White-Label** : Intégration dynamique du logo et du nom de la boutique dans toutes les vues du Kiosk.
+- **Support SVG/Charts** : Adaptation des graphiques Recharts pour utiliser la couleur d'accentuation dynamique.
+
+**Phase 5, 6 & 7 — Communications & Système**
+- **Tickets Thermiques** : Impression dynamique du nom et du logo de l'enseigne configurée.
+- **Notifications WhatsApp** : Personnalisation automatique du nom de la boutique dans tous les messages sortants (Webhooks & Clients).
+- **SEO & Browser Tab** : Favicon et titre de page dynamiques basés sur les réglages de la base de données via `generateMetadata`.
+
+**Phase 8 — Nettoyage Final**
+- Élimination totale des mentions "FLEXBOX" en faveur du nom de boutique personnalisé sur les routes B2B, Reseller et Login.
+
 ## [9.0.1] - 2026-03-30
 
 ### ⚡ Performance & Optimisation (Stable)
