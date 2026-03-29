@@ -2,6 +2,15 @@
 
 Toutes les modifications notables de ce projet seront documentées dans ce fichier.
 
+## [9.0.0] - 2026-03-29
+
+### 🚀 Release Majeure v9.0.0 (Stable)
+- **UI & Clients** : Améliorations majeures de l'interface utilisateur et gestion complète CRUD pour les clients.
+- **Automatisation** : Implémentation des mécanismes d'automatisation (webhook, tunnels).
+- **Achats & Commandes** : Implémentation complète de la gestion des achats.
+- **Base de données** : Nouvelles actions et résolveurs de données.
+- **Stabilisation** : Préparation de la version finale v9.
+
 ## [8.0.1] - 2026-03-28
 
 ### 🛡️ Architecture & Synchronisation (Stable Release)

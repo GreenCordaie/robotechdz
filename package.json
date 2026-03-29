@@ -1,6 +1,6 @@
 {
   "name": "100-pc-ia",
-  "version": "7.9.9",
+  "version": "9.0.0",
   "private": true,
   "scripts": {
     "dev": "next dev -p 1556",
