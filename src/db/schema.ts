@@ -120,6 +120,7 @@ export const digitalCodes = pgTable("digital_codes", {
     id: serial("id").primaryKey(),
     variantId: integer("variant_id").references(() => productVariants.id, { onDelete: "cascade" }).notNull(),
     code: text("code").notNull(),
+    outlookPassword: text("outlook_password"), // Encrypted outlook password
     status: digitalCodeStatusEnum("status").default("DISPONIBLE").notNull(),
     purchasePrice: numeric("purchase_price", { precision: 12, scale: 2 }), // Cost of the account
     purchaseCurrency: text("purchase_currency").default("DZD"),
@@ -127,6 +128,7 @@ export const digitalCodes = pgTable("digital_codes", {
     orderItemId: integer("order_item_id").references(() => orderItems.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at", { mode: 'date' }).defaultNow(),
     expiresAt: timestamp("expires_at", { mode: 'date' }),
+
 }, (table) => {
     return {
         variantIdIdx: index("dc_variant_id_idx").on(table.variantId),
@@ -232,6 +234,8 @@ export const shopSettings = pgTable("shop_settings", {
     vapidPublicKey: text("vapid_public_key"),
     vapidPrivateKey: text("vapid_private_key"),
     stockAlertThreshold: integer("stock_alert_threshold").default(5).notNull(),
+    netflixResolverEmail: text("netflix_resolver_email"),
+    netflixResolverPassword: text("netflix_resolver_password"),
 });
 
 export const whatsappFaqs = pgTable("whatsapp_faqs", {

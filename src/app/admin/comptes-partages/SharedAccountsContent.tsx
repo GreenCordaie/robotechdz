@@ -43,9 +43,11 @@ export default function SharedAccountsContent() {
     const [addVariantId, setAddVariantId] = useState("");
     const [addEmail, setAddEmail] = useState("");
     const [addPassword, setAddPassword] = useState("");
+    const [addOutlookPassword, setAddOutlookPassword] = useState("");
     const [addPurchasePrice, setAddPurchasePrice] = useState("");
     const [addPurchaseCurrency, setAddPurchaseCurrency] = useState("DZD");
     const [addSlotsData, setAddSlotsData] = useState<{ profileName: string; pinCode: string }[]>([]);
+    const [generatedPins, setGeneratedPins] = useState<{ slotIndex: number; pin: string }[]>([]);
     const [isAdding, setIsAdding] = useState(false);
     const lastAddVariantId = React.useRef("");
 
@@ -66,6 +68,7 @@ export default function SharedAccountsContent() {
     const [editVariantId, setEditVariantId] = useState("");
     const [editEmail, setEditEmail] = useState("");
     const [editPassword, setEditPassword] = useState("");
+    const [editOutlookPassword, setEditOutlookPassword] = useState("");
     const [editPurchasePrice, setEditPurchasePrice] = useState("");
     const [editPurchaseCurrency, setEditPurchaseCurrency] = useState("DZD");
     const [editSlotsData, setEditSlotsData] = useState<{ id?: number; profileName: string; pinCode: string }[]>([]);
@@ -101,7 +104,7 @@ export default function SharedAccountsContent() {
     const loadHistory = useCallback(async () => {
         setIsLoadingHistory(true);
         try {
-            const res = await getSharedAccountsHistory();
+            const res = await getSharedAccountsHistory({});
             if (Array.isArray(res)) setHistory(res);
         } catch {
             toast.error("Échec du chargement de l'historique");
@@ -185,6 +188,7 @@ export default function SharedAccountsContent() {
         const parts = account.code.split(" | ");
         setEditEmail(parts[0] || account.code);
         setEditPassword(parts[1] || "");
+        setEditOutlookPassword(""); // Leave blank — user must re-enter to update
         setEditPurchasePrice(account.purchasePrice || "");
         setEditPurchaseCurrency(account.purchaseCurrency || "DZD");
         setEditSlotsData(account.slots.map((s: any) => ({
@@ -221,19 +225,23 @@ export default function SharedAccountsContent() {
         if (!addVariantId) { toast.error("Sélectionnez un produit"); return; }
         if (!addEmail || !addPassword) { toast.error("Email et mot de passe requis"); return; }
         setIsAdding(true);
+        setGeneratedPins([]);
         try {
             const res = await addSharedAccount({
                 variantId: parseInt(addVariantId),
                 email: addEmail,
                 password: addPassword,
+                outlookPassword: addOutlookPassword || undefined,
                 purchasePrice: addPurchasePrice,
                 purchaseCurrency: addPurchaseCurrency,
                 slots: addSlotsData
             });
             if (res.success) {
                 toast.success("Compte ajouté ✓");
+                if (res.generatedPins?.length) setGeneratedPins(res.generatedPins);
                 setAddEmail("");
                 setAddPassword("");
+                setAddOutlookPassword("");
                 setAddPurchasePrice("");
                 setAddSlotsData([]);
                 setAddVariantId("");
@@ -286,6 +294,7 @@ export default function SharedAccountsContent() {
                 id: editingAccount.id,
                 email: editEmail,
                 password: editPassword,
+                outlookPassword: editOutlookPassword || undefined,
                 purchasePrice: editPurchasePrice,
                 purchaseCurrency: editPurchaseCurrency,
                 slots: editSlotsData.map(s => ({ id: s.id!, profileName: s.profileName, pinCode: s.pinCode }))
@@ -329,16 +338,14 @@ export default function SharedAccountsContent() {
     const handleResolveHousehold = async (slotId: number) => {
         setResolvingSlotId(slotId);
         try {
-            const res = await resolveHouseholdAction(slotId);
+            const res = await resolveHouseholdAction({ slotId });
             if (res.success) {
-                if (res.result?.type === "VERIFICATION") {
-                    toast.success("Lien de vérification envoyé !");
-                } else if (res.result?.code) {
-                    toast.success(`Code envoyé : ${res.result.code}`);
-                } else if (res.result?.link) {
-                    toast.success("Lien de foyer envoyé !");
+                if (res.result?.type === "CODE") {
+                    toast.success(`Code envoyé au client ✓`);
+                } else if (res.result?.type === "LINK") {
+                    toast.success("Lien de foyer envoyé au client ✓");
                 } else {
-                    toast.success("Action réussie");
+                    toast.success("Résolution réussie ✓");
                 }
             } else {
                 toast.error(res.error || "Échec de la résolution");
@@ -502,7 +509,7 @@ export default function SharedAccountsContent() {
                                                     />
                                                 </div>
                                                 <div className="space-y-1.5">
-                                                    <label className="text-[10px] text-slate-500 uppercase font-black">Mot de passe</label>
+                                                    <label className="text-[10px] text-slate-500 uppercase font-black">Mot de passe Netflix</label>
                                                     <Input
                                                         placeholder="••••••••"
                                                         value={addPassword}
@@ -511,7 +518,38 @@ export default function SharedAccountsContent() {
                                                         classNames={{ inputWrapper: "bg-[#1a1a1a] border border-white/5 h-12 rounded-xl", input: "text-white font-bold" }}
                                                     />
                                                 </div>
+                                                <div className="space-y-1.5 md:col-span-2">
+                                                    <label className="text-[10px] text-slate-500 uppercase font-black">Mot de passe Outlook <span className="text-slate-600 normal-case font-normal">(optionnel — pour résolution auto)</span></label>
+                                                    <Input
+                                                        placeholder="Mot de passe Outlook du compte email Netflix"
+                                                        value={addOutlookPassword}
+                                                        onValueChange={setAddOutlookPassword}
+                                                        startContent={<Mail size={14} className="text-blue-400/70" />}
+                                                        classNames={{ inputWrapper: "bg-[#1a1a1a] border border-blue-500/20 h-12 rounded-xl", input: "text-white font-bold" }}
+                                                    />
+                                                </div>
                                             </div>
+
+                                            {generatedPins.length > 0 && (
+                                                <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-xl p-4 space-y-3">
+                                                    <p className="text-[10px] font-black text-emerald-400 uppercase flex items-center gap-2">
+                                                        <Key size={12} /> PINs générés automatiquement
+                                                    </p>
+                                                    <div className="grid grid-cols-2 gap-2">
+                                                        {generatedPins.map(({ slotIndex, pin }) => (
+                                                            <div key={slotIndex} className="flex items-center justify-between bg-[#1a1a1a] px-3 py-2 rounded-lg border border-white/5">
+                                                                <span className="text-slate-400 text-[10px] font-bold">Profil {slotIndex + 1}</span>
+                                                                <div className="flex items-center gap-2">
+                                                                    <span className="font-mono font-black text-emerald-400 text-sm">{pin}</span>
+                                                                    <button onClick={() => copyToClipboard(pin)} className="text-slate-500 hover:text-white">
+                                                                        <Copy size={11} />
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
 
                                             <div className="space-y-1.5">
                                                 <label className="text-[10px] text-slate-500 uppercase font-black">Prix d'achat (Total Compte)</label>
@@ -609,12 +647,12 @@ export default function SharedAccountsContent() {
 
                                     <div className="space-y-1.5">
                                         <label className="text-[10px] text-slate-500 font-black uppercase tracking-wider">
-                                            Comptes — format : <span className="text-primary font-mono">email | password</span> (un par ligne)
+                                            Comptes — format : <span className="text-primary font-mono">email | netflix_pass | outlook_pass (optionnel)</span> (un par ligne)
                                         </label>
                                         <div className="flex flex-col md:flex-row gap-3 items-start">
                                             <div className="flex-1 w-full space-y-3">
                                                 <Textarea
-                                                    placeholder={"email1@exemple.com | motdepasse1\nemail2@exemple.com | motdepasse2"}
+                                                    placeholder={"email1@exemple.com | pass_netflix1 | pass_outlook1\nemail2@exemple.com | pass_netflix2"}
                                                     value={quickRawInput}
                                                     onValueChange={setQuickRawInput}
                                                     minRows={3}
@@ -846,16 +884,21 @@ export default function SharedAccountsContent() {
                                                                                         #{slot.orderItem?.order?.orderNumber}
                                                                                     </span>
                                                                                     {productName.toLowerCase().includes("netflix") && (
-                                                                                        <Button
-                                                                                            size="sm"
-                                                                                            color="primary"
-                                                                                            variant="shadow"
-                                                                                            isLoading={resolvingSlotId === slot.id}
-                                                                                            onClick={() => handleResolveHousehold(slot.id)}
-                                                                                            className="h-6 px-2 text-[9px] font-black uppercase rounded bg-primary/20 hover:bg-primary/40 text-primary border border-primary/20 ml-auto shrink-0"
+                                                                                        <Tooltip
+                                                                                            content={account.hasOutlookPassword ? "Résoudre le problème foyer Netflix" : "⚠️ Mot de passe Outlook manquant — cliquer pour configurer"}
+                                                                                            placement="top"
                                                                                         >
-                                                                                            {resolvingSlotId === slot.id ? "" : "Résoudre"}
-                                                                                        </Button>
+                                                                                            <Button
+                                                                                                size="sm"
+                                                                                                color={account.hasOutlookPassword ? "primary" : "warning"}
+                                                                                                variant="shadow"
+                                                                                                isLoading={resolvingSlotId === slot.id}
+                                                                                                onClick={() => account.hasOutlookPassword ? handleResolveHousehold(slot.id) : handleEditClick(account, variant)}
+                                                                                                className={`h-6 px-2 text-[9px] font-black uppercase rounded border ml-auto shrink-0 ${account.hasOutlookPassword ? 'bg-primary/20 hover:bg-primary/40 text-primary border-primary/20' : 'bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-400 border-yellow-500/20'}`}
+                                                                                            >
+                                                                                                {resolvingSlotId === slot.id ? "" : account.hasOutlookPassword ? "🏠 Résoudre" : "⚠️ Config"}
+                                                                                            </Button>
+                                                                                        </Tooltip>
                                                                                     )}
                                                                                 </div>
                                                                             ) : (
@@ -989,10 +1032,22 @@ export default function SharedAccountsContent() {
                                             classNames={{ inputWrapper: "bg-[#1a1a1a] border border-white/5 h-12 rounded-xl", input: "text-white font-bold" }} />
                                     </div>
                                     <div className="space-y-2">
-                                        <label className="text-[10px] text-slate-500 uppercase font-black ml-1">Mot de passe</label>
+                                        <label className="text-[10px] text-slate-500 uppercase font-black ml-1">Mot de passe Netflix</label>
                                         <Input placeholder="••••••••" type="text" value={editPassword} onValueChange={setEditPassword}
                                             startContent={<Key size={14} className="text-primary/70" />}
                                             classNames={{ inputWrapper: "bg-[#1a1a1a] border border-white/5 h-12 rounded-xl", input: "text-white font-bold" }} />
+                                    </div>
+                                    <div className="space-y-2 md:col-span-2">
+                                        <label className="text-[10px] text-slate-500 uppercase font-black ml-1">
+                                            Mot de passe Outlook {editingAccount?.hasOutlookPassword && <span className="text-emerald-400 ml-1">✓ Configuré</span>}
+                                        </label>
+                                        <Input
+                                            placeholder={editingAccount?.hasOutlookPassword ? "Laisser vide pour conserver l'actuel" : "Mot de passe Outlook (optionnel)"}
+                                            value={editOutlookPassword}
+                                            onValueChange={setEditOutlookPassword}
+                                            startContent={<Mail size={14} className="text-blue-400/70" />}
+                                            classNames={{ inputWrapper: "bg-[#1a1a1a] border border-blue-500/20 h-12 rounded-xl", input: "text-white font-bold" }}
+                                        />
                                     </div>
                                     <div className="space-y-2">
                                         <label className="text-[10px] text-slate-500 uppercase font-black ml-1">Prix d'achat</label>

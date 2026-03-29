@@ -1,7 +1,7 @@
 "use server";
 
 import { db } from "@/db";
-import { digitalCodes, productVariants, products, digitalCodeSlots } from "@/db/schema";
+import { digitalCodes, productVariants, products, digitalCodeSlots, auditLogs } from "@/db/schema";
 import { eq, and, sql, desc, exists } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { withAuth } from "@/lib/security";
@@ -38,12 +38,14 @@ export async function getSharedAccountsInventory() {
         }
     });
 
-    // Decrypt codes for admin view
+    // Decrypt codes for admin view — outlookPassword is NEVER exposed (only hasOutlookPassword boolean)
     return results.map(v => ({
         ...v,
         digitalCodes: v.digitalCodes.map(dc => ({
             ...dc,
             code: decrypt(dc.code) || dc.code,
+            outlookPassword: undefined, // never expose
+            hasOutlookPassword: !!dc.outlookPassword,
             slots: dc.slots.map(s => ({
                 ...s,
                 code: s.code ? (decrypt(s.code) || s.code) : null
@@ -71,6 +73,7 @@ export const addSharedAccount = withAuth(
             variantId: z.number(),
             email: z.string().min(1),
             password: z.string().min(1),
+            outlookPassword: z.string().optional(),
             slots: z.array(z.object({
                 profileName: z.string().optional(),
                 pinCode: z.string().optional()
@@ -80,7 +83,7 @@ export const addSharedAccount = withAuth(
             expiresAt: z.string().optional()
         })
     },
-    async ({ variantId, email, password, slots: slotsData, purchasePrice, purchaseCurrency, expiresAt }) => {
+    async ({ variantId, email, password, outlookPassword, slots: slotsData, purchasePrice, purchaseCurrency, expiresAt }) => {
         try {
             const variant = await db.query.productVariants.findFirst({
                 where: eq(productVariants.id, variantId),
@@ -89,13 +92,13 @@ export const addSharedAccount = withAuth(
 
             if (!variant) throw new Error("Variante non trouvée");
 
-            const fullCode = `${email} | ${password}`;
             const totalSlots = variant.totalSlots || 1;
 
-            await AccountService.addSharedAccountInternal({
+            const result = await AccountService.addSharedAccountInternal({
                 variantId,
                 email,
                 password,
+                outlookPassword,
                 purchasePrice,
                 purchaseCurrency,
                 expiresAt,
@@ -112,7 +115,7 @@ export const addSharedAccount = withAuth(
             });
 
             revalidatePath("/admin/comptes-partages");
-            return { success: true };
+            return { success: true, generatedPins: result.generatedPins };
         } catch (error) {
             return { success: false, error: (error as Error).message };
         }
@@ -202,10 +205,13 @@ export const addSharedAccountQuick = withAuth(
 
                     if (!variant) continue;
 
+                    const outlookPassword = parts.length >= 3 ? parts[2] : undefined;
+
                     await AccountService.addSharedAccountInternal({
                         variantId: targetVariantId!,
                         email,
                         password,
+                        outlookPassword,
                         purchasePrice,
                         purchaseCurrency,
                         expiresAt
@@ -293,6 +299,7 @@ export const updateSharedAccount = withAuth(
             id: z.number(),
             email: z.string().min(1),
             password: z.string().min(1),
+            outlookPassword: z.string().optional(),
             slots: z.array(z.object({
                 id: z.number(),
                 profileName: z.string().optional(),
@@ -302,17 +309,22 @@ export const updateSharedAccount = withAuth(
             purchaseCurrency: z.string().optional()
         })
     },
-    async ({ id, email, password, slots: slotsData, purchasePrice, purchaseCurrency }) => {
+    async ({ id, email, password, outlookPassword, slots: slotsData, purchasePrice, purchaseCurrency }) => {
         try {
             const fullCode = `${email} | ${password}`;
 
             await db.transaction(async (tx) => {
+                const updateData: Record<string, any> = {
+                    code: encrypt(fullCode),
+                    purchasePrice: purchasePrice || null,
+                    purchaseCurrency: purchaseCurrency || "DZD"
+                };
+                if (outlookPassword !== undefined) {
+                    updateData.outlookPassword = outlookPassword ? encrypt(outlookPassword) : null;
+                }
+
                 await tx.update(digitalCodes)
-                    .set({
-                        code: encrypt(fullCode),
-                        purchasePrice: purchasePrice || null,
-                        purchaseCurrency: purchaseCurrency || "DZD"
-                    })
+                    .set(updateData)
                     .where(eq(digitalCodes.id, id));
 
                 if (slotsData) {
@@ -489,7 +501,7 @@ export const getSharedAccountsHistory = withAuth(
 
 export const resolveHouseholdAction = withAuth(
     {
-        roles: [UserRole.ADMIN],
+        roles: [UserRole.ADMIN, UserRole.TRAITEUR],
         schema: z.object({
             slotId: z.number()
         })
@@ -513,9 +525,11 @@ export const resolveHouseholdAction = withAuth(
             if (!slot) throw new Error("Slot introuvable");
             if (slot.status !== "VENDU") throw new Error("Le slot n'est pas au statut VENDU");
             if (!slot.digitalCode?.outlookPassword) throw new Error("Le mot de passe Outlook est manquant pour ce compte");
-            if (!slot.orderItem?.order?.customerPhone) throw new Error("Le client n'a pas de numéro de téléphone associé");
 
-            const phone = slot.orderItem!.order!.customerPhone!.replace(/\D/g, '') + '@c.us';
+            const rawPhone = slot.orderItem?.order?.customerPhone || slot.orderItem?.order?.client?.telephone;
+            if (!rawPhone) throw new Error("Le client n'a pas de numéro de téléphone associé");
+
+            const phone = rawPhone.replace(/\D/g, '') + '@c.us';
 
             const { NetflixResolverService } = await import("@/services/netflix-resolver.service");
             const outlookPass = decrypt(slot.digitalCode.outlookPassword!) || "";
@@ -544,6 +558,19 @@ export const resolveHouseholdAction = withAuth(
             } else if (result.type === 'LINK') {
                 await sendWhatsAppMessage(phone, `✅ Voici votre lien de mise à jour Netflix :\n${result.value}\n\n⚠️ Veuillez ouvrir ce lien en utilisant les données mobiles et non le wifi.`, waSettings);
             }
+
+            await db.insert(auditLogs).values({
+                action: 'NETFLIX_RESOLVE_MANUAL',
+                entityType: 'SLOT',
+                entityId: String(slotId),
+                newData: {
+                    type: result.type,
+                    value: result.type === 'CODE' || result.type === 'LINK' ? result.value : null,
+                    attempts: result.attempts,
+                    phone: phone.slice(0, 6) + '****',
+                    trigger: 'ADMIN'
+                }
+            }).catch(() => { });
 
             return { success: true, result };
 

@@ -1,6 +1,6 @@
 import { db } from "@/db";
-import { digitalCodes, digitalCodeSlots, productVariants } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { digitalCodes, digitalCodeSlots, productVariants, clients } from "@/db/schema";
+import { eq, or } from "drizzle-orm";
 import { encrypt, decrypt } from "@/lib/encryption";
 import { orders } from "@/db/schema";
 import { like } from "drizzle-orm";
@@ -24,9 +24,15 @@ export class AccountService {
     static async findActiveSlotByPhone(phone: string) {
         const phoneDigits = phone.replace(/\D/g, '').slice(-9);
 
-        // Fetch recent orders that belong to this phone
+        // Also lookup client by telephone to find orders via clientId
+        const client = await db.query.clients.findFirst({
+            where: like(clients.telephone, `%${phoneDigits}%`)
+        });
+
         const recentOrders = await db.query.orders.findMany({
-            where: like(orders.customerPhone, `%${phoneDigits}%`),
+            where: client
+                ? or(like(orders.customerPhone, `%${phoneDigits}%`), eq(orders.clientId, client.id))
+                : like(orders.customerPhone, `%${phoneDigits}%`),
             with: {
                 items: {
                     with: {
@@ -35,9 +41,7 @@ export class AccountService {
                                 digitalCode: {
                                     with: {
                                         variant: {
-                                            with: {
-                                                product: true
-                                            }
+                                            with: { product: true }
                                         }
                                     }
                                 }
@@ -50,7 +54,6 @@ export class AccountService {
             limit: 10
         });
 
-        // Search for an active Netflix slot assigned
         for (const order of recentOrders) {
             for (const item of order.items || []) {
                 for (const slot of item.slots || []) {

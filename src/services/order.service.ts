@@ -54,9 +54,8 @@ export class OrderService {
                 }
             });
 
-            const hasManualProducts = enrichedOrder?.items.some((item: any) => item.variant?.product?.isManualDelivery) || false;
             const isWhatsApp = enrichedOrder?.deliveryMethod === DeliveryMethod.WHATSAPP;
-            const printStatus = (hasManualProducts || isWhatsApp) ? "idle" : "print_pending";
+            const printStatus = isWhatsApp ? "idle" : "print_pending";
 
             // 5. Update Order Status and Print Status
             await tx.update(orders)
