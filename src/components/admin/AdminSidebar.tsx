@@ -100,9 +100,9 @@ export const AdminSidebar = () => {
     });
 
     return (
-        <aside className="w-64 flex flex-col border-r border-slate-200 dark:border-[#2d2622] h-screen sticky top-0 bg-white dark:bg-[#1a1614] shrink-0 shadow-xl transition-colors">
+        <aside className="w-64 flex flex-col border-r border-slate-200 dark:border-white/5 h-screen sticky top-0 bg-white dark:bg-background-dark shrink-0 shadow-xl transition-colors">
             <div className="p-6 flex items-center gap-3">
-                <div className="size-10 rounded-lg bg-[#ec5b13] flex items-center justify-center text-white shadow-lg shadow-[#ec5b13]/20 overflow-hidden relative">
+                <div className="size-10 rounded-lg bg-[var(--primary)] flex items-center justify-center text-white shadow-lg shadow-[var(--primary)]/20 overflow-hidden relative">
                     {dashboardLogoUrl ? (
                         <Image src={dashboardLogoUrl} alt="Logo" className="object-contain p-1" fill sizes="40px" priority />
                     ) : (
@@ -113,7 +113,7 @@ export const AdminSidebar = () => {
                     <h1 className="text-base font-bold leading-tight text-slate-900 dark:text-white truncate">{shopName}</h1>
                     <div className="flex flex-col gap-0.5 mt-0.5">
                         <div className="flex items-center gap-1.5">
-                            <p className="text-[11px] text-[#ec5b13]/60 font-medium tracking-widest uppercase text-nowrap">Digital SaaS Admin</p>
+                            <p className="text-[11px] text-[var(--primary)]/60 font-medium tracking-widest uppercase text-nowrap">Digital SaaS Admin</p>
                             <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10">
                                 <div className={`size-1.5 rounded-full ${isConnected ? "bg-green-500 animate-pulse" : "bg-slate-400"}`} />
                                 <span className="text-[9px] font-bold text-slate-500 uppercase">{isConnected ? "Live" : "OFF"}</span>
@@ -122,7 +122,7 @@ export const AdminSidebar = () => {
                         <Link
                             href="/kiosk"
                             target="_blank"
-                            className="text-[11px] text-slate-500 hover:text-[#ec5b13] flex items-center gap-1.5 font-bold transition-colors w-fit mt-1.5 px-0.5"
+                            className="text-[11px] text-slate-500 hover:text-[var(--primary)] flex items-center gap-1.5 font-bold transition-colors w-fit mt-1.5 px-0.5"
                         >
                             <Eye className="size-3.5" />
                             Ouvrir le Kiosque
@@ -139,7 +139,7 @@ export const AdminSidebar = () => {
                             key={item.href}
                             href={item.href}
                             className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all group ${isActive
-                                ? "bg-[#ec5b13] text-white shadow-lg shadow-[#ec5b13]/20"
+                                ? "bg-[var(--primary)] text-white shadow-lg shadow-[var(--primary)]/20"
                                 : "text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-white/5 hover:text-slate-900 dark:hover:text-white"
                                 }`}
                         >
@@ -150,7 +150,7 @@ export const AdminSidebar = () => {
                                 {item.name}
                             </span>
                             {(item as any).badge > 0 && (
-                                <span className="bg-[#ec5b13] text-white text-[10px] font-black px-1.5 py-0.5 rounded-full min-w-[20px] text-center shadow-lg border border-white/10 group-hover:scale-110 transition-transform">
+                                <span className="bg-[var(--primary)] text-white text-[10px] font-black px-1.5 py-0.5 rounded-full min-w-[20px] text-center shadow-lg border border-white/10 group-hover:scale-110 transition-transform">
                                     {(item as any).badge}
                                 </span>
                             )}
@@ -159,9 +159,9 @@ export const AdminSidebar = () => {
                 })}
             </nav>
 
-            <div className="p-4 border-t border-slate-200 dark:border-[#2d2622]">
+            <div className="p-4 border-t border-slate-200 dark:border-white/5">
                 <div className="flex items-center gap-3 p-2">
-                    <div className="size-8 rounded-full bg-[#2d2622] flex items-center justify-center overflow-hidden border border-white/10 shrink-0 relative">
+                    <div className="size-8 rounded-full bg-white/5 flex items-center justify-center overflow-hidden border border-white/10 shrink-0 relative">
                         <Image
                             alt="Profile"
                             className="object-cover"
@@ -176,7 +176,7 @@ export const AdminSidebar = () => {
                     </div>
                     <button
                         onClick={handleLogout}
-                        className="text-slate-400 hover:text-[#ec5b13] transition-colors p-1.5 rounded-lg hover:bg-slate-50 dark:hover:bg-white/5 flex items-center justify-center transition-transform active:scale-95"
+                        className="text-slate-400 hover:text-[var(--primary)] transition-colors p-1.5 rounded-lg hover:bg-slate-50 dark:hover:bg-white/5 flex items-center justify-center transition-transform active:scale-95"
                         title="Déconnexion"
                     >
                         <LogOut className="size-5" />

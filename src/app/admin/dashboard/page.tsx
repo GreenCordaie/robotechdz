@@ -1,5 +1,7 @@
 import React from "react";
 import { redirect } from "next/navigation";
+
+export const revalidate = 300;
 import { getCurrentUser } from "@/lib/security";
 import { getAnalyticsOverview, getAnalyticsRankings } from "@/app/admin/analytics/actions";
 import AnalyticsContent from "@/app/admin/analytics/AnalyticsContent";

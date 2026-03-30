@@ -38,10 +38,11 @@ import {
 import { markTransactionAsPaidAction } from "./actions";
 import { useRouter } from "next/navigation";
 import { formatCurrency } from "@/lib/formatters";
-import { AddSupplierModal } from "@/components/admin/modals/AddSupplierModal";
-import { RechargeBalanceModal } from "@/components/admin/modals/RechargeBalanceModal";
-import { PaySupplierModal } from "@/components/admin/modals/PaySupplierModal";
-import { SupplierSettingsModal } from "@/components/admin/modals/SupplierSettingsModal";
+import dynamic from "next/dynamic";
+const AddSupplierModal = dynamic(() => import("@/components/admin/modals/AddSupplierModal").then(m => m.AddSupplierModal), { ssr: false });
+const RechargeBalanceModal = dynamic(() => import("@/components/admin/modals/RechargeBalanceModal").then(m => m.RechargeBalanceModal), { ssr: false });
+const PaySupplierModal = dynamic(() => import("@/components/admin/modals/PaySupplierModal").then(m => m.PaySupplierModal), { ssr: false });
+const SupplierSettingsModal = dynamic(() => import("@/components/admin/modals/SupplierSettingsModal").then(m => m.SupplierSettingsModal), { ssr: false });
 
 interface Supplier {
     id: number;
@@ -220,7 +221,7 @@ export default function SuppliersContent({ initialSuppliers, initialHistory, ini
                     <div className="flex items-center space-x-4">
                         <Button
                             onPress={() => setIsAddModalOpen(true)}
-                            className="bg-[#ec5b13] hover:bg-orange-600 text-white font-bold h-11 px-6 rounded-xl flex items-center transition-all shadow-lg shadow-[#ec5b13]/20"
+                            className="bg-[var(--primary)] hover:bg-orange-600 text-white font-bold h-11 px-6 rounded-xl flex items-center transition-all shadow-lg shadow-[var(--primary)]/20"
                             startContent={<Plus className="w-5 h-5 shrink-0" />}
                         >
                             Ajouter un Fournisseur
@@ -232,20 +233,20 @@ export default function SuppliersContent({ initialSuppliers, initialHistory, ini
                 <div className="flex items-center space-x-8 border-b border-[#262626] mb-8 overflow-x-auto shrink-0">
                     <button
                         onClick={() => setActiveTab("overview")}
-                        className={`pb-4 px-1 text-sm font-bold transition-colors relative whitespace-nowrap flex items-center gap-2 ${activeTab === "overview" ? "text-[#ec5b13]" : "text-slate-400 hover:text-white"}`}
+                        className={`pb-4 px-1 text-sm font-bold transition-colors relative whitespace-nowrap flex items-center gap-2 ${activeTab === "overview" ? "text-[var(--primary)]" : "text-slate-400 hover:text-white"}`}
                     >
                         <LayoutDashboard className="w-4 h-4 shrink-0" />
                         Vue d&apos;ensemble
 
-                        {activeTab === "overview" && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#ec5b13] rounded-full" />}
+                        {activeTab === "overview" && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[var(--primary)] rounded-full" />}
                     </button>
                     <button
                         onClick={() => setActiveTab("history")}
-                        className={`pb-4 px-1 text-sm font-bold transition-colors relative whitespace-nowrap flex items-center gap-2 ${activeTab === "history" ? "text-[#ec5b13]" : "text-slate-400 hover:text-white"}`}
+                        className={`pb-4 px-1 text-sm font-bold transition-colors relative whitespace-nowrap flex items-center gap-2 ${activeTab === "history" ? "text-[var(--primary)]" : "text-slate-400 hover:text-white"}`}
                     >
                         <History className="w-4 h-4 shrink-0" />
                         Journal de Caisse Fournisseurs
-                        {activeTab === "history" && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#ec5b13] rounded-full" />}
+                        {activeTab === "history" && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[var(--primary)] rounded-full" />}
                     </button>
                 </div>
 
@@ -299,15 +300,15 @@ export default function SuppliersContent({ initialSuppliers, initialHistory, ini
                                 </CardBody>
                             </Card>
 
-                            <Card className="bg-[#161616] border border-[#ec5b13]/20 shadow-[0_0_20px_rgba(236,91,19,0.05)] overflow-hidden group">
+                            <Card className="bg-[#161616] border border-[var(--primary)]/20 shadow-[0_0_20px_rgba(236,91,19,0.05)] overflow-hidden group">
                                 <CardBody className="p-6 relative">
                                     <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-                                        <TrendingUp className="w-12 h-12 text-[#ec5b13]" />
+                                        <TrendingUp className="w-12 h-12 text-[var(--primary)]" />
                                     </div>
                                     <div className="text-slate-400 text-[10px] font-black uppercase tracking-[0.2em]">Profit Net Estimé</div>
-                                    <div className="text-2xl font-black mt-2 text-[#ec5b13]">{formatCurrency(stats.netProfit, 'DZD')}</div>
+                                    <div className="text-2xl font-black mt-2 text-[var(--primary)]">{formatCurrency(stats.netProfit, 'DZD')}</div>
                                     <div className="mt-2 flex items-center gap-1">
-                                        <span className="text-[10px] text-[#ec5b13]/50 font-bold uppercase tracking-tight">Marge brute calculée</span>
+                                        <span className="text-[10px] text-[var(--primary)]/50 font-bold uppercase tracking-tight">Marge brute calculée</span>
                                     </div>
                                 </CardBody>
                             </Card>
@@ -316,9 +317,9 @@ export default function SuppliersContent({ initialSuppliers, initialHistory, ini
                         {/* Search and Filters for Grid */}
                         <div className="mb-6 flex justify-end">
                             <div className="relative group w-64">
-                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 w-4 h-4 shrink-0 pointer-events-none group-focus-within:text-[#ec5b13] transition-colors" />
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 w-4 h-4 shrink-0 pointer-events-none group-focus-within:text-[var(--primary)] transition-colors" />
                                 <input
-                                    className="w-full bg-[#161616] border border-[#262626] rounded-xl pl-10 pr-4 py-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-[#ec5b13] transition-all text-white placeholder:text-slate-600"
+                                    className="w-full bg-[#161616] border border-[#262626] rounded-xl pl-10 pr-4 py-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-[var(--primary)] transition-all text-white placeholder:text-slate-600"
                                     placeholder="Rechercher un fournisseur..."
                                     type="text"
                                     value={searchTerm}
@@ -371,7 +372,7 @@ export default function SuppliersContent({ initialSuppliers, initialHistory, ini
                                         <div className="mt-auto p-4 flex space-x-2 border-t border-[#262626] bg-[#262626]/20">
                                             <Button
                                                 onPress={() => handleOpenRecharge(s)}
-                                                className="flex-1 bg-[#262626] hover:bg-[#ec5b13] text-white font-bold rounded-xl text-xs transition-all uppercase tracking-widest"
+                                                className="flex-1 bg-[#262626] hover:bg-[var(--primary)] text-white font-bold rounded-xl text-xs transition-all uppercase tracking-widest"
                                             >
                                                 Recharger
                                             </Button>
@@ -402,9 +403,9 @@ export default function SuppliersContent({ initialSuppliers, initialHistory, ini
                         <div className="bg-[#161616] border border-[#262626] rounded-2xl p-4 mb-6 shadow-sm">
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                                 <div className="relative group">
-                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 w-4 h-4 shrink-0 pointer-events-none group-focus-within:text-[#ec5b13] transition-colors" />
+                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 w-4 h-4 shrink-0 pointer-events-none group-focus-within:text-[var(--primary)] transition-colors" />
                                     <input
-                                        className="w-full bg-[#0a0a0a] border border-[#262626] rounded-xl pl-10 pr-4 py-2 text-sm focus:ring-1 focus:ring-[#ec5b13] focus:border-[#ec5b13] text-white placeholder:text-slate-600 transition-all font-medium"
+                                        className="w-full bg-[#0a0a0a] border border-[#262626] rounded-xl pl-10 pr-4 py-2 text-sm focus:ring-1 focus:ring-[var(--primary)] focus:border-[var(--primary)] text-white placeholder:text-slate-600 transition-all font-medium"
                                         placeholder="Filtrer motif / type..."
                                         type="text"
                                         value={searchHistory}
@@ -413,7 +414,7 @@ export default function SuppliersContent({ initialSuppliers, initialHistory, ini
                                 </div>
                                 <div className="relative">
                                     <select
-                                        className="w-full bg-[#0a0a0a] border border-[#262626] rounded-xl px-4 py-2 text-sm focus:ring-1 focus:ring-[#ec5b13] text-white appearance-none cursor-pointer font-medium"
+                                        className="w-full bg-[#0a0a0a] border border-[#262626] rounded-xl px-4 py-2 text-sm focus:ring-1 focus:ring-[var(--primary)] text-white appearance-none cursor-pointer font-medium"
                                         value={filterSupplier}
                                         onChange={(e) => setFilterSupplier(e.target.value)}
                                     >
@@ -428,7 +429,7 @@ export default function SuppliersContent({ initialSuppliers, initialHistory, ini
                                 </div>
                                 <div className="relative">
                                     <select
-                                        className="w-full bg-[#0a0a0a] border border-[#262626] rounded-xl px-4 py-2 text-sm focus:ring-1 focus:ring-[#ec5b13] text-white appearance-none cursor-pointer font-medium"
+                                        className="w-full bg-[#0a0a0a] border border-[#262626] rounded-xl px-4 py-2 text-sm focus:ring-1 focus:ring-[var(--primary)] text-white appearance-none cursor-pointer font-medium"
                                         value={filterDate}
                                         onChange={(e) => setFilterDate(e.target.value)}
                                     >
@@ -442,7 +443,7 @@ export default function SuppliersContent({ initialSuppliers, initialHistory, ini
                                 </div>
                                 <div className="relative">
                                     <select
-                                        className="w-full bg-[#0a0a0a] border border-[#262626] rounded-xl px-4 py-2 text-sm focus:ring-1 focus:ring-[#ec5b13] text-white appearance-none cursor-pointer font-medium"
+                                        className="w-full bg-[#0a0a0a] border border-[#262626] rounded-xl px-4 py-2 text-sm focus:ring-1 focus:ring-[var(--primary)] text-white appearance-none cursor-pointer font-medium"
                                         value={filterAmount}
                                         onChange={(e) => setFilterAmount(e.target.value)}
                                     >

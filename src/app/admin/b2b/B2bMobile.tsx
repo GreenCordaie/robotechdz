@@ -25,7 +25,8 @@ import {
     getResellersAction,
     deleteResellerAction
 } from "@/app/admin/settings/actions";
-import { AddResellerModal } from "@/components/admin/modals/AddResellerModal";
+import dynamic from "next/dynamic";
+const AddResellerModal = dynamic(() => import("@/components/admin/modals/AddResellerModal").then(m => m.AddResellerModal), { ssr: false });
 import { formatCurrency } from "@/lib/formatters";
 import Link from "next/link";
 

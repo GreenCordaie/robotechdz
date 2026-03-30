@@ -6,7 +6,7 @@ import { getCurrentUser } from "@/lib/security";
 import { redirect } from "next/navigation";
 import { UserRole } from "@/lib/constants";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 60;
 
 export default async function FournisseursPage() {
     const user = await getCurrentUser();

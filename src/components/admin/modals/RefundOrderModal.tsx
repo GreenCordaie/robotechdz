@@ -129,7 +129,7 @@ export default function RefundOrderModal({ isOpen, onClose, onSuccess, order }: 
                         <span className="text-[11px] font-bold uppercase tracking-widest text-slate-500">Articles</span>
                         <button
                             onClick={toggleAll}
-                            className="text-[10px] font-black uppercase text-[#ec5b13] hover:opacity-80 transition-opacity"
+                            className="text-[10px] font-black uppercase text-[var(--primary)] hover:opacity-80 transition-opacity"
                         >
                             {allSelected ? "Tout désélectionner" : "Tout sélectionner"}
                         </button>

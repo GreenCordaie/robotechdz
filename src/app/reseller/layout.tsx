@@ -13,6 +13,7 @@ export default function ResellerLayout({ children }: { children: React.ReactNode
     const [isEnabled, setIsEnabled] = useState<boolean | null>(null);
     const [isMaintenance, setIsMaintenance] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
+    const [shopName, setShopName] = useState("Ma Boutique");
 
     useEffect(() => {
         const checkB2b = async () => {
@@ -20,6 +21,7 @@ export default function ResellerLayout({ children }: { children: React.ReactNode
             if (res.success && res.data) {
                 setIsEnabled(res.data.isB2bEnabled);
                 setIsMaintenance(res.data.isMaintenanceMode);
+                if (res.data.shopName) setShopName(res.data.shopName);
             } else {
                 setIsEnabled(false);
                 setIsMaintenance(false);
@@ -44,9 +46,9 @@ export default function ResellerLayout({ children }: { children: React.ReactNode
         return (
             <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center p-6">
                 <div className="max-w-md w-full text-center space-y-8 animate-in fade-in zoom-in duration-500">
-                    <div className="size-24 rounded-[40px] bg-[#ec5b13]/10 border border-[#ec5b13]/20 flex items-center justify-center mx-auto shadow-2xl relative overflow-hidden group">
-                        <div className="absolute inset-0 bg-[#ec5b13]/5 group-hover:opacity-100 opacity-0 transition-opacity"></div>
-                        <Hammer className="size-12 text-[#ec5b13] relative z-10" />
+                    <div className="size-24 rounded-[40px] bg-[var(--primary)]/10 border border-[var(--primary)]/20 flex items-center justify-center mx-auto shadow-2xl relative overflow-hidden group">
+                        <div className="absolute inset-0 bg-[var(--primary)]/5 group-hover:opacity-100 opacity-0 transition-opacity"></div>
+                        <Hammer className="size-12 text-[var(--primary)] relative z-10" />
                     </div>
                     <div className="space-y-4">
                         <h1 className="text-3xl font-black text-white tracking-tight uppercase">Maintenance en cours</h1>
@@ -70,7 +72,7 @@ export default function ResellerLayout({ children }: { children: React.ReactNode
                     <div className="space-y-4">
                         <h1 className="text-3xl font-black text-white tracking-tight">Accès B2B Restreint</h1>
                         <p className="text-slate-500 font-medium leading-relaxed">
-                            Le portail partenaire est actuellement désactivé. Veuillez contacter l&apos;administrateur de <b>FLEXBOX DIRECT</b> pour plus d&apos;informations.
+                            Le portail partenaire est actuellement désactivé. Veuillez contacter l&apos;administrateur de <b>{shopName}</b> pour plus d&apos;informations.
                         </p>
                     </div>
                     <div className="pt-4">
@@ -78,12 +80,12 @@ export default function ResellerLayout({ children }: { children: React.ReactNode
                             onClick={() => window.location.reload()}
                             className="bg-[#161616] border border-[#262626] text-slate-300 hover:text-white px-8 py-3 rounded-2xl font-bold transition-all flex items-center gap-2 mx-auto active:scale-95"
                         >
-                            <Store className="size-5 text-[#ec5b13]" />
+                            <Store className="size-5 text-[var(--primary)]" />
                             <span>Retour à l&apos;accueil</span>
                         </button>
                     </div>
                     <p className="text-[10px] text-slate-600 font-black uppercase tracking-widest pt-10">
-                        &copy; 2026 FLEXBOX BUSINESS SOLUTION
+                        &copy; {new Date().getFullYear()} {shopName} BUSINESS SOLUTION
                     </p>
                 </div>
             </div>

@@ -76,7 +76,7 @@ export default function OrderTrackingPage() {
         return (
             <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center">
                 <div className="flex flex-col items-center space-y-4">
-                    <div className="w-12 h-12 border-4 border-[#ec5b13] border-t-transparent rounded-full animate-spin"></div>
+                    <div className="w-12 h-12 border-4 border-[var(--primary)] border-t-transparent rounded-full animate-spin"></div>
                     <p className="text-slate-500 font-medium">Recherche de la commande...</p>
                 </div>
             </div>
@@ -92,7 +92,7 @@ export default function OrderTrackingPage() {
                     </div>
                     <h2 className="text-2xl font-bold text-white mb-2">Commande introuvable</h2>
                     <p className="text-slate-500 mb-6">{error}</p>
-                    <Link href="/suivi" className="inline-flex items-center text-[#ec5b13] font-medium hover:text-[#d44f0f]">
+                    <Link href="/suivi" className="inline-flex items-center text-[var(--primary)] font-medium hover:text-[#d44f0f]">
                         <ArrowLeft className="w-4 h-4 mr-2" /> Retour à la recherche
                     </Link>
                 </div>
@@ -118,7 +118,7 @@ export default function OrderTrackingPage() {
             <div className="max-w-3xl mx-auto space-y-6">
                 {/* Header */}
                 <div className="bg-[#161616] rounded-2xl border border-white/5 shadow-xl overflow-hidden">
-                    <div className="px-6 py-6 sm:px-8 sm:py-8 bg-[#ec5b13]">
+                    <div className="px-6 py-6 sm:px-8 sm:py-8 bg-[var(--primary)]">
                         <div className="flex justify-between items-start">
                             <div>
                                 <h1 className="text-3xl font-bold text-white tracking-tight">{order.orderNumber}</h1>
@@ -149,14 +149,14 @@ export default function OrderTrackingPage() {
                         ) : (
                             <div className="relative">
                                 <div className="absolute top-5 left-6 bottom-5 w-0.5 bg-white/10" aria-hidden="true">
-                                    <div className="absolute top-0 left-0 w-full bg-[#ec5b13] transition-all duration-500"
+                                    <div className="absolute top-0 left-0 w-full bg-[var(--primary)] transition-all duration-500"
                                         style={{ height: currentStep === 1 ? '10%' : currentStep === 2 ? '50%' : '100%' }}>
                                     </div>
                                 </div>
 
                                 <ul className="space-y-8 relative">
                                     <li className="flex items-start">
-                                        <div className={`relative w-12 h-12 flex items-center justify-center rounded-full shrink-0 z-10 transition-colors ${currentStep >= 1 ? 'bg-[#ec5b13] text-white' : 'bg-white/5 border border-white/10 text-slate-600'}`}>
+                                        <div className={`relative w-12 h-12 flex items-center justify-center rounded-full shrink-0 z-10 transition-colors ${currentStep >= 1 ? 'bg-[var(--primary)] text-white' : 'bg-white/5 border border-white/10 text-slate-600'}`}>
                                             <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
                                             </svg>
@@ -168,7 +168,7 @@ export default function OrderTrackingPage() {
                                     </li>
 
                                     <li className="flex items-start">
-                                        <div className={`relative w-12 h-12 flex items-center justify-center rounded-full shrink-0 z-10 transition-colors ${currentStep >= 2 ? 'bg-[#ec5b13] text-white shadow-lg shadow-[#ec5b13]/20' : 'bg-white/5 border border-white/10 text-slate-600'}`}>
+                                        <div className={`relative w-12 h-12 flex items-center justify-center rounded-full shrink-0 z-10 transition-colors ${currentStep >= 2 ? 'bg-[var(--primary)] text-white shadow-lg shadow-[var(--primary)]/20' : 'bg-white/5 border border-white/10 text-slate-600'}`}>
                                             <Clock className="w-6 h-6" />
                                         </div>
                                         <div className="ml-4 mt-2">
@@ -203,7 +203,7 @@ export default function OrderTrackingPage() {
                         <div className="p-6">
                             {order.phoneRequired && !order.isPhoneValidated ? (
                                 <div className="bg-white/5 p-6 rounded-xl border border-white/10 text-center max-w-lg mx-auto">
-                                    <div className="w-16 h-16 bg-[#ec5b13]/10 text-[#ec5b13] rounded-full flex items-center justify-center mx-auto mb-4">
+                                    <div className="w-16 h-16 bg-[var(--primary)]/10 text-[var(--primary)] rounded-full flex items-center justify-center mx-auto mb-4">
                                         <Lock className="w-8 h-8" />
                                     </div>
                                     <h4 className="text-xl font-bold text-white mb-2">Sécurité des codes</h4>
@@ -218,7 +218,7 @@ export default function OrderTrackingPage() {
                                             <input
                                                 type="text"
                                                 maxLength={4}
-                                                className="w-24 text-center text-lg tracking-widest font-mono bg-[#1a1a1a] border border-white/10 rounded-xl text-white focus:outline-none focus:border-[#ec5b13]/50 py-3 transition-all"
+                                                className="w-24 text-center text-lg tracking-widest font-mono bg-[#1a1a1a] border border-white/10 rounded-xl text-white focus:outline-none focus:border-[var(--primary)]/50 py-3 transition-all"
                                                 placeholder="XXXX"
                                                 value={phoneDigits}
                                                 onChange={e => setPhoneDigits(e.target.value.replace(/\D/g, ''))}
@@ -230,7 +230,7 @@ export default function OrderTrackingPage() {
                                         <button
                                             type="submit"
                                             disabled={verifyingPhone || phoneDigits.length !== 4}
-                                            className="w-full sm:w-auto mt-4 inline-flex justify-center items-center px-6 py-3 rounded-xl text-sm font-bold text-white bg-[#ec5b13] hover:bg-[#d44f0f] focus:outline-none disabled:opacity-50 transition-colors"
+                                            className="w-full sm:w-auto mt-4 inline-flex justify-center items-center px-6 py-3 rounded-xl text-sm font-bold text-white bg-[var(--primary)] hover:bg-[#d44f0f] focus:outline-none disabled:opacity-50 transition-colors"
                                         >
                                             {verifyingPhone ? 'Vérification...' : (
                                                 <><Unlock className="w-4 h-4 mr-2" /> Débloquer les accès</>
@@ -249,7 +249,7 @@ export default function OrderTrackingPage() {
                                         {order.items.map((item: any, i: number) => (
                                             <div key={i} className="border border-white/10 rounded-xl p-4 bg-white/[0.02] flex flex-col justify-between">
                                                 <div>
-                                                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-[#ec5b13]/10 text-[#ec5b13] mb-2">
+                                                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-[var(--primary)]/10 text-[var(--primary)] mb-2">
                                                         {item.quantity}x
                                                     </span>
                                                     <h4 className="font-bold text-white mb-3">{item.productName}</h4>
@@ -260,7 +260,7 @@ export default function OrderTrackingPage() {
                                                                 <code className="text-sm font-bold text-white break-all">{code}</code>
                                                                 <button
                                                                     onClick={() => copyToClipboard(code)}
-                                                                    className="text-slate-500 hover:text-[#ec5b13] p-2 rounded-lg hover:bg-[#ec5b13]/10 transition-colors"
+                                                                    className="text-slate-500 hover:text-[var(--primary)] p-2 rounded-lg hover:bg-[var(--primary)]/10 transition-colors"
                                                                     aria-label="Copier le code"
                                                                 >
                                                                     <Copy className="w-4 h-4" />
@@ -285,7 +285,7 @@ export default function OrderTrackingPage() {
                                                                     </div>
                                                                     <button
                                                                         onClick={() => copyToClipboard(slot.parentCode)}
-                                                                        className="text-slate-500 hover:text-[#ec5b13] p-2 rounded-lg hover:bg-[#ec5b13]/10 transition-colors self-end"
+                                                                        className="text-slate-500 hover:text-[var(--primary)] p-2 rounded-lg hover:bg-[var(--primary)]/10 transition-colors self-end"
                                                                         aria-label="Copier l'accès"
                                                                     >
                                                                         <Copy className="w-5 h-5" />
@@ -310,7 +310,7 @@ export default function OrderTrackingPage() {
             </div>
 
             <div className="mt-8 text-center">
-                <Link href="/suivi" className="text-sm text-slate-600 hover:text-[#ec5b13] font-medium transition-colors">
+                <Link href="/suivi" className="text-sm text-slate-600 hover:text-[var(--primary)] font-medium transition-colors">
                     Suivre une autre commande
                 </Link>
             </div>

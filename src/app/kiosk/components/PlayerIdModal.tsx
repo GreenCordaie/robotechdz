@@ -51,8 +51,8 @@ export default function PlayerIdModal({
             backdrop="blur"
             hideCloseButton
             classNames={{
-                base: "bg-white/95 backdrop-blur-xl rounded-[24px] shadow-2xl p-0 overflow-hidden border border-white/20",
-                backdrop: "bg-slate-900/40 backdrop-blur-md",
+                base: "bg-white/90 backdrop-blur-2xl rounded-[24px] shadow-2xl p-0 overflow-hidden border border-white/20",
+                backdrop: "bg-slate-900/40 backdrop-blur-xl",
                 body: "p-0"
             }}
         >
@@ -80,7 +80,7 @@ export default function PlayerIdModal({
                                     Veuillez fournir les détails pour la livraison.
                                 </p>
                                 <div className="mt-2 px-2.5 py-0.5 bg-orange-50 rounded-md border border-orange-100/50">
-                                    <p className="text-[#ec5b13] font-black uppercase tracking-widest text-[9px]">{productName}</p>
+                                    <p className="text-[var(--primary)] font-black uppercase tracking-widest text-[9px]">{productName}</p>
                                 </div>
                             </header>
 
@@ -97,7 +97,7 @@ export default function PlayerIdModal({
                                         classNames={{
                                             input: "text-sm h-6 text-black font-black",
                                             label: "text-[10px] font-black text-black uppercase tracking-wider",
-                                            inputWrapper: "h-12 border-2 border-slate-200 bg-white rounded-lg group-data-[focus=true]:border-[#ec5b13] shadow-sm transition-all"
+                                            inputWrapper: "h-12 border-2 border-slate-200 bg-white rounded-lg group-data-[focus=true]:border-[var(--primary)] shadow-sm transition-all"
                                         }}
                                         autoFocus
                                     />
@@ -112,14 +112,14 @@ export default function PlayerIdModal({
                                         classNames={{
                                             input: "text-sm h-6 text-black font-black",
                                             label: "text-[10px] font-black text-black uppercase tracking-wider",
-                                            inputWrapper: "h-12 border-2 border-slate-200 bg-white rounded-lg group-data-[focus=true]:border-[#ec5b13] shadow-sm transition-all"
+                                            inputWrapper: "h-12 border-2 border-slate-200 bg-white rounded-lg group-data-[focus=true]:border-[var(--primary)] shadow-sm transition-all"
                                         }}
                                     />
                                 </div>
 
                                 {/* Visual Alert Box */}
                                 <div className="flex items-start gap-2.5 p-3.5 bg-orange-50/50 rounded-xl border border-orange-100">
-                                    <span className="material-symbols-outlined text-[#ec5b13] !text-lg mt-0.5">warning</span>
+                                    <span className="material-symbols-outlined text-[var(--primary)] !text-lg mt-0.5">warning</span>
                                     <p className="text-[11px] font-black text-black/80 leading-snug">
                                         Vérifiez attentivement vos informations. <br />
                                         Les erreurs de saisie ne sont pas remboursables.
@@ -138,7 +138,7 @@ export default function PlayerIdModal({
                                 </Button>
                                 <Button
                                     size="md"
-                                    className="h-10 rounded-lg bg-[#ec5b13] text-white font-black text-xs shadow-lg active:scale-95 transition-all uppercase tracking-tight"
+                                    className="h-10 rounded-lg bg-[var(--primary)] text-white font-black text-xs shadow-lg active:scale-95 transition-all uppercase tracking-tight"
                                     onPress={handleConfirm}
                                     isDisabled={!playerId.trim()}
                                 >

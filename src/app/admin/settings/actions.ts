@@ -51,7 +51,7 @@ export const saveShopSettingsAction = withAuth(
             showDateTimeOnReceipt: z.boolean().optional(),
             showLogoOnReceipt: z.boolean().optional(),
             showTrackQrOnReceipt: z.boolean().optional(),
-            accentColor: z.string().optional(),
+            accentColor: z.string().regex(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/, "Couleur invalide (format hexadécimal requis)").optional(),
             logoUrl: z.string().nullable().optional(),
             dashboardLogoUrl: z.string().nullable().optional(),
             faviconUrl: z.string().nullable().optional(),
@@ -82,6 +82,8 @@ export const saveShopSettingsAction = withAuth(
             n8nWebhookUrl: z.string().nullable().optional(),
             usdExchangeRate: z.string().optional(),
             stockAlertThreshold: z.number().int().min(1).max(9999).optional(),
+            netflixResolverEmail: z.string().nullable().optional(),
+            netflixResolverPassword: z.string().nullable().optional(),
         })
     },
     async (data, user) => {
@@ -339,12 +341,58 @@ export const createResellerAction = withAuth(
     }
 );
 
+export const testNetflixResolverAction = withAuth(
+    { roles: [UserRole.ADMIN] },
+    async () => {
+        try {
+            const { SystemQueries } = await import("@/services/queries/system.queries");
+            const settings = await SystemQueries.getSettings();
+
+            if (!settings.netflixResolverEmail || !settings.netflixResolverPassword) {
+                return { success: false, error: "Email relais ou mot de passe non configuré." };
+            }
+
+            const { ImapFlow } = await import("imapflow");
+            const host = settings.netflixResolverEmail.endsWith('@gmail.com') ? 'imap.gmail.com' : 'outlook.office365.com';
+
+            const client = new ImapFlow({
+                host,
+                port: 993,
+                secure: true,
+                auth: { user: settings.netflixResolverEmail, pass: settings.netflixResolverPassword },
+                logger: false
+            });
+
+            await client.connect();
+            const lock = await client.getMailboxLock('INBOX');
+            const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+            const SENDERS = ['info@account.netflix.com', 'noreply@mailer.netflix.com', 'noreply@netflix.com'];
+            let netflixCount = 0;
+            for await (const msg of client.fetch({ since }, { envelope: true })) {
+                const from = msg.envelope?.from?.[0]?.address?.toLowerCase();
+                if (from && SENDERS.includes(from)) netflixCount++;
+            }
+            lock.release();
+            await client.logout();
+
+            return {
+                success: true,
+                message: `Connexion ${host} OK. ${netflixCount} email(s) Netflix dans les dernières 24h.`
+            };
+        } catch (error: any) {
+            return { success: false, error: `Erreur IMAP: ${error.message}` };
+        }
+    }
+);
+
 export const testN8nAction = withAuth(
     { roles: [UserRole.ADMIN] },
     async () => {
+        const { SystemQueries } = await import("@/services/queries/system.queries");
+        const settings = await SystemQueries.getPublicSettings();
         const { N8nService } = await import("@/services/n8n.service");
         const success = await N8nService.triggerEvent("INTEGRATION_TEST", {
-            message: "Test depuis l'interface d'administration FLEXBOX DIRECT.",
+            message: `Test depuis l'interface d'administration ${settings.shopName}.`,
             sender: "Admin UI",
         });
 
@@ -397,8 +445,10 @@ export const generateBackupCodesAction = withAuth(
 export const generateMfaSecretAction = withAuth(
     { roles: [UserRole.ADMIN] },
     async (_, user) => {
+        const { SystemQueries } = await import("@/services/queries/system.queries");
+        const settings = await SystemQueries.getPublicSettings();
         const secret = generateSecret();
-        const otpauth = generateURI({ secret, label: user.email, issuer: "FLEXBOX DIRECT" });
+        const otpauth = generateURI({ secret, label: user.email, issuer: settings.shopName });
         return { success: true, data: { secret, otpauth } };
     }
 );

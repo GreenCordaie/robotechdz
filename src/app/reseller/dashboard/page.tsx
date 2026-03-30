@@ -79,7 +79,7 @@ export default function ResellerDashboard() {
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
                 <div>
                     <div className="flex items-center gap-3 mb-2">
-                        <Building2 className="text-[#ec5b13] size-6" />
+                        <Building2 className="text-[var(--primary)] size-6" />
                         <h1 className="text-3xl font-black text-white tracking-tight">Bonjour, {partnerInfo.name}</h1>
                     </div>
                     <p className="text-slate-500 font-medium">Voici l&apos;état de votre compte partenaire aujourd&apos;hui.</p>
@@ -87,7 +87,7 @@ export default function ResellerDashboard() {
                 <div className="flex items-center gap-3">
                     <Link
                         href="/reseller/shop"
-                        className="bg-[#ec5b13] hover:bg-orange-600 text-white px-6 py-3.5 rounded-2xl font-bold text-sm shadow-xl shadow-orange-950/20 transition-all flex items-center gap-2 active:scale-95"
+                        className="bg-[var(--primary)] hover:bg-orange-600 text-white px-6 py-3.5 rounded-2xl font-bold text-sm shadow-xl shadow-orange-950/20 transition-all flex items-center gap-2 active:scale-95"
                     >
                         <Plus className="size-5" />
                         Nouvelle Commande
@@ -117,7 +117,7 @@ export default function ResellerDashboard() {
                             <Percent className="size-20" />
                         </div>
                         <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-4">Remise Partenaire</p>
-                        <h3 className="text-3xl font-black text-[#ec5b13] mb-2">{partnerInfo.discount}%</h3>
+                        <h3 className="text-3xl font-black text-[var(--primary)] mb-2">{partnerInfo.discount}%</h3>
                         <div className="flex items-center gap-1.5 text-slate-500 text-xs font-bold">
                             <span>Niveau SILVER</span>
                         </div>
@@ -158,17 +158,17 @@ export default function ResellerDashboard() {
                 <div className="lg:col-span-2 space-y-6">
                     <div className="flex items-center justify-between">
                         <h2 className="text-xl font-black text-white tracking-tight flex items-center gap-3">
-                            <History className="size-6 text-[#ec5b13]" />
+                            <History className="size-6 text-[var(--primary)]" />
                             Commandes Récentes
                         </h2>
-                        <Link href="/reseller/orders" className="text-xs font-black text-[#ec5b13] uppercase tracking-widest hover:underline">
+                        <Link href="/reseller/orders" className="text-xs font-black text-[var(--primary)] uppercase tracking-widest hover:underline">
                             Voir tout
                         </Link>
                     </div>
 
                     <div className="space-y-4">
                         {recentOrders.map((order) => (
-                            <div key={order.id} className="bg-[#161616] border border-[#262626] rounded-2xl p-5 flex items-center justify-between group hover:border-[#ec5b13]/30 transition-all">
+                            <div key={order.id} className="bg-[#161616] border border-[#262626] rounded-2xl p-5 flex items-center justify-between group hover:border-[var(--primary)]/30 transition-all">
                                 <div className="flex items-center gap-5">
                                     <div className={`size-12 rounded-xl flex items-center justify-center border ${order.status === "TERMINE" ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-500" : "bg-orange-500/10 border-orange-500/20 text-orange-500"
                                         }`}>
@@ -197,7 +197,7 @@ export default function ResellerDashboard() {
                 {/* Quick Actions / Tips */}
                 <div className="space-y-8">
                     <div className="bg-[#1a1614] border border-[#2d2622] rounded-[32px] p-8 overflow-hidden relative group">
-                        <div className="absolute -top-10 -right-10 size-40 bg-[#ec5b13]/5 blur-[60px] rounded-full"></div>
+                        <div className="absolute -top-10 -right-10 size-40 bg-[var(--primary)]/5 blur-[60px] rounded-full"></div>
                         <h3 className="text-lg font-black text-white mb-4">Besoin d&apos;aide ?</h3>
                         <p className="text-sm text-slate-400 leading-relaxed mb-8">
                             Votre remise de 5% est appliquée automatiquement sur tous vos achats.
@@ -205,20 +205,20 @@ export default function ResellerDashboard() {
                         </p>
                         <Link
                             href="/reseller/support"
-                            className="flex items-center justify-between p-4 bg-[#0a0a0a] border border-[#262626] rounded-2xl group/btn hover:border-[#ec5b13]/50 transition-all font-bold text-sm text-slate-300"
+                            className="flex items-center justify-between p-4 bg-[#0a0a0a] border border-[#262626] rounded-2xl group/btn hover:border-[var(--primary)]/50 transition-all font-bold text-sm text-slate-300"
                         >
                             <span>Contacter le support</span>
                             <ArrowUpRight className="size-4 group-hover/btn:translate-x-1 group-hover/btn:-translate-y-1 transition-transform" />
                         </Link>
                     </div>
 
-                    <div className="bg-gradient-to-br from-[#ec5b13] to-orange-700 rounded-[32px] p-8 text-white shadow-2xl shadow-orange-950/20">
+                    <div className="bg-gradient-to-br from-[var(--primary)] to-orange-700 rounded-[32px] p-8 text-white shadow-2xl shadow-orange-950/20">
                         <p className="text-[10px] font-black uppercase tracking-[0.3em] opacity-80 mb-2">Promotion</p>
                         <h3 className="text-xl font-black mb-4 leading-tight">Augmentez votre marge bénéficiaire !</h3>
                         <p className="text-sm text-white/80 leading-relaxed mb-6 font-medium">
                             Passez au niveau GOLD en atteignant 200,000 DZD de volume mensuel et bénéficiez de 7% de remise.
                         </p>
-                        <button className="w-full py-3 bg-white text-[#ec5b13] rounded-xl font-black text-sm active:scale-95 transition-all">
+                        <button className="w-full py-3 bg-white text-[var(--primary)] rounded-xl font-black text-sm active:scale-95 transition-all">
                             En savoir plus
                         </button>
                     </div>

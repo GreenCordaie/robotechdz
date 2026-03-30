@@ -1,4 +1,5 @@
 import React from "react";
+export const revalidate = 120;
 import { OrderQueries } from "@/services/queries/order.queries";
 import { CommandesContent } from "./CommandesContent";
 import { redirect } from "next/navigation";

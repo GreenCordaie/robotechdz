@@ -23,7 +23,7 @@ export default function AdminLayout({
     const pathname = usePathname();
     const router = useRouter();
     const [isMounted, setIsMounted] = useState(false);
-    const { shopName, faviconUrl, fetchSettings } = useSettingsStore();
+    const { shopName, faviconUrl, accentColor, fetchSettings } = useSettingsStore();
     const isMobile = useIsMobile();
 
     useEffect(() => {
@@ -46,8 +46,11 @@ export default function AdminLayout({
                 }
                 link.href = faviconUrl;
             }
+
+            // Apply primary color CSS variable
+            document.documentElement.style.setProperty("--primary", accentColor || "#ec5b13");
         }
-    }, [shopName, faviconUrl]);
+    }, [shopName, faviconUrl, accentColor]);
 
     useEffect(() => {
         // Only redirect if fully mounted and we are certain bout session state
@@ -61,7 +64,7 @@ export default function AdminLayout({
     }, [isMounted, isAuthenticated, pathname, router]);
 
     // Prevent hydration flicker
-    if (!isMounted) return <div className="min-h-screen bg-[#0a0a0a]" />;
+    if (!isMounted) return <div className="min-h-screen bg-background-dark" />;
 
     // Login page shouldn't have the sidebar
     if (pathname === "/admin/login") {
@@ -69,11 +72,11 @@ export default function AdminLayout({
     }
 
     return (
-        <div className="flex flex-col md:flex-row bg-black text-white min-h-screen dark overflow-hidden">
+        <div className="flex flex-col md:flex-row bg-background-dark text-white min-h-screen dark overflow-hidden">
             {!isMobile && <AdminSidebar />}
             {isMobile && (
-                <header className="h-14 border-b border-white/5 bg-[#0a0a0a]/80 backdrop-blur-md flex items-center justify-between px-6 shrink-0 z-50">
-                    <div className="font-black text-[#ec5b13] uppercase tracking-tighter text-sm">{shopName}</div>
+                <header className="h-14 border-b border-white/5 bg-background-dark/80 backdrop-blur-md flex items-center justify-between px-6 shrink-0 z-50">
+                    <div className="font-black text-[var(--primary)] uppercase tracking-tighter text-sm">{shopName}</div>
                     <div className="flex items-center gap-4">
                         <div className="hidden sm:flex items-center gap-2">
                             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>

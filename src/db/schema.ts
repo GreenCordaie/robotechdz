@@ -121,6 +121,7 @@ export const digitalCodes = pgTable("digital_codes", {
     variantId: integer("variant_id").references(() => productVariants.id, { onDelete: "cascade" }).notNull(),
     code: text("code").notNull(),
     outlookPassword: text("outlook_password"), // Encrypted outlook password
+    isRelayed: boolean("is_relayed").default(false).notNull(),
     status: digitalCodeStatusEnum("status").default("DISPONIBLE").notNull(),
     purchasePrice: numeric("purchase_price", { precision: 12, scale: 2 }), // Cost of the account
     purchaseCurrency: text("purchase_currency").default("DZD"),

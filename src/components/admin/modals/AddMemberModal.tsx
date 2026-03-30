@@ -154,7 +154,7 @@ export const AddMemberModal = ({ isOpen, onOpenChange }: AddMemberModalProps) =>
                                             {previewUrl ? (
                                                 <Image src={previewUrl} className="object-cover" alt="Avatar" fill sizes="80px" />
                                             ) : (
-                                                <Camera className="w-10 h-10 text-slate-700 group-hover:text-[#ec5b13] transition-colors" />
+                                                <Camera className="w-10 h-10 text-slate-700 group-hover:text-[var(--primary)] transition-colors" />
                                             )}
                                         </div>
                                         <div className="absolute inset-0 bg-black/40 rounded-full opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
@@ -176,7 +176,7 @@ export const AddMemberModal = ({ isOpen, onOpenChange }: AddMemberModalProps) =>
                                     <div className="space-y-2">
                                         <label className="block text-sm font-medium text-slate-400" htmlFor="full_name">Nom complet</label>
                                         <input
-                                            className="w-full bg-[#0a0a0a] border border-[#262626] rounded-xl text-slate-100 placeholder:text-slate-600 focus:ring-[#ec5b13] focus:border-[#ec5b13] transition-all p-3 outline-none"
+                                            className="w-full bg-[#0a0a0a] border border-[#262626] rounded-xl text-slate-100 placeholder:text-slate-600 focus:ring-[var(--primary)] focus:border-[var(--primary)] transition-all p-3 outline-none"
                                             id="full_name"
                                             placeholder="Ex: Amine Caissier"
                                             type="text"
@@ -188,7 +188,7 @@ export const AddMemberModal = ({ isOpen, onOpenChange }: AddMemberModalProps) =>
                                     <div className="space-y-2">
                                         <label className="block text-sm font-medium text-slate-400" htmlFor="email">Adresse Email</label>
                                         <input
-                                            className="w-full bg-[#0a0a0a] border border-[#262626] rounded-xl text-slate-100 placeholder:text-slate-600 focus:ring-[#ec5b13] focus:border-[#ec5b13] transition-all p-3 outline-none"
+                                            className="w-full bg-[#0a0a0a] border border-[#262626] rounded-xl text-slate-100 placeholder:text-slate-600 focus:ring-[var(--primary)] focus:border-[var(--primary)] transition-all p-3 outline-none"
                                             id="email"
                                             placeholder="amine@flexbox-direct.com"
                                             type="email"
@@ -205,7 +205,7 @@ export const AddMemberModal = ({ isOpen, onOpenChange }: AddMemberModalProps) =>
                                         <label className="block text-sm font-medium text-slate-400" htmlFor="password">Mot de passe</label>
                                         <div className="relative">
                                             <input
-                                                className="w-full bg-[#0a0a0a] border border-[#262626] rounded-xl text-slate-100 placeholder:text-slate-600 focus:ring-[#ec5b13] focus:border-[#ec5b13] transition-all pl-10 p-3 outline-none"
+                                                className="w-full bg-[#0a0a0a] border border-[#262626] rounded-xl text-slate-100 placeholder:text-slate-600 focus:ring-[var(--primary)] focus:border-[var(--primary)] transition-all pl-10 p-3 outline-none"
                                                 id="password"
                                                 placeholder="••••••••"
                                                 type="password"
@@ -220,7 +220,7 @@ export const AddMemberModal = ({ isOpen, onOpenChange }: AddMemberModalProps) =>
                                         <label className="block text-sm font-medium text-slate-400" htmlFor="pin_code">Code PIN Rapide (4 chiffres)</label>
                                         <div className="relative">
                                             <input
-                                                className="w-full bg-[#0a0a0a] border border-[#262626] rounded-xl text-slate-100 placeholder:text-slate-600 focus:ring-[#ec5b13] focus:border-[#ec5b13] transition-all pl-10 p-3 outline-none tracking-[0.5em]"
+                                                className="w-full bg-[#0a0a0a] border border-[#262626] rounded-xl text-slate-100 placeholder:text-slate-600 focus:ring-[var(--primary)] focus:border-[var(--primary)] transition-all pl-10 p-3 outline-none tracking-[0.5em]"
                                                 id="pin_code"
                                                 maxLength={4}
                                                 placeholder="0000"
@@ -243,18 +243,18 @@ export const AddMemberModal = ({ isOpen, onOpenChange }: AddMemberModalProps) =>
                                             type="button"
                                             onClick={() => setRole("cashier")}
                                             className={`relative flex flex-col p-4 text-left rounded-xl transition-all group border-2 ${role === "cashier"
-                                                ? "border-[#ec5b13] bg-[#ec5b13]/10"
+                                                ? "border-[var(--primary)] bg-[var(--primary)]/10"
                                                 : "border-[#262626] bg-[#0a0a0a] hover:border-slate-700"
                                                 }`}
                                         >
                                             <div className="flex items-center justify-between mb-3 w-full">
-                                                <div className={`p-2 rounded-lg shrink-0 ${role === "cashier" ? "bg-[#ec5b13]/20 text-[#ec5b13]" : "bg-zinc-800 text-slate-400 group-hover:text-slate-100"
+                                                <div className={`p-2 rounded-lg shrink-0 ${role === "cashier" ? "bg-[var(--primary)]/20 text-[var(--primary)]" : "bg-zinc-800 text-slate-400 group-hover:text-slate-100"
                                                     }`}>
                                                     <Store className="w-6 h-6" />
                                                 </div>
-                                                <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${role === "cashier" ? "border-[#ec5b13]" : "border-slate-700"
+                                                <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${role === "cashier" ? "border-[var(--primary)]" : "border-slate-700"
                                                     }`}>
-                                                    {role === "cashier" && <div className="w-2 h-2 rounded-full bg-[#ec5b13]"></div>}
+                                                    {role === "cashier" && <div className="w-2 h-2 rounded-full bg-[var(--primary)]"></div>}
                                                 </div>
                                             </div>
                                             <span className="text-slate-100 font-bold block">Caissier</span>
@@ -268,18 +268,18 @@ export const AddMemberModal = ({ isOpen, onOpenChange }: AddMemberModalProps) =>
                                             type="button"
                                             onClick={() => setRole("traiteur")}
                                             className={`relative flex flex-col p-4 text-left rounded-xl transition-all group border-2 ${role === "traiteur"
-                                                ? "border-[#ec5b13] bg-[#ec5b13]/10"
+                                                ? "border-[var(--primary)] bg-[var(--primary)]/10"
                                                 : "border-[#262626] bg-[#0a0a0a] hover:border-slate-700"
                                                 }`}
                                         >
                                             <div className="flex items-center justify-between mb-3 w-full">
-                                                <div className={`p-2 rounded-lg shrink-0 ${role === "traiteur" ? "bg-[#ec5b13]/20 text-[#ec5b13]" : "bg-zinc-800 text-slate-400 group-hover:text-slate-100"
+                                                <div className={`p-2 rounded-lg shrink-0 ${role === "traiteur" ? "bg-[var(--primary)]/20 text-[var(--primary)]" : "bg-zinc-800 text-slate-400 group-hover:text-slate-100"
                                                     }`}>
                                                     <Package className="w-6 h-6" />
                                                 </div>
-                                                <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${role === "traiteur" ? "border-[#ec5b13]" : "border-slate-700"
+                                                <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${role === "traiteur" ? "border-[var(--primary)]" : "border-slate-700"
                                                     }`}>
-                                                    {role === "traiteur" && <div className="w-2 h-2 rounded-full bg-[#ec5b13]"></div>}
+                                                    {role === "traiteur" && <div className="w-2 h-2 rounded-full bg-[var(--primary)]"></div>}
                                                 </div>
                                             </div>
                                             <span className="text-slate-100 font-bold block">Traiteur de commande</span>
@@ -293,18 +293,18 @@ export const AddMemberModal = ({ isOpen, onOpenChange }: AddMemberModalProps) =>
                                             type="button"
                                             onClick={() => setRole("admin")}
                                             className={`relative flex flex-col p-4 text-left rounded-xl transition-all group border-2 ${role === "admin"
-                                                ? "border-[#ec5b13] bg-[#ec5b13]/10"
+                                                ? "border-[var(--primary)] bg-[var(--primary)]/10"
                                                 : "border-[#262626] bg-[#0a0a0a] hover:border-slate-700"
                                                 }`}
                                         >
                                             <div className="flex items-center justify-between mb-3 w-full">
-                                                <div className={`p-2 rounded-lg shrink-0 ${role === "admin" ? "bg-[#ec5b13]/20 text-[#ec5b13]" : "bg-zinc-800 text-slate-400 group-hover:text-slate-100"
+                                                <div className={`p-2 rounded-lg shrink-0 ${role === "admin" ? "bg-[var(--primary)]/20 text-[var(--primary)]" : "bg-zinc-800 text-slate-400 group-hover:text-slate-100"
                                                     }`}>
                                                     <ShieldCheck className="w-6 h-6" />
                                                 </div>
-                                                <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${role === "admin" ? "border-[#ec5b13]" : "border-slate-700"
+                                                <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${role === "admin" ? "border-[var(--primary)]" : "border-slate-700"
                                                     }`}>
-                                                    {role === "admin" && <div className="w-2 h-2 rounded-full bg-[#ec5b13]"></div>}
+                                                    {role === "admin" && <div className="w-2 h-2 rounded-full bg-[var(--primary)]"></div>}
                                                 </div>
                                             </div>
                                             <span className="text-slate-100 font-bold block">Administrateur</span>
@@ -324,7 +324,7 @@ export const AddMemberModal = ({ isOpen, onOpenChange }: AddMemberModalProps) =>
                                     Annuler
                                 </Button>
                                 <Button
-                                    className="bg-[#ec5b13] hover:bg-[#ff6d24] text-white px-8 rounded-xl font-bold shadow-lg shadow-orange-900/20 active:scale-95 transition-all"
+                                    className="bg-[var(--primary)] hover:bg-[#ff6d24] text-white px-8 rounded-xl font-bold shadow-lg shadow-orange-900/20 active:scale-95 transition-all"
                                     type="submit"
                                     isLoading={isLoading}
                                     startContent={!isLoading && <UserPlus className="w-5 h-5" />}

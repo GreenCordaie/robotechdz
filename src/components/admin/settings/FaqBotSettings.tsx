@@ -111,7 +111,7 @@ export function FaqBotSettings() {
 
     if (loading) return (
         <div className="flex items-center justify-center h-40">
-            <div className="w-6 h-6 border-2 border-[#ec5b13] border-t-transparent rounded-full animate-spin" />
+            <div className="w-6 h-6 border-2 border-[var(--primary)] border-t-transparent rounded-full animate-spin" />
         </div>
     );
 
@@ -121,7 +121,7 @@ export function FaqBotSettings() {
             <div className="flex items-start justify-between gap-3">
                 <div>
                     <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                        <MessageCircleQuestion size={16} className="text-[#ec5b13]" />
+                        <MessageCircleQuestion size={16} className="text-[var(--primary)]" />
                         Fiches Problèmes & Solutions
                     </h3>
                     <p className="text-xs text-slate-500 mt-0.5">
@@ -150,7 +150,7 @@ export function FaqBotSettings() {
                             className="w-full flex items-center gap-3 px-4 py-3 text-left"
                             onClick={() => setExpandedIdx(expandedIdx === idx ? null : idx)}
                         >
-                            <MessageCircleQuestion size={14} className="text-[#ec5b13] shrink-0" />
+                            <MessageCircleQuestion size={14} className="text-[var(--primary)] shrink-0" />
                             <span className="flex-1 text-xs text-slate-300 truncate">
                                 {faq.question || <span className="text-slate-600 italic">Nouvelle fiche…</span>}
                             </span>
@@ -170,7 +170,7 @@ export function FaqBotSettings() {
                                         value={faq.question}
                                         onChange={e => updateFaq(idx, "question", e.target.value)}
                                         placeholder="ex: code netflix ne fonctionne pas, code invalide"
-                                        className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-[#ec5b13]/50"
+                                        className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-[var(--primary)]/50"
                                     />
                                     <p className="text-[10px] text-slate-600 mt-1">Séparez plusieurs variantes par des virgules. L'IA cherche par mots-clés.</p>
                                 </div>
@@ -183,7 +183,7 @@ export function FaqBotSettings() {
                                         onChange={e => updateFaq(idx, "answer", e.target.value)}
                                         placeholder="Étapes numérotées, conseils..."
                                         rows={5}
-                                        className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-[#ec5b13]/50 resize-none font-mono"
+                                        className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-[var(--primary)]/50 resize-none font-mono"
                                     />
                                 </div>
                                 <button
@@ -220,7 +220,7 @@ export function FaqBotSettings() {
                 <Button
                     onPress={save}
                     isLoading={saving}
-                    className="ml-auto bg-[#ec5b13] text-white text-xs font-bold px-4 rounded-xl"
+                    className="ml-auto bg-[var(--primary)] text-white text-xs font-bold px-4 rounded-xl"
                     size="sm"
                     startContent={!saving ? <Save size={13} /> : undefined}
                 >

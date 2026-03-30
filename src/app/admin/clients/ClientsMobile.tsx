@@ -148,9 +148,9 @@ export default function ClientsMobile({ initialStats, initialClients }: any) {
                         <CheckCircle size={12} className="text-emerald-500" />
                         <span className="text-[10px] font-black text-emerald-500 uppercase">{initialStats.indebtedCount} Actifs</span>
                     </div>
-                    <div className="px-4 py-2 bg-[#ec5b13]/10 border border-[#ec5b13]/20 rounded-2xl flex items-center gap-2 shrink-0">
-                        <TrendingUp size={12} className="text-[#ec5b13]" />
-                        <span className="text-[10px] font-black text-[#ec5b13] uppercase">Récupéré: {formatCurrency(initialStats.recoveredThisMonth, 'DZD')}</span>
+                    <div className="px-4 py-2 bg-[var(--primary)]/10 border border-[var(--primary)]/20 rounded-2xl flex items-center gap-2 shrink-0">
+                        <TrendingUp size={12} className="text-[var(--primary)]" />
+                        <span className="text-[10px] font-black text-[var(--primary)] uppercase">Récupéré: {formatCurrency(initialStats.recoveredThisMonth, 'DZD')}</span>
                     </div>
                 </div>
             </header>

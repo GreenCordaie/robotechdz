@@ -38,7 +38,7 @@ export const MobileNavbar = () => {
     const { user } = useAuthStore();
     const navItems = [
         { name: "Dash", icon: "dashboard", href: "/admin", activeColor: "text-blue-500", roles: ["ADMIN", "CAISSIER"] },
-        { name: "Caisse", icon: "account_balance_wallet", href: "/admin/caisse", badge: pendingOrders, activeColor: "text-[#ec5b13]", roles: ["ADMIN", "CAISSIER"] },
+        { name: "Caisse", icon: "account_balance_wallet", href: "/admin/caisse", badge: pendingOrders, activeColor: "text-[var(--primary)]", roles: ["ADMIN", "CAISSIER"] },
         { name: "Validation", icon: "sync_alt", href: "/admin/traitement", activeColor: "text-emerald-500", roles: ["ADMIN", "CAISSIER", "TRAITEUR"] },
         { name: "Stock", icon: "inventory_2", href: "/admin/catalogue", activeColor: "text-amber-500", roles: ["ADMIN", "CAISSIER", "TRAITEUR"] },
         { name: "Menu", icon: "menu", href: "/admin/settings", activeColor: "text-purple-500", roles: ["ADMIN", "CAISSIER", "TRAITEUR"] },
@@ -71,7 +71,7 @@ export const MobileNavbar = () => {
                                 {item.icon}
                             </span>
                             {item.badge && item.badge > 0 ? (
-                                <span className="absolute -top-1 -right-1.5 bg-[#ec5b13] text-white text-[9px] font-black w-4 h-4 flex items-center justify-center rounded-full border border-white dark:border-black animate-bounce">
+                                <span className="absolute -top-1 -right-1.5 bg-[var(--primary)] text-white text-[9px] font-black w-4 h-4 flex items-center justify-center rounded-full border border-white dark:border-black animate-bounce">
                                     {item.badge}
                                 </span>
                             ) : null}

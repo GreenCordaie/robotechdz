@@ -157,14 +157,14 @@ export default function ProductModal({ isOpen, onClose, product }: ProductModalP
                                             <div
                                                 key={variant.id}
                                                 className={`relative rounded-[20px] p-4 flex flex-col justify-between min-h-[120px] transition-all border-2 ${qty > 0
-                                                    ? 'border-[#ec5b13] bg-orange-50/50 shadow-sm'
+                                                    ? 'border-[var(--primary)] bg-orange-50/50 shadow-sm'
                                                     : 'border-slate-100 bg-white/50 hover:bg-white hover:border-slate-200'
                                                     }`}
                                             >
                                                 <div>
                                                     <div className="flex justify-between items-start mb-1">
-                                                        <p className={`text-base font-black ${qty > 0 ? 'text-[#ec5b13]' : 'text-black'}`}>{variant.name}</p>
-                                                        {qty > 0 && <span className="bg-[#ec5b13] text-white text-[10px] font-black px-2 py-0.5 rounded-full">x{qty}</span>}
+                                                        <p className={`text-base font-black ${qty > 0 ? 'text-[var(--primary)]' : 'text-black'}`}>{variant.name}</p>
+                                                        {qty > 0 && <span className="bg-[var(--primary)] text-white text-[10px] font-black px-2 py-0.5 rounded-full">x{qty}</span>}
                                                     </div>
                                                     <p className={`text-sm font-black ${qty > 0 ? 'text-black' : 'text-black/60'}`}>
                                                         {formatCurrency(variant.salePriceDzd, 'DZD')}
@@ -195,7 +195,7 @@ export default function ProductModal({ isOpen, onClose, product }: ProductModalP
                                                         <span className="text-sm font-black w-4 text-center tabular-nums text-black">{qty}</span>
                                                         <button
                                                             onClick={(e) => { e.stopPropagation(); updateVariantQuantity(variant.id, 1); }}
-                                                            className="size-8 rounded-lg flex items-center justify-center text-[#ec5b13] hover:bg-orange-50 transition-all active:scale-90"
+                                                            className="size-8 rounded-lg flex items-center justify-center text-[var(--primary)] hover:bg-orange-50 transition-all active:scale-90"
                                                         >
                                                             <span className="material-symbols-outlined !text-lg">add</span>
                                                         </button>

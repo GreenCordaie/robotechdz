@@ -158,9 +158,9 @@ export default function ResellerShop() {
             <div className="sticky top-[-32px] z-20 bg-[#0a0a0a]/80 backdrop-blur-xl p-4 -mx-4 rounded-b-[32px] border-b border-[#262626] mb-4">
                 <div className="flex flex-col md:flex-row gap-6 max-w-7xl mx-auto items-center">
                     <div className="relative flex-1 group">
-                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-[#ec5b13] transition-colors" size={20} />
+                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-[var(--primary)] transition-colors" size={20} />
                         <input
-                            className="w-full bg-[#161616] border border-[#262626] rounded-2xl pl-12 pr-4 py-4 text-sm focus:ring-1 focus:ring-[#ec5b13]/50 outline-none text-slate-200 transition-all"
+                            className="w-full bg-[#161616] border border-[#262626] rounded-2xl pl-12 pr-4 py-4 text-sm focus:ring-1 focus:ring-[var(--primary)]/50 outline-none text-slate-200 transition-all"
                             placeholder="Rechercher une carte, un jeu ou un abonnement..."
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
@@ -170,19 +170,19 @@ export default function ResellerShop() {
                     <div className="flex gap-2 bg-[#161616] p-1.5 rounded-2xl border border-[#262626]">
                         <button
                             onClick={() => setSelectedCategory("all")}
-                            className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${selectedCategory === "all" ? "bg-[#ec5b13] text-white shadow-lg shadow-orange-950/20" : "text-slate-500 hover:text-white"}`}
+                            className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${selectedCategory === "all" ? "bg-[var(--primary)] text-white shadow-lg shadow-orange-950/20" : "text-slate-500 hover:text-white"}`}
                         >
                             Tout
                         </button>
                         <button
                             onClick={() => setSelectedCategory("CARTE")}
-                            className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${selectedCategory === "CARTE" ? "bg-[#ec5b13] text-white shadow-lg shadow-orange-950/20" : "text-slate-500 hover:text-white"}`}
+                            className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${selectedCategory === "CARTE" ? "bg-[var(--primary)] text-white shadow-lg shadow-orange-950/20" : "text-slate-500 hover:text-white"}`}
                         >
                             Cartes
                         </button>
                         <button
                             onClick={() => setSelectedCategory("ABONNEMENT")}
-                            className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${selectedCategory === "ABONNEMENT" ? "bg-[#ec5b13] text-white shadow-lg shadow-orange-950/20" : "text-slate-500 hover:text-white"}`}
+                            className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${selectedCategory === "ABONNEMENT" ? "bg-[var(--primary)] text-white shadow-lg shadow-orange-950/20" : "text-slate-500 hover:text-white"}`}
                         >
                             Abonnements
                         </button>
@@ -219,7 +219,7 @@ export default function ResellerShop() {
                             key={product.id}
                             isPressable
                             onClick={() => addToCart(product)}
-                            className="bg-[#161616] border border-[#262626] hover:border-[#ec5b13]/40 transition-all group overflow-visible rounded-[24px]"
+                            className="bg-[#161616] border border-[#262626] hover:border-[var(--primary)]/40 transition-all group overflow-visible rounded-[24px]"
                         >
                             <CardBody className="p-0">
                                 <div className="aspect-[4/3] w-full bg-[#0a0a0a] rounded-t-[23px] relative overflow-hidden flex items-center justify-center">
@@ -256,7 +256,7 @@ export default function ResellerShop() {
                                     </div>
 
                                     <div className="absolute bottom-3 right-3 text-white">
-                                        <div className="size-10 rounded-xl bg-[#ec5b13] flex items-center justify-center shadow-lg shadow-orange-950/40 opacity-0 group-hover:opacity-100 translate-y-4 group-hover:translate-y-0 transition-all duration-300">
+                                        <div className="size-10 rounded-xl bg-[var(--primary)] flex items-center justify-center shadow-lg shadow-orange-950/40 opacity-0 group-hover:opacity-100 translate-y-4 group-hover:translate-y-0 transition-all duration-300">
                                             <Plus size={24} strokeWidth={3} />
                                         </div>
                                     </div>
@@ -264,7 +264,7 @@ export default function ResellerShop() {
 
                                 <div className="p-5 space-y-3">
                                     <div className="min-h-[40px]">
-                                        <h4 className="font-bold text-white text-sm line-clamp-2 leading-snug group-hover:text-[#ec5b13] transition-colors">{product.name}</h4>
+                                        <h4 className="font-bold text-white text-sm line-clamp-2 leading-snug group-hover:text-[var(--primary)] transition-colors">{product.name}</h4>
                                     </div>
 
                                     <div className="flex items-center justify-between">
@@ -304,7 +304,7 @@ export default function ResellerShop() {
                         <>
                             <ModalHeader className="flex flex-col gap-1">
                                 <h2 className="text-2xl font-black text-white tracking-tight flex items-center gap-3">
-                                    <ShoppingCart className="text-[#ec5b13]" />
+                                    <ShoppingCart className="text-[var(--primary)]" />
                                     Récapitulatif de Commande
                                 </h2>
                                 <p className="text-xs text-slate-500 font-bold uppercase tracking-widest">Paiement via Wallet Partenaire</p>
@@ -323,7 +323,7 @@ export default function ResellerShop() {
                                                 </div>
                                                 <div>
                                                     <h4 className="font-bold text-white text-sm line-clamp-1">{item.name}</h4>
-                                                    <p className="text-xs text-[#ec5b13] font-black">{formatCurrency(item.price, 'DZD')} <span className="text-slate-500 font-medium">/ unité</span></p>
+                                                    <p className="text-xs text-[var(--primary)] font-black">{formatCurrency(item.price, 'DZD')} <span className="text-slate-500 font-medium">/ unité</span></p>
                                                 </div>
                                             </div>
 
@@ -366,7 +366,7 @@ export default function ResellerShop() {
                                     <Divider className="bg-[#2d2622]" />
                                     <div className="flex justify-between items-center">
                                         <span className="text-lg font-black text-white">Total à Débiter</span>
-                                        <span className="text-3xl font-black text-[#ec5b13]">{formatCurrency(cartTotal, 'DZD')}</span>
+                                        <span className="text-3xl font-black text-[var(--primary)]">{formatCurrency(cartTotal, 'DZD')}</span>
                                     </div>
                                 </div>
                             </ModalBody>
@@ -381,7 +381,7 @@ export default function ResellerShop() {
                                 <Button
                                     onClick={handleCheckout}
                                     disabled={isCheckingOut}
-                                    className="bg-[#ec5b13] text-white font-black px-10 h-14 rounded-2xl shadow-xl shadow-orange-950/40"
+                                    className="bg-[var(--primary)] text-white font-black px-10 h-14 rounded-2xl shadow-xl shadow-orange-950/40"
                                     endContent={!isCheckingOut && <CreditCard size={20} />}
                                 >
                                     {isCheckingOut ? <Spinner size="sm" color="white" /> : "Confirmer & Payer"}

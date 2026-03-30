@@ -203,7 +203,8 @@ export class OrderService {
         });
 
         if (result?.status === OrderStatus.TERMINE) {
-            await db.update(orders).set({ printStatus: "print_pending" }).where(eq(orders.id, id));
+            const isWhatsApp = (result as any).deliveryMethod === DeliveryMethod.WHATSAPP;
+            await db.update(orders).set({ printStatus: isWhatsApp ? "idle" : "print_pending" }).where(eq(orders.id, id));
             eventBus.publish(SystemEvent.ORDER_PRINTED, { orderId: id });
             eventBus.publish(SystemEvent.ORDER_DELIVERED, { orderId: id });
         }
@@ -246,11 +247,12 @@ export class OrderService {
 
             if (insertedCount > 0) {
                 const nextStatus = order.status === OrderStatus.PAYE ? OrderStatus.TERMINE : order.status;
+                const isWhatsApp = (order as any).deliveryMethod === DeliveryMethod.WHATSAPP;
                 await tx.update(orders)
                     .set({
                         status: nextStatus,
                         isDelivered: true,
-                        printStatus: "print_pending"
+                        printStatus: isWhatsApp ? "idle" : "print_pending"
                     })
                     .where(eq(orders.id, order.id));
 

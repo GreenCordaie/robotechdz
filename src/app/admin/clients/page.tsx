@@ -2,7 +2,7 @@ import { getClientStats, getAllClients } from "./actions";
 import { redirect } from "next/navigation";
 import ClientsViewSwitcher from "./ClientsViewSwitcher";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 60;
 
 export default async function ClientsPage() {
     const stats: any = await getClientStats({});

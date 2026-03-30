@@ -5,6 +5,7 @@ import { Eye, EyeOff, Package, ShieldCheck } from "lucide-react";
 import { useAuthStore } from "@/store/useAuthStore";
 import { useRouter } from "next/navigation";
 import { loginAction, verifyMfaAction } from "./actions";
+import { useSettingsStore } from "@/store/useSettingsStore";
 
 export default function LoginPage() {
     const [email, setEmail] = useState("");
@@ -20,6 +21,7 @@ export default function LoginPage() {
 
     const setUser = useAuthStore((state) => state.setUser);
     const router = useRouter();
+    const { shopName } = useSettingsStore();
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -74,23 +76,23 @@ export default function LoginPage() {
     };
 
     return (
-        <div className="bg-[#0a0a0a] text-slate-100 min-h-screen flex items-center justify-center p-4 selection:bg-[#ec5b13]/30">
+        <div className="bg-[#0a0a0a] text-slate-100 min-h-screen flex items-center justify-center p-4 selection:bg-[var(--primary)]/30">
             {/* BEGIN: Login Container */}
             <main className="w-full max-w-md">
                 {/* BEGIN: Central Card */}
                 <div className="bg-[#161616] border border-[#262626] rounded-[24px] p-8 shadow-2xl shadow-black/50 overflow-hidden relative">
                     {/* Decorative accent */}
-                    <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-[#ec5b13]/50 to-transparent"></div>
+                    <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-[var(--primary)]/50 to-transparent"></div>
 
                     {/* BEGIN: Header Section */}
                     <div className="flex flex-col items-center mb-8">
                         {/* Logo Icon */}
-                        <div className="w-16 h-16 bg-[#ec5b13]/10 rounded-full flex items-center justify-center mb-4 ring-1 ring-[#ec5b13]/20">
-                            <svg className="h-8 w-8 text-[#ec5b13]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <div className="w-16 h-16 bg-[var(--primary)]/10 rounded-full flex items-center justify-center mb-4 ring-1 ring-[var(--primary)]/20">
+                            <svg className="h-8 w-8 text-[var(--primary)]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                                 <path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" strokeLinecap="round" strokeLinejoin="round"></path>
                             </svg>
                         </div>
-                        <h1 className="text-2xl font-bold text-white text-center tracking-tight">Bienvenue sur FLEXBOX</h1>
+                        <h1 className="text-2xl font-bold text-white text-center tracking-tight">Bienvenue sur {shopName}</h1>
                         <p className="text-sm text-slate-400 text-center mt-2 font-medium">Connectez-vous à votre espace administrateur</p>
                     </div>
                     {/* END: Header Section */}
@@ -114,7 +116,7 @@ export default function LoginPage() {
                             <div className="flex flex-col">
                                 <label className="text-sm font-medium text-slate-400 mb-2 ml-1" htmlFor="email">Adresse Email</label>
                                 <input
-                                    className="w-full bg-[#0a0a0a] border-[#262626] rounded-xl p-4 text-white focus:border-[#ec5b13] focus:ring-2 focus:ring-[#ec5b13]/10 transition-all placeholder:text-slate-600 outline-none"
+                                    className="w-full bg-[#0a0a0a] border-[#262626] rounded-xl p-4 text-white focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary)]/10 transition-all placeholder:text-slate-600 outline-none"
                                     id="email"
                                     name="email"
                                     placeholder="admin@flexbox.dz"
@@ -130,7 +132,7 @@ export default function LoginPage() {
                                 <label className="text-sm font-medium text-slate-400 mb-2 ml-1" htmlFor="password">Mot de passe</label>
                                 <div className="relative">
                                     <input
-                                        className="w-full bg-[#0a0a0a] border-[#262626] rounded-xl p-4 text-white focus:border-[#ec5b13] focus:ring-2 focus:ring-[#ec5b13]/10 transition-all placeholder:text-slate-600 pr-12 outline-none"
+                                        className="w-full bg-[#0a0a0a] border-[#262626] rounded-xl p-4 text-white focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary)]/10 transition-all placeholder:text-slate-600 pr-12 outline-none"
                                         id="password"
                                         name="password"
                                         placeholder="••••••••"
@@ -154,7 +156,7 @@ export default function LoginPage() {
                             <div className="flex items-center justify-between mt-2 px-1">
                                 <div className="flex items-center">
                                     <input
-                                        className="h-4 w-4 rounded border-[#262626] bg-[#0a0a0a] text-[#ec5b13] focus:ring-[#ec5b13] focus:ring-offset-0 transition-all cursor-pointer"
+                                        className="h-4 w-4 rounded border-[#262626] bg-[#0a0a0a] text-[var(--primary)] focus:ring-[var(--primary)] focus:ring-offset-0 transition-all cursor-pointer"
                                         id="remember-me"
                                         name="remember-me"
                                         type="checkbox"
@@ -162,7 +164,7 @@ export default function LoginPage() {
                                     <label className="ml-2 block text-sm text-slate-400 cursor-pointer hover:text-slate-300 transition-colors" htmlFor="remember-me">Se souvenir de moi</label>
                                 </div>
                                 <div className="text-sm font-semibold">
-                                    <a className="text-[#ec5b13] hover:text-[#ff742d] transition-colors" href="#">Mot de passe oublié ?</a>
+                                    <a className="text-[var(--primary)] hover:text-[#ff742d] transition-colors" href="#">Mot de passe oublié ?</a>
                                 </div>
                             </div>
 
@@ -170,7 +172,7 @@ export default function LoginPage() {
 
                             {/* Submit Button */}
                             <button
-                                className={`w-full flex justify-center py-4 px-4 border border-transparent rounded-xl shadow-lg text-base font-bold text-white bg-[#ec5b13] hover:bg-[#ff742d] active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-[#161616] focus:ring-[#ec5b13] transition-all duration-200 mt-4 disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100 ${isLoading ? "animate-pulse" : ""}`}
+                                className={`w-full flex justify-center py-4 px-4 border border-transparent rounded-xl shadow-lg text-base font-bold text-white bg-[var(--primary)] hover:bg-[#ff742d] active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-[#161616] focus:ring-[var(--primary)] transition-all duration-200 mt-4 disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100 ${isLoading ? "animate-pulse" : ""}`}
                                 type="submit"
                                 disabled={isLoading}
                             >
@@ -189,7 +191,7 @@ export default function LoginPage() {
 
                             <div className="flex flex-col">
                                 <input
-                                    className="w-full bg-[#0a0a0a] border-[#262626] rounded-xl p-4 text-center font-mono text-2xl tracking-[0.5em] text-[#ec5b13] focus:border-[#ec5b13] focus:ring-2 focus:ring-[#ec5b13]/10 transition-all outline-none"
+                                    className="w-full bg-[#0a0a0a] border-[#262626] rounded-xl p-4 text-center font-mono text-2xl tracking-[0.5em] text-[var(--primary)] focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary)]/10 transition-all outline-none"
                                     type="text"
                                     maxLength={6}
                                     placeholder="000000"
@@ -203,7 +205,7 @@ export default function LoginPage() {
                             {error && <p className="text-red-500 text-xs text-center font-bold">{error}</p>}
 
                             <button
-                                className={`w-full flex justify-center py-4 px-4 border border-transparent rounded-xl shadow-lg text-base font-bold text-white bg-[#ec5b13] hover:bg-[#ff742d] active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-[#161616] focus:ring-[#ec5b13] transition-all duration-200 disabled:opacity-50 ${isLoading ? "animate-pulse" : ""}`}
+                                className={`w-full flex justify-center py-4 px-4 border border-transparent rounded-xl shadow-lg text-base font-bold text-white bg-[var(--primary)] hover:bg-[#ff742d] active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-[#161616] focus:ring-[var(--primary)] transition-all duration-200 disabled:opacity-50 ${isLoading ? "animate-pulse" : ""}`}
                                 type="submit"
                                 disabled={isLoading || mfaCode.length !== 6}
                             >
@@ -225,7 +227,7 @@ export default function LoginPage() {
 
                 {/* Footer Copyright or Additional Links */}
                 <p className="mt-8 text-center text-xs text-slate-500 uppercase tracking-widest font-semibold opacity-70">
-                    © 2024 FLEXBOX Direct — Espace Administrateur
+                    © {new Date().getFullYear()} {shopName} — Espace Administrateur
                 </p>
             </main>
             {/* END: Login Container */}

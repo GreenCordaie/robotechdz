@@ -62,7 +62,7 @@ export default function SupportModal({ isOpen, onClose }: SupportModalProps) {
             size="lg"
             backdrop="blur"
             classNames={{
-                base: "bg-[#111111] border border-[#262626] rounded-[24px] shadow-2xl p-1.5",
+                base: "bg-[#111111]/90 backdrop-blur-2xl border border-[#262626] rounded-[24px] shadow-2xl p-1.5",
                 header: "border-b border-white/5 pb-3",
                 body: "py-4",
                 footer: "border-t border-white/5 pt-3",
@@ -73,8 +73,8 @@ export default function SupportModal({ isOpen, onClose }: SupportModalProps) {
                 {() => (
                     <>
                         <ModalHeader className="flex items-center gap-3">
-                            <div className="w-10 h-10 bg-[#ec5b13]/10 rounded-xl flex items-center justify-center border border-[#ec5b13]/20">
-                                <HelpCircle className="text-[#ec5b13] w-5 h-5" />
+                            <div className="w-10 h-10 bg-[var(--primary)]/10 rounded-xl flex items-center justify-center border border-[var(--primary)]/20">
+                                <HelpCircle className="text-[var(--primary)] w-5 h-5" />
                             </div>
                             <div className="flex flex-col">
                                 <h3 className="text-white text-lg font-black uppercase tracking-tight">Support Client</h3>
@@ -102,7 +102,7 @@ export default function SupportModal({ isOpen, onClose }: SupportModalProps) {
                                             onChange={(e) => setOrderNumber(e.target.value)}
                                             variant="bordered"
                                             classNames={{
-                                                inputWrapper: "h-10 bg-white/5 border-[#262626] group-data-[focus=true]:border-[#ec5b13] rounded-xl transition-all",
+                                                inputWrapper: "h-10 bg-white/5 border-[#262626] group-data-[focus=true]:border-[var(--primary)] rounded-xl transition-all",
                                                 input: "text-white font-black placeholder:text-slate-600 text-sm"
                                             }}
                                         />
@@ -116,7 +116,7 @@ export default function SupportModal({ isOpen, onClose }: SupportModalProps) {
                                             onChange={(e) => setCustomerPhone(e.target.value)}
                                             variant="bordered"
                                             classNames={{
-                                                inputWrapper: "h-10 bg-white/5 border-[#262626] group-data-[focus=true]:border-[#ec5b13] rounded-xl transition-all",
+                                                inputWrapper: "h-10 bg-white/5 border-[#262626] group-data-[focus=true]:border-[var(--primary)] rounded-xl transition-all",
                                                 input: "text-white font-black placeholder:text-slate-600 text-sm"
                                             }}
                                         />
@@ -131,7 +131,7 @@ export default function SupportModal({ isOpen, onClose }: SupportModalProps) {
                                             variant="bordered"
                                             minRows={3}
                                             classNames={{
-                                                inputWrapper: "bg-white/5 border-[#262626] group-data-[focus=true]:border-[#ec5b13] rounded-xl transition-all",
+                                                inputWrapper: "bg-white/5 border-[#262626] group-data-[focus=true]:border-[var(--primary)] rounded-xl transition-all",
                                                 input: "text-white font-bold placeholder:text-slate-600 text-sm"
                                             }}
                                         />
@@ -149,7 +149,7 @@ export default function SupportModal({ isOpen, onClose }: SupportModalProps) {
                                     Annuler
                                 </Button>
                                 <Button
-                                    className="bg-white text-black hover:bg-[#ec5b13] hover:text-white font-black uppercase tracking-widest text-[10px] h-10 px-6 rounded-xl shadow-xl transition-all active:scale-95"
+                                    className="bg-white text-black hover:bg-[var(--primary)] hover:text-white font-black uppercase tracking-widest text-[10px] h-10 px-6 rounded-xl shadow-xl transition-all active:scale-95"
                                     onPress={handleSubmit}
                                     isLoading={isSubmitting}
                                     endContent={!isSubmitting && <Send size={14} />}

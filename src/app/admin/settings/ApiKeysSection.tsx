@@ -119,8 +119,8 @@ export default function ApiKeysSection() {
             {/* Header */}
             <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                    <div className="p-2 bg-[#ec5b13]/10 rounded-xl">
-                        <Key className="text-[#ec5b13] w-5 h-5" />
+                    <div className="p-2 bg-[var(--primary)]/10 rounded-xl">
+                        <Key className="text-[var(--primary)] w-5 h-5" />
                     </div>
                     <div>
                         <h3 className="text-base font-black text-white uppercase tracking-tight">Clés API Partenaires</h3>
@@ -131,7 +131,7 @@ export default function ApiKeysSection() {
                 </div>
                 <button
                     onClick={() => setShowForm(!showForm)}
-                    className="flex items-center gap-2 px-4 py-2 bg-[#ec5b13] hover:bg-[#d4510f] text-white text-xs font-black uppercase rounded-xl transition-colors"
+                    className="flex items-center gap-2 px-4 py-2 bg-[var(--primary)] hover:bg-[#d4510f] text-white text-xs font-black uppercase rounded-xl transition-colors"
                 >
                     <Plus size={14} />
                     Créer une clé
@@ -154,7 +154,7 @@ export default function ApiKeysSection() {
                                 placeholder="ex: Partenaire XYZ"
                                 maxLength={100}
                                 required
-                                className="w-full bg-black/60 border border-white/10 rounded-2xl px-4 py-3 text-sm text-white outline-none focus:border-[#ec5b13]/50 transition-all placeholder:text-slate-700"
+                                className="w-full bg-black/60 border border-white/10 rounded-2xl px-4 py-3 text-sm text-white outline-none focus:border-[var(--primary)]/50 transition-all placeholder:text-slate-700"
                             />
                         </div>
                         <div>
@@ -164,7 +164,7 @@ export default function ApiKeysSection() {
                             <select
                                 value={newKeyPermissions}
                                 onChange={(e) => setNewKeyPermissions(e.target.value as "READ" | "READ_WRITE")}
-                                className="w-full bg-black/60 border border-white/10 rounded-2xl px-4 py-3 text-sm text-white outline-none focus:border-[#ec5b13]/50 transition-all"
+                                className="w-full bg-black/60 border border-white/10 rounded-2xl px-4 py-3 text-sm text-white outline-none focus:border-[var(--primary)]/50 transition-all"
                             >
                                 <option value="READ">READ — Lecture seule (catalogue)</option>
                                 <option value="READ_WRITE">READ_WRITE — Lecture + Commandes</option>
@@ -174,7 +174,7 @@ export default function ApiKeysSection() {
                             <button
                                 type="submit"
                                 disabled={isCreating}
-                                className="flex-1 py-3 bg-[#ec5b13] hover:bg-[#d4510f] disabled:opacity-50 text-white text-xs font-black uppercase rounded-2xl transition-colors"
+                                className="flex-1 py-3 bg-[var(--primary)] hover:bg-[#d4510f] disabled:opacity-50 text-white text-xs font-black uppercase rounded-2xl transition-colors"
                             >
                                 {isCreating ? "Création..." : "Créer la clé"}
                             </button>

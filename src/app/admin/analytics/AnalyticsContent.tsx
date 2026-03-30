@@ -58,6 +58,9 @@ interface AnalyticsContentProps {
 export default function AnalyticsContent({ initialOverview, initialRankings }: AnalyticsContentProps) {
     const [overview, setOverview] = useState(initialOverview);
     const [rankings, setRankings] = useState(initialRankings);
+    const primaryColor = typeof document !== "undefined"
+        ? getComputedStyle(document.documentElement).getPropertyValue("--primary").trim() || "#ec5b13"
+        : "#ec5b13";
     const [recommendations, setRecommendations] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [isGeneratingIA, setIsGeneratingIA] = useState(false);
@@ -210,8 +213,8 @@ export default function AnalyticsContent({ initialOverview, initialRankings }: A
                                 <AreaChart data={chartData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
                                     <defs>
                                         <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
-                                            <stop offset="5%" stopColor="#ec5b13" stopOpacity={0.3} />
-                                            <stop offset="95%" stopColor="#ec5b13" stopOpacity={0} />
+                                            <stop offset="5%" stopColor={primaryColor} stopOpacity={0.3} />
+                                            <stop offset="95%" stopColor={primaryColor} stopOpacity={0} />
                                         </linearGradient>
                                         <linearGradient id="colorCost" x1="0" y1="0" x2="0" y2="1">
                                             <stop offset="5%" stopColor="#94a3b8" stopOpacity={0.3} />
@@ -235,7 +238,7 @@ export default function AnalyticsContent({ initialOverview, initialRankings }: A
                                         type="monotone"
                                         dataKey="revenue"
                                         name="Revenu"
-                                        stroke="#ec5b13"
+                                        stroke={primaryColor}
                                         fillOpacity={1}
                                         fill="url(#colorRevenue)"
                                         strokeWidth={3}
@@ -280,7 +283,7 @@ export default function AnalyticsContent({ initialOverview, initialRankings }: A
                                     />
                                     <Bar dataKey="volume" name="Ventes" radius={[0, 4, 4, 0]}>
                                         {topProducts.slice(0, 5).map((entry: any, index: number) => (
-                                            <Cell key={`cell-${index}`} fill={index === 0 ? '#ec5b13' : '#3f3f46'} />
+                                            <Cell key={`cell-${index}`} fill={index === 0 ? primaryColor : '#3f3f46'} />
                                         ))}
                                     </Bar>
                                 </BarChart>

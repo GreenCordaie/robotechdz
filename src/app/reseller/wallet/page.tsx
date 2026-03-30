@@ -67,13 +67,13 @@ export default function ResellerWallet() {
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
                 <div>
                     <h1 className="text-3xl font-black text-white tracking-tight flex items-center gap-4">
-                        <Wallet className="text-[#ec5b13] size-8" />
+                        <Wallet className="text-[var(--primary)] size-8" />
                         Mon Portefeuille
                     </h1>
                     <p className="text-slate-500 font-medium mt-1 uppercase tracking-widest text-[10px]">Gérez votre crédit et vos transactions</p>
                 </div>
                 <Button
-                    className="bg-[#ec5b13] text-white font-black px-8 h-14 rounded-2xl shadow-xl shadow-orange-950/20"
+                    className="bg-[var(--primary)] text-white font-black px-8 h-14 rounded-2xl shadow-xl shadow-orange-950/20"
                     startContent={<Plus size={20} />}
                 >
                     Recharger le Compte
@@ -88,7 +88,7 @@ export default function ResellerWallet() {
                     <div className="lg:col-span-1 space-y-6">
                         <Card className="bg-gradient-to-br from-[#161616] to-[#0a0a0a] border border-[#262626] rounded-[32px] overflow-hidden p-8 relative">
                             {/* Decorative Glow */}
-                            <div className="absolute -top-20 -right-20 size-60 bg-[#ec5b13]/10 blur-[80px] rounded-full"></div>
+                            <div className="absolute -top-20 -right-20 size-60 bg-[var(--primary)]/10 blur-[80px] rounded-full"></div>
 
                             <div className="relative z-10 space-y-10">
                                 <div className="flex items-center justify-between">
@@ -120,7 +120,7 @@ export default function ResellerWallet() {
 
                         <div className="bg-[#1a1614] border border-[#2d2622] rounded-[32px] p-8 space-y-6">
                             <h3 className="text-sm font-black text-white uppercase tracking-widest flex items-center gap-3">
-                                <TrendingUp size={18} className="text-[#ec5b13]" />
+                                <TrendingUp size={18} className="text-[var(--primary)]" />
                                 Statistiques
                             </h3>
                             <div className="space-y-4">
@@ -140,7 +140,7 @@ export default function ResellerWallet() {
                     <div className="lg:col-span-2 space-y-6">
                         <div className="flex items-center justify-between">
                             <h2 className="text-xl font-black text-white tracking-tight flex items-center gap-3">
-                                <History size={20} className="text-[#ec5b13]" />
+                                <History size={20} className="text-[var(--primary)]" />
                                 Transactions Récentes
                             </h2>
                         </div>
@@ -149,7 +149,7 @@ export default function ResellerWallet() {
                             {transactions.length === 0 ? (
                                 <div className="py-20 text-center opacity-30 italic font-bold">Aucune transaction récente</div>
                             ) : transactions.map((tx) => (
-                                <div key={tx.id} className="bg-[#161616] border border-[#262626] rounded-2xl p-5 flex items-center justify-between group hover:border-[#ec5b13]/20 transition-all">
+                                <div key={tx.id} className="bg-[#161616] border border-[#262626] rounded-2xl p-5 flex items-center justify-between group hover:border-[var(--primary)]/20 transition-all">
                                     <div className="flex items-center gap-4">
                                         <div className={`size-12 rounded-xl flex items-center justify-center border ${tx.type === 'PURCHASE' ? "bg-red-500/10 border-red-500/20 text-red-500" : "bg-emerald-500/10 border-emerald-500/20 text-emerald-500"
                                             }`}>

@@ -94,6 +94,10 @@ export const requeueForPrint = withAuth(
     },
     async ({ orderId }) => {
         try {
+            const order = await db.query.orders.findFirst({ where: eq(orders.id, orderId) });
+            if (order?.deliveryMethod === "WHATSAPP") {
+                return { success: false, error: "Commande WhatsApp — pas de ticket de caisse." };
+            }
             await db.update(orders).set({ printStatus: "print_pending" }).where(eq(orders.id, orderId));
             return { success: true };
         } catch (error) {

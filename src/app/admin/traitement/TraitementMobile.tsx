@@ -11,7 +11,8 @@ import { generateOrderEscPos } from "@/lib/escpos";
 import { useSettingsStore } from "@/store/useSettingsStore";
 import { useAuthStore } from "@/store/useAuthStore";
 import { ThermalReceiptV2 } from "@/components/admin/receipt/ThermalReceiptV2";
-import OrderDetailModal from "@/components/admin/modals/OrderDetailModal";
+import dynamic from "next/dynamic";
+const OrderDetailModal = dynamic(() => import("@/components/admin/modals/OrderDetailModal"), { ssr: false });
 import { Search, RefreshCw, ArrowLeft, Send, CheckCircle2, History, Eye, Printer, XCircle, Usb, Loader2, Wifi, WifiOff, MessageSquare, ShieldCheck, X } from "lucide-react";
 import Image from "next/image";
 

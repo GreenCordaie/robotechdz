@@ -1,10 +1,16 @@
+export const revalidate = 300;
+
 import { getAnalyticsOverview, getAnalyticsRankings } from "./actions";
 import AnalyticsContent from "./AnalyticsContent";
+import { SystemQueries } from "@/services/queries/system.queries";
 
-export const metadata = {
-    title: "Tableau de Bord Analytique | Flexbox Admin",
-    description: "Analyse des ventes, marges et performances clients.",
-};
+export async function generateMetadata() {
+    const settings = await SystemQueries.getPublicSettings();
+    return {
+        title: `Analytique | ${settings.shopName}`,
+        description: "Analyse des ventes, marges et performances clients.",
+    };
+}
 
 export default async function AnalyticsPage() {
     // Initial fetch for the dashboard

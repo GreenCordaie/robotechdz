@@ -33,9 +33,9 @@ export default function DeliveryMethodModal({ isOpen, onClose, onConfirm, isSubm
             size="2xl"
             backdrop="blur"
             classNames={{
-                base: "bg-white text-slate-900 rounded-[32px] p-0 overflow-hidden",
+                base: "bg-white/90 dark:bg-zinc-900/90 backdrop-blur-2xl rounded-[32px] p-0 overflow-hidden border border-white/20 shadow-2xl",
                 wrapper: "z-[100]",
-                backdrop: "bg-black/40 backdrop-blur-md"
+                backdrop: "bg-slate-900/40 backdrop-blur-xl"
             }}
             hideCloseButton
         >

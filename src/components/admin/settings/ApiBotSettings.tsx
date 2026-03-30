@@ -17,8 +17,10 @@ import {
     getShopSettingsAction,
     saveShopSettingsAction,
     testN8nAction,
+    testNetflixResolverAction,
     getWhatsAppQrAction
 } from "@/app/admin/settings/actions";
+import { useSettingsStore } from "@/store/useSettingsStore";
 
 const PROMPT_TEMPLATES = [
     {
@@ -241,6 +243,7 @@ Si problème → "Je signale ça à notre équipe avec priorité, vous serez con
 ];
 
 export function ApiBotSettings() {
+    const { shopName } = useSettingsStore();
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [isTestingN8n, setIsTestingN8n] = useState(false);
@@ -261,6 +264,10 @@ export function ApiBotSettings() {
     const [waApiUrl, setWaApiUrl] = useState("");
     const [waApiKey, setWaApiKey] = useState("");
     const [waInstanceName, setWaInstanceName] = useState("");
+
+    // Netflix Relay States
+    const [netflixResolverEmail, setNetflixResolverEmail] = useState("");
+    const [netflixResolverPassword, setNetflixResolverPassword] = useState("");
 
     const [qrCodeParams, setQrCodeParams] = useState<any>(null);
     const [isFetchingQr, setIsFetchingQr] = useState(false);
@@ -290,6 +297,10 @@ export function ApiBotSettings() {
                 setWaApiUrl(s.whatsappApiUrl || "");
                 setWaApiKey(s.whatsappApiKey || "");
                 setWaInstanceName(s.whatsappInstanceName || "");
+
+                // Netflix Relay
+                setNetflixResolverEmail(s.netflixResolverEmail || "");
+                setNetflixResolverPassword(s.netflixResolverPassword || "");
             }
         } catch (err) {
             toast.error("Erreur chargement paramètres");
@@ -315,7 +326,9 @@ export function ApiBotSettings() {
                 whatsappApiUrl: waApiUrl,
                 whatsappApiKey: waApiKey,
                 whatsappInstanceName: waInstanceName,
-                shopName: "FLEXBOX DIRECT",
+                netflixResolverEmail,
+                netflixResolverPassword,
+                shopName: shopName,
             } as any);
 
             if (res.success) {
@@ -386,7 +399,7 @@ export function ApiBotSettings() {
                 <section className="space-y-8">
                     <div>
                         <h3 className="text-xl font-black text-white uppercase tracking-tight flex items-center gap-2">
-                            <CircleDollarSign className="text-[#ec5b13]" size={24} />
+                            <CircleDollarSign className="text-[var(--primary)]" size={24} />
                             Paramètres Généraux
                         </h3>
                         <p className="text-sm text-slate-400 mt-1">Configuration de base de la boutique.</p>
@@ -395,14 +408,14 @@ export function ApiBotSettings() {
                     <div className="bg-[#1a1614] p-8 rounded-[32px] border border-white/5 shadow-2xl">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div className="space-y-2">
-                                <label className="text-[10px] font-black uppercase tracking-widest text-[#ec5b13] ml-1">Taux de Change (USD ➔ DZD)</label>
+                                <label className="text-[10px] font-black uppercase tracking-widest text-[var(--primary)] ml-1">Taux de Change (USD ➔ DZD)</label>
                                 <Input
                                     value={usdRate}
                                     onValueChange={setUsdRate}
                                     placeholder="245.00"
                                     variant="bordered"
                                     className="dark"
-                                    startContent={<CircleDollarSign size={16} className="text-[#ec5b13]" />}
+                                    startContent={<CircleDollarSign size={16} className="text-[var(--primary)]" />}
                                     endContent={<span className="text-[10px] font-black text-slate-500">DZD</span>}
                                 />
                                 <p className="text-[9px] text-slate-500 italic mt-1 ml-1">Utilisé pour les calculs de prix et marges.</p>
@@ -412,7 +425,7 @@ export function ApiBotSettings() {
                             <Button
                                 onPress={handleSave}
                                 isLoading={isSaving}
-                                className="bg-[#ec5b13] text-white font-black uppercase tracking-widest text-[10px] px-10 py-6 rounded-2xl shadow-xl shadow-[#ec5b13]/20"
+                                className="bg-[var(--primary)] text-white font-black uppercase tracking-widest text-[10px] px-10 py-6 rounded-2xl shadow-xl shadow-[var(--primary)]/20"
                                 startContent={<Save size={14} />}
                             >
                                 Enregistrer les Paramètres
@@ -675,7 +688,7 @@ export function ApiBotSettings() {
                                     {PROMPT_TEMPLATES.map((t) => (
                                         <button
                                             key={t.id}
-                                            onClick={() => setChatbotRole(t.prompt)}
+                                            onClick={() => setChatbotRole(t.prompt.replace(/FLEXBOX DIRECT/g, shopName))}
                                             className={`flex flex-col items-center gap-2 p-4 rounded-2xl border transition-all text-center hover:scale-[1.02] active:scale-95 ${chatbotRole === t.prompt
                                                 ? 'border-purple-500/50 bg-purple-500/10 text-purple-300'
                                                 : 'border-white/5 bg-white/[0.02] text-slate-400 hover:border-white/10 hover:text-white'}`}
@@ -720,6 +733,71 @@ export function ApiBotSettings() {
                                     Sauvegarder IA
                                 </Button>
                             </div>
+                        </div>
+                    </div>
+                </section>
+
+                {/* Netflix Resolver Relay Section */}
+                <section className="space-y-8">
+                    <div>
+                        <h3 className="text-xl font-black text-white uppercase tracking-tight flex items-center gap-2">
+                            <Sparkles className="text-red-500" size={24} />
+                            Relais Gmail Netflix (Household)
+                        </h3>
+                        <p className="text-sm text-slate-400 mt-1">Identifiants du compte Gmail utilisé pour relayer les emails Netflix vers Outlook.</p>
+                    </div>
+
+                    <div className="bg-[#1a1614] p-8 rounded-[32px] border border-white/5 shadow-2xl">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-[var(--primary)] ml-1">Email Gmail Relais</label>
+                                <Input
+                                    value={netflixResolverEmail}
+                                    onValueChange={setNetflixResolverEmail}
+                                    placeholder="votre-relais@gmail.com"
+                                    variant="bordered"
+                                    className="dark"
+                                    startContent={<Link size={16} className="text-[var(--primary)]" />}
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-[var(--primary)] ml-1">Mot de passe d&apos;application Gmail</label>
+                                <Input
+                                    value={netflixResolverPassword}
+                                    onValueChange={setNetflixResolverPassword}
+                                    type="password"
+                                    placeholder="abcd efgh ijkl mnop"
+                                    variant="bordered"
+                                    className="dark"
+                                    startContent={<ShieldAlert size={16} className="text-[var(--primary)]" />}
+                                />
+                                <p className="text-[9px] text-slate-500 italic mt-1 ml-1">Utilisez un &quot;Mot de passe d&apos;application&quot; généré dans votre compte Google.</p>
+                            </div>
+                        </div>
+                        <div className="mt-6 pt-6 border-t border-white/5 flex justify-end gap-3">
+                            <Button
+                                onPress={async () => {
+                                    const res = await testNetflixResolverAction({});
+                                    if (res && "success" in res && res.success) {
+                                        toast.success(("message" in res ? res.message : "Connexion OK") as string);
+                                    } else {
+                                        toast.error(("error" in res ? res.error : "Erreur") as string);
+                                    }
+                                }}
+                                variant="bordered"
+                                className="border-red-500/30 text-red-400 font-black uppercase tracking-widest text-[10px] px-8 py-6 rounded-2xl"
+                                startContent={<Zap size={14} />}
+                            >
+                                Tester Connexion
+                            </Button>
+                            <Button
+                                onPress={handleSave}
+                                isLoading={isSaving}
+                                className="bg-red-600 text-white font-black uppercase tracking-widest text-[10px] px-10 py-6 rounded-2xl shadow-xl shadow-red-600/20"
+                                startContent={<Save size={14} />}
+                            >
+                                Enregistrer Relais Netflix
+                            </Button>
                         </div>
                     </div>
                 </section>

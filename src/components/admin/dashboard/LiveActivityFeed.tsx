@@ -72,7 +72,7 @@ export const LiveActivityFeed = () => {
         <Card className="bg-[#1a1614] border-[#2d2622] h-full shadow-xl">
             <CardHeader className="flex justify-between items-center px-6 pt-6">
                 <div className="flex items-center gap-2">
-                    <Activity className="size-4 text-[#ec5b13]" />
+                    <Activity className="size-4 text-[var(--primary)]" />
                     <h3 className="text-sm font-bold text-white uppercase tracking-wider">Activité en Direct</h3>
                 </div>
                 <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-white/5 border border-white/10">
@@ -93,7 +93,7 @@ export const LiveActivityFeed = () => {
                                 <div className="mt-1">
                                     <div className={`size-2 rounded-full mt-1.5 ${item.event === SystemEvent.ORDER_CREATED ? "bg-green-500" :
                                         item.event === SystemEvent.ORDER_PAID ? "bg-blue-500" :
-                                            "bg-[#ec5b13]"
+                                            "bg-[var(--primary)]"
                                         }`} />
                                 </div>
                                 <div className="flex-1 min-w-0">

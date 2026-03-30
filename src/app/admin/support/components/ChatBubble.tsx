@@ -40,7 +40,7 @@ export default function ChatBubble({ text, fromMe, timestamp, type = 'WHATSAPP',
             <div className={cn(
                 "max-w-[85%] md:max-w-[70%] px-4 py-2 rounded-2xl shadow-sm relative group",
                 fromMe
-                    ? "bg-[#ec5b13] text-white rounded-tr-none"
+                    ? "bg-[var(--primary)] text-white rounded-tr-none"
                     : "bg-[#2a2420] text-slate-200 rounded-tl-none border border-white/5",
                 type === 'TICKET' && !fromMe && "border-l-4 border-l-warning"
             )}>

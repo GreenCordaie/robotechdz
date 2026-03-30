@@ -139,10 +139,10 @@ export default function WhatsAppHistoryModal({
                                     >
                                         <div className={`max-w-[75%] flex flex-col gap-0.5 ${msg.fromMe ? "items-end" : "items-start"}`}>
                                             {msg.fromMe && (
-                                                <span className="text-[9px] font-black uppercase text-[#ec5b13]/60 px-1">Bot</span>
+                                                <span className="text-[9px] font-black uppercase text-[var(--primary)]/60 px-1">Bot</span>
                                             )}
                                             <div className={`px-3 py-2 rounded-2xl text-sm leading-relaxed ${msg.fromMe
-                                                ? "bg-[#ec5b13]/20 text-orange-100 rounded-tr-sm"
+                                                ? "bg-[var(--primary)]/20 text-orange-100 rounded-tr-sm"
                                                 : "bg-[#262626] text-slate-200 rounded-tl-sm"
                                                 }`}>
                                                 {msg.messageType !== "text"

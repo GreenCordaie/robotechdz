@@ -36,12 +36,14 @@ import {
 import { useRouter } from "next/navigation";
 import { getIndebtedClients, recordPayment, getClientHistory, createClient, getReturnsByClient, getAllClients, updateClient, deleteClient, getClientStats } from "@/app/admin/clients/actions";
 import { ReturnRequest } from "@/lib/constants";
-import WhatsAppHistoryModal from "@/components/admin/modals/WhatsAppHistoryModal";
+import dynamic from "next/dynamic";
+const WhatsAppHistoryModal = dynamic(() => import("@/components/admin/modals/WhatsAppHistoryModal"), { ssr: false });
 
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
 import { toast } from "react-hot-toast";
 import { formatCurrency, formatWhatsApp, formatPhoneNatural } from "@/lib/formatters";
+import { useSettingsStore } from "@/store/useSettingsStore";
 
 interface ClientOrder {
     id: number;
@@ -84,6 +86,7 @@ interface ClientsContentProps {
 
 export default function ClientsContent({ initialStats, initialClients }: ClientsContentProps) {
     const router = useRouter();
+    const { shopName } = useSettingsStore();
     const [stats, setStats] = React.useState(initialStats);
     const [clients, setClients] = React.useState<Client[]>(initialClients);
     const [search, setSearch] = React.useState("");
@@ -263,7 +266,7 @@ export default function ClientsContent({ initialStats, initialClients }: Clients
 
         const dateStr = payment.date ? format(new Date(payment.date), "dd/MM/yyyy HH:mm", { locale: fr }) : "";
 
-        const message = `*REÇU DE PAIEMENT - FLEXBOX DIRECT*\n\n` +
+        const message = `*REÇU DE PAIEMENT - ${shopName.toUpperCase()}*\n\n` +
             `Client: ${selectedClient.nomComplet}\n` +
             `Date: ${dateStr}\n` +
             `Reçu N°: ${payment.receiptNumber || '---'}\n` +
@@ -289,7 +292,7 @@ export default function ClientsContent({ initialStats, initialClients }: Clients
                 </div>
                 <Button
                     onPress={onNewOpen}
-                    className="flex items-center gap-2 px-5 h-12 bg-[#ec5b13] hover:bg-orange-600 text-white rounded-xl transition-all font-bold shadow-lg shadow-[#ec5b13]/20"
+                    className="flex items-center gap-2 px-5 h-12 bg-[var(--primary)] hover:bg-orange-600 text-white rounded-xl transition-all font-bold shadow-lg shadow-[var(--primary)]/20"
                 >
                     <UserPlus className="w-5 h-5" />
                     <span className="truncate">Nouveau Client / Dette</span>
@@ -368,7 +371,7 @@ export default function ClientsContent({ initialStats, initialClients }: Clients
                                     <tr key={client.id} className="hover:bg-slate-50 dark:hover:bg-[#262626]/20 transition-colors group">
                                         <td className="px-6 py-4">
                                             <div className="flex items-center gap-3">
-                                                <div className="size-10 rounded-full bg-[#ec5b13]/20 flex items-center justify-center text-[#ec5b13] font-bold">
+                                                <div className="size-10 rounded-full bg-[var(--primary)]/20 flex items-center justify-center text-[var(--primary)] font-bold">
                                                     {client.nomComplet.substring(0, 2).toUpperCase()}
                                                 </div>
                                                 <div className="flex flex-col min-w-0">
@@ -388,7 +391,7 @@ export default function ClientsContent({ initialStats, initialClients }: Clients
                                                 <Chip
                                                     size="sm"
                                                     variant="flat"
-                                                    className="bg-[#ec5b13]/10 text-[#ec5b13] border border-[#ec5b13]/20 font-bold"
+                                                    className="bg-[var(--primary)]/10 text-[var(--primary)] border border-[var(--primary)]/20 font-bold"
                                                 >
                                                     En Dette
                                                 </Chip>
@@ -434,7 +437,7 @@ export default function ClientsContent({ initialStats, initialClients }: Clients
                                                 </button>
                                                 <Button
                                                     variant="light"
-                                                    className="text-[#ec5b13] hover:text-white font-bold text-sm transition-colors"
+                                                    className="text-[var(--primary)] hover:text-white font-bold text-sm transition-colors"
                                                     onPress={() => handleViewClient(client)}
                                                 >
                                                     Voir Dossier
@@ -676,7 +679,7 @@ export default function ClientsContent({ initialStats, initialClients }: Clients
                                     <Button variant="flat" onPress={onClose} className="text-slate-400">Annuler</Button>
                                     <Button
                                         isLoading={isCreatingNew}
-                                        className="bg-[#ec5b13] text-white font-bold"
+                                        className="bg-[var(--primary)] text-white font-bold"
                                         onPress={handleSave}
                                     >
                                         Créer le Profil
@@ -728,7 +731,7 @@ export default function ClientsContent({ initialStats, initialClients }: Clients
                                 <Button variant="flat" onPress={onClose} className="text-slate-400">Annuler</Button>
                                 <Button
                                     isLoading={isUpdating}
-                                    className="bg-[#ec5b13] text-white font-bold"
+                                    className="bg-[var(--primary)] text-white font-bold"
                                     onPress={handleUpdateClient}
                                 >
                                     Sauvegarder

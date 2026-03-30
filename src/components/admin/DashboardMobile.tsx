@@ -62,6 +62,7 @@ export default function DashboardMobile({ stats }: DashboardMobileProps) {
     const [isDetailModalOpen, setIsDetailModalOpen] = React.useState(false);
     const { printToIframe } = useThermalPrinter();
     const settings = useSettingsStore();
+    const { accentColor } = useSettingsStore();
     const webusb = useWebUSBPrinter();
     const { user } = useAuthStore();
 
@@ -107,7 +108,7 @@ export default function DashboardMobile({ stats }: DashboardMobileProps) {
                 <button
                     onClick={webusb.connected ? webusb.disconnect : webusb.connect}
                     disabled={webusb.isConnecting}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase transition-all active:scale-95 ${webusb.connected ? 'bg-white/5 text-slate-400' : 'bg-[#ec5b13]/10 text-[#ec5b13]'
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase transition-all active:scale-95 ${webusb.connected ? 'bg-white/5 text-slate-400' : 'bg-[var(--primary)]/10 text-[var(--primary)]'
                         }`}
                 >
                     {webusb.isConnecting ? <Loader2 size={12} className="animate-spin" /> : <Usb size={12} />}
@@ -154,7 +155,7 @@ export default function DashboardMobile({ stats }: DashboardMobileProps) {
                     <div className="flex justify-between items-center px-2">
                         <h3 className="text-sm font-black uppercase tracking-widest text-slate-400">Activité</h3>
                         <div className="flex items-center gap-1">
-                            <span className="w-2 h-2 rounded-full bg-[#ec5b13]"></span>
+                            <span className="w-2 h-2 rounded-full bg-[var(--primary)]"></span>
                             <span className="text-[10px] font-bold">Ventes</span>
                         </div>
                     </div>
@@ -185,19 +186,19 @@ export default function DashboardMobile({ stats }: DashboardMobileProps) {
                             <AreaChart data={stats.revenueData}>
                                 <defs>
                                     <linearGradient id="mobileGrad" x1="0" y1="0" x2="0" y2="1">
-                                        <stop offset="5%" stopColor="#ec5b13" stopOpacity={0.2} />
-                                        <stop offset="95%" stopColor="#ec5b13" stopOpacity={0} />
+                                        <stop offset="5%" stopColor={accentColor} stopOpacity={0.2} />
+                                        <stop offset="95%" stopColor={accentColor} stopOpacity={0} />
                                     </linearGradient>
                                 </defs>
                                 <XAxis dataKey="name" hide />
                                 <RechartsTooltip
                                     contentStyle={{ backgroundColor: '#111', border: 'none', borderRadius: '12px', fontSize: '10px' }}
-                                    itemStyle={{ color: '#ec5b13' }}
+                                    itemStyle={{ color: accentColor }}
                                 />
                                 <Area
                                     type="monotone"
                                     dataKey="total"
-                                    stroke="#ec5b13"
+                                    stroke={accentColor}
                                     strokeWidth={3}
                                     fill="url(#mobileGrad)"
                                 />
@@ -216,7 +217,7 @@ export default function DashboardMobile({ stats }: DashboardMobileProps) {
                 <div className="grid gap-3">
                     <Link href="/admin/caisse" className="flex items-center justify-between p-5 bg-white dark:bg-white/5 border border-slate-200 dark:border-white/5 rounded-3xl active:scale-95 transition-all shadow-sm">
                         <div className="flex items-center gap-4">
-                            <div className="size-12 rounded-2xl bg-[#ec5b13]/10 flex items-center justify-center text-[#ec5b13]">
+                            <div className="size-12 rounded-2xl bg-[var(--primary)]/10 flex items-center justify-center text-[var(--primary)]">
                                 <ShoppingBag size={20} />
                             </div>
                             <div>
@@ -271,7 +272,7 @@ export default function DashboardMobile({ stats }: DashboardMobileProps) {
                             </div>
                             <div className="flex items-center gap-3">
                                 <div className="text-right">
-                                    <p className="text-sm font-black text-[#ec5b13]">
+                                    <p className="text-sm font-black text-[var(--primary)]">
                                         {user?.role === 'ADMIN' ? formatCurrency(order.totalAmount, 'DZD') : '************'}
                                     </p>
                                     <div className="flex justify-end mt-1">

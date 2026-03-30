@@ -68,24 +68,24 @@ export default function B2bManagementContent({ initialResellers = [] }: B2bManag
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
                     <div className="flex items-center gap-3 mb-2 text-slate-500">
-                        <Link href="/admin/settings" className="hover:text-[#ec5b13] transition-colors flex items-center gap-1">
+                        <Link href="/admin/settings" className="hover:text-[var(--primary)] transition-colors flex items-center gap-1">
                             <ArrowLeft size={14} />
                             <span className="text-xs font-bold uppercase tracking-widest">Paramètres</span>
                         </Link>
                         <span className="text-xs">/</span>
-                        <span className="text-xs font-bold uppercase tracking-widest text-[#ec5b13]">B2B & Revendeurs</span>
+                        <span className="text-xs font-bold uppercase tracking-widest text-[var(--primary)]">B2B & Revendeurs</span>
                     </div>
                     <h1 className="text-3xl font-black text-white uppercase italic tracking-tighter">
-                        Gestion <span className="text-[#ec5b13]">B2B</span>
+                        Gestion <span className="text-[var(--primary)]">B2B</span>
                     </h1>
                     <p className="text-slate-400 font-medium">Contrôlez vos partenaires revendeurs et leurs accès.</p>
                 </div>
 
                 <div className="flex items-center gap-4">
                     <div className="relative group w-72">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 w-4 h-4 shrink-0 pointer-events-none group-focus-within:text-[#ec5b13] transition-colors" />
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 w-4 h-4 shrink-0 pointer-events-none group-focus-within:text-[var(--primary)] transition-colors" />
                         <input
-                            className="w-full bg-[#161616] border border-[#262626] rounded-xl pl-10 pr-4 py-3 text-sm focus:outline-none focus:ring-1 focus:ring-[#ec5b13] transition-all text-white placeholder:text-slate-600 font-medium"
+                            className="w-full bg-[#161616] border border-[#262626] rounded-xl pl-10 pr-4 py-3 text-sm focus:outline-none focus:ring-1 focus:ring-[var(--primary)] transition-all text-white placeholder:text-slate-600 font-medium"
                             placeholder="Rechercher partenaire / email..."
                             type="text"
                             value={searchTerm}
@@ -94,7 +94,7 @@ export default function B2bManagementContent({ initialResellers = [] }: B2bManag
                     </div>
                     <Button
                         onPress={onB2bModalOpen}
-                        className="h-12 px-8 bg-[#ec5b13] text-white font-black rounded-2xl shadow-xl shadow-orange-950/20 hover:scale-105 transition-all uppercase tracking-tight"
+                        className="h-12 px-8 bg-[var(--primary)] text-white font-black rounded-2xl shadow-xl shadow-orange-950/20 hover:scale-105 transition-all uppercase tracking-tight"
                         startContent={<Plus size={20} />}
                     >
                         Nouveau Partenaire
@@ -128,13 +128,13 @@ export default function B2bManagementContent({ initialResellers = [] }: B2bManag
             ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {filteredResellers.map((reseller) => (
-                        <div key={reseller.id} className="bg-[#161616] border border-[#262626] rounded-[32px] p-6 space-y-6 hover:border-[#ec5b13]/30 transition-all group relative overflow-hidden">
+                        <div key={reseller.id} className="bg-[#161616] border border-[#262626] rounded-[32px] p-6 space-y-6 hover:border-[var(--primary)]/30 transition-all group relative overflow-hidden">
                             {/* Abstract shadow */}
-                            <div className="absolute -top-24 -right-24 size-48 bg-[#ec5b13]/5 blur-[60px] rounded-full group-hover:bg-[#ec5b13]/10 transition-colors"></div>
+                            <div className="absolute -top-24 -right-24 size-48 bg-[var(--primary)]/5 blur-[60px] rounded-full group-hover:bg-[var(--primary)]/10 transition-colors"></div>
 
                             <div className="flex items-start justify-between relative z-10">
                                 <div className="flex items-center gap-4">
-                                    <div className="size-14 rounded-2xl bg-[#0a0a0a] border border-[#262626] flex items-center justify-center text-[#ec5b13] font-black text-2xl group-hover:bg-[#ec5b13] group-hover:text-white transition-all duration-500">
+                                    <div className="size-14 rounded-2xl bg-[#0a0a0a] border border-[#262626] flex items-center justify-center text-[var(--primary)] font-black text-2xl group-hover:bg-[var(--primary)] group-hover:text-white transition-all duration-500">
                                         {reseller.companyName.substring(0, 1).toUpperCase()}
                                     </div>
                                     <div>
@@ -154,7 +154,7 @@ export default function B2bManagementContent({ initialResellers = [] }: B2bManag
                                 </div>
                                 <div className="bg-[#0a0a0a] p-4 rounded-2xl border border-[#262626]">
                                     <p className="text-[10px] text-slate-600 uppercase font-black tracking-widest mb-1">Remise Client</p>
-                                    <p className="text-xl font-black text-[#ec5b13]">-{reseller.customDiscount || defaultResellerDiscount}%</p>
+                                    <p className="text-xl font-black text-[var(--primary)]">-{reseller.customDiscount || defaultResellerDiscount}%</p>
                                 </div>
                             </div>
 

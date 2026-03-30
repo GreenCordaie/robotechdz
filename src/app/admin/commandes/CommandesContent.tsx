@@ -4,7 +4,8 @@ import React, { useState, useMemo } from "react";
 import { Input, Button, Spinner, Chip } from "@heroui/react";
 import { Search, Eye, Filter, Calendar, CreditCard, User, History } from "lucide-react";
 import { formatCurrency } from "@/lib/formatters";
-import OrderDetailModal from "@/components/admin/modals/OrderDetailModal";
+import dynamic from "next/dynamic";
+const OrderDetailModal = dynamic(() => import("@/components/admin/modals/OrderDetailModal"), { ssr: false });
 import { cancelOrderAction } from "../caisse/actions";
 
 interface CommandesContentProps {
@@ -88,8 +89,8 @@ export function CommandesContent({ initialOrders }: CommandesContentProps) {
         <div className="flex flex-col min-h-screen bg-[#0a0a0a] text-white">
             <header className="p-6 border-b border-white/5 bg-[#111] sticky top-0 z-30 flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                    <div className="p-2.5 bg-[#ec5b13]/10 rounded-xl border border-[#ec5b13]/20">
-                        <History size={24} className="text-[#ec5b13]" />
+                    <div className="p-2.5 bg-[var(--primary)]/10 rounded-xl border border-[var(--primary)]/20">
+                        <History size={24} className="text-[var(--primary)]" />
                     </div>
                     <div>
                         <h1 className="text-xl font-black uppercase tracking-tight">Historique Commandes</h1>
@@ -109,7 +110,7 @@ export function CommandesContent({ initialOrders }: CommandesContentProps) {
                         variant="flat"
                         classNames={{
                             input: "bg-transparent",
-                            inputWrapper: "bg-white/5 border border-white/5 hover:border-[#ec5b13]/40 transition-colors h-12"
+                            inputWrapper: "bg-white/5 border border-white/5 hover:border-[var(--primary)]/40 transition-colors h-12"
                         }}
                     />
                     <div className="flex-1" />
@@ -123,11 +124,11 @@ export function CommandesContent({ initialOrders }: CommandesContentProps) {
                     {filteredOrders.map((order) => (
                         <div
                             key={order.id}
-                            className="bg-[#111] border border-white/5 rounded-2xl p-5 hover:border-[#ec5b13]/30 transition-all group flex items-center justify-between gap-6"
+                            className="bg-[#111] border border-white/5 rounded-2xl p-5 hover:border-[var(--primary)]/30 transition-all group flex items-center justify-between gap-6"
                         >
                             <div className="flex flex-col gap-1.5 min-w-[200px]">
                                 <div className="flex items-center gap-3">
-                                    <span className="text-sm font-black text-slate-200 group-hover:text-[#ec5b13] transition-colors">#{order.orderNumber}</span>
+                                    <span className="text-sm font-black text-slate-200 group-hover:text-[var(--primary)] transition-colors">#{order.orderNumber}</span>
                                     <Chip
                                         size="sm"
                                         variant="flat"
@@ -145,7 +146,7 @@ export function CommandesContent({ initialOrders }: CommandesContentProps) {
 
                             <div className="flex-1 flex flex-col gap-1">
                                 <div className="flex items-center gap-2">
-                                    <User size={14} className="text-[#ec5b13]" />
+                                    <User size={14} className="text-[var(--primary)]" />
                                     <span className="text-xs font-bold text-slate-200">{order.clientName}</span>
                                     {order.customerPhone && (
                                         <span className="text-[10px] text-slate-500 bg-white/5 px-1.5 py-0.5 rounded italic">
@@ -158,7 +159,7 @@ export function CommandesContent({ initialOrders }: CommandesContentProps) {
                                         <CreditCard size={12} />
                                         <span>{order.paymentMethod || "Cache"}</span>
                                     </div>
-                                    <div className="text-[9px] font-black text-[#ec5b13] border-l border-white/10 pl-3 uppercase">
+                                    <div className="text-[9px] font-black text-[var(--primary)] border-l border-white/10 pl-3 uppercase">
                                         {(order.items || []).length} article(s)
                                     </div>
                                 </div>
@@ -180,7 +181,7 @@ export function CommandesContent({ initialOrders }: CommandesContentProps) {
                                     isIconOnly
                                     size="md"
                                     variant="flat"
-                                    className="bg-white/5 hover:bg-[#ec5b13]/20 text-slate-400 hover:text-[#ec5b13] border border-white/5 transition-all"
+                                    className="bg-white/5 hover:bg-[var(--primary)]/20 text-slate-400 hover:text-[var(--primary)] border border-white/5 transition-all"
                                     onClick={() => handleOpenDetail(order)}
                                 >
                                     <Eye size={20} />

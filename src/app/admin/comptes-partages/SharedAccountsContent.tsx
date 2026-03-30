@@ -46,9 +46,13 @@ export default function SharedAccountsContent() {
     const [addOutlookPassword, setAddOutlookPassword] = useState("");
     const [addPurchasePrice, setAddPurchasePrice] = useState("");
     const [addPurchaseCurrency, setAddPurchaseCurrency] = useState("DZD");
+    const [addIsRelayed, setAddIsRelayed] = useState(false);
     const [addSlotsData, setAddSlotsData] = useState<{ profileName: string; pinCode: string }[]>([]);
     const [generatedPins, setGeneratedPins] = useState<{ slotIndex: number; pin: string }[]>([]);
     const [isAdding, setIsAdding] = useState(false);
+    const [historySearch, setHistorySearch] = useState("");
+    const [historyPage, setHistoryPage] = useState(1);
+    const HISTORY_PER_PAGE = 10;
     const lastAddVariantId = React.useRef("");
 
     // ── Multi-line quick insert ───────────────────────────────────────────────
@@ -105,7 +109,11 @@ export default function SharedAccountsContent() {
         setIsLoadingHistory(true);
         try {
             const res = await getSharedAccountsHistory({});
-            if (Array.isArray(res)) setHistory(res);
+            if (res && typeof res === 'object' && 'accounts' in res) {
+                setHistory((res as any).accounts || []);
+            } else if (Array.isArray(res)) {
+                setHistory(res);
+            }
         } catch {
             toast.error("Échec du chargement de l'historique");
         } finally {
@@ -232,6 +240,7 @@ export default function SharedAccountsContent() {
                 email: addEmail,
                 password: addPassword,
                 outlookPassword: addOutlookPassword || undefined,
+                isRelayed: addIsRelayed,
                 purchasePrice: addPurchasePrice,
                 purchaseCurrency: addPurchaseCurrency,
                 slots: addSlotsData
@@ -242,6 +251,7 @@ export default function SharedAccountsContent() {
                 setAddEmail("");
                 setAddPassword("");
                 setAddOutlookPassword("");
+                setAddIsRelayed(false);
                 setAddPurchasePrice("");
                 setAddSlotsData([]);
                 setAddVariantId("");
@@ -527,6 +537,21 @@ export default function SharedAccountsContent() {
                                                         startContent={<Mail size={14} className="text-blue-400/70" />}
                                                         classNames={{ inputWrapper: "bg-[#1a1a1a] border border-blue-500/20 h-12 rounded-xl", input: "text-white font-bold" }}
                                                     />
+                                                </div>
+                                                <div className="md:col-span-2">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setAddIsRelayed(v => !v)}
+                                                        className={`flex items-center gap-3 w-full p-3 rounded-xl border transition-all ${addIsRelayed ? 'bg-blue-500/10 border-blue-500/30' : 'bg-white/[0.02] border-white/5 hover:bg-white/5'}`}
+                                                    >
+                                                        <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 transition-all ${addIsRelayed ? 'bg-blue-500 border-blue-500' : 'border-slate-600'}`}>
+                                                            {addIsRelayed && <CheckCircle2 size={12} className="text-white" />}
+                                                        </div>
+                                                        <div className="text-left">
+                                                            <p className="text-xs font-black text-white">Compte relayé via Gmail</p>
+                                                            <p className="text-[10px] text-slate-500">Les emails de ce compte sont transférés vers le relais Gmail configuré</p>
+                                                        </div>
+                                                    </button>
                                                 </div>
                                             </div>
 
@@ -939,72 +964,251 @@ export default function SharedAccountsContent() {
                     </div>
                 </Tab>
 
-                <Tab key="history" title="Historique">
-                    <div className="mt-6">
+                <Tab key="history" title="Suivi Comptes">
+                    <div className="mt-6 space-y-4">
+                        {/* Header + Search + Refresh */}
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                            <div className="flex-1">
+                                <h2 className="text-lg font-black text-white uppercase italic">Suivi de tous les comptes</h2>
+                                <p className="text-[11px] text-slate-500 font-bold">Tous les comptes partagés · clients associés · activité resolver</p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <Input
+                                    placeholder="Rechercher email, client, commande..."
+                                    value={historySearch}
+                                    onValueChange={(v) => { setHistorySearch(v); setHistoryPage(1); }}
+                                    startContent={<Search size={14} className="text-slate-500" />}
+                                    size="sm"
+                                    classNames={{ inputWrapper: "bg-[#1a1a1a] border border-white/5 h-9 rounded-xl w-64", input: "text-white text-xs" }}
+                                    isClearable
+                                    onClear={() => { setHistorySearch(""); setHistoryPage(1); }}
+                                />
+                                <Button size="sm" variant="flat" className="bg-white/5 text-white font-black uppercase text-xs border border-white/10 h-9"
+                                    onPress={loadHistory} isLoading={isLoadingHistory}>
+                                    Actualiser
+                                </Button>
+                            </div>
+                        </div>
+
                         {isLoadingHistory ? (
                             <div className="flex justify-center py-24">
-                                <Spinner label="Chargement de l'historique..." />
+                                <Spinner label="Chargement..." />
                             </div>
                         ) : history.length === 0 ? (
                             <div className="py-24 text-center border-2 border-dashed border-white/5 rounded-3xl bg-[#111]">
                                 <Clock className="w-10 h-10 text-slate-700 mx-auto mb-4" />
-                                <h3 className="text-lg font-bold text-white mb-1">Historique vide</h3>
-                                <p className="text-slate-500 text-sm">Les comptes entièrement vendus apparaîtront ici.</p>
+                                <h3 className="text-lg font-bold text-white mb-1">Aucun compte trouvé</h3>
+                                <p className="text-slate-500 text-sm">Ajoutez des comptes dans l&apos;inventaire.</p>
                             </div>
-                        ) : (
-                            <Table
-                                aria-label="Historique des ventes"
-                                className="dark"
-                                removeWrapper
-                                classNames={{
-                                    th: "bg-[#111] text-slate-500 font-black uppercase text-[10px] border-b border-white/5",
-                                    td: "py-4 border-b border-white/5 text-sm font-bold"
-                                }}
-                            >
-                                <TableHeader>
-                                    <TableColumn>COMPTE / PRODUIT</TableColumn>
-                                    <TableColumn>VENDU LE</TableColumn>
-                                    <TableColumn>CLIENTS / COMMANDES</TableColumn>
-                                </TableHeader>
-                                <TableBody>
-                                    {history.map((account) => (
-                                        <TableRow key={account.id}>
-                                            <TableCell>
-                                                <div className="flex flex-col">
-                                                    <span className="text-white font-black">{account.code}</span>
-                                                    <span className="text-[10px] text-primary font-bold uppercase">{account.variant?.product?.name} - {account.variant?.name}</span>
+                        ) : (() => {
+                            const filtered = history.filter((account: any) => {
+                                if (!historySearch.trim()) return true;
+                                const q = historySearch.toLowerCase();
+                                const email = account.code?.toLowerCase() || "";
+                                const product = `${account.variant?.product?.name} ${account.variant?.name}`.toLowerCase();
+                                const clients = account.slots?.map((s: any) =>
+                                    `${s.orderItem?.order?.client?.nomComplet || ""} ${s.orderItem?.order?.customerPhone || ""} ${s.orderItem?.order?.client?.telephone || ""} ${s.orderItem?.order?.orderNumber || ""}`.toLowerCase()
+                                ).join(" ") || "";
+                                return email.includes(q) || product.includes(q) || clients.includes(q);
+                            });
+                            const totalPages = Math.max(1, Math.ceil(filtered.length / HISTORY_PER_PAGE));
+                            const safePage = Math.min(historyPage, totalPages);
+                            const paginated = filtered.slice((safePage - 1) * HISTORY_PER_PAGE, safePage * HISTORY_PER_PAGE);
+
+                            return (
+                            <div className="space-y-3">
+                                {paginated.map((account: any) => {
+                                    const email = account.code?.split('|')[0]?.trim() || account.code;
+                                    const soldSlots = account.slots?.filter((s: any) => s.status === "VENDU") || [];
+                                    const totalSlots = account.slots?.length || 0;
+                                    const allSold = soldSlots.length === totalSlots && totalSlots > 0;
+                                    const isExpired = account.expiresAt && new Date(account.expiresAt) < new Date();
+                                    const statusColor = isExpired ? "text-red-400" : allSold ? "text-orange-400" : soldSlots.length > 0 ? "text-yellow-400" : "text-emerald-400";
+                                    const statusLabel = isExpired ? "EXPIRÉ" : allSold ? "COMPLET" : soldSlots.length > 0 ? "PARTIEL" : "LIBRE";
+
+                                    return (
+                                        <div key={account.id} className="bg-[#111] border border-white/5 rounded-2xl overflow-hidden">
+                                            {/* Account header */}
+                                            <div className="flex items-center gap-3 px-4 py-3 border-b border-white/5">
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="flex items-center gap-2 flex-wrap">
+                                                        <span className="text-white font-black text-sm truncate">{email}</span>
+                                                        <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full border ${
+                                                            isExpired ? 'text-red-400 border-red-500/20 bg-red-500/10' :
+                                                            allSold ? 'text-orange-400 border-orange-500/20 bg-orange-500/10' :
+                                                            soldSlots.length > 0 ? 'text-yellow-400 border-yellow-500/20 bg-yellow-500/10' :
+                                                            'text-emerald-400 border-emerald-500/20 bg-emerald-500/10'
+                                                        }`}>
+                                                            {statusLabel}
+                                                        </span>
+                                                        {account.isRelayed && (
+                                                            <span className="text-[10px] font-black text-blue-400 border border-blue-500/20 bg-blue-500/10 px-2 py-0.5 rounded-full">
+                                                                RELAY ✓
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <div className="flex items-center gap-3 mt-0.5 flex-wrap">
+                                                        <span className="text-[10px] text-primary font-bold uppercase">{account.variant?.product?.name} — {account.variant?.name}</span>
+                                                        <span className="text-[10px] text-slate-500">{soldSlots.length}/{totalSlots} profils vendus</span>
+                                                        {account.expiresAt && (
+                                                            <span className={`text-[10px] font-bold ${isExpired ? 'text-red-400' : 'text-slate-400'}`}>
+                                                                Exp: {new Date(account.expiresAt).toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "numeric" })}
+                                                            </span>
+                                                        )}
+                                                        <span className="text-[10px] text-slate-600">
+                                                            Ajouté le {new Date(account.createdAt).toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "numeric" })}
+                                                        </span>
+                                                    </div>
                                                 </div>
-                                            </TableCell>
-                                            <TableCell>
-                                                <div className="text-slate-400">
-                                                    {new Date(account.updatedAt || account.createdAt).toLocaleDateString("fr-FR", {
-                                                        day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit"
-                                                    })}
+                                                {/* Occupation bar */}
+                                                <div className="hidden sm:block w-24">
+                                                    <div className="flex justify-between text-[9px] text-slate-500 mb-1">
+                                                        <span>{soldSlots.length}/{totalSlots}</span>
+                                                        <span>{totalSlots > 0 ? Math.round(soldSlots.length / totalSlots * 100) : 0}%</span>
+                                                    </div>
+                                                    <Progress
+                                                        value={totalSlots > 0 ? (soldSlots.length / totalSlots) * 100 : 0}
+                                                        size="sm"
+                                                        classNames={{
+                                                            indicator: allSold ? "bg-orange-500" : soldSlots.length > 0 ? "bg-yellow-500" : "bg-emerald-500"
+                                                        }}
+                                                    />
                                                 </div>
-                                            </TableCell>
-                                            <TableCell>
-                                                <div className="flex flex-col gap-2">
-                                                    {account.slots.filter((s: any) => s.status === "VENDU").map((s: any) => (
-                                                        <div key={s.id} className="flex items-center gap-2 bg-white/5 p-1 px-2 rounded-lg border border-white/5">
-                                                            <div className="flex-1">
-                                                                <span className="text-white text-xs">{s.profileName}: </span>
-                                                                <span className="text-orange-400 text-xs">{s.orderItem?.order?.client?.nomComplet}</span>
-                                                                {s.orderItem?.order?.client?.phoneNumber && (
-                                                                    <span className="text-slate-500 text-[10px] ml-2">({s.orderItem?.order?.client?.phoneNumber})</span>
-                                                                )}
+                                            </div>
+
+                                            {/* Slots grid */}
+                                            <div className="p-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                                                {account.slots?.map((slot: any) => {
+                                                    const client = slot.orderItem?.order?.client;
+                                                    const phone = slot.orderItem?.order?.customerPhone || client?.telephone;
+                                                    const orderNum = slot.orderItem?.order?.orderNumber;
+                                                    const orderDate = slot.orderItem?.order?.createdAt;
+                                                    const slotExpiry = slot.expiresAt;
+                                                    const slotExpired = slotExpiry && new Date(slotExpiry) < new Date();
+                                                    const hasResolverActivity = slot.resolverLogs?.length > 0;
+                                                    const lastLog = slot.resolverLogs?.[0];
+
+                                                    return (
+                                                        <div key={slot.id} className={`rounded-xl p-2.5 border flex flex-col gap-1.5 ${
+                                                            slot.status === "VENDU"
+                                                                ? "bg-orange-500/5 border-orange-500/20"
+                                                                : slot.status === "EXPIRE" || slotExpired
+                                                                ? "bg-red-500/5 border-red-500/20"
+                                                                : "bg-white/[0.02] border-white/5"
+                                                        }`}>
+                                                            <div className="flex items-center justify-between">
+                                                                <span className="text-[11px] font-black text-white">{slot.profileName || `Profil ${slot.slotNumber}`}</span>
+                                                                <div className="flex items-center gap-1">
+                                                                    {hasResolverActivity && (
+                                                                        <span title={`${slot.resolverLogs.length} résolution(s)`} className="text-[9px] text-blue-400 bg-blue-500/10 border border-blue-500/20 px-1.5 py-0.5 rounded-full font-black">
+                                                                            ⚡ {slot.resolverLogs.length}
+                                                                        </span>
+                                                                    )}
+                                                                    <span className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded-full ${
+                                                                        slot.status === "VENDU" ? "text-orange-400 bg-orange-500/10" :
+                                                                        slot.status === "EXPIRE" || slotExpired ? "text-red-400 bg-red-500/10" :
+                                                                        "text-emerald-400 bg-emerald-500/10"
+                                                                    }`}>
+                                                                        {slot.status === "VENDU" ? "VENDU" : slot.status === "EXPIRE" || slotExpired ? "EXP" : "LIBRE"}
+                                                                    </span>
+                                                                </div>
                                                             </div>
-                                                            <Chip size="sm" variant="flat" className="h-5 text-[9px] font-black bg-white/5">
-                                                                #{s.orderItem?.order?.orderNumber}
-                                                            </Chip>
+
+                                                            {slot.status === "VENDU" && (
+                                                                <div className="space-y-0.5">
+                                                                    {client?.nomComplet && (
+                                                                        <div className="flex items-center gap-1.5">
+                                                                            <User size={10} className="text-slate-500 shrink-0" />
+                                                                            <span className="text-[11px] text-white font-bold truncate">{client.nomComplet}</span>
+                                                                        </div>
+                                                                    )}
+                                                                    {phone && (
+                                                                        <div className="flex items-center gap-1.5">
+                                                                            <span className="text-[10px] text-slate-400 font-mono">{phone}</span>
+                                                                        </div>
+                                                                    )}
+                                                                    {orderNum && (
+                                                                        <div className="flex items-center gap-1.5">
+                                                                            <span className="text-[9px] text-slate-500">Cmd</span>
+                                                                            <span className="text-[9px] text-primary font-black">#{orderNum}</span>
+                                                                            {orderDate && (
+                                                                                <span className="text-[9px] text-slate-600">
+                                                                                    {new Date(orderDate).toLocaleDateString("fr-FR", { day: "2-digit", month: "short" })}
+                                                                                </span>
+                                                                            )}
+                                                                        </div>
+                                                                    )}
+                                                                    {slotExpiry && (
+                                                                        <div className="flex items-center gap-1.5">
+                                                                            <Calendar size={10} className={slotExpired ? "text-red-400" : "text-slate-500"} />
+                                                                            <span className={`text-[9px] font-bold ${slotExpired ? 'text-red-400' : 'text-slate-400'}`}>
+                                                                                {slotExpired ? "Expiré" : "Exp"} {new Date(slotExpiry).toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "numeric" })}
+                                                                            </span>
+                                                                        </div>
+                                                                    )}
+                                                                    {hasResolverActivity && lastLog && (
+                                                                        <div className="mt-1 pt-1 border-t border-white/5">
+                                                                            <span className="text-[9px] text-blue-400 font-bold">
+                                                                                Dernier resolver: {new Date(lastLog.createdAt).toLocaleDateString("fr-FR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+                                                                                {" · "}{(lastLog.newData as any)?.type || "—"}
+                                                                            </span>
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            )}
+
+                                                            {slot.status !== "VENDU" && (
+                                                                <div className="text-[10px] text-slate-600 font-bold">Disponible</div>
+                                                            )}
                                                         </div>
-                                                    ))}
-                                                </div>
-                                            </TableCell>
-                                        </TableRow>
-                                    ))}
-                                </TableBody>
-                            </Table>
-                        )}
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+
+                                {/* Pagination */}
+                                {totalPages > 1 && (
+                                    <div className="flex items-center justify-between pt-2 border-t border-white/5">
+                                        <span className="text-[11px] text-slate-500 font-bold">
+                                            {filtered.length} compte{filtered.length > 1 ? "s" : ""} · Page {safePage}/{totalPages}
+                                        </span>
+                                        <div className="flex items-center gap-1">
+                                            <Button size="sm" variant="flat" isDisabled={safePage <= 1}
+                                                onPress={() => setHistoryPage(p => Math.max(1, p - 1))}
+                                                className="min-w-[32px] h-8 bg-white/5 text-white border border-white/10 font-black text-xs">
+                                                ‹
+                                            </Button>
+                                            {Array.from({ length: totalPages }, (_, i) => i + 1)
+                                                .filter(p => p === 1 || p === totalPages || Math.abs(p - safePage) <= 1)
+                                                .reduce<(number | "…")[]>((acc, p, i, arr) => {
+                                                    if (i > 0 && (p as number) - (arr[i - 1] as number) > 1) acc.push("…");
+                                                    acc.push(p);
+                                                    return acc;
+                                                }, [])
+                                                .map((p, i) => p === "…" ? (
+                                                    <span key={`ellipsis-${i}`} className="text-slate-600 px-1 text-xs">…</span>
+                                                ) : (
+                                                    <Button key={p} size="sm"
+                                                        variant={safePage === p ? "solid" : "flat"}
+                                                        color={safePage === p ? "primary" : "default"}
+                                                        onPress={() => setHistoryPage(p as number)}
+                                                        className={`min-w-[32px] h-8 font-black text-xs ${safePage === p ? "bg-primary text-black" : "bg-white/5 text-slate-400 border border-white/10"}`}>
+                                                        {p}
+                                                    </Button>
+                                                ))}
+                                            <Button size="sm" variant="flat" isDisabled={safePage >= totalPages}
+                                                onPress={() => setHistoryPage(p => Math.min(totalPages, p + 1))}
+                                                className="min-w-[32px] h-8 bg-white/5 text-white border border-white/10 font-black text-xs">
+                                                ›
+                                            </Button>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                            );
+                        })()}
                     </div>
                 </Tab>
             </Tabs>

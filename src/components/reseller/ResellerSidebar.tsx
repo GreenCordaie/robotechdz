@@ -16,6 +16,7 @@ import {
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import Image from "next/image";
+import { useSettingsStore } from "@/store/useSettingsStore";
 
 const MENU_ITEMS = [
     { icon: LayoutDashboard, label: "Dashboard", href: "/reseller/dashboard" },
@@ -31,6 +32,7 @@ const SECONDARY_ITEMS = [
 export const ResellerSidebar = () => {
     const pathname = usePathname();
     const router = useRouter();
+    const { shopName } = useSettingsStore();
 
     const handleLogout = () => {
         // Logic for logout
@@ -42,12 +44,12 @@ export const ResellerSidebar = () => {
             {/* Logo Section */}
             <div className="p-8 pb-10">
                 <div className="flex items-center gap-4 group">
-                    <div className="size-12 rounded-2xl bg-[#ec5b13] flex items-center justify-center shadow-lg shadow-orange-950/20 group-hover:scale-105 transition-transform">
+                    <div className="size-12 rounded-2xl bg-[var(--primary)] flex items-center justify-center shadow-lg shadow-orange-950/20 group-hover:scale-105 transition-transform">
                         <Store className="size-7 text-white" />
                     </div>
                     <div className="flex flex-col">
-                        <span className="text-xl font-black text-white tracking-tighter">FLEXBOX</span>
-                        <span className="text-[10px] font-black text-[#ec5b13] uppercase tracking-[0.3em] leading-none">B2B Portal</span>
+                        <span className="text-xl font-black text-white tracking-tighter">{shopName}</span>
+                        <span className="text-[10px] font-black text-[var(--primary)] uppercase tracking-[0.3em] leading-none">B2B Portal</span>
                     </div>
                 </div>
             </div>
@@ -63,15 +65,15 @@ export const ResellerSidebar = () => {
                                 key={item.href}
                                 href={item.href}
                                 className={`flex items-center justify-between px-4 py-3.5 rounded-xl transition-all group ${isActive
-                                        ? "bg-[#ec5b13]/10 text-[#ec5b13]"
+                                        ? "bg-[var(--primary)]/10 text-[var(--primary)]"
                                         : "text-slate-500 hover:bg-white/5 hover:text-slate-200"
                                     }`}
                             >
                                 <div className="flex items-center gap-3">
-                                    <item.icon className={`size-5 transition-transform group-hover:scale-110 ${isActive ? "text-[#ec5b13]" : "text-slate-500 group-hover:text-slate-300"}`} />
+                                    <item.icon className={`size-5 transition-transform group-hover:scale-110 ${isActive ? "text-[var(--primary)]" : "text-slate-500 group-hover:text-slate-300"}`} />
                                     <span className="text-sm font-bold tracking-tight">{item.label}</span>
                                 </div>
-                                {isActive && <div className="size-1.5 rounded-full bg-[#ec5b13] shadow-[0_0_8px_#ec5b13]"></div>}
+                                {isActive && <div className="size-1.5 rounded-full bg-[var(--primary)] shadow-[0_0_8px_var(--primary)]"></div>}
                                 {!isActive && <ChevronRight className="size-4 opacity-0 group-hover:opacity-100 -translate-x-2 group-hover:translate-x-0 transition-all text-slate-600" />}
                             </Link>
                         );
@@ -87,11 +89,11 @@ export const ResellerSidebar = () => {
                                 key={item.href}
                                 href={item.href}
                                 className={`flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all group ${isActive
-                                        ? "bg-[#ec5b13]/10 text-[#ec5b13]"
+                                        ? "bg-[var(--primary)]/10 text-[var(--primary)]"
                                         : "text-slate-500 hover:bg-white/5 hover:text-slate-200"
                                     }`}
                             >
-                                <item.icon className={`size-5 ${isActive ? "text-[#ec5b13]" : "text-slate-500 group-hover:text-slate-300"}`} />
+                                <item.icon className={`size-5 ${isActive ? "text-[var(--primary)]" : "text-slate-500 group-hover:text-slate-300"}`} />
                                 <span className="text-sm font-bold tracking-tight">{item.label}</span>
                             </Link>
                         );

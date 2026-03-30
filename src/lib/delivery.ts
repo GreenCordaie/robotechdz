@@ -182,7 +182,7 @@ export async function triggerOrderDelivery(orderId: number): Promise<{ success: 
     if (customerPhone && (order as any).deliveryMethod === 'WHATSAPP') {
         try {
             const settings = await db.query.shopSettings.findFirst();
-            const shopName = settings?.shopName || 'FLEXBOX DIRECT';
+            const shopName = settings?.shopName || 'Ma Boutique';
             const totalDebt = parseFloat((order as any).client?.totalDetteDzd || "0");
             const message = buildWhatsAppMessage(order, shopName, appUrl, totalDebt);
 

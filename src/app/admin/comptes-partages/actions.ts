@@ -74,6 +74,7 @@ export const addSharedAccount = withAuth(
             email: z.string().min(1),
             password: z.string().min(1),
             outlookPassword: z.string().optional(),
+            isRelayed: z.boolean().optional().default(false),
             slots: z.array(z.object({
                 profileName: z.string().optional(),
                 pinCode: z.string().optional()
@@ -83,7 +84,7 @@ export const addSharedAccount = withAuth(
             expiresAt: z.string().optional()
         })
     },
-    async ({ variantId, email, password, outlookPassword, slots: slotsData, purchasePrice, purchaseCurrency, expiresAt }) => {
+    async ({ variantId, email, password, outlookPassword, isRelayed, slots: slotsData, purchasePrice, purchaseCurrency, expiresAt }) => {
         try {
             const variant = await db.query.productVariants.findFirst({
                 where: eq(productVariants.id, variantId),
@@ -99,6 +100,7 @@ export const addSharedAccount = withAuth(
                 email,
                 password,
                 outlookPassword,
+                isRelayed,
                 purchasePrice,
                 purchaseCurrency,
                 expiresAt,
@@ -300,6 +302,7 @@ export const updateSharedAccount = withAuth(
             email: z.string().min(1),
             password: z.string().min(1),
             outlookPassword: z.string().optional(),
+            isRelayed: z.boolean().optional(),
             slots: z.array(z.object({
                 id: z.number(),
                 profileName: z.string().optional(),
@@ -309,7 +312,7 @@ export const updateSharedAccount = withAuth(
             purchaseCurrency: z.string().optional()
         })
     },
-    async ({ id, email, password, outlookPassword, slots: slotsData, purchasePrice, purchaseCurrency }) => {
+    async ({ id, email, password, outlookPassword, isRelayed, slots: slotsData, purchasePrice, purchaseCurrency }) => {
         try {
             const fullCode = `${email} | ${password}`;
 
@@ -321,6 +324,9 @@ export const updateSharedAccount = withAuth(
                 };
                 if (outlookPassword !== undefined) {
                     updateData.outlookPassword = outlookPassword ? encrypt(outlookPassword) : null;
+                }
+                if (isRelayed !== undefined) {
+                    updateData.isRelayed = isRelayed;
                 }
 
                 await tx.update(digitalCodes)
@@ -461,41 +467,66 @@ export const attribuerSlotAutomatiqueAction = withAuth(
 export const getSharedAccountsHistory = withAuth(
     { roles: [UserRole.ADMIN] },
     async () => {
-        const results = await db.query.digitalCodes.findMany({
-            where: eq(digitalCodes.status, "VENDU"),
+        // Fetch ALL shared accounts (all statuses) with full slot + client context
+        const variants = await db.query.productVariants.findMany({
+            where: eq(productVariants.isSharing, true),
             with: {
-                variant: {
+                product: true,
+                digitalCodes: {
                     with: {
-                        product: true
-                    }
-                },
-                slots: {
-                    with: {
-                        orderItem: {
+                        slots: {
                             with: {
-                                order: {
+                                orderItem: {
                                     with: {
-                                        client: true
+                                        order: {
+                                            with: { client: true }
+                                        }
                                     }
                                 }
                             }
                         }
-                    }
+                    },
+                    orderBy: [desc(digitalCodes.createdAt)]
                 }
-            },
-            orderBy: [desc(digitalCodes.id)],
-            limit: 50
+            }
         });
 
-        // Decrypt for admin view
-        return results.map(dc => ({
-            ...dc,
-            code: decrypt(dc.code) || dc.code,
-            slots: dc.slots.map(s => ({
-                ...s,
-                code: s.code ? (decrypt(s.code) || s.code) : null
-            }))
-        }));
+        // Fetch recent resolver audit logs
+        const resolverLogs = await db.query.auditLogs.findMany({
+            where: (al, { inArray }) => inArray(al.action, ['NETFLIX_RESOLVE_MANUAL', 'NETFLIX_RESOLVE_AUTO']),
+            orderBy: [desc(auditLogs.createdAt)],
+            limit: 200
+        });
+
+        // Build a map slotId → [logs]
+        const logsBySlot: Record<string, any[]> = {};
+        for (const log of resolverLogs) {
+            const sid = log.entityId ?? "";
+            if (!sid) continue;
+            if (!logsBySlot[sid]) logsBySlot[sid] = [];
+            logsBySlot[sid].push(log);
+        }
+
+        // Flatten all accounts with decrypted data
+        const accounts: any[] = [];
+        for (const variant of variants) {
+            for (const dc of variant.digitalCodes) {
+                accounts.push({
+                    ...dc,
+                    code: decrypt(dc.code) || dc.code,
+                    outlookPassword: undefined,
+                    hasOutlookPassword: !!dc.outlookPassword,
+                    variant: { ...variant, digitalCodes: undefined },
+                    slots: dc.slots.map(s => ({
+                        ...s,
+                        code: s.code ? (decrypt(s.code) || s.code) : null,
+                        resolverLogs: logsBySlot[String(s.id)] || []
+                    }))
+                });
+            }
+        }
+
+        return { accounts, totalLogs: resolverLogs.length };
     }
 );
 
@@ -536,7 +567,14 @@ export const resolveHouseholdAction = withAuth(
             const codeRaw = decrypt(slot.digitalCode.code!) || "";
             const [email] = codeRaw.split('|').map(s => s.trim());
 
-            const result = await NetflixResolverService.resolve(email, outlookPass);
+            const settings = await db.query.shopSettings.findFirst();
+            const result = await NetflixResolverService.resolve(
+                email,
+                outlookPass,
+                settings?.netflixResolverEmail && settings?.netflixResolverPassword
+                    ? { email: settings.netflixResolverEmail, password: settings.netflixResolverPassword }
+                    : undefined
+            );
 
             if (result.type === 'NOT_FOUND') {
                 return { success: false, error: "Aucun email de vérification trouvé ces 15 dernières minutes" };
@@ -546,7 +584,6 @@ export const resolveHouseholdAction = withAuth(
             }
 
             const { sendWhatsAppMessage } = await import("@/lib/whatsapp");
-            const settings = await db.query.shopSettings.findFirst();
             const waSettings = {
                 whatsappApiUrl: settings?.whatsappApiUrl ?? undefined,
                 whatsappApiKey: settings?.whatsappApiKey ?? undefined,

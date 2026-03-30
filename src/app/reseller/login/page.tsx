@@ -7,8 +7,10 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
 import { loginResellerAction } from "./actions";
+import { useSettingsStore } from "@/store/useSettingsStore";
 
 export default function ResellerLoginPage() {
+    const { shopName } = useSettingsStore();
     const [email, setEmail] = useState("");
     const [pin, setPin] = useState("");
     const [websiteUrl, setWebsiteUrl] = useState(""); // Honeypot
@@ -67,18 +69,18 @@ export default function ResellerLoginPage() {
         <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center p-6 relative overflow-hidden">
             {/* Background elements */}
             <div className="absolute top-0 left-0 w-full h-full overflow-hidden z-0 pointer-events-none">
-                <div className="absolute top-[-10%] right-[-10%] w-[50%] h-[50%] bg-[#ec5b13]/5 blur-[120px] rounded-full"></div>
-                <div className="absolute bottom-[-10%] left-[-10%] w-[50%] h-[50%] bg-[#ec5b13]/5 blur-[120px] rounded-full"></div>
+                <div className="absolute top-[-10%] right-[-10%] w-[50%] h-[50%] bg-[var(--primary)]/5 blur-[120px] rounded-full"></div>
+                <div className="absolute bottom-[-10%] left-[-10%] w-[50%] h-[50%] bg-[var(--primary)]/5 blur-[120px] rounded-full"></div>
             </div>
 
             <div className="w-full max-w-[440px] z-10">
                 <div className="flex flex-col items-center mb-10">
                     <div className="size-20 rounded-3xl bg-[#161616] border border-[#262626] flex items-center justify-center mb-6 shadow-2xl overflow-hidden group">
-                        <div className="size-full bg-gradient-to-br from-[#ec5b13]/10 to-transparent absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                        <Store className="size-10 text-[#ec5b13]" />
+                        <div className="size-full bg-gradient-to-br from-[var(--primary)]/10 to-transparent absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                        <Store className="size-10 text-[var(--primary)]" />
                     </div>
                     <h1 className="text-3xl font-black text-white tracking-tight mb-2">Espace Revendeur</h1>
-                    <p className="text-slate-500 font-medium">FLEXBOX DIRECT • Business Solution</p>
+                    <p className="text-slate-500 font-medium">{shopName} • Business Solution</p>
                 </div>
 
                 <Card className="bg-[#161616] border border-[#262626] shadow-2xl rounded-[32px]">
@@ -105,7 +107,7 @@ export default function ResellerLoginPage() {
                                             placeholder="votre@email.com"
                                             variant="flat"
                                             classNames={{
-                                                inputWrapper: "bg-[#0a0a0a] border border-[#262626] hover:border-[#ec5b13]/50 focus-within:border-[#ec5b13] transition-all h-14 rounded-2xl px-5",
+                                                inputWrapper: "bg-[#0a0a0a] border border-[#262626] hover:border-[var(--primary)]/50 focus-within:border-[var(--primary)] transition-all h-14 rounded-2xl px-5",
                                                 input: "text-base font-medium"
                                             }}
                                             startContent={<Mail className="text-slate-500 size-5 mr-2" />}
@@ -123,7 +125,7 @@ export default function ResellerLoginPage() {
                                             maxLength={4}
                                             variant="flat"
                                             classNames={{
-                                                inputWrapper: "bg-[#0a0a0a] border border-[#262626] hover:border-[#ec5b13]/50 focus-within:border-[#ec5b13] transition-all h-14 rounded-2xl px-5",
+                                                inputWrapper: "bg-[#0a0a0a] border border-[#262626] hover:border-[var(--primary)]/50 focus-within:border-[var(--primary)] transition-all h-14 rounded-2xl px-5",
                                                 input: "text-xl font-black tracking-[0.5em] placeholder:tracking-normal placeholder:text-base placeholder:font-medium"
                                             }}
                                             startContent={<Lock className="text-slate-500 size-5 mr-2" />}
@@ -136,7 +138,7 @@ export default function ResellerLoginPage() {
 
                                 <Button
                                     type="submit"
-                                    className="w-full h-14 bg-[#ec5b13] text-white font-black text-base rounded-2xl shadow-xl shadow-orange-950/20 active:scale-[0.98] transition-all"
+                                    className="w-full h-14 bg-[var(--primary)] text-white font-black text-base rounded-2xl shadow-xl shadow-orange-950/20 active:scale-[0.98] transition-all"
                                     isLoading={isLoading}
                                     endContent={!isLoading && <ArrowRight className="size-5" />}
                                 >
@@ -145,7 +147,7 @@ export default function ResellerLoginPage() {
 
                                 <div className="pt-4 flex flex-col gap-4">
                                     <div className="h-px bg-[#262626] w-full"></div>
-                                    <div className="flex items-center gap-3 text-[#ec5b13]/80 bg-[#ec5b13]/5 p-4 rounded-2xl border border-[#ec5b13]/10">
+                                    <div className="flex items-center gap-3 text-[var(--primary)]/80 bg-[var(--primary)]/5 p-4 rounded-2xl border border-[var(--primary)]/10">
                                         <ShieldCheck className="size-5 shrink-0" />
                                         <p className="text-[10px] leading-relaxed font-bold uppercase tracking-wider">
                                             Accès réservé aux partenaires agréés.
@@ -173,8 +175,8 @@ export default function ResellerLoginPage() {
                                     variant="flat"
                                     autoFocus
                                     classNames={{
-                                        inputWrapper: "bg-[#0a0a0a] border border-[#262626] hover:border-[#ec5b13]/50 focus-within:border-[#ec5b13] transition-all h-16 rounded-2xl px-5 text-center",
-                                        input: "text-2xl font-black tracking-[0.5em] text-[#ec5b13] placeholder:text-slate-700"
+                                        inputWrapper: "bg-[#0a0a0a] border border-[#262626] hover:border-[var(--primary)]/50 focus-within:border-[var(--primary)] transition-all h-16 rounded-2xl px-5 text-center",
+                                        input: "text-2xl font-black tracking-[0.5em] text-[var(--primary)] placeholder:text-slate-700"
                                     }}
                                     value={mfaCode}
                                     onChange={(e) => setMfaCode(e.target.value)}
@@ -183,7 +185,7 @@ export default function ResellerLoginPage() {
 
                                 <Button
                                     type="submit"
-                                    className="w-full h-14 bg-[#ec5b13] text-white font-black text-base rounded-2xl shadow-xl shadow-orange-950/20 active:scale-[0.98] transition-all"
+                                    className="w-full h-14 bg-[var(--primary)] text-white font-black text-base rounded-2xl shadow-xl shadow-orange-950/20 active:scale-[0.98] transition-all"
                                     isLoading={isLoading}
                                     disabled={mfaCode.length !== 6}
                                 >
@@ -203,7 +205,7 @@ export default function ResellerLoginPage() {
                 </Card>
 
                 <p className="text-center mt-8 text-slate-600 text-xs font-semibold uppercase tracking-widest">
-                    &copy; 2026 FLEXBOX DIRECT • ALGERIA
+                    &copy; {new Date().getFullYear()} {shopName} • ALGERIA
                 </p>
             </div>
         </div>

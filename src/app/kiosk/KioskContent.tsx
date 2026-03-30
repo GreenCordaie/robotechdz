@@ -15,12 +15,19 @@ export default function KioskContent() {
     const { step, resetKiosk } = useKioskStore();
     const [data, setData] = useState<{ products: any[], categories: any[] } | null>(null);
 
-    const { fetchSettings } = useSettingsStore();
+    const { fetchSettings, accentColor } = useSettingsStore();
 
     const refreshData = React.useCallback(() => {
         getKioskData().then(setData).catch(console.error);
         fetchSettings();
     }, [fetchSettings]);
+
+    // Apply primary color CSS variable for kiosk theming
+    useEffect(() => {
+        if (typeof document !== "undefined") {
+            document.documentElement.style.setProperty("--primary", accentColor || "#ec5b13");
+        }
+    }, [accentColor]);
 
     // Initial and conditional fetch
     useEffect(() => {

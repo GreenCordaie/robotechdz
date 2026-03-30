@@ -45,8 +45,8 @@ export default function ResellerSupport() {
     return (
         <div className="space-y-10 animate-in fade-in duration-500 max-w-5xl mx-auto">
             <div className="text-center space-y-4">
-                <div className="size-20 rounded-[32px] bg-[#ec5b13]/10 border border-[#ec5b13]/20 flex items-center justify-center mx-auto shadow-2xl">
-                    <MessageSquare className="text-[#ec5b13] size-10" />
+                <div className="size-20 rounded-[32px] bg-[var(--primary)]/10 border border-[var(--primary)]/20 flex items-center justify-center mx-auto shadow-2xl">
+                    <MessageSquare className="text-[var(--primary)] size-10" />
                 </div>
                 <h1 className="text-4xl font-black text-white tracking-tight">Centre d&apos;Assistance Partenaire</h1>
                 <p className="text-slate-500 font-medium max-w-xl mx-auto leading-relaxed">
@@ -55,9 +55,9 @@ export default function ResellerSupport() {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                <Card className="bg-[#161616] border border-[#262626] rounded-[28px] p-2 hover:border-[#ec5b13]/30 transition-all group">
+                <Card className="bg-[#161616] border border-[#262626] rounded-[28px] p-2 hover:border-[var(--primary)]/30 transition-all group">
                     <CardBody className="p-6 space-y-6 text-center">
-                        <div className="size-12 rounded-xl bg-[#0a0a0a] flex items-center justify-center mx-auto text-[#ec5b13]">
+                        <div className="size-12 rounded-xl bg-[#0a0a0a] flex items-center justify-center mx-auto text-[var(--primary)]">
                             <Phone size={24} />
                         </div>
                         <div>
@@ -67,9 +67,9 @@ export default function ResellerSupport() {
                     </CardBody>
                 </Card>
 
-                <Card className="bg-[#161616] border border-[#262626] rounded-[28px] p-2 hover:border-[#ec5b13]/30 transition-all group">
+                <Card className="bg-[#161616] border border-[#262626] rounded-[28px] p-2 hover:border-[var(--primary)]/30 transition-all group">
                     <CardBody className="p-6 space-y-6 text-center">
-                        <div className="size-12 rounded-xl bg-[#0a0a0a] flex items-center justify-center mx-auto text-[#ec5b13]">
+                        <div className="size-12 rounded-xl bg-[#0a0a0a] flex items-center justify-center mx-auto text-[var(--primary)]">
                             <Clock size={24} />
                         </div>
                         <div>
@@ -79,9 +79,9 @@ export default function ResellerSupport() {
                     </CardBody>
                 </Card>
 
-                <Card className="bg-[#161616] border border-[#262626] rounded-[28px] p-2 hover:border-[#ec5b13]/30 transition-all group">
+                <Card className="bg-[#161616] border border-[#262626] rounded-[28px] p-2 hover:border-[var(--primary)]/30 transition-all group">
                     <CardBody className="p-6 space-y-6 text-center">
-                        <div className="size-12 rounded-xl bg-[#0a0a0a] flex items-center justify-center mx-auto text-[#ec5b13]">
+                        <div className="size-12 rounded-xl bg-[#0a0a0a] flex items-center justify-center mx-auto text-[var(--primary)]">
                             <BadgeCheck size={24} />
                         </div>
                         <div>
@@ -96,7 +96,7 @@ export default function ResellerSupport() {
                 {/* Contact Form */}
                 <div className="space-y-8">
                     <h2 className="text-2xl font-black text-white tracking-tight flex items-center gap-3">
-                        <Send size={24} className="text-[#ec5b13]" />
+                        <Send size={24} className="text-[var(--primary)]" />
                         Envoyer un Ticket
                     </h2>
 
@@ -121,7 +121,7 @@ export default function ResellerSupport() {
                         />
                         <Button
                             type="submit"
-                            className="w-full bg-[#ec5b13] text-white font-black h-14 rounded-2xl shadow-xl shadow-orange-950/20"
+                            className="w-full bg-[var(--primary)] text-white font-black h-14 rounded-2xl shadow-xl shadow-orange-950/20"
                         >
                             Soumettre le Ticket
                         </Button>
@@ -131,7 +131,7 @@ export default function ResellerSupport() {
                 {/* FAQ Style Accordion */}
                 <div className="space-y-8">
                     <h2 className="text-2xl font-black text-white tracking-tight flex items-center gap-3">
-                        <HelpCircle size={24} className="text-[#ec5b13]" />
+                        <HelpCircle size={24} className="text-[var(--primary)]" />
                         Questions Fréquentes
                     </h2>
 

@@ -10,8 +10,9 @@
   --background-end-rgb: 0, 0, 0;
 
   --primary: #ec5b13;
+  /* fallback only — overridden by BrandingInjector (SSR) and useSettingsStore (client) */
   --primary-foreground: #FFFFFF;
-  --background-dark: #221610;
+  --background-dark: #2B0E02;
   --background-light: #f8f6f6;
 }
 
@@ -40,28 +41,33 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Global Focus Reset to prevent white highlights */
-* {
-  -webkit-tap-highlight-color: transparent;
-}
-
-:focus {
-  outline: none !important;
-  box-shadow: none !important;
-}
-
-input:focus,
-button:focus,
-textarea:focus,
-select:focus {
-  outline: none !important;
-  box-shadow: none !important;
-}
-
 @layer utilities {
   .text-balance {
     text-wrap: balance;
   }
+
+  .glass-premium {
+    @apply bg-black/10 dark:bg-white/5 backdrop-blur-xl border border-white/10 dark:border-white/5 shadow-2xl;
+  }
+
+  .card-premium {
+    @apply bg-white dark:bg-zinc-900/50 border border-zinc-200 dark:border-white/10 rounded-2xl shadow-sm transition-all duration-300 hover:shadow-md;
+  }
+
+  /* Universal Focus Reset */
+  *:focus-visible {
+    @apply outline-none ring-2 ring-[var(--primary)] ring-offset-2 ring-offset-background-light dark:ring-offset-background-dark;
+  }
+
+  * {
+    @apply antialiased;
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
+/* Global Reset (Legacy support) */
+:focus {
+  outline: none !important;
 }
 
 /* Kiosk animations */
