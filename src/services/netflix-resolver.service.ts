@@ -10,23 +10,27 @@ export interface ResolverResult {
 export class NetflixResolverService {
     /**
      * Résout le code/lien Netflix pour un compte donné via Microsoft Graph API.
+     * @param digitalCodeId Si fourni, permet la rotation automatique du refresh_token.
      */
     static async resolve(
         netflixEmail: string,
-        _emailPassword?: string,
-        _relay?: { email: string; password: string },
         msRefreshToken?: string | null,
-        msClientId?: string | null
+        msClientId?: string | null,
+        digitalCodeId?: number
     ): Promise<ResolverResult> {
         if (!msRefreshToken) {
-            console.warn(`[NetflixResolver] Aucun Refresh Token Graph pour ${netflixEmail}. Résolution impossible (IMAP désactivé).`);
+            console.warn(`[NetflixResolver] Aucun Refresh Token Graph pour ${netflixEmail}. Résolution impossible (Graph non configuré).`);
             return { type: 'NOT_FOUND', attempts: 1, error: 'Graph not configured for this account' };
         }
 
         console.log(`[NetflixResolver] Utilisation de MICROSOFT GRAPH NATIVE pour ${netflixEmail} (Client: ${msClientId || 'default'})`);
 
         try {
-            const email = await MicrosoftGraphService.getLatestNetflixEmail(msRefreshToken, msClientId || undefined);
+            const email = await MicrosoftGraphService.getLatestNetflixEmail(
+                msRefreshToken,
+                msClientId || undefined,
+                digitalCodeId
+            );
 
             if (!email) {
                 console.warn(`[NetflixResolver] Aucun email Netflix récent trouvé via Graph.`);
@@ -53,4 +57,3 @@ export class NetflixResolverService {
         }
     }
 }
-

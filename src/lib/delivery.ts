@@ -1,7 +1,7 @@
 import { db } from "@/db";
 import { N8nService } from "@/services/n8n.service";
 import { decrypt } from "@/lib/encryption";
-import { sendWhatsAppMessage } from "@/lib/whatsapp";
+import { sendWhatsAppMessage, sendWhatsAppButtons } from "@/lib/whatsapp";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -194,6 +194,28 @@ export async function triggerOrderDelivery(orderId: number): Promise<{ success: 
 
             if (wahaResult.success) {
                 console.log(`[DELIVERY] ✅ WhatsApp sent to ${customerPhone} for order #${orderId}`);
+
+                // ── Netflix instructions (envoyé après le message principal) ──
+                const hasNetflixSlots = (order as any).items?.some((item: any) =>
+                    (item.slots || []).length > 0
+                );
+
+                if (hasNetflixSlots) {
+                    const instructionsMsg =
+                        `📺 *Comment activer votre accès Netflix :*\n\n` +
+                        `1️⃣ Connectez-vous sur votre TV ou appareil\n` +
+                        `2️⃣ Entrez l'email et le mot de passe reçus\n` +
+                        `3️⃣ Quand Netflix demande le *code de foyer* (4 chiffres), répondez simplement *CODE* à ce message.\n\n` +
+                        `⚡ *Nous vous enverrons le code instantanément !*`;
+
+                    await sendWhatsAppMessage(customerPhone, instructionsMsg, {
+                        whatsappApiUrl: settings?.whatsappApiUrl ?? undefined,
+                        whatsappApiKey: settings?.whatsappApiKey ?? undefined,
+                        whatsappInstanceName: settings?.whatsappInstanceName ?? undefined,
+                    }).catch(err => console.warn(`[DELIVERY] Netflix instructions failed:`, err));
+
+                    console.log(`[DELIVERY] 📺 Netflix instructions text sent to ${customerPhone}`);
+                }
             } else {
                 console.error(`[DELIVERY] ❌ WhatsApp failed: ${wahaResult.error}`);
             }

@@ -88,6 +88,9 @@ export default function SharedAccountsContent() {
     const [linkTotalSlots, setLinkTotalSlots] = useState("5");
     const [isLinking, setIsLinking] = useState(false);
 
+    // ── Outlook password visibility (per account id) ──────────────────────────
+    const [shownOutlookPw, setShownOutlookPw] = useState<Set<number>>(new Set());
+
     // ── Load ──────────────────────────────────────────────────────────────────
     const loadInventory = useCallback(async () => {
         try {
@@ -908,10 +911,91 @@ export default function SharedAccountsContent() {
                                                                 />
                                                             </div>
 
+                                                            {/* Alerte : compte Netflix non lié à Microsoft Graph */}
+                                                            {productName.toLowerCase().includes("netflix") && account.msStatus !== 'CONNECTED' && (
+                                                                <div
+                                                                    className="flex items-center gap-2 px-3 py-2 rounded-lg bg-yellow-500/10 border border-yellow-500/20 cursor-pointer hover:bg-yellow-500/15 transition-colors"
+                                                                    onClick={() => handleMicrosoftLink(account.id)}
+                                                                    title="Cliquer pour lier via Microsoft Graph"
+                                                                >
+                                                                    <AlertCircle size={12} className="text-yellow-400 shrink-0" />
+                                                                    <span className="text-[10px] font-black text-yellow-300 uppercase tracking-wider">
+                                                                        {account.msStatus === 'EXPIRED'
+                                                                            ? '⚠️ Token expiré — Cliquer pour re-lier'
+                                                                            : '⚠️ Non lié Graph — Cliquer pour activer la résolution auto'}
+                                                                    </span>
+                                                                </div>
+                                                            )}
+
+                                                            {/* Outlook credentials (admin only — pour liaison Microsoft) */}
+                                                            {productName.toLowerCase().includes("netflix") && (
+                                                                <div className="rounded-lg bg-[#0d0d0d] border border-white/5 px-3 py-2 space-y-1.5">
+                                                                    <div className="flex items-center justify-between">
+                                                                        <span className="text-[9px] font-black uppercase tracking-widest text-slate-600">Accès Outlook</span>
+                                                                        <div className="flex items-center gap-1">
+                                                                            {account.msStatus === 'CONNECTED' ? (
+                                                                                <span className="text-[9px] font-black text-emerald-400 uppercase">Graph lié ✓</span>
+                                                                            ) : account.msStatus === 'EXPIRED' ? (
+                                                                                <span className="text-[9px] font-black text-yellow-400 uppercase">Token expiré</span>
+                                                                            ) : (
+                                                                                <span className="text-[9px] font-black text-blue-400 uppercase">Non lié</span>
+                                                                            )}
+                                                                        </div>
+                                                                    </div>
+                                                                    {/* Email */}
+                                                                    <div className="flex items-center gap-1.5">
+                                                                        <Mail size={9} className="text-slate-600 shrink-0" />
+                                                                        <span className="text-[10px] font-mono text-slate-400 truncate flex-1">
+                                                                            {account.code?.split('|')[0]?.trim()}
+                                                                        </span>
+                                                                        <button
+                                                                            onClick={() => navigator.clipboard.writeText(account.code?.split('|')[0]?.trim() || '')}
+                                                                            className="text-slate-600 hover:text-slate-300 transition-colors shrink-0"
+                                                                            title="Copier l'email"
+                                                                        >
+                                                                            <Copy size={9} />
+                                                                        </button>
+                                                                    </div>
+                                                                    {/* Outlook Password */}
+                                                                    {account.hasOutlookPassword && (
+                                                                        <div className="flex items-center gap-1.5">
+                                                                            <Key size={9} className="text-slate-600 shrink-0" />
+                                                                            <span className="text-[10px] font-mono text-slate-400 flex-1 truncate">
+                                                                                {shownOutlookPw.has(account.id)
+                                                                                    ? (account.outlookPassword || '••••••••')
+                                                                                    : '••••••••'}
+                                                                            </span>
+                                                                            <button
+                                                                                onClick={() => setShownOutlookPw(prev => {
+                                                                                    const next = new Set(prev);
+                                                                                    if (next.has(account.id)) next.delete(account.id);
+                                                                                    else next.add(account.id);
+                                                                                    return next;
+                                                                                })}
+                                                                                className="text-slate-600 hover:text-slate-300 transition-colors shrink-0"
+                                                                                title={shownOutlookPw.has(account.id) ? "Masquer" : "Afficher"}
+                                                                            >
+                                                                                <ShieldCheck size={9} />
+                                                                            </button>
+                                                                            {shownOutlookPw.has(account.id) && account.outlookPassword && (
+                                                                                <button
+                                                                                    onClick={() => navigator.clipboard.writeText(account.outlookPassword || '')}
+                                                                                    className="text-slate-600 hover:text-slate-300 transition-colors shrink-0"
+                                                                                    title="Copier le mot de passe"
+                                                                                >
+                                                                                    <Copy size={9} />
+                                                                                </button>
+                                                                            )}
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            )}
+
                                                             {/* Slots list */}
                                                             <div className="space-y-1.5">
                                                                 {account.slots?.map((slot: any) => {
                                                                     const occupied = slot.status === "VENDU";
+                                                                    const msConnected = account.msStatus === 'CONNECTED';
                                                                     return (
                                                                         <div key={slot.id}
                                                                             className={`flex items-center gap-2.5 px-3 py-2 rounded-lg border text-[11px] font-bold
@@ -933,18 +1017,18 @@ export default function SharedAccountsContent() {
                                                                                     </span>
                                                                                     {productName.toLowerCase().includes("netflix") && (
                                                                                         <Tooltip
-                                                                                            content={account.hasOutlookPassword ? "Résoudre le problème foyer Netflix" : "⚠️ Mot de passe Outlook manquant — cliquer pour configurer"}
+                                                                                            content={msConnected ? "Résoudre via Microsoft Graph" : "⚠️ Compte non lié à Microsoft — cliquer pour lier"}
                                                                                             placement="top"
                                                                                         >
                                                                                             <Button
                                                                                                 size="sm"
-                                                                                                color={account.hasOutlookPassword ? "primary" : "warning"}
+                                                                                                color={msConnected ? "primary" : "warning"}
                                                                                                 variant="shadow"
                                                                                                 isLoading={resolvingSlotId === slot.id}
-                                                                                                onClick={() => account.hasOutlookPassword ? handleResolveHousehold(slot.id) : handleEditClick(account, variant)}
-                                                                                                className={`h-6 px-2 text-[9px] font-black uppercase rounded border ml-auto shrink-0 ${account.hasOutlookPassword ? 'bg-primary/20 hover:bg-primary/40 text-primary border-primary/20' : 'bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-400 border-yellow-500/20'}`}
+                                                                                                onClick={() => msConnected ? handleResolveHousehold(slot.id) : handleMicrosoftLink(account.id)}
+                                                                                                className={`h-6 px-2 text-[9px] font-black uppercase rounded border ml-auto shrink-0 ${msConnected ? 'bg-primary/20 hover:bg-primary/40 text-primary border-primary/20' : 'bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-400 border-yellow-500/20'}`}
                                                                                             >
-                                                                                                {resolvingSlotId === slot.id ? "" : account.hasOutlookPassword ? "🏠 Résoudre" : "⚠️ Config"}
+                                                                                                {resolvingSlotId === slot.id ? "" : msConnected ? "🏠 Résoudre" : "⚠️ Lier MS"}
                                                                                             </Button>
                                                                                         </Tooltip>
                                                                                     )}
@@ -1082,19 +1166,46 @@ export default function SharedAccountsContent() {
                                                             </span>
                                                         </div>
                                                     </div>
-                                                    {/* Occupation bar */}
-                                                    <div className="hidden sm:block w-24">
-                                                        <div className="flex justify-between text-[9px] text-slate-500 mb-1">
-                                                            <span>{soldSlots.length}/{totalSlots}</span>
-                                                            <span>{totalSlots > 0 ? Math.round(soldSlots.length / totalSlots * 100) : 0}%</span>
+                                                    {/* Occupation bar + Microsoft link */}
+                                                    <div className="flex flex-col items-end gap-2">
+                                                        <div className="hidden sm:block w-24">
+                                                            <div className="flex justify-between text-[9px] text-slate-500 mb-1">
+                                                                <span>{soldSlots.length}/{totalSlots}</span>
+                                                                <span>{totalSlots > 0 ? Math.round(soldSlots.length / totalSlots * 100) : 0}%</span>
+                                                            </div>
+                                                            <Progress
+                                                                value={totalSlots > 0 ? (soldSlots.length / totalSlots) * 100 : 0}
+                                                                size="sm"
+                                                                classNames={{
+                                                                    indicator: allSold ? "bg-orange-500" : soldSlots.length > 0 ? "bg-yellow-500" : "bg-emerald-500"
+                                                                }}
+                                                            />
                                                         </div>
-                                                        <Progress
-                                                            value={totalSlots > 0 ? (soldSlots.length / totalSlots) * 100 : 0}
-                                                            size="sm"
-                                                            classNames={{
-                                                                indicator: allSold ? "bg-orange-500" : soldSlots.length > 0 ? "bg-yellow-500" : "bg-emerald-500"
-                                                            }}
-                                                        />
+                                                        {/* Bouton Microsoft Graph */}
+                                                        {account.variant?.product?.name?.toLowerCase().includes("netflix") && (
+                                                            <Tooltip content={
+                                                                account.msStatus === 'CONNECTED' ? "Microsoft Graph lié ✓" :
+                                                                account.msStatus === 'EXPIRED' ? "Token expiré — Re-lier" :
+                                                                "Lier à Microsoft Graph (résolution auto)"
+                                                            }>
+                                                                <Button
+                                                                    size="sm"
+                                                                    variant="flat"
+                                                                    onClick={() => handleMicrosoftLink(account.id)}
+                                                                    className={`h-6 px-2 text-[9px] font-black uppercase rounded-lg border ${
+                                                                        account.msStatus === 'CONNECTED'
+                                                                            ? 'text-emerald-400 border-emerald-500/20 bg-emerald-500/10'
+                                                                            : account.msStatus === 'EXPIRED'
+                                                                            ? 'text-yellow-400 border-yellow-500/20 bg-yellow-500/10'
+                                                                            : 'text-blue-400 border-blue-500/20 bg-blue-500/10 animate-pulse'
+                                                                    }`}
+                                                                >
+                                                                    <Link size={9} className="mr-1" />
+                                                                    {account.msStatus === 'CONNECTED' ? 'Graph ✓' :
+                                                                     account.msStatus === 'EXPIRED' ? 'Re-lier' : 'Lier MS'}
+                                                                </Button>
+                                                            </Tooltip>
+                                                        )}
                                                     </div>
                                                 </div>
 

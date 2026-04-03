@@ -24,14 +24,24 @@ export class MicrosoftGraphService {
 
     /**
      * Récupère le dernier email Netflix via Microsoft Graph API.
+     * @param digitalCodeId Si fourni, sauvegarde le nouveau refresh_token si Microsoft en retourne un.
      */
-    static async getLatestNetflixEmail(msRefreshToken: string, msClientId?: string): Promise<GraphEmail | null> {
+    static async getLatestNetflixEmail(
+        msRefreshToken: string,
+        msClientId?: string,
+        digitalCodeId?: number
+    ): Promise<GraphEmail | null> {
         try {
-            const accessToken = await MicrosoftAuthService.refreshAccessToken(msRefreshToken, msClientId);
+            const accessToken = await MicrosoftAuthService.refreshAccessToken(
+                msRefreshToken,
+                msClientId,
+                digitalCodeId
+            );
 
-            // On récupère les 10 derniers messages pour être sûr de ne pas rater un mail récent (filtre parfois capricieux)
+            // $search et $orderby sont incompatibles sur Graph API.
+            // On récupère les 20 derniers résultats et on trie ensuite côté serveur.
             const response = await fetch(
-                "https://graph.microsoft.com/v1.0/me/messages?$orderby=receivedDateTime desc&$top=10&$select=id,subject,receivedDateTime,from,body",
+                `https://graph.microsoft.com/v1.0/me/messages?$search="netflix"&$top=20&$select=id,subject,receivedDateTime,from,body`,
                 {
                     headers: { 'Authorization': `Bearer ${accessToken}` }
                 }
@@ -39,8 +49,20 @@ export class MicrosoftGraphService {
 
             if (!response.ok) {
                 const err = await response.text();
-                console.error(`[GraphService] Error fetching messages: ${err}`);
-                return null;
+                console.error(`[GraphService] Error searching messages (search="netflix"): ${err}`);
+
+                // Fallback si $search échoue (certains vieux comptes/scopes) : top 50 toutes boîtes
+                const fallbackRes = await fetch(
+                    "https://graph.microsoft.com/v1.0/me/messages?$orderby=receivedDateTime desc&$top=50&$select=id,subject,receivedDateTime,from,body",
+                    { headers: { 'Authorization': `Bearer ${accessToken}` } }
+                );
+
+                if (!fallbackRes.ok) return null;
+                const data = await fallbackRes.json();
+                return (data.value as GraphEmail[]).find(m =>
+                    this.NETFLIX_SENDERS.includes(m.from.emailAddress.address.toLowerCase()) ||
+                    m.subject.toLowerCase().includes('netflix')
+                ) || null;
             }
 
             const data = await response.json();
@@ -48,13 +70,17 @@ export class MicrosoftGraphService {
 
             if (!messages || messages.length === 0) return null;
 
-            // Filtrage manuel pour plus de robustesse
-            const netflixMsg = messages.find(m =>
-                this.NETFLIX_SENDERS.includes(m.from.emailAddress.address.toLowerCase()) ||
-                m.subject.toLowerCase().includes('netflix')
+            // Trier les résultats du $search par date décroissante (non supporté nativement avec $search)
+            const sorted = messages.sort(
+                (a, b) => new Date(b.receivedDateTime).getTime() - new Date(a.receivedDateTime).getTime()
             );
 
-            return netflixMsg || null;
+            // Filtrer par expéditeurs Netflix connus, ou prendre le plus récent si pas de match
+            const fromNetflix = sorted.find(m =>
+                this.NETFLIX_SENDERS.includes(m.from.emailAddress.address.toLowerCase())
+            );
+
+            return fromNetflix || sorted[0];
         } catch (error: any) {
             console.error(`[GraphService] Exception: ${error.message}`);
             return null;
@@ -73,9 +99,9 @@ export class MicrosoftGraphService {
             return { type: 'LINK', value: linkMatch[0].replace(/&amp;/g, '&') };
         }
 
-        // 2. Nettoyage HTML pour le code
+        // 2. Nettoyage HTML pour le code (regex corrigée)
         const cleanText = content
-            .replace(/https?:\/\/[^\s<> format: "hex")]+/g, ' ')
+            .replace(/https?:\/\/[^\s<>"]+/g, ' ')
             .replace(/<[^>]+>/g, ' ')
             .replace(/\s+/g, ' ');
 
@@ -83,7 +109,6 @@ export class MicrosoftGraphService {
         const codeRegex = /\b(\d{4,6})\b/g;
         let m;
         while ((m = codeRegex.exec(cleanText)) !== null) {
-            // Souvent le premier code trouvé dans un mail d'identification est le bon
             return { type: 'CODE', value: m[1] };
         }
 

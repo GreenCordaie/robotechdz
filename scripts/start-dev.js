@@ -235,10 +235,10 @@ const nextProcess = spawn(npmCmd, ['run', 'dev'], {
     shell: true
 });
 
-// 3. Tunnels Cloudflare
-console.log(`🌐 [3/5] Tunnels Cloudflare en cours...`);
-const appTunnel = spawn('cloudflared', ['tunnel', '--url', `http://localhost:${APP_PORT}`], { shell: true });
-const n8nTunnel = spawn('cloudflared', ['tunnel', '--url', `http://localhost:${N8N_PORT}`], { shell: true });
+// 3. Tunnels Cloudflare (Tunnel fixe optimisé)
+console.log(`🌐 [3/5] Lancement du tunnel fixe Cloudflare (robotech-boutique)...`);
+const mainTunnel = spawn('cloudflared', ['tunnel', 'run', 'robotech-boutique'], { shell: true });
+// On ne spawn plus n8nTunnel séparément car il est inclus dans la config du tunnel principal
 
 // 4. Fallback Sync (si le tunnel tarde trop ou échoue localement)
 setTimeout(async () => {
@@ -249,8 +249,8 @@ setTimeout(async () => {
 }, 15000);
 
 // ─── Détection des URLs ───────────────────────────────────────────────────────
-let appUrl = null;
-let n8nUrl = null;
+let appUrl = 'https://boutique.nexusbox.tech';
+let n8nUrl = 'https://n8n.nexusbox.tech';
 let synced = false;
 
 function extractCloudflareUrl(text) {
@@ -258,27 +258,14 @@ function extractCloudflareUrl(text) {
     return m ? m[0] : null;
 }
 
-appTunnel.stderr.on('data', async (d) => {
-    const text = d.toString();
-    if (text.toLowerCase().includes('err') && !text.includes('ERR Visit')) {
-        process.stdout.write(`[AppTunnel] ${text}`);
-    }
-    const url = extractCloudflareUrl(text);
-    if (url && !appUrl) {
-        appUrl = url;
-        console.log(`\n✅ APP URL détectée : ${appUrl}`);
+// Déclenchement automatique de la sync puisque les URLs sont fixes
+setTimeout(async () => {
+    if (!synced) {
+        console.log(`\n✅ Domaines fixes détectés : ${appUrl}`);
         updateEnv('NEXT_PUBLIC_APP_URL', appUrl);
         await syncAll();
     }
-});
-
-n8nTunnel.stderr.on('data', async (d) => {
-    const url = extractCloudflareUrl(d.toString());
-    if (url && !n8nUrl) {
-        n8nUrl = url;
-        console.log(`✅ n8n URL détectée  : ${n8nUrl}`);
-    }
-});
+}, 2000);
 
 // ─── Sync tout ───────────────────────────────────────────────────────────────
 async function syncAll(forceWaha = false) {
@@ -373,10 +360,10 @@ async function syncAll(forceWaha = false) {
 // ─── Arrêt propre ─────────────────────────────────────────────────────────────
 process.on('SIGINT', () => {
     console.log("\n🛑 Arrêt de tous les services...");
-    [printProcess, nextProcess, appTunnel, n8nTunnel].forEach(p => { try { p?.kill(); } catch (e) { } });
+    [nextProcess, mainTunnel].forEach(p => { try { p?.kill(); } catch (e) { } });
     process.exit(0);
 });
 
 process.on('exit', () => {
-    [printProcess, nextProcess, appTunnel, n8nTunnel].forEach(p => { try { p?.kill(); } catch (e) { } });
+    [nextProcess, mainTunnel].forEach(p => { try { p?.kill(); } catch (e) { } });
 });

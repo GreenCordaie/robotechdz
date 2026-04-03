@@ -38,13 +38,13 @@ export async function getSharedAccountsInventory() {
         }
     });
 
-    // Decrypt codes for admin view — outlookPassword is NEVER exposed (only hasOutlookPassword boolean)
+    // Decrypt codes for admin view — outlookPassword exposed (decrypted) for admin Microsoft linking
     return results.map(v => ({
         ...v,
         digitalCodes: v.digitalCodes.map(dc => ({
             ...dc,
             code: decrypt(dc.code) || dc.code,
-            outlookPassword: undefined, // never expose
+            outlookPassword: dc.outlookPassword ? (decrypt(dc.outlookPassword) || undefined) : undefined,
             hasOutlookPassword: !!dc.outlookPassword,
             msStatus: dc.msStatus, // DISCONNECTED, CONNECTED, EXPIRED
             slots: dc.slots.map(s => ({
@@ -557,9 +557,8 @@ export const resolveHouseholdAction = withAuth(
             if (!slot) throw new Error("Slot introuvable");
             if (slot.status !== "VENDU") throw new Error("Le slot n'est pas au statut VENDU");
 
-            const hasMsGraph = !!slot.digitalCode?.msRefreshToken;
-            if (!slot.digitalCode?.outlookPassword && !hasMsGraph) {
-                throw new Error("Aucun moyen de résolution disponible (Outlook Pass ou Microsoft Graph manquant)");
+            if (!slot.digitalCode?.msRefreshToken) {
+                throw new Error("Compte non lié à Microsoft Graph. Veuillez d'abord lier le compte via le bouton Microsoft.");
             }
 
             const rawPhone = slot.orderItem?.order?.customerPhone || slot.orderItem?.order?.client?.telephone;
@@ -567,27 +566,24 @@ export const resolveHouseholdAction = withAuth(
 
             const phone = rawPhone.replace(/\D/g, '') + '@c.us';
 
+            const settings = await db.query.shopSettings.findFirst();
+
             const { NetflixResolverService } = await import("@/services/netflix-resolver.service");
-            const outlookPass = decrypt(slot.digitalCode.outlookPassword!) || "";
             const codeRaw = decrypt(slot.digitalCode.code!) || "";
             const [email] = codeRaw.split('|').map(s => s.trim());
 
-            const settings = await db.query.shopSettings.findFirst();
             const result = await NetflixResolverService.resolve(
                 email,
-                outlookPass,
-                settings?.netflixResolverEmail && settings?.netflixResolverPassword
-                    ? { email: settings.netflixResolverEmail, password: settings.netflixResolverPassword }
-                    : undefined,
-                slot.digitalCode?.msRefreshToken,
-                slot.digitalCode?.msClientId // <--- Nouveau paramètre pérennisé
+                slot.digitalCode.msRefreshToken,
+                slot.digitalCode.msClientId,
+                slot.digitalCode.id  // pour rotation du token
             );
 
             if (result.type === 'NOT_FOUND') {
-                return { success: false, error: "Aucun email de vérification trouvé ces 15 dernières minutes" };
+                return { success: false, error: "Aucun email de vérification Netflix trouvé sur ce compte Microsoft" };
             }
             if (result.type === 'ERROR') {
-                return { success: false, error: "Erreur technique lors de la connexion IMAP: " + result.error };
+                return { success: false, error: "Erreur technique lors de la connexion Microsoft Graph: " + result.error };
             }
 
             const { sendWhatsAppMessage } = await import("@/lib/whatsapp");

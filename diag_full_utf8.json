@@ -1,0 +1,90 @@
+﻿{
+    "value":  [
+                  {
+                      "id":  272,
+                      "email":  "Arahamplin5568@outlook.com",
+                      "msStatus":  "NONE",
+                      "msAccountEmail":  null,
+                      "hasRefreshToken":  false,
+                      "lastEmailsFromGraph":  [
+                                                  {
+                                                      "error":  "Impossible de dÃ©coder le refresh token."
+                                                  }
+                                              ],
+                      "slots":  [
+                                    {
+                                        "slotId":  103,
+                                        "orderId":  277,
+                                        "orderNumber":  "#C238-396",
+                                        "status":  "VENDU"
+                                    },
+                                    {
+                                        "slotId":  104,
+                                        "orderId":  279,
+                                        "orderNumber":  "#C240-518",
+                                        "status":  "VENDU"
+                                    },
+                                    {
+                                        "slotId":  106,
+                                        "orderId":  280,
+                                        "orderNumber":  "#C241-612",
+                                        "status":  "VENDU"
+                                    },
+                                    {
+                                        "slotId":  107,
+                                        "orderId":  280,
+                                        "orderNumber":  "#C241-612",
+                                        "status":  "VENDU"
+                                    },
+                                    {
+                                        "slotId":  105,
+                                        "status":  "DISPONIBLE"
+                                    }
+                                ],
+                      "resolverTest":  {
+                                           "type":  "NOT_FOUND",
+                                           "attempts":  1,
+                                           "error":  "Graph not configured for this account"
+                                       }
+                  },
+                  {
+                      "id":  344,
+                      "email":  "Arahamplin5568@outlook.com",
+                      "msStatus":  "CONNECTED",
+                      "msAccountEmail":  null,
+                      "hasRefreshToken":  true,
+                      "lastEmailsFromGraph":  [
+
+                                              ],
+                      "slots":  [
+                                    {
+                                        "slotId":  229,
+                                        "status":  "DISPONIBLE"
+                                    },
+                                    {
+                                        "slotId":  228,
+                                        "orderId":  280,
+                                        "orderNumber":  "#C241-612",
+                                        "status":  "VENDU"
+                                    },
+                                    {
+                                        "slotId":  230,
+                                        "status":  "DISPONIBLE"
+                                    },
+                                    {
+                                        "slotId":  231,
+                                        "status":  "DISPONIBLE"
+                                    },
+                                    {
+                                        "slotId":  232,
+                                        "status":  "DISPONIBLE"
+                                    }
+                                ],
+                      "resolverTest":  {
+                                           "type":  "NOT_FOUND",
+                                           "attempts":  1
+                                       }
+                  }
+              ],
+    "Count":  2
+}

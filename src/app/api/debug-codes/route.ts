@@ -1,0 +1,24 @@
+import { NextResponse } from "next/server";
+import { db } from "@/db";
+import { digitalCodes } from "@/db/schema";
+import { desc } from "drizzle-orm";
+import { decrypt } from "@/lib/encryption";
+
+export async function GET() {
+    try {
+        const codes = await db.query.digitalCodes.findMany({
+            orderBy: [desc(digitalCodes.createdAt)],
+            limit: 20
+        });
+
+        return NextResponse.json(codes.map(c => ({
+            id: c.id,
+            rawCode: decrypt(c.code) || "DECRYPT_FAILED",
+            msAccountEmail: c.msAccountEmail,
+            msStatus: c.msStatus,
+            createdAt: c.createdAt
+        })));
+    } catch (err: any) {
+        return NextResponse.json({ error: err.message });
+    }
+}

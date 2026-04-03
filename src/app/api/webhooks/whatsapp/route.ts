@@ -8,6 +8,7 @@ import { ProductStatus, OrderStatus } from "@/lib/constants";
 import { decrypt } from "@/lib/encryption";
 import { verifyWebhookSignature, isEventProcessed } from "@/lib/webhook-security";
 import { RateLimitService } from "@/services/rate-limit.service";
+import { sendTelegramNotification } from "@/lib/telegram";
 
 export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
@@ -323,6 +324,90 @@ export async function POST(req: NextRequest) {
 
         if (payload?.fromMe) return NextResponse.json({ success: true });
 
+        // ── Interception bouton interactif "Recevoir mon code" ──────────────
+        const buttonId = payload?.selectedButtonId || payload?.button?.id;
+        if (buttonId === 'RESOLVE_CODE' || (payload?.body || '').includes('Recevoir mon code')) {
+            try {
+                const settings = await db.query.shopSettings.findFirst();
+                const waSettings = {
+                    whatsappApiUrl: settings?.whatsappApiUrl ?? undefined,
+                    whatsappApiKey: settings?.whatsappApiKey ?? undefined,
+                    whatsappInstanceName: settings?.whatsappInstanceName ?? undefined
+                };
+
+                const { AccountService } = await import("@/services/account.service");
+                const slots = await AccountService.findAllActiveNetflixSlotsByPhone(senderPhone);
+
+                if (slots.length === 0) {
+                    await sendWhatsAppMessage(senderPhone, `❌ Aucune commande Netflix active trouvée pour ce numéro.`, waSettings);
+                    return NextResponse.json({ success: true });
+                }
+
+                // Prendre le premier slot actif (ou le seul)
+                const activeData = slots.length === 1 ? slots[0] : slots[0];
+                const account = activeData.account;
+                const canResolve = account.msStatus === 'CONNECTED';
+
+                if (!canResolve) {
+                    const emailNotLinked = (decrypt(account.code) || '').split('|')[0]?.trim();
+                    await sendWhatsAppMessage(senderPhone,
+                        `⏳ Votre demande de code a bien été reçue.\n\nNotre équipe va vous envoyer le code manuellement dans quelques instants. Merci de patienter.`,
+                        waSettings
+                    );
+                    // Alerte admin Telegram
+                    sendTelegramNotification(
+                        `🔴 *Code Netflix demandé — compte non lié Graph*\n\n` +
+                        `📧 Compte : \`${emailNotLinked}\`\n` +
+                        `📱 Client : \`${senderPhone.slice(0, 6)}****\`\n\n` +
+                        `⚡ Action requise : Lier ce compte Microsoft Graph dans l'admin ou envoyer le code manuellement.`,
+                        ['ADMIN', 'TRAITEUR']
+                    ).catch(() => { });
+                    return NextResponse.json({ success: true });
+                }
+
+                await sendWhatsAppMessage(senderPhone, `⏳ Recherche de votre code Netflix en cours...\nUn instant SVP.`, waSettings);
+
+                const slotId = activeData.slot.id;
+                const maskedPhone = senderPhone.slice(0, 4) + '****';
+
+                // Résolution asynchrone
+                (async () => {
+                    try {
+                        const { NetflixResolverService } = await import("@/services/netflix-resolver.service");
+                        const [email] = (decrypt(account.code) || '').split('|').map(s => s.trim());
+
+                        const result = await NetflixResolverService.resolve(
+                            email,
+                            account.msRefreshToken,
+                            account.msClientId,
+                            account.id
+                        );
+
+                        if (result.type === 'CODE') {
+                            await sendWhatsAppMessage(senderPhone, `✅ Votre code Netflix :\n*${result.value}*\n\nEntrez ce code sur votre TV maintenant.`, waSettings);
+                        } else if (result.type === 'LINK') {
+                            await sendWhatsAppMessage(senderPhone, `🔗 Lien de validation Netflix :\n${result.value}\n\n⚠️ Ouvrez ce lien avec les *données mobiles* (pas le wifi).`, waSettings);
+                        } else {
+                            await sendWhatsAppMessage(senderPhone, `❌ Aucun code trouvé.\n\n*Assurez-vous d'avoir :*\n1. Entré l'email sur Netflix\n2. Attendu que le champ 4 chiffres apparaisse\n\nPuis réessayez en disant "code".`, waSettings);
+                        }
+
+                        await db.insert(auditLogs).values({
+                            action: 'NETFLIX_RESOLVE_AUTO',
+                            entityType: 'SLOT',
+                            entityId: String(slotId),
+                            newData: { type: result.type, value: result.value, phone: maskedPhone, method: 'BUTTON', trigger: 'CLIENT_BUTTON' }
+                        }).catch(() => { });
+                    } catch (error) {
+                        console.error('[BUTTON_RESOLVE] Error:', error);
+                    }
+                })();
+
+                return NextResponse.json({ success: true, buttonResolved: true });
+            } catch (err) {
+                console.error('[BUTTON_RESOLVE] Error:', err);
+            }
+        }
+
         const text = (payload?.body || "").trim();
         if (!text) return NextResponse.json({ success: true });
 
@@ -343,7 +428,7 @@ export async function POST(req: NextRequest) {
 
         // ── PIN Profil Netflix (Prioritaire seulement si pas de demande explicite de code foyer) ──
         const pinKeywords = /\b(pin|code\s*profil|profil\s*code|code\s*pin|mot\s*de\s*passe\s*profil)\b/i;
-        const netflixCodeKeywords = /\b(foyer|household|appareil|code\s*netflix|connexion|activer|v[eé]rification|demande|récupérer|mon\s*code|mon\s*pin)\b/i;
+        const netflixCodeKeywords = /\b(foyer|household|appareil|code|code\s*netflix|connexion|activer|v[eé]rification|demande|récupérer|mon\s*code|mon\s*pin)\b/i;
 
         if (pinKeywords.test(text) && !netflixCodeKeywords.test(text)) {
             try {
@@ -376,19 +461,22 @@ export async function POST(req: NextRequest) {
             }
         }
 
+        // Réponse courte = sélection après liste (ex: "270", "612", "1") ou numéro de commande
+        const isDisambiguationReply = /^\d{1,6}$/.test(text.trim()) || /^[A-Z]{0,2}\d{2,6}(-\d{2,6})?$/i.test(text.trim());
+
         // ── Auto-Résolution Netflix (Prioritaire pour les demandes de codes de connexion) ──
-        if (netflixCodeKeywords.test(text) || text.startsWith('#')) {
+        if (netflixCodeKeywords.test(text) || text.startsWith('#') || isDisambiguationReply) {
             try {
                 // On vérifie si le message contient un autre numéro de téléphone
                 const phoneRegex = /(?:0|\+213|00213)([567]\d{8})\b/g;
                 const matches = Array.from(text.matchAll(phoneRegex));
                 const mentionedPhones = matches.map((m: any) => m[1]); // On garde les 9 chiffres
-
                 const { AccountService } = await import("@/services/account.service");
 
                 // On récupère les slots pour le sender ET les numéros mentionnés
                 const myPhone = senderPhone.replace(/\D/g, '').slice(-9);
                 const searchPhones = Array.from(new Set([myPhone, ...mentionedPhones]));
+                console.log(`[NETFLIX_AUTO] Searching slots for phones:`, searchPhones);
 
                 const allActiveSlots: any[] = [];
                 for (const p of searchPhones) {
@@ -399,30 +487,68 @@ export async function POST(req: NextRequest) {
                 // Dé-doublonner par slot ID
                 const uniqueSlots = Array.from(new Map(allActiveSlots.map(s => [s.slot.id, s])).values());
 
+                // TRI : On met les slots avec msStatus === 'CONNECTED' en premier
+                uniqueSlots.sort((a, b) => {
+                    const statusA = a.account?.msStatus === 'CONNECTED' ? 1 : 0;
+                    const statusB = b.account?.msStatus === 'CONNECTED' ? 1 : 0;
+                    return statusB - statusA;
+                });
+
+                console.log(`[NETFLIX_AUTO] Unique slots found: ${uniqueSlots.length}`);
+
                 // On vérifie si le message contient une information qui permet d'identifier un slot précis
                 let matchedSlots = uniqueSlots;
                 if (uniqueSlots.length > 1) {
+                    console.log(`[NETFLIX_AUTO] Multiple slots, filtering by text: "${text}"`);
+                    // Texte nettoyé : retire #, C, N°, espaces, tirets → "C379-270" devient "379270"
+                    const cleanedText = text.toLowerCase().replace(/[#cn°\s\-]/g, '');
                     matchedSlots = uniqueSlots.filter(s => {
                         const [email] = (decrypt(s.account.code) || '').split('|').map(str => str.trim().toLowerCase());
                         const orderId = String(s.order.id);
+                        const orderNumber = String(s.order.orderNumber || '').toLowerCase();
+                        // "#C379-270" → segments: ["379", "270"]
+                        const orderSegments = orderNumber.replace(/[^0-9\-]/g, '').split('-').filter(Boolean);
+                        // Tous les chiffres collés: "379270"
+                        const orderDigitsOnly = orderNumber.replace(/\D/g, '');
+                        // Dernier segment: "270" (le plus souvent cité par le client)
+                        const lastSegment = orderSegments[orderSegments.length - 1] || '';
                         const profile = (s.slot.profileName || '').toLowerCase();
-                        const pin = (s.slot.pinCode || '').toLowerCase();
                         const msgText = text.toLowerCase();
 
-                        return msgText.includes(email) ||
+                        const isMatch =
+                            // Email complet
+                            msgText.includes(email) ||
+                            // ID base de données
                             msgText.includes(orderId) ||
-                            (profile && msgText.includes(profile)) ||
-                            (pin && msgText.includes(pin));
+                            // Numéro complet ex: "#C379-270"
+                            (orderNumber && msgText.includes(orderNumber.replace('#', ''))) ||
+                            // Texte nettoyé ↔ chiffres collés ex: "379270"
+                            (orderDigitsOnly.length >= 3 && cleanedText.includes(orderDigitsOnly)) ||
+                            // Dernier segment ex: "270" → client peut taper juste "270"
+                            (lastSegment.length >= 3 && cleanedText.includes(lastSegment)) ||
+                            // Profil
+                            (profile && msgText.includes(profile));
+
+                        if (isMatch) console.log(`[NETFLIX_AUTO] Match slot ${s.slot.id} (Order: ${s.order.orderNumber || s.order.id})`);
+                        return isMatch;
                     });
                 }
 
-                // Exécuter si on a un match unique ou si c'est une demande générale avec au moins un slot
-                if (uniqueSlots.length > 0 && matchedSlots.length === 1) {
-                    const activeData = matchedSlots[0];
-                    const account = activeData.account;
+                console.log(`[NETFLIX_AUTO] Final matched slots: ${matchedSlots.length}`);
 
-                    // On vérifie si on peut résoudre le compte (soit mot de passe Outlook, soit Microsoft lié)
-                    const canResolve = account.outlookPassword || account.msStatus === 'CONNECTED';
+                // Si plusieurs matchs partagent le même compte parent → on prend le premier (même code Graph)
+                const sameAccount = matchedSlots.length > 1 &&
+                    matchedSlots.every(s => s.account.id === matchedSlots[0].account.id);
+                const resolveSlots = sameAccount ? [matchedSlots[0]] : matchedSlots;
+
+                // Exécuter si on a un match unique (ou plusieurs profils du même compte)
+                if (uniqueSlots.length > 0 && resolveSlots.length === 1) {
+                    const activeData = resolveSlots[0];
+                    const account = activeData.account;
+                    console.log(`[NETFLIX_AUTO] Proceeding with account: ${(decrypt(account.code) || '').split('|')[0]} (Status: ${account.msStatus})`);
+
+                    // On vérifie si le compte est lié via Microsoft Graph
+                    const canResolve = account.msStatus === 'CONNECTED';
 
                     if (canResolve) {
                         await sendWhatsAppMessage(
@@ -437,52 +563,89 @@ export async function POST(req: NextRequest) {
                         (async () => {
                             try {
                                 const { NetflixResolverService } = await import("@/services/netflix-resolver.service");
-                                const outlookPass = account.outlookPassword ? (decrypt(account.outlookPassword) || '') : '';
                                 const [email] = (decrypt(account.code) || '').split('|').map(s => s.trim());
 
                                 const result = await NetflixResolverService.resolve(
                                     email,
-                                    outlookPass,
-                                    settings?.netflixResolverEmail && settings?.netflixResolverPassword
-                                        ? { email: settings.netflixResolverEmail, password: settings.netflixResolverPassword }
-                                        : undefined,
                                     account.msRefreshToken,
-                                    account.msClientId // <--- Nouveau paramètre pérennisé
+                                    account.msClientId,
+                                    account.id
                                 );
 
                                 if (result.type === 'CODE') {
-                                    await sendWhatsAppMessage(senderPhone, `✅ Code Netflix pour *${email}* :\n*${result.value}*`, waSettings);
+                                    await sendWhatsAppMessage(
+                                        senderPhone,
+                                        `✅ Voici votre code Netflix :\n\n*${result.value}*\n\nEntrez ce code sur votre TV ou appareil.`,
+                                        waSettings
+                                    );
                                 } else if (result.type === 'LINK') {
-                                    await sendWhatsAppMessage(senderPhone, `🔗 Lien de validation Netflix pour *${email}* :\n${result.value}`, waSettings);
+                                    await sendWhatsAppMessage(
+                                        senderPhone,
+                                        `✅ Voici votre lien Netflix :\n\n${result.value}\n\n⚠️ *Important :* Ouvrez ce lien avec les *données mobiles* (pas le wifi).`,
+                                        waSettings
+                                    );
                                 } else {
-                                    await sendWhatsAppMessage(senderPhone, `❌ Aucun code récent trouvé pour *${email}*.\n\nVeuillez demander un nouveau code sur votre TV puis réessayez.`, waSettings);
+                                    await sendWhatsAppMessage(
+                                        senderPhone,
+                                        `❌ Aucun code trouvé pour le moment sur *${email}*.\n\nSuivez ces étapes :\n1️⃣ Ouvrez Netflix sur votre TV/appareil\n2️⃣ Entrez l'email et le mot de passe\n3️⃣ Attendez que Netflix affiche l'écran du code (4 chiffres)\n4️⃣ Répondez ensuite *code* à ce message`,
+                                        waSettings
+                                    );
                                 }
 
                                 await db.insert(auditLogs).values({
                                     action: 'NETFLIX_RESOLVE_AUTO',
                                     entityType: 'SLOT',
                                     entityId: String(slotId),
-                                    newData: { type: result.type, value: result.value, phone: maskedPhoneAuto, method: account.msRefreshToken ? 'GRAPH' : 'IMAP' }
+                                    newData: { type: result.type, value: result.value, phone: maskedPhoneAuto, method: 'GRAPH' }
                                 }).catch(() => { });
-                            } catch (error) {
+                            } catch (error: any) {
                                 console.error('[AUTO_RESOLVE_ASYNC] Error:', error);
+                                // Notifier le client de l'erreur technique
+                                await sendWhatsAppMessage(
+                                    senderPhone,
+                                    `⚠️ Une erreur technique s'est produite lors de la récupération du code.\nVeuillez réessayer dans quelques instants ou contacter le support.`,
+                                    waSettings
+                                ).catch(() => { });
+                                // Alerte admin
+                                sendTelegramNotification(
+                                    `🔴 *Erreur résolution Netflix (Graph)*\n\n` +
+                                    `📱 Client : \`${senderPhone.slice(0, 6)}****\`\n` +
+                                    `❌ Erreur : ${error.message}`,
+                                    ['ADMIN']
+                                ).catch(() => { });
                             }
                         })();
 
                         await RateLimitService.resetLimit(rlKey);
                         return NextResponse.json({ success: true, autorealized: true });
                     } else {
-                        await sendWhatsAppMessage(senderPhone, `ℹ️ Le compte *${(decrypt(account.code) || '').split('|')[0]}* n'est pas encore configuré pour la résolution automatique.`, waSettings);
+                        const emailNotLinked2 = (decrypt(account.code) || '').split('|')[0]?.trim();
+                        await sendWhatsAppMessage(senderPhone,
+                            `⏳ Votre demande de code a bien été reçue.\n\nNotre équipe va vous envoyer le code manuellement dans quelques instants. Merci de patienter.`,
+                            waSettings
+                        );
+                        // Alerte admin Telegram
+                        sendTelegramNotification(
+                            `🔴 *Code Netflix demandé — compte non lié Graph*\n\n` +
+                            `📧 Compte : \`${emailNotLinked2}\`\n` +
+                            `📱 Client : \`${senderPhone.slice(0, 6)}****\`\n` +
+                            `📋 Commande : #${activeData.order?.orderNumber || activeData.order?.id}\n\n` +
+                            `⚡ Action requise : Lier ce compte Microsoft Graph dans l'admin (/admin/comptes-partages) puis renvoyer le code manuellement.`,
+                            ['ADMIN', 'TRAITEUR']
+                        ).catch(() => { });
                         return NextResponse.json({ success: true });
                     }
                 } else if (uniqueSlots.length > 1) {
                     // Trop de choix, on demande d'identifier
-                    let listMsg = `🤔 Vous avez plusieurs comptes Netflix actifs. Pour lequel voulez-vous le code ?\n\n`;
+                    let listMsg = `🤔 Vous avez plusieurs comptes Netflix. Pour lequel voulez-vous le code ?\n\n`;
                     uniqueSlots.forEach((s, i) => {
                         const [email] = (decrypt(s.account.code) || '').split('|').map(str => str.trim());
-                        listMsg += `${i + 1}. *${email}*\n   (Commande #${s.order.id}${s.slot.profileName ? ` - Profil: ${s.slot.profileName}` : ''})\n\n`;
+                        const orderRef = String(s.order.orderNumber || s.order.id);
+                        // Extraire le dernier segment pour guider le client ex: "#C379-270" → "270"
+                        const lastPart = orderRef.replace(/[^0-9\-]/g, '').split('-').filter(Boolean).pop() || orderRef;
+                        listMsg += `${i + 1}. *${email}*\n   Commande : *${orderRef}*${s.slot.profileName ? ` · Profil : ${s.slot.profileName}` : ''}\n\n`;
                     });
-                    listMsg += `👉 Répondez avec l'ID de commande ou l'email du compte désiré.`;
+                    listMsg += `👉 Répondez avec les *derniers chiffres* de votre commande\n_(ex: si votre commande est #C379-270, tapez *270*)_`;
 
                     await sendWhatsAppMessage(senderPhone, listMsg, waSettings);
                     return NextResponse.json({ success: true });
@@ -494,6 +657,9 @@ export async function POST(req: NextRequest) {
                 console.error('[NETFLIX_AUTO] Error:', err);
             }
         }
+
+        // ─── DESACTIVATION TEMPORAIRE DE L'IA POUR TESTS NETFLIX ───
+        return NextResponse.json({ success: true, ai_disabled: true });
 
         if (!settings?.chatbotEnabled) return NextResponse.json({ success: true });
 

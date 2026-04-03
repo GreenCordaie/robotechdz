@@ -113,8 +113,13 @@ export class MicrosoftAuthService {
 
     /**
      * Rafraîchit un access_token pour une résolution immédiate.
+     * Si digitalCodeId est fourni, sauvegarde le nouveau refresh_token si Microsoft en retourne un (rotation).
      */
-    static async refreshAccessToken(encryptedRefreshToken: string, msClientId?: string): Promise<string> {
+    static async refreshAccessToken(
+        encryptedRefreshToken: string,
+        msClientId?: string,
+        digitalCodeId?: number
+    ): Promise<string> {
         const { clientId, clientSecret, tenantId } = await this.getCredentials(msClientId || undefined);
 
         const refreshToken = decrypt(encryptedRefreshToken);
@@ -128,12 +133,23 @@ export class MicrosoftAuthService {
                 client_secret: clientSecret,
                 refresh_token: refreshToken,
                 grant_type: "refresh_token",
-                scope: "https://graph.microsoft.com/Mail.Read"
+                scope: "https://graph.microsoft.com/Mail.Read offline_access"
             }),
         });
 
         const data = await response.json();
         if (!data.access_token) throw new Error("Échec rafraîchissement token.");
+
+        // Rotation du refresh_token : si Microsoft retourne un nouveau token, le sauvegarder
+        if (data.refresh_token && digitalCodeId) {
+            await db.update(digitalCodes)
+                .set({
+                    msRefreshToken: encrypt(data.refresh_token),
+                    msLastSync: new Date()
+                })
+                .where(eq(digitalCodes.id, digitalCodeId))
+                .catch((err) => console.warn(`[MsAuth] Token rotation save failed for code ${digitalCodeId}:`, err));
+        }
 
         return data.access_token;
     }
