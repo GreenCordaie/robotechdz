@@ -62,6 +62,12 @@ export default function B2bManagementContent({ initialResellers = [] }: B2bManag
         r.user?.email?.toLowerCase().includes(searchTerm.toLowerCase())
     );
 
+    const [resellerPage, setResellerPage] = useState(1);
+    const RESELLERS_PER_PAGE = 9;
+    const resellerTotalPages = Math.ceil(filteredResellers.length / RESELLERS_PER_PAGE);
+    const paginatedResellers = filteredResellers.slice((resellerPage - 1) * RESELLERS_PER_PAGE, resellerPage * RESELLERS_PER_PAGE);
+    useEffect(() => { setResellerPage(1); }, [searchTerm]);
+
     return (
         <div className="p-4 md:p-8 space-y-8 animate-in fade-in duration-500">
             {/* Header */}
@@ -127,7 +133,7 @@ export default function B2bManagementContent({ initialResellers = [] }: B2bManag
                 </div>
             ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {filteredResellers.map((reseller) => (
+                    {paginatedResellers.map((reseller) => (
                         <div key={reseller.id} className="bg-[#161616] border border-[#262626] rounded-[32px] p-6 space-y-6 hover:border-[var(--primary)]/30 transition-all group relative overflow-hidden">
                             {/* Abstract shadow */}
                             <div className="absolute -top-24 -right-24 size-48 bg-[var(--primary)]/5 blur-[60px] rounded-full group-hover:bg-[var(--primary)]/10 transition-colors"></div>
@@ -174,6 +180,25 @@ export default function B2bManagementContent({ initialResellers = [] }: B2bManag
                             </div>
                         </div>
                     ))}
+                </div>
+            )}
+
+            {resellerTotalPages > 1 && (
+                <div className="flex items-center justify-center gap-3">
+                    <button onClick={() => setResellerPage(p => Math.max(1, p - 1))} disabled={resellerPage <= 1}
+                        className="px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-slate-400 text-sm font-bold hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-all">
+                        ← Préc.
+                    </button>
+                    {Array.from({ length: resellerTotalPages }, (_, i) => i + 1).map(p => (
+                        <button key={p} onClick={() => setResellerPage(p)}
+                            className={`w-9 h-9 rounded-xl text-sm font-black transition-all ${p === resellerPage ? "bg-[var(--primary)] text-white" : "bg-white/5 text-slate-400 hover:bg-white/10 border border-white/10"}`}>
+                            {p}
+                        </button>
+                    ))}
+                    <button onClick={() => setResellerPage(p => Math.min(resellerTotalPages, p + 1))} disabled={resellerPage >= resellerTotalPages}
+                        className="px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-slate-400 text-sm font-bold hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-all">
+                        Suiv. →
+                    </button>
                 </div>
             )}
 

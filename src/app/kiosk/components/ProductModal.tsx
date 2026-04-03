@@ -91,7 +91,7 @@ export default function ProductModal({ isOpen, onClose, product }: ProductModalP
                 backdrop="blur"
                 hideCloseButton
                 classNames={{
-                    base: "bg-white/90 backdrop-blur-xl rounded-t-[32px] sm:rounded-[24px] shadow-2xl p-0 overflow-hidden border border-white/20 m-0",
+                    base: "bg-white rounded-t-[32px] sm:rounded-[24px] shadow-2xl p-0 overflow-hidden m-0",
                     backdrop: "bg-slate-900/40 backdrop-blur-md",
                     body: "p-0"
                 }}
@@ -110,7 +110,7 @@ export default function ProductModal({ isOpen, onClose, product }: ProductModalP
                         {/* Close Button */}
                         <button
                             onClick={onClose}
-                            className="absolute top-4 right-4 size-10 bg-slate-100/50 hover:bg-slate-200/50 backdrop-blur-sm rounded-full flex items-center justify-center text-slate-900 transition-colors z-30"
+                            className="absolute top-4 right-4 size-11 bg-slate-100/50 hover:bg-slate-200/50 backdrop-blur-sm rounded-full flex items-center justify-center text-slate-900 transition-colors z-30"
                         >
                             <span className="material-symbols-outlined">close</span>
                         </button>
@@ -188,14 +188,14 @@ export default function ProductModal({ isOpen, onClose, product }: ProductModalP
                                                     <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl p-1 shadow-sm">
                                                         <button
                                                             onClick={(e) => { e.stopPropagation(); updateVariantQuantity(variant.id, -1); }}
-                                                            className="size-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-black hover:bg-slate-50 transition-all active:scale-90"
+                                                            className="size-11 rounded-lg flex items-center justify-center text-slate-400 hover:text-black hover:bg-slate-50 transition-all active:scale-90"
                                                         >
                                                             <span className="material-symbols-outlined !text-lg">remove</span>
                                                         </button>
                                                         <span className="text-sm font-black w-4 text-center tabular-nums text-black">{qty}</span>
                                                         <button
                                                             onClick={(e) => { e.stopPropagation(); updateVariantQuantity(variant.id, 1); }}
-                                                            className="size-8 rounded-lg flex items-center justify-center text-[var(--primary)] hover:bg-orange-50 transition-all active:scale-90"
+                                                            className="size-11 rounded-lg flex items-center justify-center text-[var(--primary)] hover:bg-orange-50 transition-all active:scale-90"
                                                         >
                                                             <span className="material-symbols-outlined !text-lg">add</span>
                                                         </button>

@@ -154,6 +154,12 @@ export default function SuppliersContent({ initialSuppliers, initialHistory, ini
         s.status !== 'ARCHIVE'
     );
 
+    const [supplierPage, setSupplierPage] = useState(1);
+    const SUPPLIERS_PER_PAGE = 9;
+    const supplierTotalPages = Math.ceil(filteredSuppliers.length / SUPPLIERS_PER_PAGE);
+    const paginatedSuppliers = filteredSuppliers.slice((supplierPage - 1) * SUPPLIERS_PER_PAGE, supplierPage * SUPPLIERS_PER_PAGE);
+    React.useEffect(() => { setSupplierPage(1); }, [searchTerm]);
+
     const alertsCount = suppliers.filter(s => {
         if (s.status === 'ARCHIVE') return false;
         const bal = parseFloat(s.balance || "0");
@@ -330,7 +336,7 @@ export default function SuppliersContent({ initialSuppliers, initialHistory, ini
 
                         {/* Suppliers Grid */}
                         <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-12">
-                            {filteredSuppliers.map((s) => {
+                            {paginatedSuppliers.map((s) => {
                                 const bal = parseFloat(s.balance || "0");
                                 const equivalentUsd = s.currency === 'USD' ? bal : bal / EXCHANGE_RATE_USD_DZD;
                                 const isLow = equivalentUsd < 100;
@@ -396,6 +402,25 @@ export default function SuppliersContent({ initialSuppliers, initialHistory, ini
                                 );
                             })}
                         </section>
+
+                        {supplierTotalPages > 1 && (
+                            <div className="flex items-center justify-center gap-3 mb-8">
+                                <button onClick={() => setSupplierPage(p => Math.max(1, p - 1))} disabled={supplierPage <= 1}
+                                    className="px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-slate-400 text-sm font-bold hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-all">
+                                    ← Préc.
+                                </button>
+                                {Array.from({ length: supplierTotalPages }, (_, i) => i + 1).map(p => (
+                                    <button key={p} onClick={() => setSupplierPage(p)}
+                                        className={`w-9 h-9 rounded-xl text-sm font-black transition-all ${p === supplierPage ? "bg-[var(--primary)] text-white" : "bg-white/5 text-slate-400 hover:bg-white/10 border border-white/10"}`}>
+                                        {p}
+                                    </button>
+                                ))}
+                                <button onClick={() => setSupplierPage(p => Math.min(supplierTotalPages, p + 1))} disabled={supplierPage >= supplierTotalPages}
+                                    className="px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-slate-400 text-sm font-bold hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-all">
+                                    Suiv. →
+                                </button>
+                            </div>
+                        )}
                     </>
                 ) : (
                     <>

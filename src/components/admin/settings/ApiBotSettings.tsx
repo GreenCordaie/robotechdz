@@ -10,6 +10,9 @@ import {
     ShieldAlert,
     CircleDollarSign,
     Sparkles,
+    Mail,
+    Globe,
+    ExternalLink,
 } from "lucide-react";
 import { Button, Spinner, Input, Textarea, Switch } from "@heroui/react";
 import { toast } from "react-hot-toast";
@@ -18,7 +21,9 @@ import {
     saveShopSettingsAction,
     testN8nAction,
     testNetflixResolverAction,
-    getWhatsAppQrAction
+    getWhatsAppQrAction,
+    loginWithMicrosoftAction,
+    testMicrosoftGraphConfigAction
 } from "@/app/admin/settings/actions";
 import { useSettingsStore } from "@/store/useSettingsStore";
 
@@ -265,12 +270,20 @@ export function ApiBotSettings() {
     const [waApiKey, setWaApiKey] = useState("");
     const [waInstanceName, setWaInstanceName] = useState("");
 
+    // Microsoft Graph States
+    const [msGraphClientId, setMsGraphClientId] = useState("");
+    const [msGraphTenantId, setMsGraphTenantId] = useState("");
+    const [msGraphClientSecret, setMsGraphClientSecret] = useState("");
+    const [msGraphRedirectUri, setMsGraphRedirectUri] = useState("");
+
     // Netflix Relay States
     const [netflixResolverEmail, setNetflixResolverEmail] = useState("");
     const [netflixResolverPassword, setNetflixResolverPassword] = useState("");
 
     const [qrCodeParams, setQrCodeParams] = useState<any>(null);
     const [isFetchingQr, setIsFetchingQr] = useState(false);
+    const [isLoggingInMsAuth, setIsLoggingInMsAuth] = useState(false);
+    const [isTestingMsGraph, setIsTestingMsGraph] = useState(false);
 
     useEffect(() => {
         loadSettings();
@@ -301,6 +314,12 @@ export function ApiBotSettings() {
                 // Netflix Relay
                 setNetflixResolverEmail(s.netflixResolverEmail || "");
                 setNetflixResolverPassword(s.netflixResolverPassword || "");
+
+                // Microsoft Graph
+                setMsGraphClientId(s.microsoftClientId || "");
+                setMsGraphTenantId(s.microsoftTenantId || "");
+                setMsGraphClientSecret(s.microsoftClientSecret || "");
+                setMsGraphRedirectUri(s.microsoftRedirectUri || "");
             }
         } catch (err) {
             toast.error("Erreur chargement paramètres");
@@ -328,6 +347,10 @@ export function ApiBotSettings() {
                 whatsappInstanceName: waInstanceName,
                 netflixResolverEmail,
                 netflixResolverPassword,
+                microsoftClientId: msGraphClientId,
+                microsoftTenantId: msGraphTenantId,
+                microsoftClientSecret: msGraphClientSecret,
+                microsoftRedirectUri: msGraphRedirectUri,
                 shopName: shopName,
             } as any);
 
@@ -380,6 +403,38 @@ export function ApiBotSettings() {
             toast.error("Erreur technique lors de la requête QR");
         } finally {
             setIsFetchingQr(false);
+        }
+    };
+
+    const handleMsGraphLogin = async () => {
+        setIsLoggingInMsAuth(true);
+        try {
+            const res = await loginWithMicrosoftAction({});
+            if (res.success && res.url) {
+                window.location.href = res.url;
+            } else {
+                toast.error(res.error || "Erreur lors de la génération de l'URL d'auth");
+            }
+        } catch (err) {
+            toast.error("Erreur technique Auth Microsoft");
+        } finally {
+            setIsLoggingInMsAuth(false);
+        }
+    };
+
+    const handleTestMsGraph = async () => {
+        setIsTestingMsGraph(true);
+        try {
+            const res = await testMicrosoftGraphConfigAction({});
+            if (res.success) {
+                toast.success(res.message || "Configuration Microsoft Graph validée !");
+            } else {
+                toast.error(res.error || "Échec de validation Microsoft Graph");
+            }
+        } catch (err) {
+            toast.error("Erreur technique test Microsoft Graph");
+        } finally {
+            setIsTestingMsGraph(false);
         }
     };
 
@@ -801,6 +856,108 @@ export function ApiBotSettings() {
                         </div>
                     </div>
                 </section>
+
+                {/* Microsoft Graph Configuration Section */}
+                <section className="space-y-8">
+                    <div>
+                        <h3 className="text-xl font-black text-white uppercase tracking-tight flex items-center gap-2">
+                            <Zap className="text-blue-500" size={24} />
+                            Configuration Microsoft Graph
+                        </h3>
+                        <p className="text-sm text-slate-400 mt-1">Configurez l&apos;accès à Outlook pour le support client.</p>
+                    </div>
+
+                    <div className="bg-[#1a1614] p-8 rounded-[32px] border border-white/5 shadow-2xl">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-[#55acee] ml-1">Client ID (Azure App)</label>
+                                <Input
+                                    value={msGraphClientId}
+                                    onValueChange={setMsGraphClientId}
+                                    placeholder="00000000-0000-0000-0000-000000000000"
+                                    variant="bordered"
+                                    className="dark"
+                                    startContent={<Globe size={16} className="text-[#55acee]" />}
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-[#55acee] ml-1">Tenant ID</label>
+                                <Input
+                                    value={msGraphTenantId}
+                                    onValueChange={setMsGraphTenantId}
+                                    placeholder="common or your-tenant-id"
+                                    variant="bordered"
+                                    className="dark"
+                                    startContent={<Globe size={16} className="text-[#55acee]" />}
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-[#55acee] ml-1">Client Secret</label>
+                                <Input
+                                    value={msGraphClientSecret}
+                                    onValueChange={setMsGraphClientSecret}
+                                    type="password"
+                                    placeholder="Azure App Secret"
+                                    variant="bordered"
+                                    className="dark"
+                                    startContent={<ShieldAlert size={16} className="text-[#55acee]" />}
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-[#55acee] ml-1">Redirect URI</label>
+                                <Input
+                                    value={msGraphRedirectUri}
+                                    onValueChange={setMsGraphRedirectUri}
+                                    placeholder="https://votre-boutique.com/api/auth/callback/microsoft"
+                                    variant="bordered"
+                                    className="dark"
+                                    startContent={<Link size={16} className="text-[#55acee]" />}
+                                />
+                            </div>
+                        </div>
+
+                        <div className="mt-8 p-4 bg-blue-500/5 border border-blue-500/10 rounded-2xl flex items-start gap-4">
+                            <div className="p-2 bg-blue-500/20 rounded-xl">
+                                <Mail className="text-blue-400" size={20} />
+                            </div>
+                            <div className="flex-1">
+                                <p className="text-sm font-bold text-blue-300">Connexion Outlook</p>
+                                <p className="text-[11px] text-slate-400 mt-1 leading-relaxed">
+                                    Une fois les identifiants enregistrés, cliquez sur le bouton ci-dessous pour autoriser l&apos;accès à votre boîte mail de support client.
+                                </p>
+                            </div>
+                            <Button
+                                onPress={handleMsGraphLogin}
+                                isLoading={isLoggingInMsAuth}
+                                className="bg-blue-600 text-white font-black uppercase tracking-widest text-[9px] px-6 py-5 rounded-xl shadow-lg shadow-blue-600/20"
+                                startContent={<ExternalLink size={12} />}
+                            >
+                                Connecter Outlook
+                            </Button>
+                        </div>
+
+                        <div className="mt-6 pt-6 border-t border-white/5 flex justify-end gap-3">
+                            <Button
+                                onPress={handleTestMsGraph}
+                                isLoading={isTestingMsGraph}
+                                variant="flat"
+                                className="bg-blue-500/10 text-blue-400 font-black uppercase tracking-widest text-[10px] px-8 py-6 rounded-2xl border border-blue-500/20"
+                                startContent={<Zap size={14} />}
+                            >
+                                Valider Config
+                            </Button>
+                            <Button
+                                onPress={handleSave}
+                                isLoading={isSaving}
+                                className="bg-blue-700 text-white font-black uppercase tracking-widest text-[10px] px-10 py-6 rounded-2xl shadow-xl shadow-blue-700/20"
+                                startContent={<Save size={14} />}
+                            >
+                                Enregistrer Microsoft
+                            </Button>
+                        </div>
+                    </div>
+                </section>
+
             </div>
         </div>
     );

@@ -33,7 +33,7 @@ export default function DeliveryMethodModal({ isOpen, onClose, onConfirm, isSubm
             size="2xl"
             backdrop="blur"
             classNames={{
-                base: "bg-white/90 dark:bg-zinc-900/90 backdrop-blur-2xl rounded-[32px] p-0 overflow-hidden border border-white/20 shadow-2xl",
+                base: "bg-white rounded-[32px] p-0 overflow-hidden shadow-2xl",
                 wrapper: "z-[100]",
                 backdrop: "bg-slate-900/40 backdrop-blur-xl"
             }}
@@ -107,7 +107,7 @@ export default function DeliveryMethodModal({ isOpen, onClose, onConfirm, isSubm
                                             setPhone(e.target.value);
                                             if (error) setError("");
                                         }}
-                                        className="block w-full h-20 px-6 text-2xl font-medium tracking-widest bg-transparent outline-none placeholder:text-slate-300"
+                                        className="block w-full h-20 px-6 text-2xl font-medium tracking-widest bg-transparent outline-none text-slate-900 placeholder:text-slate-300"
                                         placeholder="00 00 00 00"
                                         autoFocus
                                     />
@@ -132,7 +132,7 @@ export default function DeliveryMethodModal({ isOpen, onClose, onConfirm, isSubm
                         <footer className="mt-8 text-center">
                             <button
                                 onClick={onClose}
-                                className="text-slate-400 font-semibold text-lg hover:text-slate-600 transition-colors py-2 px-4 rounded-xl"
+                                className="text-slate-400 font-semibold text-lg hover:text-slate-600 transition-colors h-11 px-6 rounded-xl flex items-center justify-center mx-auto"
                             >
                                 Annuler et revenir
                             </button>

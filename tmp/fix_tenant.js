@@ -3,12 +3,12 @@ const sql = postgres('postgres://user:password@localhost:5435/flexbox');
 
 async function main() {
     try {
-        const res = await sql`SELECT * FROM shop_settings`;
-        console.log(JSON.stringify(res, null, 2));
+        await sql`UPDATE shop_settings SET microsoft_tenant_id = 'consumers'`;
+        console.log('Tenant ID mis à jour vers consumers');
     } catch (err) {
-        console.error("Error:", err.message);
+        console.error(err);
     } finally {
-        process.exit(0);
+        await sql.end();
     }
 }
 

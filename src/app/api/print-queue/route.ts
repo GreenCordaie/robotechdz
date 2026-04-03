@@ -246,7 +246,7 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ jobs });
     } catch (err: any) {
         console.error("[print-queue GET]", err);
-        return NextResponse.json({ error: err.message }, { status: 500 });
+        return NextResponse.json({ error: "Internal server error" }, { status: 500 });
     }
 }
 
@@ -310,6 +310,6 @@ export async function PATCH(req: NextRequest) {
         return NextResponse.json({ success: true });
     } catch (err: any) {
         console.error(`[Print Queue PATCH] Critical error:`, err.message);
-        return NextResponse.json({ error: err.message }, { status: 500 });
+        return NextResponse.json({ error: "Internal server error" }, { status: 500 });
     }
 }

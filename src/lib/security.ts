@@ -56,7 +56,6 @@ export async function getAuthenticatedUser() {
 
         // JWT Revocation check: compare version in token with version in DB
         if (session.tokenVersion !== undefined && user.tokenVersion !== session.tokenVersion) {
-            console.warn(`🔐 Revocation: Token version mismatch for user ${user.id} (Session: ${session.tokenVersion}, DB: ${user.tokenVersion})`);
             return null;
         }
 
@@ -140,11 +139,6 @@ export function withAuth<T extends z.ZodType, R>(
             // 1. Authentication Check
             const user = await getAuthenticatedUser();
             if (!user) {
-                const session = await getSession();
-                console.warn("🔐 Auth Failed:", {
-                    hasSession: !!session,
-                    reason: session ? "User not found in DB" : "No session cookie"
-                });
                 throw new UnauthorizedError("Session expirée ou invalide");
             }
 

@@ -1,40 +1,40 @@
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { eventStreamManager } from "@/lib/event-stream";
+import { getSession } from "@/lib/auth";
+
+export const dynamic = 'force-dynamic';
 
 /**
  * SSE Endpoint: GET /api/events/stream
  * Provides real-time system events to the dashboard.
+ * Requires a valid admin/staff session.
  */
 export async function GET(req: NextRequest) {
+    const session = await getSession();
+    if (!session) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const streamId = Math.random().toString(36).substring(7);
 
-    // Create a new ReadableStream for the SSE connection
     const stream = new ReadableStream({
         start(controller) {
-            // Register client with the manager
             const unregister = eventStreamManager.addClient(streamId, controller);
-
-            // Handle client disconnect
             req.signal.addEventListener("abort", () => {
                 unregister();
             });
         },
         cancel() {
-            // Stream was cancelled (e.g. navigation)
-            console.log(`[SSE] Stream ${streamId} cancelled`);
+            // Stream cancelled (navigation or disconnect)
         }
     });
 
-    // Return the stream with proper SSE headers
     return new Response(stream, {
         headers: {
             "Content-Type": "text/event-stream",
             "Cache-Control": "no-cache, no-transform",
             "Connection": "keep-alive",
-            "X-Accel-Buffering": "no", // Disable buffering for Nginx if present
+            "X-Accel-Buffering": "no",
         },
     });
 }
-
-// Ensure the route is dynamic
-export const dynamic = 'force-dynamic';

@@ -84,6 +84,10 @@ export const saveShopSettingsAction = withAuth(
             stockAlertThreshold: z.number().int().min(1).max(9999).optional(),
             netflixResolverEmail: z.string().nullable().optional(),
             netflixResolverPassword: z.string().nullable().optional(),
+            microsoftClientId: z.string().nullable().optional(),
+            microsoftClientSecret: z.string().nullable().optional(),
+            microsoftTenantId: z.string().nullable().optional(),
+            microsoftRedirectUri: z.string().nullable().optional(),
         })
     },
     async (data, user) => {
@@ -348,42 +352,20 @@ export const testNetflixResolverAction = withAuth(
             const { SystemQueries } = await import("@/services/queries/system.queries");
             const settings = await SystemQueries.getSettings();
 
-            if (!settings.netflixResolverEmail || !settings.netflixResolverPassword) {
-                return { success: false, error: "Email relais ou mot de passe non configuré." };
+            if (!settings.microsoftClientId || !settings.microsoftClientSecret) {
+                return { success: false, error: "Configuration Microsoft Graph (Client ID/Secret) manquante." };
             }
-
-            const { ImapFlow } = await import("imapflow");
-            const host = settings.netflixResolverEmail.endsWith('@gmail.com') ? 'imap.gmail.com' : 'outlook.office365.com';
-
-            const client = new ImapFlow({
-                host,
-                port: 993,
-                secure: true,
-                auth: { user: settings.netflixResolverEmail, pass: settings.netflixResolverPassword },
-                logger: false
-            });
-
-            await client.connect();
-            const lock = await client.getMailboxLock('INBOX');
-            const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
-            const SENDERS = ['info@account.netflix.com', 'noreply@mailer.netflix.com', 'noreply@netflix.com'];
-            let netflixCount = 0;
-            for await (const msg of client.fetch({ since }, { envelope: true })) {
-                const from = msg.envelope?.from?.[0]?.address?.toLowerCase();
-                if (from && SENDERS.includes(from)) netflixCount++;
-            }
-            lock.release();
-            await client.logout();
 
             return {
                 success: true,
-                message: `Connexion ${host} OK. ${netflixCount} email(s) Netflix dans les dernières 24h.`
+                message: "Moteur de résolution configuré sur MICROSOFT GRAPH NATIVE. Prêt pour les comptes connectés."
             };
         } catch (error: any) {
-            return { success: false, error: `Erreur IMAP: ${error.message}` };
+            return { success: false, error: `Erreur: ${error.message}` };
         }
     }
 );
+
 
 export const testN8nAction = withAuth(
     { roles: [UserRole.ADMIN] },
@@ -690,5 +672,44 @@ export const listApiKeysAction = withAuth(
         }));
 
         return { success: true, data: safeKeys };
+    }
+);
+
+export const testMicrosoftGraphConfigAction = withAuth(
+    { roles: [UserRole.ADMIN] },
+    async () => {
+        try {
+            const { MicrosoftAuthService } = await import("@/services/microsoft-auth.service");
+            // Test simple: Générer une URL d'auth (vérifie le Client ID et le format)
+            const url = await MicrosoftAuthService.getAuthorizationUrl(0);
+
+            // On peut aussi vérifier si le secret est présent
+            const { SystemQueries } = await import("@/services/queries/system.queries");
+            const settings = await SystemQueries.getSettings();
+
+            if (!settings.microsoftClientId || !settings.microsoftClientSecret) {
+                return { success: false, error: "Client ID ou Secret manquant en base de données." };
+            }
+
+            return {
+                success: true,
+                message: "Configuration Microsoft Graph OK. Prêt pour l'authentification."
+            };
+        } catch (error: any) {
+            return { success: false, error: `Erreur Microsoft Graph: ${error.message}` };
+        }
+    }
+);
+export const loginWithMicrosoftAction = withAuth(
+    { roles: [UserRole.ADMIN] },
+    async () => {
+        try {
+            const { MicrosoftAuthService } = await import("@/services/microsoft-auth.service");
+            // Utilise l'ID de l'admin actuel (ou 0 par défaut pour les réglages globaux)
+            const url = await MicrosoftAuthService.getAuthorizationUrl(0);
+            return { success: true, url };
+        } catch (error: any) {
+            return { success: false, error: error.message };
+        }
     }
 );

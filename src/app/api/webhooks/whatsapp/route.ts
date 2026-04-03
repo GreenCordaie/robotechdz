@@ -341,9 +341,11 @@ export async function POST(req: NextRequest) {
             whatsappInstanceName: settings?.whatsappInstanceName ?? undefined
         };
 
-        // ── PIN Profil Netflix (Prioritaire) ──
-        const pinKeywords = /\b(pin|code\s*profil|profil\s*code|code\s*pin|mot\s*de\s*passe\s*profil|mon\s*code|mon\s*pin)\b/i;
-        if (pinKeywords.test(text)) {
+        // ── PIN Profil Netflix (Prioritaire seulement si pas de demande explicite de code foyer) ──
+        const pinKeywords = /\b(pin|code\s*profil|profil\s*code|code\s*pin|mot\s*de\s*passe\s*profil)\b/i;
+        const netflixCodeKeywords = /\b(foyer|household|appareil|code\s*netflix|connexion|activer|v[eé]rification|demande|récupérer|mon\s*code|mon\s*pin)\b/i;
+
+        if (pinKeywords.test(text) && !netflixCodeKeywords.test(text)) {
             try {
                 const { AccountService } = await import("@/services/account.service");
                 const slots = await AccountService.findAllActiveNetflixSlotsByPhone(senderPhone);
@@ -374,40 +376,58 @@ export async function POST(req: NextRequest) {
             }
         }
 
-        // ── Auto-Résolution Netflix (Prioritaire — fonctionne même si chatbot désactivé) ──
-        const netflixKeywords = /\b(foyer|household|appareil|code\s*netflix|connexion|activer|v[eé]rification)\b/i;
-
-        // On récupère TOUS les slots actifs
-        const { AccountService } = await import("@/services/account.service");
-        const allActiveSlots = await AccountService.findAllActiveNetflixSlotsByPhone(senderPhone);
-
-        // On vérifie si le message contient une information qui permet d'identifier un slot précis
-        // (Email, ID commande, profil, ou PIN)
-        let matchedSlots = allActiveSlots;
-        if (allActiveSlots.length > 1) {
-            matchedSlots = allActiveSlots.filter(s => {
-                const [email] = (decrypt(s.account.code) || '').split('|').map(str => str.trim().toLowerCase());
-                const orderId = String(s.order.id);
-                const profile = (s.slot.profileName || '').toLowerCase();
-                const pin = (s.slot.pinCode || '').toLowerCase();
-                const msgText = text.toLowerCase();
-
-                return msgText.includes(email) ||
-                    msgText.includes(orderId) ||
-                    (profile && msgText.includes(profile)) ||
-                    (pin && msgText.includes(pin));
-            });
-        }
-
-        // Si le message est un mot-clé global OU si on a trouvé un match précis
-        if (netflixKeywords.test(text) || (allActiveSlots.length > 0 && matchedSlots.length === 1)) {
+        // ── Auto-Résolution Netflix (Prioritaire pour les demandes de codes de connexion) ──
+        if (netflixCodeKeywords.test(text) || text.startsWith('#')) {
             try {
-                if (matchedSlots.length === 1) {
+                // On vérifie si le message contient un autre numéro de téléphone
+                const phoneRegex = /(?:0|\+213|00213)([567]\d{8})\b/g;
+                const matches = Array.from(text.matchAll(phoneRegex));
+                const mentionedPhones = matches.map((m: any) => m[1]); // On garde les 9 chiffres
+
+                const { AccountService } = await import("@/services/account.service");
+
+                // On récupère les slots pour le sender ET les numéros mentionnés
+                const myPhone = senderPhone.replace(/\D/g, '').slice(-9);
+                const searchPhones = Array.from(new Set([myPhone, ...mentionedPhones]));
+
+                const allActiveSlots: any[] = [];
+                for (const p of searchPhones) {
+                    const slots = await AccountService.findAllActiveNetflixSlotsByPhone(p);
+                    allActiveSlots.push(...slots);
+                }
+
+                // Dé-doublonner par slot ID
+                const uniqueSlots = Array.from(new Map(allActiveSlots.map(s => [s.slot.id, s])).values());
+
+                // On vérifie si le message contient une information qui permet d'identifier un slot précis
+                let matchedSlots = uniqueSlots;
+                if (uniqueSlots.length > 1) {
+                    matchedSlots = uniqueSlots.filter(s => {
+                        const [email] = (decrypt(s.account.code) || '').split('|').map(str => str.trim().toLowerCase());
+                        const orderId = String(s.order.id);
+                        const profile = (s.slot.profileName || '').toLowerCase();
+                        const pin = (s.slot.pinCode || '').toLowerCase();
+                        const msgText = text.toLowerCase();
+
+                        return msgText.includes(email) ||
+                            msgText.includes(orderId) ||
+                            (profile && msgText.includes(profile)) ||
+                            (pin && msgText.includes(pin));
+                    });
+                }
+
+                // Exécuter si on a un match unique ou si c'est une demande générale avec au moins un slot
+                if (uniqueSlots.length > 0 && matchedSlots.length === 1) {
                     const activeData = matchedSlots[0];
-                    if (activeData.account.outlookPassword) {
+                    const account = activeData.account;
+
+                    // On vérifie si on peut résoudre le compte (soit mot de passe Outlook, soit Microsoft lié)
+                    const canResolve = account.outlookPassword || account.msStatus === 'CONNECTED';
+
+                    if (canResolve) {
                         await sendWhatsAppMessage(
                             senderPhone,
-                            `⏳ Recherche du code pour *${(decrypt(activeData.account.code) || '').split('|')[0]}* en cours...\nUn instant SVP.`,
+                            `⏳ Recherche du code pour *${(decrypt(account.code) || '').split('|')[0]}* en cours...\nUn instant SVP.`,
                             waSettings
                         );
 
@@ -417,46 +437,48 @@ export async function POST(req: NextRequest) {
                         (async () => {
                             try {
                                 const { NetflixResolverService } = await import("@/services/netflix-resolver.service");
-                                const outlookPass = decrypt(activeData.account.outlookPassword!) || '';
-                                const [email] = (decrypt(activeData.account.code) || '').split('|').map(s => s.trim());
+                                const outlookPass = account.outlookPassword ? (decrypt(account.outlookPassword) || '') : '';
+                                const [email] = (decrypt(account.code) || '').split('|').map(s => s.trim());
 
                                 const result = await NetflixResolverService.resolve(
                                     email,
                                     outlookPass,
                                     settings?.netflixResolverEmail && settings?.netflixResolverPassword
                                         ? { email: settings.netflixResolverEmail, password: settings.netflixResolverPassword }
-                                        : undefined
+                                        : undefined,
+                                    account.msRefreshToken,
+                                    account.msClientId // <--- Nouveau paramètre pérennisé
                                 );
 
                                 if (result.type === 'CODE') {
                                     await sendWhatsAppMessage(senderPhone, `✅ Code Netflix pour *${email}* :\n*${result.value}*`, waSettings);
                                 } else if (result.type === 'LINK') {
-                                    await sendWhatsAppMessage(senderPhone, `✅ Lien Netflix pour *${email}* :\n${result.value}\n\n⚠️ À ouvrir en données mobiles.`, waSettings);
+                                    await sendWhatsAppMessage(senderPhone, `🔗 Lien de validation Netflix pour *${email}* :\n${result.value}`, waSettings);
                                 } else {
-                                    await sendWhatsAppMessage(senderPhone, `❌ Aucun email récent pour *${email}*.\n\nRelancez la demande sur votre TV et réessayez.`, waSettings);
+                                    await sendWhatsAppMessage(senderPhone, `❌ Aucun code récent trouvé pour *${email}*.\n\nVeuillez demander un nouveau code sur votre TV puis réessayez.`, waSettings);
                                 }
 
                                 await db.insert(auditLogs).values({
                                     action: 'NETFLIX_RESOLVE_AUTO',
                                     entityType: 'SLOT',
                                     entityId: String(slotId),
-                                    newData: { type: result.type, value: result.value, phone: maskedPhoneAuto }
+                                    newData: { type: result.type, value: result.value, phone: maskedPhoneAuto, method: account.msRefreshToken ? 'GRAPH' : 'IMAP' }
                                 }).catch(() => { });
-                            } catch (e) {
-                                console.error('[NETFLIX_AUTO] Fail:', e);
+                            } catch (error) {
+                                console.error('[AUTO_RESOLVE_ASYNC] Error:', error);
                             }
                         })();
 
                         await RateLimitService.resetLimit(rlKey);
                         return NextResponse.json({ success: true, autorealized: true });
                     } else {
-                        await sendWhatsAppMessage(senderPhone, `ℹ️ Le compte *${(decrypt(matchedSlots[0].account.code) || '').split('|')[0]}* n'est pas encore configuré pour la résolution automatique.`, waSettings);
+                        await sendWhatsAppMessage(senderPhone, `ℹ️ Le compte *${(decrypt(account.code) || '').split('|')[0]}* n'est pas encore configuré pour la résolution automatique.`, waSettings);
                         return NextResponse.json({ success: true });
                     }
-                } else if (allActiveSlots.length > 1) {
+                } else if (uniqueSlots.length > 1) {
                     // Trop de choix, on demande d'identifier
                     let listMsg = `🤔 Vous avez plusieurs comptes Netflix actifs. Pour lequel voulez-vous le code ?\n\n`;
-                    allActiveSlots.forEach((s, i) => {
+                    uniqueSlots.forEach((s, i) => {
                         const [email] = (decrypt(s.account.code) || '').split('|').map(str => str.trim());
                         listMsg += `${i + 1}. *${email}*\n   (Commande #${s.order.id}${s.slot.profileName ? ` - Profil: ${s.slot.profileName}` : ''})\n\n`;
                     });
@@ -464,8 +486,8 @@ export async function POST(req: NextRequest) {
 
                     await sendWhatsAppMessage(senderPhone, listMsg, waSettings);
                     return NextResponse.json({ success: true });
-                } else if (allActiveSlots.length === 0 && netflixKeywords.test(text)) {
-                    await sendWhatsAppMessage(senderPhone, `❌ Désolé, je n'ai trouvé aucune commande Netflix active associée à votre numéro de téléphone.`, waSettings);
+                } else if (uniqueSlots.length === 0 && netflixCodeKeywords.test(text)) {
+                    await sendWhatsAppMessage(senderPhone, `❌ Désolé, je n'ai trouvé aucune commande Netflix active associée à votre numéro (ou au numéro mentionné).`, waSettings);
                     return NextResponse.json({ success: true });
                 }
             } catch (err) {

@@ -90,6 +90,8 @@ export default function ClientsContent({ initialStats, initialClients }: Clients
     const [stats, setStats] = React.useState(initialStats);
     const [clients, setClients] = React.useState<Client[]>(initialClients);
     const [search, setSearch] = React.useState("");
+    const [currentPage, setCurrentPage] = React.useState(1);
+    const ITEMS_PER_PAGE = 20;
     const [selectedClient, setSelectedClient] = React.useState<Client | null>(null);
     const [history, setHistory] = React.useState<{ payments: ClientPayment[], orders: ClientOrder[] }>({ payments: [], orders: [] });
     const [clientReturns, setClientReturns] = React.useState<Array<{ orderId: number; orderNumber: string; totalAmount: string; returnRequest: ReturnRequest; orderCreatedAt: Date | null }>>([]);
@@ -121,6 +123,20 @@ export default function ClientsContent({ initialStats, initialClients }: Clients
     // WhatsApp history modal state
     const [isWhatsAppOpen, setIsWhatsAppOpen] = React.useState(false);
     const [whatsappClient, setWhatsappClient] = React.useState<Client | null>(null);
+
+    const filteredClients = React.useMemo(() => {
+        if (!search.trim()) return clients;
+        const s = search.toLowerCase();
+        return clients.filter(c =>
+            c.nomComplet.toLowerCase().includes(s) ||
+            (c.telephone || "").toLowerCase().includes(s)
+        );
+    }, [clients, search]);
+
+    const totalPages = Math.ceil(filteredClients.length / ITEMS_PER_PAGE);
+    const paginatedClients = filteredClients.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+
+    React.useEffect(() => { setCurrentPage(1); }, [search]);
 
     // Polling or refresh logic
     const refreshData = React.useCallback(async () => {
@@ -365,7 +381,7 @@ export default function ClientsContent({ initialStats, initialClients }: Clients
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 dark:divide-[#262626]">
-                            {clients.map((client) => {
+                            {paginatedClients.map((client) => {
                                 const lastOrder = client.orders?.[0];
                                 return (
                                     <tr key={client.id} className="hover:bg-slate-50 dark:hover:bg-[#262626]/20 transition-colors group">
@@ -449,12 +465,56 @@ export default function ClientsContent({ initialStats, initialClients }: Clients
                             })}
                         </tbody>
                     </table>
-                    {clients.length === 0 && (
+                    {filteredClients.length === 0 && (
                         <div className="p-12 text-center text-slate-500 font-medium">
                             Aucun client trouvé.
                         </div>
                     )}
                 </div>
+
+                {/* Pagination */}
+                {totalPages > 1 && (
+                    <div className="flex items-center justify-between px-6 py-4 border-t border-slate-100 dark:border-[#262626]">
+                        <span className="text-xs text-slate-500 font-bold">
+                            {filteredClients.length} client{filteredClients.length > 1 ? "s" : ""} — page {currentPage}/{totalPages}
+                        </span>
+                        <div className="flex items-center gap-2">
+                            <button
+                                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                                disabled={currentPage <= 1}
+                                className="px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-white/5 text-slate-600 dark:text-slate-400 text-xs font-bold hover:bg-slate-200 dark:hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                            >
+                                ← Préc.
+                            </button>
+                            {Array.from({ length: totalPages }, (_, i) => i + 1)
+                                .filter(p => p === 1 || p === totalPages || Math.abs(p - currentPage) <= 1)
+                                .reduce((acc: (number | string)[], p, idx, arr) => {
+                                    if (idx > 0 && (p as number) - (arr[idx - 1] as number) > 1) acc.push("...");
+                                    acc.push(p);
+                                    return acc;
+                                }, [])
+                                .map((p, idx) => p === "..." ? (
+                                    <span key={`d-${idx}`} className="px-1 text-slate-400 text-xs">…</span>
+                                ) : (
+                                    <button
+                                        key={p}
+                                        onClick={() => setCurrentPage(p as number)}
+                                        className={`w-8 h-8 rounded-lg text-xs font-black transition-all ${p === currentPage ? "bg-[var(--primary)] text-white" : "bg-slate-100 dark:bg-white/5 text-slate-500 hover:bg-slate-200 dark:hover:bg-white/10"}`}
+                                    >
+                                        {p}
+                                    </button>
+                                ))
+                            }
+                            <button
+                                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                                disabled={currentPage >= totalPages}
+                                className="px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-white/5 text-slate-600 dark:text-slate-400 text-xs font-bold hover:bg-slate-200 dark:hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                            >
+                                Suiv. →
+                            </button>
+                        </div>
+                    </div>
+                )}
             </div>
 
             {/* Overlaid Modal (Customer Record) */}

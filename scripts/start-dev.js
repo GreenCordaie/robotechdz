@@ -307,7 +307,8 @@ async function syncAll(forceWaha = false) {
                 UPDATE shop_settings SET
                     webhook_url = ${appUrl},
                     whatsapp_webhook_url = ${appUrl + '/api/webhooks/whatsapp'},
-                    n8n_webhook_url = ${n8nUrl ? n8nUrl + '/webhook/flexbox-gateway' : s.n8n_webhook_url}
+                    n8n_webhook_url = ${n8nUrl ? n8nUrl + '/webhook/flexbox-gateway' : s.n8n_webhook_url},
+                    microsoft_redirect_uri = ${appUrl + '/api/auth/microsoft/callback'}
                 WHERE id = ${s.id}
             `;
             console.log("   ✅ DB → webhook_url + whatsapp_webhook_url + n8n_webhook_url mis à jour");

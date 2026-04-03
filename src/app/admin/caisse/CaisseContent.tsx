@@ -357,17 +357,17 @@ export default function CaisseContent() {
                                 {/* Orders List / Cards */}
                                 <div className="flex-1 overflow-y-auto custom-scrollbar px-6 pb-6">
                                     {/* Desktop Table View */}
-                                    <div className="hidden md:block bg-white dark:bg-[var(--primary)]/5 rounded-2xl border border-slate-200 dark:border-[var(--primary)]/10 overflow-x-auto shadow-sm">
+                                    <div className="hidden md:block bg-[#161616] rounded-2xl border border-[#262626] overflow-x-auto shadow-sm">
                                         <table className="w-full text-left border-collapse">
                                             <thead>
-                                                <tr className="border-b border-slate-100 dark:border-[var(--primary)]/10 bg-slate-50 dark:bg-[var(--primary)]/10">
+                                                <tr className="border-b border-[#262626] bg-[#1a1a1a]">
                                                     <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-500">Order #</th>
                                                     <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-500">Heure</th>
                                                     <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-500">Montant</th>
                                                     <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-500 text-right">Actions</th>
                                                 </tr>
                                             </thead>
-                                            <tbody className="divide-y divide-slate-100 dark:divide-[var(--primary)]/10">
+                                            <tbody className="divide-y divide-[#262626]">
                                                 {isLoading && allTodayOrders.length === 0 ? (
                                                     <tr>
                                                         <td colSpan={4} className="p-12 text-center"><Spinner color="warning" /></td>
@@ -379,9 +379,9 @@ export default function CaisseContent() {
                                                         <tr
                                                             key={o.id}
                                                             onClick={() => setCurrentOrder(o)}
-                                                            className={`cursor-pointer transition-colors ${isActive ? 'bg-[var(--primary)]/5 border-l-4 border-l-[var(--primary)]' : 'hover:bg-slate-50 dark:hover:bg-[var(--primary)]/10 border-l-4 border-l-transparent'}`}
+                                                            className={`cursor-pointer transition-colors ${isActive ? 'bg-[var(--primary)]/10 border-l-4 border-l-[var(--primary)]' : 'hover:bg-[#1f1f1f] border-l-4 border-l-transparent'}`}
                                                         >
-                                                            <td className={`px-6 py-4 font-bold ${isActive ? 'text-[var(--primary)]' : ''}`}>
+                                                            <td className={`px-6 py-4 font-bold ${isActive ? 'text-[var(--primary)]' : 'text-slate-200'}`}>
                                                                 <div className="flex items-center gap-2">
                                                                     <span>{o.orderNumber.startsWith('#') ? o.orderNumber : `#${o.orderNumber}`}</span>
                                                                     {o.deliveryMethod === "WHATSAPP" && (
@@ -395,12 +395,12 @@ export default function CaisseContent() {
                                                                     )}
                                                                 </div>
                                                             </td>
-                                                            <td className="px-6 py-4 text-sm text-slate-500 dark:text-slate-400">
+                                                            <td className="px-6 py-4 text-sm text-slate-500">
                                                                 {new Date(o.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                                             </td>
                                                             <td className="px-6 py-4">
                                                                 <div className="flex flex-col">
-                                                                    <span className="font-semibold whitespace-nowrap text-slate-900 dark:text-white">
+                                                                    <span className="font-semibold whitespace-nowrap text-slate-200">
                                                                         {formatCurrency(Number(o.totalAmount) - Number(o.remise || 0), 'DZD')}
                                                                     </span>
                                                                     {Number(o.remise || 0) > 0 && (
@@ -570,13 +570,13 @@ export default function CaisseContent() {
                                             {(currentOrder.items as any[]).map((item, idx) => {
                                                 const linkedSuppliers = item.variant?.variantSuppliers || [];
                                                 return (
-                                                    <div key={idx} className="flex flex-col gap-3 p-4 rounded-2xl bg-slate-50 dark:bg-[var(--primary)]/5 border border-slate-200 dark:border-[var(--primary)]/10 group">
+                                                    <div key={idx} className="flex flex-col gap-3 p-4 rounded-2xl bg-[#1a1a1a] border border-[#262626] group">
                                                         <div className="flex items-center gap-4">
                                                             <div className="w-12 h-12 rounded-xl bg-[var(--primary)]/20 flex items-center justify-center overflow-hidden shrink-0">
                                                                 <span className="material-symbols-outlined text-[var(--primary)] text-xl">category</span>
                                                             </div>
                                                             <div className="flex-1 min-w-0">
-                                                                <p className="font-bold text-sm truncate uppercase tracking-tight">{item.name}</p>
+                                                                <p className="font-bold text-sm truncate uppercase tracking-tight text-slate-200">{item.name}</p>
                                                                 {item.customData && (
                                                                     <p className="text-[10px] text-[var(--primary)] font-black uppercase tracking-widest mt-0.5 flex items-center gap-1">
                                                                         <span className="material-symbols-outlined !text-[12px]">poker_chip</span>
@@ -667,7 +667,7 @@ export default function CaisseContent() {
 
                                             {/* Remise & Client Block */}
                                             <div className="grid grid-cols-2 gap-3">
-                                                <div className="flex flex-col gap-1.5 p-3 bg-slate-50 dark:bg-white/5 rounded-xl border border-slate-200 dark:border-white/10">
+                                                <div className="flex flex-col gap-1.5 p-3 bg-[#1a1a1a] rounded-xl border border-[#262626]">
                                                     <span className="text-[10px] uppercase font-bold text-slate-500">Remise (DZD)</span>
                                                     <input
                                                         className="bg-transparent border-none focus:ring-0 p-0 font-bold text-emerald-500 outline-none w-full"
@@ -677,7 +677,7 @@ export default function CaisseContent() {
                                                         onChange={(e) => setRemise(Number(e.target.value))}
                                                     />
                                                 </div>
-                                                <div className="flex flex-col gap-1.5 p-3 bg-slate-50 dark:bg-white/5 rounded-xl border border-slate-200 dark:border-white/10">
+                                                <div className="flex flex-col gap-1.5 p-3 bg-[#1a1a1a] rounded-xl border border-[#262626]">
                                                     <span className="text-[10px] uppercase font-bold text-slate-500">Montant Reçu</span>
                                                     <input
                                                         className="bg-transparent border-none focus:ring-0 p-0 font-bold text-[var(--primary)] outline-none w-full"
@@ -710,7 +710,7 @@ export default function CaisseContent() {
                                             </div>
 
                                             {/* Client Selection */}
-                                            <div className="p-3 bg-slate-50 dark:bg-white/5 rounded-xl border border-slate-200 dark:border-white/10 space-y-2">
+                                            <div className="p-3 bg-[#1a1a1a] rounded-xl border border-[#262626] space-y-2">
                                                 <div className="flex justify-between items-center">
                                                     <span className="text-[10px] uppercase font-bold text-slate-500 flex items-center gap-1">
                                                         <UserIcon size={10} /> Client (Optionnel)
@@ -749,6 +749,20 @@ export default function CaisseContent() {
                                                 </div>
                                             </div>
                                         </div>
+
+                                        {/* Reprint Button — commandes déjà traitées */}
+                                        {currentOrder.status !== 'EN_ATTENTE' && (
+                                            <div className="mt-6 shrink-0 pb-2">
+                                                <button
+                                                    onClick={() => handlePrint(currentOrder)}
+                                                    disabled={isUpdating}
+                                                    className="w-full flex items-center justify-center gap-2 p-4 rounded-xl bg-white/5 border border-white/10 text-slate-300 hover:bg-white/10 active:scale-95 transition-all font-bold text-sm disabled:opacity-50"
+                                                >
+                                                    <span className="material-symbols-outlined">print</span>
+                                                    <span>Réimprimer le Ticket</span>
+                                                </button>
+                                            </div>
+                                        )}
 
                                         {/* Payment Actions */}
                                         {currentOrder.status === 'EN_ATTENTE' && (

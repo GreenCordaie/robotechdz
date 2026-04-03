@@ -1,34 +1,48 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
-import { Input, Button, Spinner, Chip } from "@heroui/react";
-import { Search, Eye, Filter, Calendar, CreditCard, User, History } from "lucide-react";
+import React, { useState, useTransition } from "react";
+import { Button, Spinner, Chip } from "@heroui/react";
+import { Search, Eye, Filter, Calendar, CreditCard, User, History, ChevronLeft, ChevronRight } from "lucide-react";
 import { formatCurrency } from "@/lib/formatters";
 import dynamic from "next/dynamic";
+import { useRouter, usePathname } from "next/navigation";
 const OrderDetailModal = dynamic(() => import("@/components/admin/modals/OrderDetailModal"), { ssr: false });
 import { cancelOrderAction } from "../caisse/actions";
+import { toast } from "react-hot-toast";
 
 interface CommandesContentProps {
     initialOrders: any[];
+    total: number;
+    page: number;
+    totalPages: number;
+    search: string;
 }
 
-export function CommandesContent({ initialOrders }: CommandesContentProps) {
-    const [orders, setOrders] = useState<any[]>(initialOrders);
-    const [searchTerm, setSearchTerm] = useState("");
+export function CommandesContent({ initialOrders, total, page, totalPages, search }: CommandesContentProps) {
+    const router = useRouter();
+    const pathname = usePathname();
+    const [isPending, startTransition] = useTransition();
+    const [searchInput, setSearchInput] = useState(search);
     const [selectedOrder, setSelectedOrder] = useState<any | null>(null);
     const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
 
-    const filteredOrders = useMemo(() => {
-        return orders.filter(order =>
-            order.orderNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            (order.clientName || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
-            (order.customerPhone || "").toLowerCase().includes(searchTerm.toLowerCase())
-        );
-    }, [orders, searchTerm]);
+    const navigate = (newPage: number, newSearch?: string) => {
+        const params = new URLSearchParams();
+        if (newPage > 1) params.set("page", String(newPage));
+        const s = newSearch !== undefined ? newSearch : searchInput;
+        if (s) params.set("search", s);
+        startTransition(() => {
+            router.push(`${pathname}?${params.toString()}`);
+        });
+    };
+
+    const handleSearch = (e: React.FormEvent) => {
+        e.preventDefault();
+        navigate(1, searchInput);
+    };
 
     const handleOpenDetail = (order: any) => {
-        // Transform the order data to match the Detail modal expectation if necessary
         const formattedOrder = {
             ...order,
             totalAmount: Number(order.totalAmount),
@@ -51,13 +65,10 @@ export function CommandesContent({ initialOrders }: CommandesContentProps) {
 
     const handleCancelOrder = async (orderId: number) => {
         if (!confirm("Êtes-vous sûr de vouloir annuler cette commande ?")) return;
-
         setIsLoading(true);
         try {
             const res = await cancelOrderAction({ orderId });
-            if (res.success) {
-                setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: "ANNULE" } : o));
-            }
+            if (res.success) router.refresh();
         } catch (error) {
             console.error("Cancel order error:", error);
         } finally {
@@ -78,10 +89,7 @@ export function CommandesContent({ initialOrders }: CommandesContentProps) {
 
     const formatDateShort = (date: string | Date) => {
         return new Date(date).toLocaleString("fr-FR", {
-            day: 'numeric',
-            month: 'short',
-            hour: '2-digit',
-            minute: '2-digit'
+            day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'
         });
     };
 
@@ -94,34 +102,59 @@ export function CommandesContent({ initialOrders }: CommandesContentProps) {
                     </div>
                     <div>
                         <h1 className="text-xl font-black uppercase tracking-tight">Historique Commandes</h1>
-                        <p className="text-slate-500 text-xs font-bold uppercase tracking-wider">Gestion et consultation des transactions</p>
+                        <p className="text-slate-500 text-xs font-bold uppercase tracking-wider">
+                            {total} commande{total > 1 ? "s" : ""} au total
+                        </p>
                     </div>
                 </div>
             </header>
 
             <main className="p-6 flex-1 overflow-auto max-w-[1400px] mx-auto w-full">
-                <div className="flex items-center gap-4 mb-8">
-                    <Input
-                        placeholder="Rechercher par #, client ou téléphone..."
-                        startContent={<Search size={18} className="text-slate-500" />}
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        className="max-w-md"
-                        variant="flat"
-                        classNames={{
-                            input: "bg-transparent",
-                            inputWrapper: "bg-white/5 border border-white/5 hover:border-[var(--primary)]/40 transition-colors h-12"
-                        }}
-                    />
+                {/* Search */}
+                <form onSubmit={handleSearch} className="flex items-center gap-4 mb-8">
+                    <div className="relative max-w-md w-full">
+                        <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
+                        <input
+                            value={searchInput}
+                            onChange={(e) => setSearchInput(e.target.value)}
+                            placeholder="Rechercher par #, client ou téléphone..."
+                            className="w-full bg-white/5 border border-white/5 hover:border-[var(--primary)]/40 transition-colors h-12 rounded-xl pl-11 pr-4 text-sm outline-none focus:border-[var(--primary)]/60 text-white placeholder:text-slate-500"
+                        />
+                    </div>
+                    <button
+                        type="submit"
+                        className="h-12 px-5 bg-[var(--primary)] text-white rounded-xl font-bold text-sm hover:opacity-90 active:scale-95 transition-all"
+                    >
+                        {isPending ? <Spinner size="sm" color="white" /> : "Rechercher"}
+                    </button>
+                    {search && (
+                        <button
+                            type="button"
+                            onClick={() => { setSearchInput(""); navigate(1, ""); }}
+                            className="h-12 px-4 bg-white/5 text-slate-400 rounded-xl font-bold text-sm hover:bg-white/10 transition-all"
+                        >
+                            Effacer
+                        </button>
+                    )}
                     <div className="flex-1" />
                     <div className="flex items-center gap-2 px-4 py-2 bg-white/5 rounded-lg border border-white/5 text-[10px] font-black uppercase text-slate-400">
                         <Filter size={14} />
-                        <span>Recent orders</span>
+                        <span>Page {page}/{totalPages || 1}</span>
                     </div>
-                </div>
+                </form>
 
+                {/* Orders list */}
                 <div className="grid grid-cols-1 gap-4">
-                    {filteredOrders.map((order) => (
+                    {isPending ? (
+                        <div className="py-20 flex items-center justify-center">
+                            <Spinner color="warning" size="lg" />
+                        </div>
+                    ) : initialOrders.length === 0 ? (
+                        <div className="py-20 flex flex-col items-center justify-center text-slate-500 bg-white/5 rounded-3xl border border-dashed border-white/10">
+                            <Search size={48} className="mb-4 opacity-20" />
+                            <p className="font-bold uppercase tracking-widest italic text-sm">Aucune commande trouvée</p>
+                        </div>
+                    ) : initialOrders.map((order) => (
                         <div
                             key={order.id}
                             className="bg-[#111] border border-white/5 rounded-2xl p-5 hover:border-[var(--primary)]/30 transition-all group flex items-center justify-between gap-6"
@@ -189,14 +222,56 @@ export function CommandesContent({ initialOrders }: CommandesContentProps) {
                             </div>
                         </div>
                     ))}
-
-                    {filteredOrders.length === 0 && (
-                        <div className="py-20 flex flex-col items-center justify-center text-slate-500 bg-white/5 rounded-3xl border border-dashed border-white/10">
-                            <Search size={48} className="mb-4 opacity-20" />
-                            <p className="font-bold uppercase tracking-widest italic text-sm">Aucune commande trouvée</p>
-                        </div>
-                    )}
                 </div>
+
+                {/* Pagination */}
+                {totalPages > 1 && (
+                    <div className="flex items-center justify-center gap-3 mt-10">
+                        <button
+                            onClick={() => navigate(page - 1)}
+                            disabled={page <= 1 || isPending}
+                            className="flex items-center gap-2 px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-sm font-bold text-slate-400 hover:bg-white/10 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                        >
+                            <ChevronLeft size={16} />
+                            Précédent
+                        </button>
+
+                        <div className="flex items-center gap-2">
+                            {Array.from({ length: totalPages }, (_, i) => i + 1)
+                                .filter(p => p === 1 || p === totalPages || Math.abs(p - page) <= 2)
+                                .reduce((acc: (number | string)[], p, idx, arr) => {
+                                    if (idx > 0 && (p as number) - (arr[idx - 1] as number) > 1) acc.push("...");
+                                    acc.push(p);
+                                    return acc;
+                                }, [])
+                                .map((p, idx) => p === "..." ? (
+                                    <span key={`dots-${idx}`} className="px-2 text-slate-600 font-bold">…</span>
+                                ) : (
+                                    <button
+                                        key={p}
+                                        onClick={() => navigate(p as number)}
+                                        disabled={isPending}
+                                        className={`w-10 h-10 rounded-xl text-sm font-black transition-all ${p === page
+                                            ? "bg-[var(--primary)] text-white shadow-lg shadow-[var(--primary)]/20"
+                                            : "bg-white/5 text-slate-400 hover:bg-white/10 hover:text-white border border-white/10"
+                                            }`}
+                                    >
+                                        {p}
+                                    </button>
+                                ))
+                            }
+                        </div>
+
+                        <button
+                            onClick={() => navigate(page + 1)}
+                            disabled={page >= totalPages || isPending}
+                            className="flex items-center gap-2 px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-sm font-bold text-slate-400 hover:bg-white/10 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                        >
+                            Suivant
+                            <ChevronRight size={16} />
+                        </button>
+                    </div>
+                )}
             </main>
 
             {selectedOrder && (
@@ -205,17 +280,9 @@ export function CommandesContent({ initialOrders }: CommandesContentProps) {
                     onClose={() => setIsDetailModalOpen(false)}
                     order={selectedOrder}
                     onRefund={() => handleCancelOrder(selectedOrder.id)}
-                    onReprint={(orderId) => {
-                        console.log("Reprinting order", orderId);
-                        // Implement reprint logic if needed here, 
-                        // though it might need specific hook integration
-                        toast.error("Réimpression non implémentée sur cette page");
-                    }}
+                    onReprint={() => toast.error("Réimpression disponible depuis la caisse")}
                 />
             )}
         </div>
     );
 }
-
-// Helper needed because toast is client side
-import { toast } from "react-hot-toast";

@@ -51,7 +51,7 @@ export default function PlayerIdModal({
             backdrop="blur"
             hideCloseButton
             classNames={{
-                base: "bg-white/90 backdrop-blur-2xl rounded-[24px] shadow-2xl p-0 overflow-hidden border border-white/20",
+                base: "bg-white rounded-[24px] shadow-2xl p-0 overflow-hidden",
                 backdrop: "bg-slate-900/40 backdrop-blur-xl",
                 body: "p-0"
             }}
@@ -131,14 +131,14 @@ export default function PlayerIdModal({
                             <footer className="grid grid-cols-2 gap-3 mt-6">
                                 <Button
                                     size="md"
-                                    className="h-10 rounded-lg bg-white border-2 border-slate-200 text-black font-black text-xs active:scale-95 transition-transform"
+                                    className="h-11 rounded-lg bg-white border-2 border-slate-200 text-black font-black text-xs active:scale-95 transition-transform"
                                     onPress={onClose}
                                 >
                                     Annuler
                                 </Button>
                                 <Button
                                     size="md"
-                                    className="h-10 rounded-lg bg-[var(--primary)] text-white font-black text-xs shadow-lg active:scale-95 transition-all uppercase tracking-tight"
+                                    className="h-11 rounded-lg bg-[var(--primary)] text-white font-black text-xs shadow-lg active:scale-95 transition-all uppercase tracking-tight"
                                     onPress={handleConfirm}
                                     isDisabled={!playerId.trim()}
                                 >

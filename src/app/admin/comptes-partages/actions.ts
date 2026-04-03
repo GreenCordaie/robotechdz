@@ -46,6 +46,7 @@ export async function getSharedAccountsInventory() {
             code: decrypt(dc.code) || dc.code,
             outlookPassword: undefined, // never expose
             hasOutlookPassword: !!dc.outlookPassword,
+            msStatus: dc.msStatus, // DISCONNECTED, CONNECTED, EXPIRED
             slots: dc.slots.map(s => ({
                 ...s,
                 code: s.code ? (decrypt(s.code) || s.code) : null
@@ -555,7 +556,11 @@ export const resolveHouseholdAction = withAuth(
 
             if (!slot) throw new Error("Slot introuvable");
             if (slot.status !== "VENDU") throw new Error("Le slot n'est pas au statut VENDU");
-            if (!slot.digitalCode?.outlookPassword) throw new Error("Le mot de passe Outlook est manquant pour ce compte");
+
+            const hasMsGraph = !!slot.digitalCode?.msRefreshToken;
+            if (!slot.digitalCode?.outlookPassword && !hasMsGraph) {
+                throw new Error("Aucun moyen de résolution disponible (Outlook Pass ou Microsoft Graph manquant)");
+            }
 
             const rawPhone = slot.orderItem?.order?.customerPhone || slot.orderItem?.order?.client?.telephone;
             if (!rawPhone) throw new Error("Le client n'a pas de numéro de téléphone associé");
@@ -573,7 +578,9 @@ export const resolveHouseholdAction = withAuth(
                 outlookPass,
                 settings?.netflixResolverEmail && settings?.netflixResolverPassword
                     ? { email: settings.netflixResolverEmail, password: settings.netflixResolverPassword }
-                    : undefined
+                    : undefined,
+                slot.digitalCode?.msRefreshToken,
+                slot.digitalCode?.msClientId // <--- Nouveau paramètre pérennisé
             );
 
             if (result.type === 'NOT_FOUND') {
@@ -611,6 +618,22 @@ export const resolveHouseholdAction = withAuth(
 
             return { success: true, result };
 
+        } catch (error) {
+            return { success: false, error: (error as Error).message };
+        }
+    }
+);
+
+export const getMicrosoftAuthUrlAction = withAuth(
+    { roles: [UserRole.ADMIN] },
+    async (input: any, user) => {
+        try {
+            const codeId = typeof input === 'number' ? input : input?.codeId;
+            if (!codeId) return { success: false, error: "ID de compte manquant" };
+
+            const { MicrosoftAuthService } = await import("@/services/microsoft-auth.service");
+            const url = await MicrosoftAuthService.getAuthorizationUrl(codeId);
+            return { success: true, url };
         } catch (error) {
             return { success: false, error: (error as Error).message };
         }

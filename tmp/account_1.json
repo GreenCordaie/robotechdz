@@ -1,0 +1,20 @@
+[
+  {
+    "id": 1,
+    "variant_id": 1,
+    "code": "6affc75e717f6aac11c0fb91.6086a693e32299f6283d007d9c2468a2.3ed53e3092ecb8b11e53cf4ddb01efe97ded5ee76a4632893780b7fbdffe083be56c7c4beb23dd93",
+    "status": "VENDU",
+    "order_item_id": null,
+    "created_at": "2026-03-24T13:51:34.595Z",
+    "is_debit_completed": true,
+    "expires_at": null,
+    "purchase_price": null,
+    "purchase_currency": "DZD",
+    "outlook_password": null,
+    "is_relayed": false,
+    "ms_refresh_token": "71b8d19c54c5f3508cc91e9e.531a843b45a097dd65cf2380d6022781.46af669ec9c0607cbfd9cb6ecd8a60c613436c66cec785eec1e5c20accfcde243668a77e757be644896ef1fbbe61a89b434b73f8763950343d7012e544de0d4e1e97846e95c8498d891ec297379f4857f7a3b1469fd33570943b6aeb4229abb9d340ba433e2554a3dafbf88e9f96b2159b3730ee52cfd22c73c8951330d3100fe1962b65ef9f90bc63c90250756f8a9c09b1e8b8342ec90ac23fdbfc5206a65eefcf123f8e14ab8e5d361dfa5eb1a3033388ac057822c6653a86a8296025e61a776e4b617da49ff191e2d09848d785f3ba8c5550e72f1564be7a12e06a0d39b2c5657e8c8a0b372ef3b9a7ec77fcac4bf34022b32528fd05666ce952374200f3ba65208611755ccdbe54c439b4636c78687d07bdfc1cf9dbe0229eb6249c91ade70a784c45bff584aac6d295dc716aec538360ac8938e8cf1574d3539fb865c2086d72a7ff2e11dd37005498f4589391493eea173573655527462f984c23bdd91c6a552374b37247",
+    "ms_status": "CONNECTED",
+    "ms_account_email": null,
+    "ms_last_sync": "2026-04-02T21:32:03.435Z"
+  }
+]

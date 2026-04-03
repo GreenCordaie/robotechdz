@@ -24,10 +24,9 @@ export default function KioskLayout({
                     touch-action: manipulation;
                 }
                 
-                /* Ensure large tap targets */
+                /* Ensure accessible tap targets */
                 button, [role="button"], a {
-                    min-height: 60px;
-                    min-width: 60px;
+                    min-height: 44px;
                 }
 
                 /* Scrollbar hiding for kiosk feel */

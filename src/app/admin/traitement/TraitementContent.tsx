@@ -431,6 +431,17 @@ export default function TraitementContent({ initialOrders = [], initialFinished 
                                     </div>
                                 </div>
                             ))}
+                            {view === "finished" && orders.length >= 50 && (
+                                <button
+                                    onClick={async () => {
+                                        const res = await getFinishedOrders({}) as any;
+                                        if (Array.isArray(res)) setOrders(res);
+                                    }}
+                                    className="mx-4 mb-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-slate-400 hover:text-white hover:bg-white/10 text-xs font-black uppercase tracking-widest transition-all"
+                                >
+                                    Voir plus
+                                </button>
+                            )}
                         </div>
                     </section>
 

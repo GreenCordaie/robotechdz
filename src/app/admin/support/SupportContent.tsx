@@ -90,12 +90,20 @@ export default function SupportContent({ initialTickets = [] }: SupportContentPr
     };
 
     // Memoized ticket list to prevent layout flashes on background updates
+    const [ticketPage, setTicketPage] = useState(1);
+    const TICKETS_PER_PAGE = 10;
+
     const ticketList = useMemo(() => {
         return tickets.filter(t =>
             t.order?.orderNumber?.toLowerCase().includes(searchQuery.toLowerCase()) ||
             t.message?.toLowerCase().includes(searchQuery.toLowerCase())
         );
     }, [tickets, searchQuery]);
+
+    useEffect(() => { setTicketPage(1); }, [searchQuery, statusFilter]);
+
+    const ticketTotalPages = Math.ceil(ticketList.length / TICKETS_PER_PAGE);
+    const paginatedTickets = ticketList.slice((ticketPage - 1) * TICKETS_PER_PAGE, ticketPage * TICKETS_PER_PAGE);
 
     const openCount = useMemo(() => tickets.filter(t => t.status === 'OUVERT').length, [tickets]);
 
@@ -217,7 +225,7 @@ export default function SupportContent({ initialTickets = [] }: SupportContentPr
                                 <p className="text-slate-400 font-bold uppercase tracking-widest text-sm">Aucun ticket trouvé</p>
                             </div>
                         ) : (
-                            ticketList.map((ticket) => (
+                            paginatedTickets.map((ticket) => (
                                 <Card key={ticket.id} className="bg-[#1a1614] border border-white/5 hover:border-white/10 transition-all group overflow-hidden shadow-xl rounded-[24px]">
                                     <CardBody className="p-0">
                                         <div className="flex flex-col md:flex-row divide-y md:divide-y-0 md:divide-x divide-white/5">
@@ -302,6 +310,35 @@ export default function SupportContent({ initialTickets = [] }: SupportContentPr
                                     </CardBody>
                                 </Card>
                             ))
+                        )}
+
+                        {ticketTotalPages > 1 && (
+                            <div className="flex items-center justify-center gap-3 mt-6">
+                                <button onClick={() => setTicketPage(p => Math.max(1, p - 1))} disabled={ticketPage <= 1}
+                                    className="px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-slate-400 text-sm font-bold hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-all">
+                                    ← Préc.
+                                </button>
+                                {Array.from({ length: ticketTotalPages }, (_, i) => i + 1)
+                                    .filter(p => p === 1 || p === ticketTotalPages || Math.abs(p - ticketPage) <= 1)
+                                    .reduce((acc: (number | string)[], p, idx, arr) => {
+                                        if (idx > 0 && (p as number) - (arr[idx - 1] as number) > 1) acc.push("...");
+                                        acc.push(p);
+                                        return acc;
+                                    }, [])
+                                    .map((p, idx) => p === "..." ? (
+                                        <span key={`d-${idx}`} className="px-1 text-slate-500 text-xs">…</span>
+                                    ) : (
+                                        <button key={p} onClick={() => setTicketPage(p as number)}
+                                            className={`w-9 h-9 rounded-xl text-sm font-black transition-all ${p === ticketPage ? "bg-[var(--primary)] text-white" : "bg-white/5 text-slate-400 hover:bg-white/10 border border-white/10"}`}>
+                                            {p}
+                                        </button>
+                                    ))
+                                }
+                                <button onClick={() => setTicketPage(p => Math.min(ticketTotalPages, p + 1))} disabled={ticketPage >= ticketTotalPages}
+                                    className="px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-slate-400 text-sm font-bold hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-all">
+                                    Suiv. →
+                                </button>
+                            </div>
                         )}
                     </div>
                 </>

@@ -62,7 +62,7 @@ export default function SupportModal({ isOpen, onClose }: SupportModalProps) {
             size="lg"
             backdrop="blur"
             classNames={{
-                base: "bg-[#111111]/90 backdrop-blur-2xl border border-[#262626] rounded-[24px] shadow-2xl p-1.5",
+                base: "glass-premium bg-[#111111]/90 border border-[#262626] rounded-[24px] shadow-2xl p-1.5",
                 header: "border-b border-white/5 pb-3",
                 body: "py-4",
                 footer: "border-t border-white/5 pt-3",
@@ -144,12 +144,12 @@ export default function SupportModal({ isOpen, onClose }: SupportModalProps) {
                                 <Button
                                     variant="light"
                                     onPress={handleClose}
-                                    className="font-black text-slate-400 uppercase tracking-widest text-[10px] h-10 px-4"
+                                    className="font-black text-slate-400 uppercase tracking-widest text-[10px] h-11 px-4"
                                 >
                                     Annuler
                                 </Button>
                                 <Button
-                                    className="bg-white text-black hover:bg-[var(--primary)] hover:text-white font-black uppercase tracking-widest text-[10px] h-10 px-6 rounded-xl shadow-xl transition-all active:scale-95"
+                                    className="bg-white text-black hover:bg-[var(--primary)] hover:text-white font-black uppercase tracking-widest text-[10px] h-11 px-6 rounded-xl shadow-xl transition-all active:scale-95"
                                     onPress={handleSubmit}
                                     isLoading={isSubmitting}
                                     endContent={!isSubmitting && <Send size={14} />}
