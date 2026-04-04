@@ -228,8 +228,8 @@ export default function ResellerShop() {
                                             src={product.imageUrl}
                                             alt={product.name}
                                             fill
-                                            sizes="(max-width: 768px) 100vw, 300px"
-                                            className="object-cover group-hover:scale-110 transition-transform duration-700 opacity-80"
+                                            sizes="(max-width: 768px) 50vw, 25vw"
+                                            className="object-cover group-hover:scale-110 transition-transform duration-500 opacity-80"
                                         />
                                     ) : (
                                         <div className="flex flex-col items-center gap-3 opacity-20 group-hover:opacity-40 transition-opacity">

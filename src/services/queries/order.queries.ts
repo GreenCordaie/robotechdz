@@ -347,7 +347,13 @@ export class OrderQueries {
             db.query.orders.findMany({
                 where,
                 with: {
-                    items: true,
+                    items: {
+                        with: {
+                            codes: true,
+                            slots: { with: { digitalCode: true } },
+                            variant: { with: { product: true } }
+                        }
+                    },
                     client: { columns: { nomComplet: true, telephone: true } }
                 },
                 limit,
@@ -361,7 +367,25 @@ export class OrderQueries {
         const data = (results as any[]).map(res => ({
             ...res,
             clientName: res.client?.nomComplet || "Anonyme",
-            items: res.items || []
+            items: (res.items || []).map((item: any) => ({
+                ...item,
+                name: item.variant?.product?.name || item.name,
+                fullCodes: (item.codes || []).map((c: any) => ({
+                    id: c.id,
+                    code: (() => { try { return decrypt(c.code) || "[Invalide]"; } catch { return "[Erreur]"; } })()
+                })),
+                fullSlots: (item.slots || []).map((s: any) => {
+                    try {
+                        return {
+                            id: s.id,
+                            slotNumber: s.slotNumber,
+                            profileName: s.profileName,
+                            parentCode: decrypt(s.digitalCode?.code) || "[Erreur Compte]",
+                            code: s.code ? decrypt(s.code) : null
+                        };
+                    } catch { return null; }
+                }).filter(Boolean)
+            }))
         }));
 
         return { data, total, page, limit, totalPages: Math.ceil(total / limit) };

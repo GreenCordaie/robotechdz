@@ -6,7 +6,7 @@ import { useSettingsStore } from "@/store/useSettingsStore";
 import IdleView from "./views/IdleView";
 import CatalogueView from "./views/CatalogueView";
 import ConfirmationView from "./views/ConfirmationView";
-import { getKioskData } from "./actions";
+// getKioskData removed in favor of fetch
 import { useIsMobile } from "@/hooks/useIsMobile";
 import KioskMobile from "./KioskMobile";
 
@@ -18,7 +18,10 @@ export default function KioskContent() {
     const { fetchSettings, accentColor } = useSettingsStore();
 
     const refreshData = React.useCallback(() => {
-        getKioskData().then(setData).catch(console.error);
+        fetch("/api/v1/public/catalog")
+            .then((res) => res.json())
+            .then(setData)
+            .catch(console.error);
         fetchSettings();
     }, [fetchSettings]);
 

@@ -44,15 +44,6 @@ export default function IdleView({ products = [] }: IdleViewProps) {
             <div className="absolute inset-0 z-0 pointer-events-none">
                 <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_50%_0%,rgba(236,91,19,0.08),transparent_55%)]" />
                 <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_85%_90%,rgba(236,91,19,0.05),transparent_45%)]" />
-                {/* Grid lines */}
-                <div
-                    className="absolute inset-0 opacity-[0.05]"
-                    style={{
-                        backgroundImage:
-                            "linear-gradient(rgba(0,0,0,0.4) 1px, transparent 1px), linear-gradient(90deg, rgba(0,0,0,0.4) 1px, transparent 1px)",
-                        backgroundSize: "80px 80px",
-                    }}
-                />
             </div>
 
             {/* ── Header ── */}
@@ -60,7 +51,7 @@ export default function IdleView({ products = [] }: IdleViewProps) {
                 {/* Logo */}
                 <div className="flex items-center gap-4">
                     {logoUrl ? (
-                        <img src={logoUrl} alt={shopName} className="h-12 w-12 object-contain rounded-xl" />
+                        <Image src={logoUrl} alt={shopName} width={48} height={48} className="object-contain rounded-xl" style={{ width: 'auto', height: 'auto' }} />
                     ) : (
                         <div className="size-12 bg-primary rounded-xl flex items-center justify-center shadow-lg shadow-primary/30">
                             <svg className="text-white" fill="none" height="24" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" width="24">

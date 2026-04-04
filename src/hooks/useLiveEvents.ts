@@ -24,7 +24,6 @@ export function useLiveEvents() {
         eventSourceRef.current = eventSource;
 
         eventSource.onopen = () => {
-            console.log("[SSE] Connected to event stream");
             setIsConnected(true);
         };
 
@@ -35,7 +34,6 @@ export function useLiveEvents() {
                 // Common handlers
                 switch (eventName) {
                     case "connected":
-                        console.log("[SSE] Connection established:", data.timestamp);
                         break;
 
                     case SystemEvent.ORDER_CREATED:
@@ -58,19 +56,16 @@ export function useLiveEvents() {
                             router.refresh();
                         }
                 }
-            } catch (err) {
-                console.error("[SSE] Error parsing event data:", err);
+            } catch {
+                // Malformed SSE payload — ignore silently
             }
         };
 
-        eventSource.onerror = (err) => {
-            console.error("[SSE] Connection error:", err);
+        eventSource.onerror = () => {
             setIsConnected(false);
-            // EventSource automatically attempts to reconnect on error
         };
 
         return () => {
-            console.log("[SSE] Closing connection");
             eventSource.close();
             eventSourceRef.current = null;
         };

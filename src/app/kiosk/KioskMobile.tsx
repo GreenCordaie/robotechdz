@@ -82,7 +82,7 @@ export default function KioskMobile({ products: initialProducts, categories: ini
                         <div className="relative group cursor-pointer transition-transform duration-500 hover:scale-105 active:scale-95">
                             <div className="absolute -inset-4 bg-primary/20 rounded-full blur-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-700"></div>
                             <div className="relative w-56 h-56 mb-12 drop-shadow-2xl">
-                                <Image src="/logo.png" alt="Robotech" fill className="object-contain" priority />
+                                <Image src="/logo.png" alt="Robotech" fill sizes="224px" className="object-contain" priority />
                             </div>
                         </div>
 
@@ -265,6 +265,7 @@ function CatalogueView({ products, categories, selectedCategory, setSelectedCate
                                             src={product.imageUrl}
                                             alt={product.name}
                                             fill
+                                            sizes="96px"
                                             className="object-cover group-hover:scale-110 transition-transform duration-500"
                                         />
                                     ) : (

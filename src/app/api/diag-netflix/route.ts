@@ -47,22 +47,30 @@ export async function GET(req: Request) {
                 dc.msClientId
             );
 
-            // Diagnostic supplémentaire : lister les 10 derniers mails
+            // Diagnostic : lister les derniers mails par dossier
             let lastEmails: any[] = [];
             try {
                 const { MicrosoftAuthService } = await import("@/services/microsoft-auth.service");
                 const accessToken = await MicrosoftAuthService.refreshAccessToken(dc.msRefreshToken!, dc.msClientId || undefined);
-                const response = await fetch(
-                    "https://graph.microsoft.com/v1.0/me/messages?$orderby=receivedDateTime desc&$top=10&$select=subject,from,receivedDateTime",
-                    { headers: { 'Authorization': `Bearer ${accessToken}` } }
-                );
-                if (response.ok) {
-                    const data = await response.json();
-                    lastEmails = data.value.map((m: any) => ({
-                        subject: m.subject,
-                        from: m.from.emailAddress.address,
-                        date: m.receivedDateTime
-                    }));
+
+                const folders = ['inbox', 'junkemail', 'deleteditems'];
+                for (const folder of folders) {
+                    const response = await fetch(
+                        `https://graph.microsoft.com/v1.0/me/mailFolders/${folder}/messages?$orderby=receivedDateTime desc&$top=10&$select=subject,from,receivedDateTime`,
+                        { headers: { 'Authorization': `Bearer ${accessToken}` } }
+                    );
+                    if (response.ok) {
+                        const data = await response.json();
+                        lastEmails.push(...(data.value || []).map((m: any) => ({
+                            folder,
+                            subject: m.subject,
+                            from: m.from?.emailAddress?.address,
+                            date: m.receivedDateTime,
+                            isNetflix: m.from?.emailAddress?.address?.toLowerCase().includes('netflix') || m.subject?.toLowerCase().includes('netflix')
+                        })));
+                    } else {
+                        lastEmails.push({ folder, error: response.status });
+                    }
                 }
             } catch (e: any) {
                 lastEmails = [{ error: e.message }];

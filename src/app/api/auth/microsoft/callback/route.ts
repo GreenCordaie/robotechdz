@@ -9,7 +9,7 @@ export async function GET(req: NextRequest) {
 
     if (error) {
         console.error("[MS_AUTH_CALLBACK] Error from Microsoft:", error);
-        return NextResponse.redirect(`${process.env.NEXT_PUBLIC_APP_URL}/admin/sharing?auth=error&msg=${error}`);
+        return NextResponse.redirect(`${process.env.NEXT_PUBLIC_APP_URL}/auth/microsoft-callback?auth=error&msg=${error}`);
     }
 
     if (!code || !state) {
@@ -31,9 +31,10 @@ export async function GET(req: NextRequest) {
         console.log(`[MS_AUTH_CALLBACK] Success for digital_code ID: ${codeId} with Client: ${explicitClientId || 'default'}`);
 
         // 3. Rediriger vers l'admin avec succès
-        return NextResponse.redirect(`${process.env.NEXT_PUBLIC_APP_URL}/admin/sharing?auth=success&id=${codeId}`);
+        return NextResponse.redirect(`${process.env.NEXT_PUBLIC_APP_URL}/auth/microsoft-callback?auth=success&id=${codeId}`);
     } catch (err: any) {
         console.error("[MS_AUTH_CALLBACK] Exception:", err.message);
-        return NextResponse.redirect(`${process.env.NEXT_PUBLIC_APP_URL}/admin/sharing?auth=error&msg=${encodeURIComponent(err.message)}`);
+        const safeMsg = encodeURIComponent(err.message?.slice(0, 200) || "server_error");
+        return NextResponse.redirect(`${process.env.NEXT_PUBLIC_APP_URL}/auth/microsoft-callback?auth=error&msg=${safeMsg}`);
     }
 }

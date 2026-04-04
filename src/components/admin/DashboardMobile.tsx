@@ -181,8 +181,8 @@ export default function DashboardMobile({ stats }: DashboardMobileProps) {
                         </button>
                     </div>
 
-                    <div className="h-40 w-full">
-                        <ResponsiveContainer width="100%" height="100%">
+                    <div className="h-40 w-full min-h-[160px]">
+                        <ResponsiveContainer width="100%" height="100%" minHeight={160}>
                             <AreaChart data={stats.revenueData}>
                                 <defs>
                                     <linearGradient id="mobileGrad" x1="0" y1="0" x2="0" y2="1">

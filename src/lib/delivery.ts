@@ -172,7 +172,17 @@ export async function triggerOrderDelivery(orderId: number): Promise<{ success: 
         || (order as any).client?.telephone
         || (order as any).reseller?.telephone;
 
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:1556';
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://boutique.nexusbox.tech';
+
+    // Guard: skip if no codes or slots allocated yet (manual orders awaiting traitement)
+    const hasAnyCredentials = (order as any).items?.some((item: any) =>
+        (item.codes && item.codes.length > 0) || (item.slots && item.slots.length > 0)
+    );
+    if (!hasAnyCredentials) {
+        console.log(`[DELIVERY] Order #${orderId} has no codes/slots yet — skipping WhatsApp`);
+        return { success: true, skipped: true };
+    }
+
     const formattedText = formatOrderItemsText((order as any).items);
 
     // 1. Direct WAHA (primary) — the app runs on the host and can always reach WAHA at localhost:3001.

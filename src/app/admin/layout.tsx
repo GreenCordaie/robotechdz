@@ -10,8 +10,14 @@ import { Avatar, Dropdown, DropdownTrigger, DropdownMenu, DropdownItem } from "@
 import { logoutAction } from "./login/actions";
 import { LogOut, User as UserIcon } from "lucide-react";
 
-const AdminSidebar = dynamic(() => import("@/components/admin/AdminSidebar").then(mod => mod.AdminSidebar), { ssr: false });
-const MobileNavbar = dynamic(() => import("@/components/admin/MobileNavbar").then(mod => mod.MobileNavbar), { ssr: false });
+const AdminSidebar = dynamic(() => import("@/components/admin/AdminSidebar").then(mod => mod.AdminSidebar), {
+    ssr: false,
+    loading: () => <div className="w-64 h-screen bg-background-dark shrink-0 border-r border-white/5" />
+});
+const MobileNavbar = dynamic(() => import("@/components/admin/MobileNavbar").then(mod => mod.MobileNavbar), {
+    ssr: false,
+    loading: () => null
+});
 
 export default function AdminLayout({
     children,
@@ -120,7 +126,7 @@ export default function AdminLayout({
                     </div>
                 </header>
             )}
-            <main className="flex-1 h-screen overflow-y-auto scrollbar-hide bg-background-dark text-slate-100 pb-20 md:pb-0">
+            <main className="flex-1 h-screen overflow-y-auto scroll-smooth scrollbar-hide bg-background-dark text-slate-100 pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-0">
                 <div className={`${pathname === "/admin/caisse" ? 'w-full px-2 py-2' : (isMobile ? 'p-4' : 'p-8') + ' max-w-7xl mx-auto'} min-h-full`}>
                     {children}
                 </div>

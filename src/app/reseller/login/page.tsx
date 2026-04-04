@@ -4,6 +4,8 @@ import React, { useState } from "react";
 import { Button, Input, Card, CardBody } from "@heroui/react";
 import { Lock, Mail, ArrowRight, ShieldCheck, Store } from "lucide-react";
 import Image from "next/image";
+import Script from "next/script";
+import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
 import { loginResellerAction } from "./actions";
@@ -18,6 +20,7 @@ export default function ResellerLoginPage() {
     const [mfaRequired, setMfaRequired] = useState(false);
     const [tempUserId, setTempUserId] = useState<number | null>(null);
     const [mfaCode, setMfaCode] = useState("");
+    const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
     const router = useRouter();
 
     const handleLogin = async (e: React.FormEvent) => {
@@ -25,7 +28,7 @@ export default function ResellerLoginPage() {
         setIsLoading(true);
 
         try {
-            const res = await loginResellerAction(email, pin, websiteUrl);
+            const res = await loginResellerAction(email, pin, websiteUrl, turnstileToken || "");
             if (res.success) {
                 if (res.mfaRequired) {
                     setMfaRequired(true);
@@ -136,6 +139,30 @@ export default function ResellerLoginPage() {
                                     </div>
                                 </div>
 
+                                {/* Cloudflare Turnstile */}
+                                <div className="flex justify-center py-2 min-h-[65px]">
+                                    <div
+                                        className="cf-turnstile"
+                                        data-sitekey={process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY}
+                                        data-callback="onTurnstileSuccess"
+                                        data-theme="dark"
+                                    ></div>
+                                    <Script
+                                        src="https://challenges.cloudflare.com/turnstile/v0/api.js"
+                                        strategy="afterInteractive"
+                                    />
+                                    <script dangerouslySetInnerHTML={{
+                                        __html: `
+                                            window.onTurnstileSuccess = function(token) {
+                                                const event = new CustomEvent('turnstile-success', { detail: token });
+                                                window.dispatchEvent(event);
+                                            };
+                                        `
+                                    }} />
+                                </div>
+
+                                <TurnstileListener onToken={setTurnstileToken} />
+
                                 <Button
                                     type="submit"
                                     className="w-full h-14 bg-[var(--primary)] text-white font-black text-base rounded-2xl shadow-xl shadow-orange-950/20 active:scale-[0.98] transition-all"
@@ -210,4 +237,15 @@ export default function ResellerLoginPage() {
             </div>
         </div>
     );
+}
+
+function TurnstileListener({ onToken }: { onToken: (token: string) => void }) {
+    useEffect(() => {
+        const handler = (e: any) => {
+            if (e.detail) onToken(e.detail);
+        };
+        window.addEventListener('turnstile-success', handler);
+        return () => window.removeEventListener('turnstile-success', handler);
+    }, [onToken]);
+    return null;
 }

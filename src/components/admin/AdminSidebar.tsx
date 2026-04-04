@@ -79,7 +79,7 @@ export const AdminSidebar = () => {
     };
 
     const navItems = [
-        { name: "Dashboard", icon: LayoutDashboard, href: "/admin", roles: ["ADMIN", "CAISSIER", "TRAITEUR"] },
+        { name: "Dashboard", icon: LayoutDashboard, href: "/admin/dashboard", roles: ["ADMIN", "CAISSIER", "TRAITEUR"] },
         { name: "Catalogue", icon: Package, href: "/admin/catalogue", roles: ["ADMIN", "CAISSIER"] },
         { name: "Caisse", icon: Wallet, href: "/admin/caisse", badge: pendingOrders, roles: ["ADMIN", "CAISSIER"] },
         { name: "Commandes", icon: History, href: "/admin/commandes", roles: ["ADMIN", "CAISSIER"] },
@@ -144,13 +144,13 @@ export const AdminSidebar = () => {
                                 }`}
                         >
                             <item.icon
-                                className={`size-5 shrink-0 transition-transform group-hover:scale-110 ${isActive ? "text-white" : "text-slate-400"}`}
+                                className={`size-5 shrink-0 ${isActive ? "text-white" : "text-slate-400"}`}
                             />
                             <span className={`text-sm tracking-wide flex-1 ${isActive ? "font-bold" : "font-medium"}`}>
                                 {item.name}
                             </span>
                             {(item as any).badge > 0 && (
-                                <span className="bg-[var(--primary)] text-white text-[10px] font-black px-1.5 py-0.5 rounded-full min-w-[20px] text-center shadow-lg border border-white/10 group-hover:scale-110 transition-transform">
+                                <span className="bg-[var(--primary)] text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[20px] text-center">
                                     {(item as any).badge}
                                 </span>
                             )}
@@ -162,13 +162,19 @@ export const AdminSidebar = () => {
             <div className="p-4 border-t border-slate-200 dark:border-white/5">
                 <div className="flex items-center gap-3 p-2">
                     <div className="size-8 rounded-full bg-white/5 flex items-center justify-center overflow-hidden border border-white/10 shrink-0 relative">
-                        <Image
-                            alt="Profile"
-                            className="object-cover"
-                            src={user?.avatarUrl || "https://lh3.googleusercontent.com/aida-public/AB6AXuCZzSogzgSYWL4sV8cYS-i9sYM5fwva6Q0n4I55293IQmD03umRiums_O9xTBdasBU1_angHiWiAckgyWwn6UB9MBLipWMhFehIUd_Qc0NUCfkXrUB7xtX-66jetAhnxQNxVTRztumuzjGfV4latkz0g53wc7eiJUn89bYwLuPezAenuEtVe-t4k1298Xg1AQqPP6l314oAlSj3m3UMutiTNXAv4ywmJUO7cWO3xprkiMgliBjEdbhP9gqPQREeem3Jv00wZuEZHdbM"}
-                            fill
-                            sizes="32px"
-                        />
+                        {user?.avatarUrl ? (
+                            <Image
+                                alt="Profile"
+                                className="object-cover"
+                                src={user.avatarUrl}
+                                fill
+                                sizes="32px"
+                            />
+                        ) : (
+                            <span className="text-xs font-bold text-slate-400 uppercase">
+                                {(user?.nom || "A").charAt(0)}
+                            </span>
+                        )}
                     </div>
                     <div className="min-w-0 flex-1">
                         <p className="text-xs font-bold truncate text-slate-900 dark:text-slate-100">{user?.nom || 'Admin'}</p>
@@ -176,7 +182,7 @@ export const AdminSidebar = () => {
                     </div>
                     <button
                         onClick={handleLogout}
-                        className="text-slate-400 hover:text-[var(--primary)] transition-colors p-1.5 rounded-lg hover:bg-slate-50 dark:hover:bg-white/5 flex items-center justify-center transition-transform active:scale-95"
+                        className="text-slate-400 hover:text-[var(--primary)] transition-colors p-1.5 rounded-lg hover:bg-slate-50 dark:hover:bg-white/5 flex items-center justify-center active:scale-[0.97]"
                         title="Déconnexion"
                     >
                         <LogOut className="size-5" />

@@ -548,7 +548,8 @@ export const getWhatsAppQrAction = withAuth(
             const { SystemQueries } = await import("@/services/queries/system.queries");
             const settings = await SystemQueries.getSettings();
 
-            const wahaUrl = (settings.whatsappApiUrl || "http://localhost:3001").replace(/\/$/, "");
+            const wahaUrl = (settings.whatsappApiUrl || "https://waha.nexusbox.tech").replace(/\/$/, "");
+
             const wahaKey = settings.whatsappApiKey || "abc";
             const session = settings.whatsappInstanceName || "default";
             const headers = { "X-Api-Key": wahaKey };

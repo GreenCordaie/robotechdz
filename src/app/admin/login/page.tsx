@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useState } from "react";
-import { Eye, EyeOff, Package, ShieldCheck } from "lucide-react";
+import React, { useState, useEffect, useRef } from "react";
+import { Eye, EyeOff, ShieldCheck } from "lucide-react";
+import Image from "next/image";
 import { useAuthStore } from "@/store/useAuthStore";
 import { useRouter } from "next/navigation";
 import { loginAction, verifyMfaAction } from "./actions";
@@ -18,10 +19,15 @@ export default function LoginPage() {
     const [mfaRequired, setMfaRequired] = useState(false);
     const [tempUserId, setTempUserId] = useState<number | null>(null);
     const [mfaCode, setMfaCode] = useState("");
+    const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
 
     const setUser = useAuthStore((state) => state.setUser);
     const router = useRouter();
-    const { shopName } = useSettingsStore();
+    const { shopName, logoUrl, fetchSettings } = useSettingsStore();
+
+    useEffect(() => {
+        fetchSettings();
+    }, [fetchSettings]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -32,6 +38,9 @@ export default function LoginPage() {
         formData.append("email", email);
         formData.append("password", password);
         formData.append("website_url", websiteUrl);
+        if (turnstileToken) {
+            formData.append("cf-turnstile-response", turnstileToken);
+        }
 
         try {
             const result = await loginAction(formData);
@@ -46,7 +55,7 @@ export default function LoginPage() {
                 if (result.user) {
                     setUser(result.user as any);
                 }
-                router.push("/admin");
+                router.push("/admin/dashboard");
             }
         } catch (err: any) {
             setError("Une erreur est survenue");
@@ -64,7 +73,7 @@ export default function LoginPage() {
             const result = await verifyMfaAction(tempUserId, mfaCode);
             if (result.success) {
                 if (result.user) setUser(result.user as any);
-                router.push("/admin");
+                router.push("/admin/dashboard");
             } else {
                 setError(result.error || "Code invalide");
                 setIsLoading(false);
@@ -86,11 +95,15 @@ export default function LoginPage() {
 
                     {/* BEGIN: Header Section */}
                     <div className="flex flex-col items-center mb-8">
-                        {/* Logo Icon */}
-                        <div className="w-16 h-16 bg-[var(--primary)]/10 rounded-full flex items-center justify-center mb-4 ring-1 ring-[var(--primary)]/20">
-                            <svg className="h-8 w-8 text-[var(--primary)]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                                <path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" strokeLinecap="round" strokeLinejoin="round"></path>
-                            </svg>
+                        {/* Logo */}
+                        <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4 overflow-hidden bg-[var(--primary)]/10 ring-1 ring-[var(--primary)]/20">
+                            {logoUrl ? (
+                                <Image src={logoUrl} alt={shopName} width={64} height={64} className="object-contain" priority />
+                            ) : (
+                                <svg className="h-8 w-8 text-[var(--primary)]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                                    <path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" strokeLinecap="round" strokeLinejoin="round" />
+                                </svg>
+                            )}
                         </div>
                         <h1 className="text-2xl font-bold text-white text-center tracking-tight">Bienvenue sur {shopName}</h1>
                         <p className="text-sm text-slate-400 text-center mt-2 font-medium">Connectez-vous à votre espace administrateur</p>
@@ -168,6 +181,11 @@ export default function LoginPage() {
                                 </div>
                             </div>
 
+                            {/* Cloudflare Turnstile */}
+                            <div className="flex justify-center py-2 min-h-[65px]">
+                                <TurnstileWidget onToken={setTurnstileToken} />
+                            </div>
+
                             {error && <p className="text-red-500 text-xs text-center font-bold">{error}</p>}
 
                             {/* Submit Button */}
@@ -233,4 +251,62 @@ export default function LoginPage() {
             {/* END: Login Container */}
         </div>
     );
+}
+
+function TurnstileWidget({ onToken }: { onToken: (token: string) => void }) {
+    const containerRef = useRef<HTMLDivElement>(null);
+    const widgetId = useRef<string | null>(null);
+    const siteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
+
+    useEffect(() => {
+        if (!siteKey) return;
+
+        const render = () => {
+            if (!containerRef.current) return;
+            if (widgetId.current !== null) return; // déjà rendu
+
+            const w = window as any;
+            if (!w.turnstile) return;
+
+            widgetId.current = w.turnstile.render(containerRef.current, {
+                sitekey: siteKey,
+                theme: 'dark',
+                callback: (token: string) => onToken(token),
+                'expired-callback': () => {
+                    widgetId.current = null;
+                    onToken('');
+                }
+            });
+        };
+
+        // Si le script est déjà chargé
+        if ((window as any).turnstile) {
+            render();
+            return;
+        }
+
+        // Injecter le script une seule fois
+        const existing = document.getElementById('cf-turnstile-script');
+        if (!existing) {
+            const script = document.createElement('script');
+            script.id = 'cf-turnstile-script';
+            script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
+            script.async = true;
+            script.defer = true;
+            script.onload = render;
+            document.head.appendChild(script);
+        } else {
+            // Script déjà injecté mais peut-être pas encore chargé
+            existing.addEventListener('load', render);
+        }
+
+        return () => {
+            if (widgetId.current !== null && (window as any).turnstile) {
+                (window as any).turnstile.remove(widgetId.current);
+                widgetId.current = null;
+            }
+        };
+    }, [siteKey, onToken]);
+
+    return <div ref={containerRef} />;
 }

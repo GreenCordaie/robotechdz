@@ -2,7 +2,7 @@
     "name": "100% PC IA - Admin",
     "short_name": "100% PC IA",
     "description": "Premium Admin Module for 100% PC IA",
-    "start_url": "/admin",
+    "start_url": "/admin/login",
     "display": "standalone",
     "background_color": "#0a0a0a",
     "theme_color": "#ec5b13",

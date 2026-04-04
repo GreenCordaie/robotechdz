@@ -190,7 +190,7 @@ export default function TraitementContent({ initialOrders = [], initialFinished 
             } catch (err) {
                 console.error("Polling error:", err);
             }
-        }, 5000);
+        }, 15000);
         return () => clearInterval(interval);
     }, [view, isAutoPrintEnabled, accentColor]);
 

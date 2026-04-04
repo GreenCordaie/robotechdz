@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { getShopSettingsAction } from "@/app/admin/settings/actions";
+// getShopSettingsAction removed in favor of fetch API
 
 interface SettingsState {
     shopName: string;
@@ -38,7 +38,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
     fetchSettings: async () => {
         set({ isLoading: true });
         try {
-            const res = await getShopSettingsAction({});
+            const res = await fetch("/api/v1/public/settings").then((r) => r.json());
             if (res.success && res.data) {
                 const color = res.data.accentColor || "#ec5b13";
                 set({

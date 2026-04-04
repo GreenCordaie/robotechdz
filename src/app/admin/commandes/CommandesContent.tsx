@@ -2,12 +2,12 @@
 
 import React, { useState, useTransition } from "react";
 import { Button, Spinner, Chip } from "@heroui/react";
-import { Search, Eye, Filter, Calendar, CreditCard, User, History, ChevronLeft, ChevronRight } from "lucide-react";
+import { Search, Eye, Filter, Calendar, CreditCard, User, History, ChevronLeft, ChevronRight, Printer } from "lucide-react";
 import { formatCurrency } from "@/lib/formatters";
 import dynamic from "next/dynamic";
 import { useRouter, usePathname } from "next/navigation";
 const OrderDetailModal = dynamic(() => import("@/components/admin/modals/OrderDetailModal"), { ssr: false });
-import { cancelOrderAction } from "../caisse/actions";
+import { cancelOrderAction, requeueForPrint } from "../caisse/actions";
 import { toast } from "react-hot-toast";
 
 interface CommandesContentProps {
@@ -47,20 +47,28 @@ export function CommandesContent({ initialOrders, total, page, totalPages, searc
             ...order,
             totalAmount: Number(order.totalAmount),
             remise: Number(order.remise || 0),
+            // fullCodes and fullSlots are already mapped by getHistoryPaginated
             items: (order.items || []).map((item: any) => ({
                 ...item,
-                fullCodes: (item.codes || []).map((c: any, idx: number) => ({ id: idx, code: c })),
-                fullSlots: (item.slots || []).map((s: any) => ({
-                    id: s.id,
-                    code: s.code,
-                    slotNumber: s.slotNumber,
-                    profileName: s.profileName,
-                    parentCode: s.digitalCode?.code
-                }))
+                fullCodes: item.fullCodes || [],
+                fullSlots: item.fullSlots || []
             }))
         };
         setSelectedOrder(formattedOrder);
         setIsDetailModalOpen(true);
+    };
+
+    const handlePrint = async (order: any) => {
+        try {
+            const res: any = await requeueForPrint({ orderId: order.id });
+            if (res?.success) {
+                toast.success(`Ticket #${order.orderNumber} en file d'impression`);
+            } else {
+                toast.error(res?.error || "Erreur d'impression");
+            }
+        } catch (e: any) {
+            toast.error(e.message || "Erreur d'impression");
+        }
     };
 
     const handleCancelOrder = async (orderId: number) => {
@@ -214,6 +222,16 @@ export function CommandesContent({ initialOrders, total, page, totalPages, searc
                                     isIconOnly
                                     size="md"
                                     variant="flat"
+                                    className="bg-white/5 hover:bg-white/10 text-slate-500 hover:text-slate-300 border border-white/5 transition-all"
+                                    onClick={() => handlePrint(order)}
+                                    title="Imprimer"
+                                >
+                                    <Printer size={18} />
+                                </Button>
+                                <Button
+                                    isIconOnly
+                                    size="md"
+                                    variant="flat"
                                     className="bg-white/5 hover:bg-[var(--primary)]/20 text-slate-400 hover:text-[var(--primary)] border border-white/5 transition-all"
                                     onClick={() => handleOpenDetail(order)}
                                 >
@@ -280,7 +298,7 @@ export function CommandesContent({ initialOrders, total, page, totalPages, searc
                     onClose={() => setIsDetailModalOpen(false)}
                     order={selectedOrder}
                     onRefund={() => handleCancelOrder(selectedOrder.id)}
-                    onReprint={() => toast.error("Réimpression disponible depuis la caisse")}
+                    onReprint={() => handlePrint(selectedOrder)}
                 />
             )}
         </div>

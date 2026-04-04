@@ -12,7 +12,6 @@ import {
     linkProductToSharing,
     getSharedAccountsHistory,
     resolveHouseholdAction,
-    getMicrosoftAuthUrlAction
 } from "./actions";
 import {
     Users, Mail, LayoutGrid, CheckCircle2, Search, User, Calendar,
@@ -371,18 +370,7 @@ export default function SharedAccountsContent() {
         }
     };
 
-    const handleMicrosoftLink = async (codeId: number) => {
-        try {
-            const res = await getMicrosoftAuthUrlAction(codeId);
-            if (res.success && res.url) {
-                window.location.href = res.url;
-            } else {
-                toast.error(res.error || "Impossible de générer l'URL Microsoft");
-            }
-        } catch {
-            toast.error("Erreur technique lors de la liaison Microsoft");
-        }
-    };
+    const getMsLinkUrl = (codeId: number) => `/api/admin/ms-link?id=${codeId}`;
 
     const copyToClipboard = (text: string) => {
         navigator.clipboard.writeText(text);
@@ -857,6 +845,7 @@ export default function SharedAccountsContent() {
                                                                 <div className="flex items-center gap-2 flex-wrap">
                                                                     <span className="text-base font-black text-primary italic">#{accIndex + 1}</span>
                                                                     <Chip size="sm" className="h-4 text-[9px] font-black bg-white/5 text-slate-400">{variant.name}</Chip>
+                                                                    <Chip size="sm" className="h-4 text-[9px] font-black bg-blue-500/10 text-blue-400">ID:{account.id}</Chip>
                                                                     {isFull && <Chip size="sm" className="h-4 text-[9px] font-black bg-red-500/10 text-red-400">Complet</Chip>}
                                                                     {isExpired && <Chip size="sm" className="h-4 text-[9px] font-black bg-yellow-500/10 text-yellow-400">Expiré</Chip>}
                                                                 </div>
@@ -868,7 +857,7 @@ export default function SharedAccountsContent() {
                                                                                 className={`h-7 w-7 ${account.msStatus === "CONNECTED" ? "text-emerald-400" :
                                                                                     account.msStatus === "EXPIRED" ? "text-yellow-400" : "text-blue-400"
                                                                                     } hover:bg-white/5`}
-                                                                                onClick={() => handleMicrosoftLink(account.id)}>
+                                                                                onClick={() => window.open(getMsLinkUrl(account.id), '_blank')}>
                                                                                 <Link size={13} />
                                                                             </Button>
                                                                         </Tooltip>
@@ -915,7 +904,7 @@ export default function SharedAccountsContent() {
                                                             {productName.toLowerCase().includes("netflix") && account.msStatus !== 'CONNECTED' && (
                                                                 <div
                                                                     className="flex items-center gap-2 px-3 py-2 rounded-lg bg-yellow-500/10 border border-yellow-500/20 cursor-pointer hover:bg-yellow-500/15 transition-colors"
-                                                                    onClick={() => handleMicrosoftLink(account.id)}
+                                                                    onClick={() => window.open(getMsLinkUrl(account.id), '_blank')}
                                                                     title="Cliquer pour lier via Microsoft Graph"
                                                                 >
                                                                     <AlertCircle size={12} className="text-yellow-400 shrink-0" />
@@ -1025,7 +1014,7 @@ export default function SharedAccountsContent() {
                                                                                                 color={msConnected ? "primary" : "warning"}
                                                                                                 variant="shadow"
                                                                                                 isLoading={resolvingSlotId === slot.id}
-                                                                                                onClick={() => msConnected ? handleResolveHousehold(slot.id) : handleMicrosoftLink(account.id)}
+                                                                                                onClick={() => msConnected ? handleResolveHousehold(slot.id) : window.open(getMsLinkUrl(account.id), '_blank')}
                                                                                                 className={`h-6 px-2 text-[9px] font-black uppercase rounded border ml-auto shrink-0 ${msConnected ? 'bg-primary/20 hover:bg-primary/40 text-primary border-primary/20' : 'bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-400 border-yellow-500/20'}`}
                                                                                             >
                                                                                                 {resolvingSlotId === slot.id ? "" : msConnected ? "🏠 Résoudre" : "⚠️ Lier MS"}
@@ -1191,7 +1180,7 @@ export default function SharedAccountsContent() {
                                                                 <Button
                                                                     size="sm"
                                                                     variant="flat"
-                                                                    onClick={() => handleMicrosoftLink(account.id)}
+                                                                    onClick={() => window.open(getMsLinkUrl(account.id), '_blank')}
                                                                     className={`h-6 px-2 text-[9px] font-black uppercase rounded-lg border ${
                                                                         account.msStatus === 'CONNECTED'
                                                                             ? 'text-emerald-400 border-emerald-500/20 bg-emerald-500/10'
@@ -1283,6 +1272,25 @@ export default function SharedAccountsContent() {
                                                                                     Dernier resolver: {new Date(lastLog.createdAt).toLocaleDateString("fr-FR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
                                                                                     {" · "}{(lastLog.newData as any)?.type || "—"}
                                                                                 </span>
+                                                                            </div>
+                                                                        )}
+                                                                        {account.variant?.product?.name?.toLowerCase().includes("netflix") && (
+                                                                            <div className="mt-1.5 pt-1.5 border-t border-white/5">
+                                                                                <Button
+                                                                                    size="sm"
+                                                                                    variant="flat"
+                                                                                    isLoading={resolvingSlotId === slot.id}
+                                                                                    onPress={() => account.msStatus === 'CONNECTED'
+                                                                                        ? handleResolveHousehold(slot.id)
+                                                                                        : window.open(getMsLinkUrl(account.id), '_blank')}
+                                                                                    className={`w-full h-6 text-[9px] font-black uppercase rounded-lg border ${
+                                                                                        account.msStatus === 'CONNECTED'
+                                                                                            ? 'text-orange-400 border-orange-500/20 bg-orange-500/10'
+                                                                                            : 'text-blue-400 border-blue-500/20 bg-blue-500/10'
+                                                                                    }`}
+                                                                                >
+                                                                                    {resolvingSlotId === slot.id ? "" : account.msStatus === 'CONNECTED' ? "🏠 Résoudre" : "⚠️ Lier MS"}
+                                                                                </Button>
                                                                             </div>
                                                                         )}
                                                                     </div>

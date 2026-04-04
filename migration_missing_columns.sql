@@ -1,0 +1,36 @@
+-- Migration: colonnes manquantes dans shop_settings
+-- À exécuter dans Supabase Dashboard > SQL Editor
+-- Utilise IF NOT EXISTS : safe à re-exécuter
+
+ALTER TABLE "shop_settings"
+    ADD COLUMN IF NOT EXISTS "show_track_qr_on_receipt" boolean DEFAULT true,
+    ADD COLUMN IF NOT EXISTS "telegram_chat_id_admin" text,
+    ADD COLUMN IF NOT EXISTS "telegram_chat_id_caisse" text,
+    ADD COLUMN IF NOT EXISTS "telegram_chat_id_traiteur" text,
+    ADD COLUMN IF NOT EXISTS "is_b2b_enabled" boolean NOT NULL DEFAULT false,
+    ADD COLUMN IF NOT EXISTS "default_reseller_discount" numeric(5, 2) DEFAULT '5.00',
+    ADD COLUMN IF NOT EXISTS "min_reseller_recharge" numeric(12, 2) DEFAULT '1000.00',
+    ADD COLUMN IF NOT EXISTS "is_maintenance_mode" boolean NOT NULL DEFAULT false,
+    ADD COLUMN IF NOT EXISTS "allowed_ips" text,
+    ADD COLUMN IF NOT EXISTS "whatsapp_api_url" text DEFAULT 'http://localhost:3001',
+    ADD COLUMN IF NOT EXISTS "whatsapp_api_key" text,
+    ADD COLUMN IF NOT EXISTS "whatsapp_instance_name" text DEFAULT 'FLEXBOX_BOT',
+    ADD COLUMN IF NOT EXISTS "whatsapp_sender_number" text,
+    ADD COLUMN IF NOT EXISTS "whatsapp_message_template" text,
+    ADD COLUMN IF NOT EXISTS "chatbot_enabled" boolean NOT NULL DEFAULT false,
+    ADD COLUMN IF NOT EXISTS "chatbot_greeting" text,
+    ADD COLUMN IF NOT EXISTS "whatsapp_webhook_url" text,
+    ADD COLUMN IF NOT EXISTS "whatsapp_verify_token" text,
+    ADD COLUMN IF NOT EXISTS "gemini_api_key" text,
+    ADD COLUMN IF NOT EXISTS "chatbot_role" text,
+    ADD COLUMN IF NOT EXISTS "n8n_webhook_url" text,
+    ADD COLUMN IF NOT EXISTS "usd_exchange_rate" numeric(10, 2) NOT NULL DEFAULT '245.00',
+    ADD COLUMN IF NOT EXISTS "vapid_public_key" text,
+    ADD COLUMN IF NOT EXISTS "vapid_private_key" text,
+    ADD COLUMN IF NOT EXISTS "stock_alert_threshold" integer NOT NULL DEFAULT 5,
+    ADD COLUMN IF NOT EXISTS "netflix_resolver_email" text,
+    ADD COLUMN IF NOT EXISTS "netflix_resolver_password" text,
+    ADD COLUMN IF NOT EXISTS "microsoft_client_id" text,
+    ADD COLUMN IF NOT EXISTS "microsoft_tenant_id" text,
+    ADD COLUMN IF NOT EXISTS "microsoft_client_secret" text,
+    ADD COLUMN IF NOT EXISTS "microsoft_redirect_uri" text;

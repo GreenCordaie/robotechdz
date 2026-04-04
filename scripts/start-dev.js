@@ -4,13 +4,8 @@ const postgres = require('postgres');
 const path = require('path');
 
 /**
- * ROBOTECH ORCHESTRATOR v6.0
+ * ROBOTECH ORCHESTRATOR v6.1 (Resilient)
  * Démarrage 1-click : Next.js + Cloudflare + Sync DB/Waha/Telegram
- *
- * Nouveautés v6 :
- *  - Notification Telegram avec le nouveau lien Cloudflare à chaque démarrage
- *  - Waha : attend le statut WORKING après reconfiguration (robuste)
- *  - Waha : vérifie le webhook host.docker.internal (fixe, ne dépend pas de Cloudflare)
  */
 
 const APP_PORT = 1556;
@@ -42,13 +37,17 @@ function readEnv() {
 readEnv();
 
 function updateEnv(key, value) {
-    let content = fs.readFileSync(envPath, 'utf-8');
-    const regex = new RegExp(`^${key}=.*`, 'm');
-    content = content.match(regex)
-        ? content.replace(regex, `${key}="${value}"`)
-        : content + `\n${key}="${value}"`;
-    fs.writeFileSync(envPath, content, 'utf-8');
-    console.log(`   📝 .env → ${key}=${value}`);
+    try {
+        let content = fs.readFileSync(envPath, 'utf-8');
+        const regex = new RegExp(`^${key}=.*`, 'm');
+        content = content.match(regex)
+            ? content.replace(regex, `${key}="${value}"`)
+            : content + `\n${key}="${value}"`;
+        fs.writeFileSync(envPath, content, 'utf-8');
+        console.log(`   📝 .env → ${key}=${value}`);
+    } catch (e) {
+        console.log(`   ⚠️  Impossible de mettre à jour le .env: ${e.message}`);
+    }
 }
 
 const DATABASE_URL = envConfig['DATABASE_URL'] || process.env.DATABASE_URL;
@@ -63,8 +62,12 @@ if (!DATABASE_URL) {
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 async function fetchJson(url, opts = {}) {
-    const res = await fetch(url, { ...opts, signal: AbortSignal.timeout(8000) });
-    return { ok: res.ok, status: res.status, data: await res.json().catch(() => ({})) };
+    try {
+        const res = await fetch(url, { ...opts, signal: AbortSignal.timeout(8000) });
+        return { ok: res.ok, status: res.status, data: await res.json().catch(() => ({})) };
+    } catch (e) {
+        return { ok: false, error: e.message };
+    }
 }
 
 // ─── Telegram : envoyer un message ───────────────────────────────────────────
@@ -97,7 +100,7 @@ async function waitWahaStatus(targetStatuses, timeoutMs = 60000) {
             const r = await fetchJson(`${WAHA_URL}/api/sessions/${WAHA_SESSION}`, {
                 headers: { 'X-Api-Key': WAHA_API_KEY }
             });
-            if (targetStatuses.includes(r.data.status)) return r.data;
+            if (r.ok && targetStatuses.includes(r.data.status)) return r.data;
         } catch (e) { }
         process.stdout.write('.');
         await sleep(3000);
@@ -107,11 +110,9 @@ async function waitWahaStatus(targetStatuses, timeoutMs = 60000) {
 
 // ─── Waha : sync session + webhook ───────────────────────────────────────────
 async function syncWaha() {
-    // Le webhook utilise host.docker.internal — fixe, ne dépend pas de Cloudflare
     const wahaWebhookUrl = `http://host.docker.internal:${APP_PORT}/api/webhooks/whatsapp`;
 
     try {
-        // 1. Attendre que Waha soit accessible (endpoint /api/sessions)
         console.log(`   ⏳ Attente Waha`);
         let wahaReady = false;
         for (let i = 0; i < 20; i++) {
@@ -131,12 +132,11 @@ async function syncWaha() {
             return false;
         }
 
-        // 2. Vérifier le statut initial
         const { data: session } = await fetchJson(`${WAHA_URL}/api/sessions/${WAHA_SESSION}`, {
             headers: { 'X-Api-Key': WAHA_API_KEY }
         });
 
-        if (session.status === 'STOPPED' || session.status === 'FAILED' || !session.status) {
+        if (!session || session.status === 'STOPPED' || session.status === 'FAILED' || !session.status) {
             await fetch(`${WAHA_URL}/api/sessions/${WAHA_SESSION}/start`, {
                 method: 'POST',
                 headers: { 'X-Api-Key': WAHA_API_KEY, 'Content-Type': 'application/json' },
@@ -145,7 +145,6 @@ async function syncWaha() {
             console.log("   🔄 Waha : session démarrée");
         }
 
-        // 3. Configurer le webhook (PUT cause un redémarrage de la session)
         await fetch(`${WAHA_URL}/api/sessions/${WAHA_SESSION}`, {
             method: 'PUT',
             headers: { 'X-Api-Key': WAHA_API_KEY, 'Content-Type': 'application/json' },
@@ -155,7 +154,7 @@ async function syncWaha() {
                         url: wahaWebhookUrl,
                         events: ['message'],
                         customHeaders: [{ name: 'x-api-key', value: WAHA_API_KEY }],
-                        retries: { delaySeconds: 2, attempts: 3 }
+                        retries: { delaySeconds: 2, attempts: 2 }
                     }]
                 }
             }),
@@ -163,24 +162,15 @@ async function syncWaha() {
         });
 
         console.log(`   🔄 Waha webhook → ${wahaWebhookUrl}`);
-        console.log(`   ⏳ Attente reconnexion Waha`);
-
-        // 4. Attendre que Waha revienne WORKING (le PUT provoque un redémarrage)
         const finalStatus = await waitWahaStatus(['WORKING', 'SCAN_QR_CODE'], 90000);
         console.log('');
 
-        if (!finalStatus) {
-            console.log("   ⚠️  Waha : timeout après reconfiguration");
-            return false;
-        }
-
-        if (finalStatus.status === 'WORKING') {
+        if (finalStatus?.status === 'WORKING') {
             console.log(`   ✅ Waha WORKING : ${finalStatus.me?.id || 'connecté'}`);
             return true;
         }
 
-        if (finalStatus.status === 'SCAN_QR_CODE') {
-            // Sauvegarder le QR sur le bureau
+        if (finalStatus?.status === 'SCAN_QR_CODE') {
             try {
                 const qrRes = await fetch(`${WAHA_URL}/api/screenshot?session=${WAHA_SESSION}`, {
                     headers: { 'X-Api-Key': WAHA_API_KEY },
@@ -196,7 +186,7 @@ async function syncWaha() {
             console.log(`   ⚠️  Waha : scan QR requis → ouvre http://localhost:3001`);
             return false;
         }
-
+        return false;
     } catch (e) {
         console.log(`   ⚠️  Waha erreur : ${e.message}`);
         return false;
@@ -211,7 +201,6 @@ console.log("━━━━━━━━━━━━━━━━━━━━━━�
 console.log("  🤖 ROBOTECH ORCHESTRATOR v6.1 - Démarrage...");
 console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
 
-// 0. Docker (Vérification et démarrage si besoin)
 console.log(`\n🐳 [0/4] Démarrage des services Docker...`);
 try {
     execSync('docker compose up -d', {
@@ -224,101 +213,81 @@ try {
     console.log(`   ⚠️  Docker : ${e.message?.slice(0, 80)}`);
 }
 
-// 1. Print Service
 console.log(`\n🖨️  [1/5] Print Service : géré par RobotechPrint.exe sur le PC caisse.`);
 
-// 2. Next.js
 console.log(`\n🚀 [2/5] Next.js dev sur le port ${APP_PORT}...`);
 const nextProcess = spawn(npmCmd, ['run', 'dev'], {
     cwd: path.join(__dirname, '..'),
     stdio: 'inherit',
-    shell: true
+    shell: true,
+    env: { ...process.env, NODE_OPTIONS: '--dns-result-order=ipv4first' }
 });
 
-// 3. Tunnels Cloudflare (Tunnel fixe optimisé)
 console.log(`🌐 [3/5] Lancement du tunnel fixe Cloudflare (robotech-boutique)...`);
 const mainTunnel = spawn('cloudflared', ['tunnel', 'run', 'robotech-boutique'], { shell: true });
-// On ne spawn plus n8nTunnel séparément car il est inclus dans la config du tunnel principal
 
-// 4. Fallback Sync (si le tunnel tarde trop ou échoue localement)
-setTimeout(async () => {
-    if (!synced) {
-        console.log("\n   ⏳ Le tunnel tarde... Tentative de démarrage forcée de WAHA");
-        await syncAll(true); // force WAHA even without tunnel
-    }
-}, 15000);
-
-// ─── Détection des URLs ───────────────────────────────────────────────────────
 let appUrl = 'https://boutique.nexusbox.tech';
 let n8nUrl = 'https://n8n.nexusbox.tech';
 let synced = false;
 
-function extractCloudflareUrl(text) {
-    const m = text.match(/https:\/\/[a-zA-Z0-9\-]+\.trycloudflare\.com/);
-    return m ? m[0] : null;
-}
-
-// Déclenchement automatique de la sync puisque les URLs sont fixes
 setTimeout(async () => {
     if (!synced) {
         console.log(`\n✅ Domaines fixes détectés : ${appUrl}`);
         updateEnv('NEXT_PUBLIC_APP_URL', appUrl);
         await syncAll();
     }
-}, 2000);
+}, 3000);
 
 // ─── Sync tout ───────────────────────────────────────────────────────────────
 async function syncAll(forceWaha = false) {
-    if ((!appUrl && !forceWaha) || (synced && !forceWaha)) return;
+    if (synced && !forceWaha) return;
+    synced = true;
 
-    // Si on a l'URL, on fait la sync totale une seule fois
-    if (appUrl && !synced) {
-        synced = true;
-        console.log("\n🔄 [4/4] Synchronisation complète (DB + Telegram + WAHA)...");
-    } else if (forceWaha && !synced) {
-        console.log("\n🔄 [4/4] Synchronisation partielle (WAHA uniquement)...");
-    } else {
-        return;
-    }
+    console.log("\n🔄 [4/4] Synchronisation complète (Services locaux)...");
 
-    const sql = postgres(DATABASE_URL);
+    let shopSettings = null;
+    const sql = postgres(DATABASE_URL, { connect_timeout: 3 });
 
+    // 1. Sync Base de données (Facultatif si DNS fail)
     try {
+        console.log("   📡 Tentative de connexion à Supabase...");
         const rows = await sql`SELECT * FROM shop_settings LIMIT 1`;
-        if (!rows.length) { console.error("❌ Pas de shop_settings en DB"); return; }
-        const s = rows[0];
-
-        // 1. DB & Telegram (uniquement si appUrl est dispo)
-        if (appUrl) {
+        if (rows.length) {
+            shopSettings = rows[0];
             await sql`
                 UPDATE shop_settings SET
                     webhook_url = ${appUrl},
                     whatsapp_webhook_url = ${appUrl + '/api/webhooks/whatsapp'},
-                    n8n_webhook_url = ${n8nUrl ? n8nUrl + '/webhook/flexbox-gateway' : s.n8n_webhook_url},
+                    n8n_webhook_url = ${n8nUrl + '/webhook/flexbox-gateway'},
                     microsoft_redirect_uri = ${appUrl + '/api/auth/microsoft/callback'}
-                WHERE id = ${s.id}
+                WHERE id = ${shopSettings.id}
             `;
-            console.log("   ✅ DB → webhook_url + whatsapp_webhook_url + n8n_webhook_url mis à jour");
+            console.log("   ✅ DB → Réglages URLs mis à jour sur Supabase");
 
-            if (s.telegram_bot_token) {
+            if (shopSettings.telegram_bot_token) {
                 const tgWebhookUrl = `${appUrl}/api/telegram/webhook`;
-                const res = await fetch(
-                    `https://api.telegram.org/bot${s.telegram_bot_token}/setWebhook?url=${tgWebhookUrl}&secret_token=${TELEGRAM_SECRET}`
+                const tgRes = await fetchJson(
+                    `https://api.telegram.org/bot${shopSettings.telegram_bot_token}/setWebhook?url=${tgWebhookUrl}&secret_token=${TELEGRAM_SECRET}`
                 );
-                const data = await res.json();
-                console.log(`   ${data.ok ? '✅' : '❌'} Telegram webhook → ${tgWebhookUrl}`);
+                console.log(`   ${tgRes.ok ? '✅' : '❌'} Telegram webhook → ${tgWebhookUrl}`);
             }
         }
+    } catch (e) {
+        console.log(`   ⚠️  DB inaccessible (Supabase DNS?), skip sync DB: ${e.message}`);
+    } finally {
+        await sql.end();
+    }
 
-        // 2. Waha (toujours tenté si syncAll est appelé)
-        const wahaOk = await syncWaha();
+    // 2. Sync WAHA (WhatsApp)
+    const wahaOk = await syncWaha();
 
-        // 4. Notification Telegram avec le nouveau lien
+    // 3. Notification Telegram de démarrage
+    if (shopSettings?.telegram_bot_token) {
         const now = new Date().toLocaleString('fr-FR', { timeZone: 'Africa/Algiers' });
         const wahaStatus = wahaOk ? '✅ WhatsApp connecté' : '⚠️ WhatsApp déconnecté';
-        const telegramChatId = s.telegram_chat_id_admin || s.telegram_chat_id;
+        const telegramChatId = shopSettings.telegram_chat_id_admin || shopSettings.telegram_chat_id;
 
-        if (s.telegram_bot_token && telegramChatId) {
+        if (telegramChatId) {
             const msg = [
                 `🚀 <b>ROBOTECH — Serveur démarré</b>`,
                 ``,
@@ -328,33 +297,22 @@ async function syncAll(forceWaha = false) {
                 `<code>${appUrl}/admin</code>`,
                 ``,
                 `📱 <b>WhatsApp :</b> ${wahaStatus}`,
-                n8nUrl ? `⚙️ <b>n8n :</b> ${n8nUrl}` : '',
+                `⚙️ <b>n8n :</b> ${n8nUrl}`,
                 ``,
-                `<i>Ce lien est valide jusqu'au prochain redémarrage.</i>`
-            ].filter(Boolean).join('\n');
-
-            console.log(`\n📨 Envoi notification Telegram...`);
-            await sendTelegram(s.telegram_bot_token, telegramChatId, msg);
-        } else {
-            console.log(`   ℹ️  Pas de chat_id admin Telegram configuré, notification skippée`);
+                `<i>Système hybride (Cloud + Local) actif.</i>`
+            ].join('\n');
+            await sendTelegram(shopSettings.telegram_bot_token, telegramChatId, msg);
         }
-
-        // 5. Résumé final
-        console.log("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-        console.log("  ✅ SYSTÈME PRÊT");
-        console.log(`  🌍 App         : ${appUrl}`);
-        console.log(`  🔗 Admin       : ${appUrl}/admin`);
-        console.log(`  🖨️  Print       : http://127.0.0.1:6543  (local)`);
-        console.log(`  📱 WA Bot      : http://localhost:3001  (Waha dashboard)`);
-        if (n8nUrl) console.log(`  ⚙️  n8n UI      : ${n8nUrl}`);
-        console.log(`  🤖 n8n API     : http://localhost:${N8N_PORT}  (local)`);
-        console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
-
-    } catch (e) {
-        console.error("❌ Erreur sync:", e.message);
-    } finally {
-        await sql.end();
     }
+
+    // Résumé
+    console.log("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    console.log("  ✅ SYSTÈME PRÊT");
+    console.log(`  🌍 App         : ${appUrl}`);
+    console.log(`  🔗 Admin       : ${appUrl}/admin`);
+    console.log(`  📱 WA Bot      : http://localhost:3001  (Waha dashboard)`);
+    console.log(`  🤖 n8n API     : http://localhost:${N8N_PORT}  (local)`);
+    console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
 }
 
 // ─── Arrêt propre ─────────────────────────────────────────────────────────────

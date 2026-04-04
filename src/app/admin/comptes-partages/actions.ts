@@ -555,7 +555,6 @@ export const resolveHouseholdAction = withAuth(
             });
 
             if (!slot) throw new Error("Slot introuvable");
-            if (slot.status !== "VENDU") throw new Error("Le slot n'est pas au statut VENDU");
 
             if (!slot.digitalCode?.msRefreshToken) {
                 throw new Error("Compte non lié à Microsoft Graph. Veuillez d'abord lier le compte via le bouton Microsoft.");

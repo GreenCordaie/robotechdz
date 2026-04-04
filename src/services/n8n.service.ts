@@ -12,12 +12,12 @@ export class N8nService {
     static async triggerEvent(eventName: string, data: any) {
         try {
             const settings = await db.query.shopSettings.findFirst();
-            const webhookUrl = settings?.n8nWebhookUrl || process.env.N8N_WEBHOOK_URL || "http://localhost:5678/webhook/flexbox-gateway";
+            const webhookUrl = settings?.n8nWebhookUrl || process.env.N8N_WEBHOOK_URL || "https://n8n.nexusbox.tech/webhook/flexbox-gateway";
 
-            // n8n runs in Docker — replace localhost with host.docker.internal
-            // so n8n can reach WAHA (also in Docker) via the host bridge
-            const waUrl = (settings?.whatsappApiUrl || 'http://localhost:3001')
-                .replace('localhost', 'host.docker.internal');
+            // In production (Cloudflare Pages), we use the public tunnel URL.
+            // In local development, we might still use localhost.
+            const waUrl = settings?.whatsappApiUrl || process.env.WAHA_API_URL || 'https://waha.nexusbox.tech';
+
 
             const config = {
                 shopTitle: settings?.shopName || "ROBOTECH DZ",

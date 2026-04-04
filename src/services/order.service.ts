@@ -149,11 +149,8 @@ export class OrderService {
             (item.codes && item.codes.length > 0) || (item.slots && item.slots.length > 0)
         );
 
-        // Also fire for WhatsApp delivery on paid/complete orders even if no codes yet
-        const isWhatsAppPaid = (result as any).deliveryMethod === DeliveryMethod.WHATSAPP
-            && (result.status === OrderStatus.PAYE || result.status === OrderStatus.TERMINE);
-
-        if (isFullyAuto || hasCodesOrSlots || isWhatsAppPaid) {
+        // Only fire ORDER_DELIVERED when codes are actually available — prevents empty WhatsApp on manual orders
+        if (isFullyAuto || hasCodesOrSlots) {
             eventBus.publish(SystemEvent.ORDER_DELIVERED, { orderId: result.id });
         }
 

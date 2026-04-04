@@ -63,9 +63,11 @@ export async function sendWhatsAppMessage(
         chatId = `${digits}@c.us`;
     }
 
-    // host.docker.internal n'est résolvable que depuis Docker → remplacer par localhost
-    const apiUrl = (settings.whatsappApiUrl || '').replace('host.docker.internal', 'localhost');
+    // In production (Cloudflare Edge), we use the public URL provided in settings.
+    // We no longer force replacements here to allow tunnel domains (e.g., waha.nexusbox.tech).
+    const apiUrl = (settings.whatsappApiUrl || '').replace(/\/$/, '');
     const url = `${apiUrl}/api/sendText`;
+
 
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     if (settings.whatsappApiKey) headers['X-Api-Key'] = settings.whatsappApiKey;
@@ -106,8 +108,9 @@ export async function getWhatsAppContact(
 ) {
     if (!settings.whatsappApiUrl || !settings.whatsappInstanceName) return null;
 
-    const apiUrl = (settings.whatsappApiUrl || '').replace('host.docker.internal', 'localhost');
+    const apiUrl = (settings.whatsappApiUrl || '').replace(/\/$/, '');
     const url = `${apiUrl}/api/contacts?contactId=${chatId}&session=${settings.whatsappInstanceName}`;
+
 
     const headers: Record<string, string> = {};
     if (settings.whatsappApiKey) headers['X-Api-Key'] = settings.whatsappApiKey;
@@ -132,8 +135,9 @@ export async function sendWhatsAppSeen(
 ) {
     if (!settings.whatsappApiUrl || !settings.whatsappInstanceName) return { success: false };
 
-    const apiUrl = (settings.whatsappApiUrl || '').replace('host.docker.internal', 'localhost');
+    const apiUrl = (settings.whatsappApiUrl || '').replace(/\/$/, '');
     const url = `${apiUrl}/api/sendSeen`;
+
 
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     if (settings.whatsappApiKey) headers['X-Api-Key'] = settings.whatsappApiKey;
@@ -185,8 +189,9 @@ export async function sendWhatsAppButtons(
         chatId = `${digits}@c.us`;
     }
 
-    const apiUrl = (settings.whatsappApiUrl || '').replace('host.docker.internal', 'localhost');
+    const apiUrl = (settings.whatsappApiUrl || '').replace(/\/$/, '');
     const url = `${apiUrl}/api/sendButtons`;
+
 
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     if (settings.whatsappApiKey) headers['X-Api-Key'] = settings.whatsappApiKey;

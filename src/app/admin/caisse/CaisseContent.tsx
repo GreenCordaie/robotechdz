@@ -11,13 +11,11 @@ const OrderDetailModal = dynamic(() => import("@/components/admin/modals/OrderDe
 const RefundOrderModal = dynamic(() => import("@/components/admin/modals/RefundOrderModal"), { ssr: false });
 import { useAuthStore } from "@/store/useAuthStore";
 import { toast } from "react-hot-toast";
-import { Eye, User as UserIcon, Plus, RotateCcw, ShoppingCart, LayoutGrid, Clock } from "lucide-react";
+import { Eye, User as UserIcon, Plus, RotateCcw, Clock } from "lucide-react";
 import { getAllClients, createClient } from "../clients/actions";
 import { formatCurrency, formatWhatsApp } from "@/lib/formatters";
 import { ThermalReceiptV2 } from "@/components/admin/receipt/ThermalReceiptV2";
 import { useSettingsStore } from "@/store/useSettingsStore";
-import { CatalogueCaisse } from "@/components/admin/caisse/CatalogueCaisse";
-import { CartSection } from "@/components/admin/caisse/CartSection";
 
 export default function CaisseContent() {
     const {
@@ -803,34 +801,6 @@ export default function CaisseContent() {
                                     </div>
                                 )}
                             </section>
-                        </div>
-                    </Tab>
-                    <Tab
-                        key="catalogue"
-                        title={
-                            <div className="flex items-center space-x-2">
-                                <LayoutGrid size={16} />
-                                <span>Catalogue POS</span>
-                            </div>
-                        }
-                    >
-                        <div className="flex h-[calc(100vh-140px)] p-4">
-                            <CatalogueCaisse />
-                        </div>
-                    </Tab>
-                    <Tab
-                        key="cart"
-                        title={
-                            <div className="flex items-center space-x-2">
-                                <ShoppingCart size={16} />
-                                <span>Mon Panier</span>
-                            </div>
-                        }
-                    >
-                        <div className="flex h-[calc(100vh-140px)] p-4">
-                            <div className="flex-1 max-w-2xl mx-auto h-full">
-                                <CartSection />
-                            </div>
                         </div>
                     </Tab>
                 </Tabs>

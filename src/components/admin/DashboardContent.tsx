@@ -338,8 +338,8 @@ export default function DashboardContent({ stats }: DashboardContentProps) {
                             </button>
                         </div>
                     </div>
-                    <div className="h-72 w-full relative">
-                        <ResponsiveContainer width="100%" height="100%">
+                    <div className="h-72 w-full relative min-h-[288px]">
+                        <ResponsiveContainer width="100%" height="100%" minHeight={288}>
                             <AreaChart
                                 data={stats.revenueData}
                                 margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
