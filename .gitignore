@@ -17,3 +17,7 @@ yarn-error.log*
 public/uploads/*
 !public/uploads/.gitkeep
 .claude/
+
+# Ignored SQL dumps and tmp scripts with secrets
+tmp/*.mjs
+*.sql

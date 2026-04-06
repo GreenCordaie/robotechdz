@@ -471,7 +471,7 @@ export default function CatalogueContent({
                         <Button
                             onPress={() => setIsManageCategoriesOpen(true)}
                             variant="flat"
-                            className="flex-1 md:flex-none flex items-center gap-2 px-6 py-2.5 bg-[#ec5b13]/10 text-[#ec5b13] rounded-xl text-sm font-black hover:bg-[#ec5b13]/20 transition-all active:scale-95"
+                            className="flex-1 md:flex-none flex items-center gap-2 px-6 py-2.5 bg-[var(--primary)]/10 text-[var(--primary)] rounded-xl text-sm font-black hover:bg-[var(--primary)]/20 transition-all active:scale-95"
                             startContent={<Settings className="w-5 h-5 shrink-0" />}
                         >
                             <span className="hidden sm:inline">Gérer les Catégories</span>

@@ -135,8 +135,8 @@ export const RechargeBalanceModal = ({
                                 <div className="flex flex-col">
                                     <h2 className="text-white text-lg font-bold leading-tight tracking-tight">Recharger le Solde</h2>
                                     <div className="flex items-center gap-1.5 mt-0.5">
-                                        <span className="size-2 rounded-full bg-[#ec5b13] animate-pulse"></span>
-                                        <p className="text-[#ec5b13]/80 text-xs font-medium uppercase tracking-wider">Fournisseur : {supplierName}</p>
+                                        <span className="size-2 rounded-full bg-[var(--primary)] animate-pulse"></span>
+                                        <p className="text-[var(--primary)]/80 text-xs font-medium uppercase tracking-wider">Fournisseur : {supplierName}</p>
                                     </div>
                                     {error && (
                                         <p className="mt-2 text-red-500 text-[10px] font-bold uppercase tracking-wider italic">{error}</p>
@@ -158,7 +158,7 @@ export const RechargeBalanceModal = ({
                                 <div className="bg-[#0a0a0a] border border-[#262626] rounded-xl p-5 mb-4 text-center">
                                     <p className="text-slate-400 text-sm font-medium mb-1">Solde actuel</p>
                                     <div className="flex items-center justify-center gap-2">
-                                        <span className="material-symbols-outlined text-[#ec5b13] text-xl">account_balance_wallet</span>
+                                        <span className="material-symbols-outlined text-[var(--primary)] text-xl">account_balance_wallet</span>
                                         <h3 className="text-white text-3xl font-bold tracking-tight">
                                             {formatCurrency(currentBalance, baseCurrency)}
                                         </h3>
@@ -170,13 +170,13 @@ export const RechargeBalanceModal = ({
                                     <div className="flex bg-[#0a0a0a] border border-[#262626] rounded-xl p-1 mb-6">
                                         <button
                                             onClick={() => setCurrency('USD')}
-                                            className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${currency === 'USD' ? 'bg-[#ec5b13] text-white' : 'text-slate-500 hover:text-slate-300'}`}
+                                            className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${currency === 'USD' ? 'bg-[var(--primary)] text-white' : 'text-slate-500 hover:text-slate-300'}`}
                                         >
                                             USD
                                         </button>
                                         <button
                                             onClick={() => setCurrency('DZD')}
-                                            className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${currency === 'DZD' ? 'bg-[#ec5b13] text-white' : 'text-slate-500 hover:text-slate-300'}`}
+                                            className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${currency === 'DZD' ? 'bg-[var(--primary)] text-white' : 'text-slate-500 hover:text-slate-300'}`}
                                         >
                                             DZD
                                         </button>
@@ -193,7 +193,7 @@ export const RechargeBalanceModal = ({
                                             </label>
                                             <div className="relative group">
                                                 <input
-                                                    className="w-full bg-black/40 border border-[#262626] focus:border-[#ec5b13] rounded-xl py-3 px-4 text-white font-mono text-sm outline-none transition-all"
+                                                    className="w-full bg-black/40 border border-[#262626] focus:border-[var(--primary)] rounded-xl py-3 px-4 text-white font-mono text-sm outline-none transition-all"
                                                     type="number"
                                                     step="0.01"
                                                     value={manualRate}
@@ -214,7 +214,7 @@ export const RechargeBalanceModal = ({
                                             <input
                                                 id="rechargeAmount"
                                                 name="rechargeAmount"
-                                                className="w-full bg-[#0a0a0a] border border-[#262626] focus:border-[#ec5b13] focus:ring-1 focus:ring-[#ec5b13] rounded-xl py-5 px-6 text-3xl font-bold text-white text-center transition-all placeholder:text-slate-700 outline-none"
+                                                className="w-full bg-[#0a0a0a] border border-[#262626] focus:border-[var(--primary)] focus:ring-1 focus:ring-[var(--primary)] rounded-xl py-5 px-6 text-3xl font-bold text-white text-center transition-all placeholder:text-slate-700 outline-none"
                                                 placeholder="0.00"
                                                 type="number"
                                                 step="0.01"
@@ -231,7 +231,7 @@ export const RechargeBalanceModal = ({
                                                     <p className="text-slate-500 text-xs italic">
                                                         Équivalent : ~ {formatCurrency(estimatedOther, currency === 'USD' ? 'DZD' : 'USD')}
                                                     </p>
-                                                    <p className="text-[#ec5b13]/60 text-xs font-medium">Taux: {formatCurrency(rate, 'DZD')}</p>
+                                                    <p className="text-[var(--primary)]/60 text-xs font-medium">Taux: {formatCurrency(rate, 'DZD')}</p>
                                                 </>
                                             )}
                                         </div>
@@ -245,7 +245,7 @@ export const RechargeBalanceModal = ({
                                             <select
                                                 id="paymentMethod"
                                                 name="paymentMethod"
-                                                className="w-full appearance-none bg-[#0a0a0a] border border-[#262626] focus:border-[#ec5b13] focus:ring-1 focus:ring-[#ec5b13] rounded-xl py-3.5 px-4 text-slate-100 text-sm transition-all cursor-pointer outline-none"
+                                                className="w-full appearance-none bg-[#0a0a0a] border border-[#262626] focus:border-[var(--primary)] focus:ring-1 focus:ring-[var(--primary)] rounded-xl py-3.5 px-4 text-slate-100 text-sm transition-all cursor-pointer outline-none"
                                                 value={paymentMethod}
                                                 onChange={(e) => setPaymentMethod(e.target.value)}
                                             >
@@ -276,7 +276,7 @@ export const RechargeBalanceModal = ({
                                 {/* Section 3: Projected Balance */}
                                 <div className="mt-10 pt-6 border-t border-[#262626]/50 flex items-center justify-between">
                                     <span className="text-slate-400 text-sm">Nouveau solde estimé :</span>
-                                    <span className="text-[#ec5b13] text-xl font-bold">
+                                    <span className="text-[var(--primary)] text-xl font-bold">
                                         {formatCurrency(projectedNewBalance, baseCurrency)}
                                     </span>
                                 </div>
@@ -296,7 +296,7 @@ export const RechargeBalanceModal = ({
                                 <button
                                     onClick={handleRecharge}
                                     disabled={isSaving}
-                                    className="flex items-center gap-2 bg-[#ec5b13] hover:bg-orange-600 text-white px-6 py-2.5 rounded-xl font-bold text-sm shadow-lg shadow-[#ec5b13]/20 transition-all active:scale-[0.98] disabled:opacity-50"
+                                    className="flex items-center gap-2 bg-[var(--primary)] hover:bg-orange-600 text-white px-6 py-2.5 rounded-xl font-bold text-sm shadow-lg shadow-[var(--primary)]/20 transition-all active:scale-[0.98] disabled:opacity-50"
                                 >
                                     {isSaving ? "Crédit en cours..." : (
                                         <>

@@ -1,5 +1,3 @@
-"use client";
-
 import React, { useState } from "react";
 import {
     Button,
@@ -24,7 +22,8 @@ import {
     Wallet,
     Percent,
     CheckCircle2,
-    XCircle
+    XCircle,
+    ArrowRight
 } from "lucide-react";
 import { usePosStore } from "@/store/usePosStore";
 import { formatCurrency } from "@/lib/formatters";
@@ -58,75 +57,83 @@ export function CartSection() {
     };
 
     return (
-        <div className="flex flex-col h-full bg-[#0a0a0a] rounded-2xl overflow-hidden border border-white/5 shadow-2xl">
+        <div className="flex flex-col h-full bg-background-dark/80 backdrop-blur-3xl rounded-3xl overflow-hidden border border-white/10 shadow-[0_0_50px_-15px_rgba(0,0,0,1)]">
             {/* Header */}
-            <div className="p-6 border-b border-white/5 bg-black/20 backdrop-blur-md flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-[#ec5b13]/10 flex items-center justify-center">
-                        <ShoppingBag className="text-[#ec5b13]" size={20} />
+            <div className="p-8 border-b border-white/[0.08] bg-white/[0.02] flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 rounded-2xl bg-[var(--primary)] shadow-[0_0_20px_-5px_var(--primary)] flex items-center justify-center">
+                        <ShoppingBag className="text-white" size={24} />
                     </div>
                     <div>
-                        <h3 className="text-sm font-black uppercase tracking-widest text-white">Panier Actuel</h3>
-                        <p className="text-[10px] text-slate-500 font-bold uppercase">{cart.length} articles</p>
+                        <h3 className="text-base font-black uppercase tracking-[0.1em] text-white">Commande</h3>
+                        <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest">{cart.length} articles sélectionnés</p>
                     </div>
                 </div>
                 <Button
                     isIconOnly
-                    variant="light"
+                    variant="flat"
                     color="danger"
                     size="sm"
                     onPress={clearCart}
-                    className="opacity-50 hover:opacity-100 transition-opacity"
+                    className="bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white transition-all rounded-xl"
                 >
                     <Trash2 size={18} />
                 </Button>
             </div>
 
             {/* Cart Items */}
-            <ScrollShadow className="flex-1 p-6 space-y-4" hideScrollBar>
+            <ScrollShadow className="flex-1 p-6 space-y-3" hideScrollBar>
                 {cart.length === 0 ? (
-                    <div className="h-full flex flex-col items-center justify-center text-slate-500 gap-4 opacity-50">
-                        <span className="material-symbols-outlined !text-6xl">shopping_basket</span>
-                        <p className="font-bold uppercase text-xs tracking-widest text-center">Votre panier est vide</p>
+                    <div className="h-full flex flex-col items-center justify-center text-slate-500 gap-6 opacity-30 py-20">
+                        <div className="w-24 h-24 rounded-full border-2 border-dashed border-slate-700 flex items-center justify-center">
+                            <span className="material-symbols-outlined !text-5xl">shopping_basket</span>
+                        </div>
+                        <p className="font-black uppercase text-[10px] tracking-[0.4em] text-center">En attente de produits...</p>
                     </div>
                 ) : (
                     cart.map((item) => (
-                        <div key={item.id} className="flex gap-4 p-4 rounded-2xl bg-white/5 border border-white/5 group hover:border-white/10 transition-all">
-                            <div className="flex-1 min-w-0">
-                                <h4 className="text-sm font-bold text-white truncate uppercase tracking-tight">{item.name}</h4>
-                                <p className="text-[10px] text-[#ec5b13] font-black mt-1 uppercase tracking-widest">
-                                    {formatCurrency(item.price, "DZD")} / unité
-                                </p>
+                        <div key={item.id} className="flex flex-col gap-3 p-4 rounded-[1.5rem] bg-white/[0.03] border border-white/5 group hover:bg-white/[0.05] hover:border-white/10 transition-all duration-300">
+                            <div className="flex justify-between items-start gap-4">
+                                <div className="flex-1 min-w-0">
+                                    <h4 className="text-xs font-black text-white truncate uppercase tracking-wider">{item.name}</h4>
+                                    <p className="text-[9px] text-[var(--primary)] font-black mt-1 uppercase tracking-widest bg-[var(--primary)]/10 px-2 py-0.5 rounded-md inline-block">
+                                        {formatCurrency(item.price, "DZD")}
+                                    </p>
+                                </div>
+                                <div className="text-right">
+                                    <p className="text-xs font-black text-white">{formatCurrency(item.price * item.quantity, "DZD")}</p>
+                                    <button
+                                        onClick={() => removeFromCart(item.id)}
+                                        className="text-[9px] text-red-500 opacity-0 group-hover:opacity-100 font-black uppercase mt-1 transition-all"
+                                    >
+                                        Retirer
+                                    </button>
+                                </div>
                             </div>
-                            <div className="flex items-center gap-3 bg-black/40 rounded-xl p-1 border border-white/5">
-                                <Button
-                                    isIconOnly
-                                    size="sm"
-                                    variant="light"
-                                    className="h-8 w-8 min-w-0"
-                                    onPress={() => updateQuantity(item.id, Math.max(1, item.quantity - 1))}
-                                >
-                                    <Minus size={14} />
-                                </Button>
-                                <span className="text-xs font-black w-4 text-center">{item.quantity}</span>
-                                <Button
-                                    isIconOnly
-                                    size="sm"
-                                    variant="light"
-                                    className="h-8 w-8 min-w-0"
-                                    onPress={() => updateQuantity(item.id, item.quantity + 1)}
-                                >
-                                    <Plus size={14} />
-                                </Button>
-                            </div>
-                            <div className="text-right min-w-[80px]">
-                                <p className="text-sm font-black text-white">{formatCurrency(item.price * item.quantity, "DZD")}</p>
-                                <button
-                                    onClick={() => removeFromCart(item.id)}
-                                    className="text-[10px] text-red-500/50 hover:text-red-500 font-bold uppercase mt-1 transition-colors"
-                                >
-                                    Supprimer
-                                </button>
+
+                            <div className="flex items-center justify-between mt-1">
+                                <div className="flex items-center gap-1 bg-black/50 rounded-xl p-1 border border-white/5">
+                                    <Button
+                                        isIconOnly
+                                        size="sm"
+                                        variant="light"
+                                        className="h-7 w-7 min-w-0 rounded-lg text-slate-400 hover:text-white"
+                                        onPress={() => updateQuantity(item.id, Math.max(1, item.quantity - 1))}
+                                    >
+                                        <Minus size={12} />
+                                    </Button>
+                                    <span className="text-[11px] font-black w-6 text-center tabular-nums text-white">{item.quantity}</span>
+                                    <Button
+                                        isIconOnly
+                                        size="sm"
+                                        variant="light"
+                                        className="h-7 w-7 min-w-0 rounded-lg text-slate-400 hover:text-white"
+                                        onPress={() => updateQuantity(item.id, item.quantity + 1)}
+                                    >
+                                        <Plus size={12} />
+                                    </Button>
+                                </div>
+                                <div className="h-px flex-1 bg-white/[0.03] mx-4" />
                             </div>
                         </div>
                     ))
@@ -134,50 +141,65 @@ export function CartSection() {
             </ScrollShadow>
 
             {/* Footer Summary */}
-            <div className="p-6 bg-black/40 border-t border-white/5 space-y-6">
-                <div className="space-y-3">
-                    <div className="flex justify-between items-center text-slate-400">
-                        <span className="text-xs font-bold uppercase tracking-widest">Sous-total</span>
-                        <span className="text-sm font-black">{formatCurrency(subtotal, "DZD")}</span>
+            <div className="p-8 bg-black/60 border-t border-white/[0.08] backdrop-blur-xl space-y-8">
+                <div className="space-y-4">
+                    <div className="flex justify-between items-center text-slate-400 px-1">
+                        <span className="text-[10px] font-black uppercase tracking-[0.2em]">Sous-total</span>
+                        <span className="text-xs font-black tabular-nums">{formatCurrency(subtotal, "DZD")}</span>
                     </div>
 
-                    <div className="flex items-center justify-between gap-4">
-                        <div className="flex items-center gap-2 text-slate-400">
-                            <Percent size={14} className="text-[#ec5b13]" />
-                            <span className="text-xs font-bold uppercase tracking-widest">Remise</span>
+                    <div className="flex items-center justify-between gap-4 bg-white/[0.02] p-3 rounded-2xl border border-white/5 group hover:border-[var(--primary)]/30 transition-colors duration-300">
+                        <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-xl bg-[var(--primary)]/10 flex items-center justify-center">
+                                <Percent size={14} className="text-[var(--primary)]" />
+                            </div>
+                            <span className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-300">Remise</span>
                         </div>
-                        <div className="relative w-24 group">
+                        <div className="relative group/input">
                             <input
                                 type="number"
                                 value={remise}
                                 onChange={(e) => setRemise(Number(e.target.value))}
-                                className="w-full bg-white/5 border border-white/10 rounded-lg py-1 px-2 text-right text-sm font-black text-white focus:border-[#ec5b13] outline-none transition-all"
+                                className="w-24 bg-black/40 border border-white/10 group-hover/input:border-[var(--primary)]/50 rounded-xl py-1.5 px-3 text-right text-xs font-black text-white outline-none transition-all tabular-nums"
                             />
                         </div>
                     </div>
 
-                    <Divider className="bg-white/5" />
+                    <div className="flex justify-between items-center bg-gradient-to-br from-[var(--primary)] to-[#ff6b00] p-6 rounded-[2rem] shadow-2xl shadow-[var(--primary)]/20 overflow-hidden relative group">
+                        {/* Animated background flare */}
+                        <div className="absolute inset-0 bg-white/10 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000 skew-x-[-20deg]" />
 
-                    <div className="flex justify-between items-center bg-[#ec5b13]/5 p-3 rounded-xl border border-[#ec5b13]/10">
-                        <span className="text-xs font-black uppercase text-[#ec5b13] tracking-widest">Total à payer</span>
-                        <span className="text-xl font-black text-white">{formatCurrency(total, "DZD")}</span>
+                        <div className="relative">
+                            <span className="text-[10px] font-black uppercase text-white/70 tracking-[0.2em]">Net à payer</span>
+                            <div className="flex items-baseline gap-1 mt-1">
+                                <span className="text-3xl font-black text-white tabular-nums">{formatCurrency(total, "DZD").split(' ')[0]}</span>
+                                <span className="text-[10px] font-black text-white opacity-70 uppercase tracking-widest">{formatCurrency(total, "DZD").split(' ')[1]}</span>
+                            </div>
+                        </div>
+                        <div className="relative opacity-20 group-hover:opacity-40 transition-opacity">
+                            <CreditCard size={48} className="text-white" strokeWidth={1.5} />
+                        </div>
                     </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
+                <div className="flex flex-col gap-3">
                     <Button
-                        variant="flat"
-                        className="bg-white/5 text-white font-black text-xs uppercase h-12 rounded-xl border border-white/5 hover:bg-white/10 transition-all"
-                    >
-                        Appliquer Promo
-                    </Button>
-                    <Button
-                        className="bg-[#ec5b13] text-white font-black text-xs uppercase h-12 rounded-xl shadow-lg shadow-[#ec5b13]/20"
+                        className="bg-[var(--primary)] hover:bg-[var(--primary)]/90 text-white font-black text-sm uppercase h-16 rounded-[1.5rem] shadow-xl shadow-[var(--primary)]/30 group transition-all"
                         isLoading={isProcessing}
                         onPress={handleCheckout}
                     >
-                        Valider Transaction
+                        {isProcessing ? "Traitement..." : (
+                            <div className="flex items-center gap-3">
+                                Valider Transaction
+                                <ArrowRight size={20} className="group-hover:translate-x-1 transition-transform" />
+                            </div>
+                        )}
                     </Button>
+                    <div className="flex justify-center">
+                        <p className="text-[9px] text-slate-600 font-bold uppercase tracking-[0.2em] flex items-center gap-2">
+                            Sécurisé par RobotechDZ End-to-End
+                        </p>
+                    </div>
                 </div>
             </div>
         </div>

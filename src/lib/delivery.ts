@@ -1,7 +1,7 @@
 import { db } from "@/db";
 import { N8nService } from "@/services/n8n.service";
 import { decrypt } from "@/lib/encryption";
-import { sendWhatsAppMessage } from "@/lib/whatsapp";
+import { sendWhatsAppMessage, sendWhatsAppButtons } from "@/lib/whatsapp";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -172,7 +172,17 @@ export async function triggerOrderDelivery(orderId: number): Promise<{ success: 
         || (order as any).client?.telephone
         || (order as any).reseller?.telephone;
 
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:1556';
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://boutique.nexusbox.tech';
+
+    // Guard: skip if no codes or slots allocated yet (manual orders awaiting traitement)
+    const hasAnyCredentials = (order as any).items?.some((item: any) =>
+        (item.codes && item.codes.length > 0) || (item.slots && item.slots.length > 0)
+    );
+    if (!hasAnyCredentials) {
+        console.log(`[DELIVERY] Order #${orderId} has no codes/slots yet — skipping WhatsApp`);
+        return { success: true, skipped: true };
+    }
+
     const formattedText = formatOrderItemsText((order as any).items);
 
     // 1. Direct WAHA (primary) — the app runs on the host and can always reach WAHA at localhost:3001.
@@ -182,7 +192,7 @@ export async function triggerOrderDelivery(orderId: number): Promise<{ success: 
     if (customerPhone && (order as any).deliveryMethod === 'WHATSAPP') {
         try {
             const settings = await db.query.shopSettings.findFirst();
-            const shopName = settings?.shopName || 'FLEXBOX DIRECT';
+            const shopName = settings?.shopName || 'Ma Boutique';
             const totalDebt = parseFloat((order as any).client?.totalDetteDzd || "0");
             const message = buildWhatsAppMessage(order, shopName, appUrl, totalDebt);
 
@@ -194,6 +204,28 @@ export async function triggerOrderDelivery(orderId: number): Promise<{ success: 
 
             if (wahaResult.success) {
                 console.log(`[DELIVERY] ✅ WhatsApp sent to ${customerPhone} for order #${orderId}`);
+
+                // ── Netflix instructions (envoyé après le message principal) ──
+                const hasNetflixSlots = (order as any).items?.some((item: any) =>
+                    (item.slots || []).length > 0
+                );
+
+                if (hasNetflixSlots) {
+                    const instructionsMsg =
+                        `📺 *Comment activer votre accès Netflix :*\n\n` +
+                        `1️⃣ Connectez-vous sur votre TV ou appareil\n` +
+                        `2️⃣ Entrez l'email et le mot de passe reçus\n` +
+                        `3️⃣ Quand Netflix demande le *code de foyer* (4 chiffres), répondez simplement *CODE* à ce message.\n\n` +
+                        `⚡ *Nous vous enverrons le code instantanément !*`;
+
+                    await sendWhatsAppMessage(customerPhone, instructionsMsg, {
+                        whatsappApiUrl: settings?.whatsappApiUrl ?? undefined,
+                        whatsappApiKey: settings?.whatsappApiKey ?? undefined,
+                        whatsappInstanceName: settings?.whatsappInstanceName ?? undefined,
+                    }).catch(err => console.warn(`[DELIVERY] Netflix instructions failed:`, err));
+
+                    console.log(`[DELIVERY] 📺 Netflix instructions text sent to ${customerPhone}`);
+                }
             } else {
                 console.error(`[DELIVERY] ❌ WhatsApp failed: ${wahaResult.error}`);
             }

@@ -1,0 +1,10 @@
+3fa50a8 chore: release 10.1.1 stable
+7b7fe37 10.0.1 stable : netflix module OK
+a85e476 avant cloudflare
+a25a8ee beta netflix semi integration
+8036077 white label ready 9.0.5
+5b724ac chore(release): v9.0.1 - Performance & Optimisation
+2580ccf chore(release): v9.0.0 stable
+b2a1914 chore: sauvegarde version beta 8.0.3
+a031652 feat(netflix): add household resolution UI and improve IMAP logging
+1d1dc01 chore: sauvegarde version 7.9.9 (stable)

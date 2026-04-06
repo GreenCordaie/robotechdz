@@ -21,10 +21,9 @@ export class AccountService {
      * Internal implementation to add a shared account with slots.
      * No auth check here, assuming it's done at a higher level (Action or API secret).
      */
-    static async findActiveSlotByPhone(phone: string) {
+    static async findAllActiveNetflixSlotsByPhone(phone: string) {
         const phoneDigits = phone.replace(/\D/g, '').slice(-9);
 
-        // Also lookup client by telephone to find orders via clientId
         const client = await db.query.clients.findFirst({
             where: like(clients.telephone, `%${phoneDigits}%`)
         });
@@ -51,8 +50,10 @@ export class AccountService {
                 }
             },
             orderBy: (o, { desc }) => [desc(o.createdAt)],
-            limit: 10
+            limit: 20
         });
+
+        const results: { slot: any, account: any, order: any }[] = [];
 
         for (const order of recentOrders) {
             for (const item of order.items || []) {
@@ -60,13 +61,18 @@ export class AccountService {
                     if (slot.status === 'VENDU') {
                         const productName = slot.digitalCode?.variant?.product?.name?.toLowerCase() || '';
                         if (productName.includes('netflix')) {
-                            return { slot, account: slot.digitalCode };
+                            results.push({ slot, account: slot.digitalCode, order });
                         }
                     }
                 }
             }
         }
-        return null;
+        return results;
+    }
+
+    static async findActiveSlotByPhone(phone: string) {
+        const all = await this.findAllActiveNetflixSlotsByPhone(phone);
+        return all.length > 0 ? all[0] : null;
     }
 
     /**
@@ -78,6 +84,7 @@ export class AccountService {
         email: string;
         password: string;
         outlookPassword?: string;
+        isRelayed?: boolean;
         purchasePrice?: string;
         purchaseCurrency?: string;
         expiresAt?: string;
@@ -98,6 +105,7 @@ export class AccountService {
                 variantId: data.variantId,
                 code: encrypt(fullCode),
                 outlookPassword: data.outlookPassword ? encrypt(data.outlookPassword) : null,
+                isRelayed: data.isRelayed ?? false,
                 status: "DISPONIBLE",
                 purchasePrice: data.purchasePrice || null,
                 purchaseCurrency: data.purchaseCurrency || "DZD",

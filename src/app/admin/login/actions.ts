@@ -12,8 +12,24 @@ async function getDeps() {
     const { logSecurityAction } = await import("@/lib/security");
     const { encrypt, decrypt } = await import("@/lib/encryption");
     const { checkRateLimit, recordFailure, resetRateLimit } = await import("@/lib/rate-limit");
+    const turnstileSecret = process.env.TURNSTILE_SECRET_KEY;
 
-    return { db, users, eq, bcrypt, createSession, deleteSession, getSession, logSecurityAction, encrypt, decrypt, checkRateLimit, recordFailure, resetRateLimit };
+    return { db, users, eq, bcrypt, createSession, deleteSession, getSession, logSecurityAction, encrypt, decrypt, checkRateLimit, recordFailure, resetRateLimit, turnstileSecret };
+}
+
+async function verifyTurnstile(token: string, secret: string) {
+    try {
+        const res = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", {
+            method: "POST",
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: `secret=${encodeURIComponent(secret)}&response=${encodeURIComponent(token)}`,
+        });
+        const data = await res.json();
+        return data.success;
+    } catch (e) {
+        console.error("Turnstile error:", e);
+        return false;
+    }
 }
 
 export async function loginAction(formData: FormData) {
@@ -21,7 +37,16 @@ export async function loginAction(formData: FormData) {
     const password = formData.get("password") as string;
     const honeypot = formData.get("website_url") as string;
 
-    const { db, users, eq, bcrypt, createSession, logSecurityAction, checkRateLimit, recordFailure, resetRateLimit } = await getDeps();
+    const { db, users, eq, bcrypt, createSession, logSecurityAction, checkRateLimit, recordFailure, resetRateLimit, turnstileSecret } = await getDeps();
+
+    // 0. Turnstile check — skip si le widget n'a pas pu se charger (token absent)
+    const turnstileToken = formData.get("cf-turnstile-response") as string;
+    if (turnstileSecret && turnstileToken) {
+        const isValid = await verifyTurnstile(turnstileToken, turnstileSecret);
+        if (!isValid) {
+            return { success: false, error: "Vérification de sécurité échouée" };
+        }
+    }
 
     // 1. Honeypot check
     if (honeypot) {

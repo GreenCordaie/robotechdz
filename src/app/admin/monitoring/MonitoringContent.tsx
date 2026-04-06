@@ -138,7 +138,7 @@ export default function MonitoringContent({
                 <button
                     onClick={handleRefresh}
                     disabled={isRefreshing}
-                    className="flex items-center gap-2 px-4 py-2 bg-[#ec5b13] text-white rounded-lg font-medium text-sm hover:bg-[#d44f0f] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="flex items-center gap-2 px-4 py-2 bg-[var(--primary)] text-white rounded-lg font-medium text-sm hover:bg-[#d44f0f] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                     {isRefreshing ? (
                         <span className="animate-spin text-base">⟳</span>
@@ -166,7 +166,7 @@ export default function MonitoringContent({
                         </div>
                         <div className="w-px h-8 bg-[#2d2622]" />
                         <div>
-                            <p className="text-[#ec5b13] text-2xl font-mono font-bold">{queueStats.active}</p>
+                            <p className="text-[var(--primary)] text-2xl font-mono font-bold">{queueStats.active}</p>
                             <p className="text-slate-500 text-[10px] uppercase font-bold">En cours</p>
                         </div>
                     </div>
@@ -257,7 +257,7 @@ export default function MonitoringContent({
                                 key={label}
                                 onClick={() => handleFilterChange(value)}
                                 className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${selectedLevel === value
-                                    ? "bg-[#ec5b13] text-white border-[#ec5b13]"
+                                    ? "bg-[var(--primary)] text-white border-[var(--primary)]"
                                     : "bg-[#1a1614] text-slate-400 border-[#2d2622] hover:text-white hover:border-slate-500"
                                     }`}
                             >
@@ -290,7 +290,7 @@ export default function MonitoringContent({
                                                 </span>
                                                 {log.action && (
                                                     <span className="text-slate-400 text-xs font-mono">
-                                                        action: <span className="text-[#ec5b13]">{log.action}</span>
+                                                        action: <span className="text-[var(--primary)]">{log.action}</span>
                                                     </span>
                                                 )}
                                                 {log.userId && (

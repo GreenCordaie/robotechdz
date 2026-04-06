@@ -4,19 +4,18 @@ import React, { useState, useEffect, useCallback } from "react";
 import { Spinner, Button, Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, Tooltip, Tabs, Tab } from "@heroui/react";
 import { useOrderStore } from "@/store/useOrderStore";
 import { payOrder, getTodayOrders, cancelOrderAction, replaceOrderItemCode, refundOrderItem, refundFullOrder, notifyTraiteurAction, requeueForPrint } from "./actions";
-import { InitiateReturnModal } from "@/components/admin/modals/InitiateReturnModal";
-import { ApproveReturnModal } from "@/components/admin/modals/ApproveReturnModal";
+import dynamic from "next/dynamic";
+const InitiateReturnModal = dynamic(() => import("@/components/admin/modals/InitiateReturnModal").then(m => m.InitiateReturnModal), { ssr: false });
+const ApproveReturnModal = dynamic(() => import("@/components/admin/modals/ApproveReturnModal").then(m => m.ApproveReturnModal), { ssr: false });
+const OrderDetailModal = dynamic(() => import("@/components/admin/modals/OrderDetailModal"), { ssr: false });
+const RefundOrderModal = dynamic(() => import("@/components/admin/modals/RefundOrderModal"), { ssr: false });
 import { useAuthStore } from "@/store/useAuthStore";
 import { toast } from "react-hot-toast";
-import OrderDetailModal from "@/components/admin/modals/OrderDetailModal";
-import RefundOrderModal from "@/components/admin/modals/RefundOrderModal";
-import { Eye, User as UserIcon, Plus, RotateCcw, ShoppingCart, LayoutGrid, Clock } from "lucide-react";
+import { Eye, User as UserIcon, Plus, RotateCcw, Clock } from "lucide-react";
 import { getAllClients, createClient } from "../clients/actions";
 import { formatCurrency, formatWhatsApp } from "@/lib/formatters";
 import { ThermalReceiptV2 } from "@/components/admin/receipt/ThermalReceiptV2";
 import { useSettingsStore } from "@/store/useSettingsStore";
-import { CatalogueCaisse } from "@/components/admin/caisse/CatalogueCaisse";
-import { CartSection } from "@/components/admin/caisse/CartSection";
 
 export default function CaisseContent() {
     const {
@@ -271,9 +270,9 @@ export default function CaisseContent() {
                     variant="underlined"
                     classNames={{
                         tabList: "gap-6 w-full relative rounded-none border-b border-white/5 px-6 bg-black/20",
-                        cursor: "w-full bg-[#ec5b13]",
+                        cursor: "w-full bg-[var(--primary)]",
                         tab: "max-w-fit px-0 h-14",
-                        tabContent: "group-data-[selected=true]:text-[#ec5b13] font-black uppercase text-xs tracking-widest"
+                        tabContent: "group-data-[selected=true]:text-[var(--primary)] font-black uppercase text-xs tracking-widest"
                     }}
                 >
                     <Tab
@@ -287,7 +286,7 @@ export default function CaisseContent() {
                     >
                         <div className="flex h-[calc(100vh-140px)] gap-4 p-4">
                             {/* Left Zone (60%) - Order List */}
-                            <section className="flex-[0.6] min-w-0 flex flex-col bg-background-light dark:bg-[#110b08]/80 backdrop-blur-md rounded-2xl border border-[#ec5b13]/10 overflow-hidden">
+                            <section className="flex-[0.6] min-w-0 flex flex-col bg-background-light dark:bg-[#110b08]/80 backdrop-blur-md rounded-2xl border border-[var(--primary)]/10 overflow-hidden">
                                 {/* Pending Returns Section — SUPER_ADMIN only */}
                                 {(user?.role as string) === "SUPER_ADMIN" && allTodayOrders.some((o: any) => o.returnRequest?.status === "EN_ATTENTE") && (
                                     <div className="px-6 pt-4">
@@ -323,16 +322,16 @@ export default function CaisseContent() {
                                 <header className="p-6 space-y-6">
                                     <div className="flex items-center justify-between gap-4">
                                         <div className="flex items-center gap-3">
-                                            <h2 className="text-lg font-bold tracking-tight shrink-0 text-[#ec5b13]">Commandes du jour</h2>
+                                            <h2 className="text-lg font-bold tracking-tight shrink-0 text-[var(--primary)]">Commandes du jour</h2>
                                         </div>
-                                        <div className="flex flex-nowrap gap-1 p-1 bg-slate-200 dark:bg-[#ec5b13]/5 rounded-xl transition-all overflow-x-auto scrollbar-hide">
+                                        <div className="flex flex-nowrap gap-1 p-1 bg-slate-200 dark:bg-[var(--primary)]/5 rounded-xl transition-all overflow-x-auto scrollbar-hide">
                                             {["Toutes", "En attente", "Payées", "Partiel", "Dettes", "Livrées", "Remboursés"].map((s) => (
                                                 <button
                                                     key={s}
                                                     onClick={() => setFilterStatus(s)}
                                                     className={`px-2 py-1 text-[10px] font-black uppercase tracking-tighter rounded-lg transition-all whitespace-nowrap ${filterStatus === s
-                                                        ? "bg-white dark:bg-[#ec5b13] text-[#ec5b13] dark:text-white shadow-sm"
-                                                        : "text-slate-500 hover:text-[#ec5b13]"
+                                                        ? "bg-white dark:bg-[var(--primary)] text-[var(--primary)] dark:text-white shadow-sm"
+                                                        : "text-slate-500 hover:text-[var(--primary)]"
                                                         }`}
                                                 >
                                                     {s}
@@ -344,7 +343,7 @@ export default function CaisseContent() {
                                     <div className="relative">
                                         <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">search</span>
                                         <input
-                                            className="w-full bg-white dark:bg-[#ec5b13]/5 border border-slate-200 dark:border-[#ec5b13]/20 rounded-xl py-3 pl-12 pr-4 focus:ring-2 focus:ring-[#ec5b13] focus:border-transparent outline-none transition-all placeholder:text-slate-400"
+                                            className="w-full bg-white dark:bg-[var(--primary)]/5 border border-slate-200 dark:border-[var(--primary)]/20 rounded-xl py-3 pl-12 pr-4 focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent outline-none transition-all placeholder:text-slate-400"
                                             placeholder="Rechercher une commande (ex: #A45)"
                                             type="text"
                                             value={searchQuery}
@@ -356,17 +355,17 @@ export default function CaisseContent() {
                                 {/* Orders List / Cards */}
                                 <div className="flex-1 overflow-y-auto custom-scrollbar px-6 pb-6">
                                     {/* Desktop Table View */}
-                                    <div className="hidden md:block bg-white dark:bg-[#ec5b13]/5 rounded-2xl border border-slate-200 dark:border-[#ec5b13]/10 overflow-x-auto shadow-sm">
+                                    <div className="hidden md:block bg-[#161616] rounded-2xl border border-[#262626] overflow-x-auto shadow-sm">
                                         <table className="w-full text-left border-collapse">
                                             <thead>
-                                                <tr className="border-b border-slate-100 dark:border-[#ec5b13]/10 bg-slate-50 dark:bg-[#ec5b13]/10">
+                                                <tr className="border-b border-[#262626] bg-[#1a1a1a]">
                                                     <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-500">Order #</th>
                                                     <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-500">Heure</th>
                                                     <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-500">Montant</th>
                                                     <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-500 text-right">Actions</th>
                                                 </tr>
                                             </thead>
-                                            <tbody className="divide-y divide-slate-100 dark:divide-[#ec5b13]/10">
+                                            <tbody className="divide-y divide-[#262626]">
                                                 {isLoading && allTodayOrders.length === 0 ? (
                                                     <tr>
                                                         <td colSpan={4} className="p-12 text-center"><Spinner color="warning" /></td>
@@ -378,9 +377,9 @@ export default function CaisseContent() {
                                                         <tr
                                                             key={o.id}
                                                             onClick={() => setCurrentOrder(o)}
-                                                            className={`cursor-pointer transition-colors ${isActive ? 'bg-[#ec5b13]/5 border-l-4 border-l-[#ec5b13]' : 'hover:bg-slate-50 dark:hover:bg-[#ec5b13]/10 border-l-4 border-l-transparent'}`}
+                                                            className={`cursor-pointer transition-colors ${isActive ? 'bg-[var(--primary)]/10 border-l-4 border-l-[var(--primary)]' : 'hover:bg-[#1f1f1f] border-l-4 border-l-transparent'}`}
                                                         >
-                                                            <td className={`px-6 py-4 font-bold ${isActive ? 'text-[#ec5b13]' : ''}`}>
+                                                            <td className={`px-6 py-4 font-bold ${isActive ? 'text-[var(--primary)]' : 'text-slate-200'}`}>
                                                                 <div className="flex items-center gap-2">
                                                                     <span>{o.orderNumber.startsWith('#') ? o.orderNumber : `#${o.orderNumber}`}</span>
                                                                     {o.deliveryMethod === "WHATSAPP" && (
@@ -394,12 +393,12 @@ export default function CaisseContent() {
                                                                     )}
                                                                 </div>
                                                             </td>
-                                                            <td className="px-6 py-4 text-sm text-slate-500 dark:text-slate-400">
+                                                            <td className="px-6 py-4 text-sm text-slate-500">
                                                                 {new Date(o.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                                             </td>
                                                             <td className="px-6 py-4">
                                                                 <div className="flex flex-col">
-                                                                    <span className="font-semibold whitespace-nowrap text-slate-900 dark:text-white">
+                                                                    <span className="font-semibold whitespace-nowrap text-slate-200">
                                                                         {formatCurrency(Number(o.totalAmount) - Number(o.remise || 0), 'DZD')}
                                                                     </span>
                                                                     {Number(o.remise || 0) > 0 && (
@@ -420,7 +419,7 @@ export default function CaisseContent() {
                                                                             setOrderForDetail(o);
                                                                             setIsDetailModalOpen(true);
                                                                         }}
-                                                                        className="p-1.5 rounded-lg bg-white/5 hover:bg-[#ec5b13]/20 text-slate-400 hover:text-[#ec5b13] transition-all"
+                                                                        className="p-1.5 rounded-lg bg-white/5 hover:bg-[var(--primary)]/20 text-slate-400 hover:text-[var(--primary)] transition-all"
                                                                     >
                                                                         <Eye size={14} />
                                                                     </button>
@@ -475,13 +474,13 @@ export default function CaisseContent() {
                                                     key={o.id}
                                                     onClick={() => setCurrentOrder(o)}
                                                     className={`p-4 rounded-2xl border transition-all cursor-pointer ${isActive
-                                                        ? 'bg-[#ec5b13]/10 border-[#ec5b13] shadow-lg shadow-[#ec5b13]/5 ring-1 ring-[#ec5b13]/20'
-                                                        : 'bg-white dark:bg-[#ec5b13]/5 border-slate-200 dark:border-[#ec5b13]/10 shadow-sm'
+                                                        ? 'bg-[var(--primary)]/10 border-[var(--primary)] shadow-lg shadow-[var(--primary)]/5 ring-1 ring-[var(--primary)]/20'
+                                                        : 'bg-white dark:bg-[var(--primary)]/5 border-slate-200 dark:border-[var(--primary)]/10 shadow-sm'
                                                         }`}
                                                 >
                                                     <div className="flex items-center justify-between mb-3">
                                                         <div className="flex items-center gap-2">
-                                                            <span className={`text-sm font-black ${isActive ? 'text-[#ec5b13]' : 'text-slate-900 dark:text-white'}`}>
+                                                            <span className={`text-sm font-black ${isActive ? 'text-[var(--primary)]' : 'text-slate-900 dark:text-white'}`}>
                                                                 {o.orderNumber.startsWith('#') ? o.orderNumber : `#${o.orderNumber}`}
                                                             </span>
                                                             {o.deliveryMethod === "WHATSAPP" && (
@@ -522,7 +521,7 @@ export default function CaisseContent() {
                                                                     setOrderForDetail(o);
                                                                     setIsDetailModalOpen(true);
                                                                 }}
-                                                                className="text-[#ec5b13]"
+                                                                className="text-[var(--primary)]"
                                                             >
                                                                 <Eye size={16} />
                                                             </Button>
@@ -569,15 +568,15 @@ export default function CaisseContent() {
                                             {(currentOrder.items as any[]).map((item, idx) => {
                                                 const linkedSuppliers = item.variant?.variantSuppliers || [];
                                                 return (
-                                                    <div key={idx} className="flex flex-col gap-3 p-4 rounded-2xl bg-slate-50 dark:bg-[#ec5b13]/5 border border-slate-200 dark:border-[#ec5b13]/10 group">
+                                                    <div key={idx} className="flex flex-col gap-3 p-4 rounded-2xl bg-[#1a1a1a] border border-[#262626] group">
                                                         <div className="flex items-center gap-4">
-                                                            <div className="w-12 h-12 rounded-xl bg-[#ec5b13]/20 flex items-center justify-center overflow-hidden shrink-0">
-                                                                <span className="material-symbols-outlined text-[#ec5b13] text-xl">category</span>
+                                                            <div className="w-12 h-12 rounded-xl bg-[var(--primary)]/20 flex items-center justify-center overflow-hidden shrink-0">
+                                                                <span className="material-symbols-outlined text-[var(--primary)] text-xl">category</span>
                                                             </div>
                                                             <div className="flex-1 min-w-0">
-                                                                <p className="font-bold text-sm truncate uppercase tracking-tight">{item.name}</p>
+                                                                <p className="font-bold text-sm truncate uppercase tracking-tight text-slate-200">{item.name}</p>
                                                                 {item.customData && (
-                                                                    <p className="text-[10px] text-[#ec5b13] font-black uppercase tracking-widest mt-0.5 flex items-center gap-1">
+                                                                    <p className="text-[10px] text-[var(--primary)] font-black uppercase tracking-widest mt-0.5 flex items-center gap-1">
                                                                         <span className="material-symbols-outlined !text-[12px]">poker_chip</span>
                                                                         ID/LIEN: {item.customData}
                                                                     </p>
@@ -597,11 +596,11 @@ export default function CaisseContent() {
 
                                                         {/* Supplier & Price Override Section */}
                                                         {linkedSuppliers.length > 0 && (
-                                                            <div className="flex flex-col gap-2 pt-2 border-t border-[#ec5b13]/10">
+                                                            <div className="flex flex-col gap-2 pt-2 border-t border-[var(--primary)]/10">
                                                                 <div className="flex items-center gap-2">
                                                                     <span className="text-[10px] font-bold text-slate-500 uppercase shrink-0">Fournisseur :</span>
                                                                     <select
-                                                                        className="flex-1 bg-black/40 border border-[#ec5b13]/20 rounded-lg px-2 py-1 text-[11px] text-white outline-none cursor-pointer hover:border-[#ec5b13]/50 transition-colors"
+                                                                        className="flex-1 bg-black/40 border border-[var(--primary)]/20 rounded-lg px-2 py-1 text-[11px] text-white outline-none cursor-pointer hover:border-[var(--primary)]/50 transition-colors"
                                                                         value={itemSuppliers[item.id] || ""}
                                                                         onChange={(e) => {
                                                                             const sid = parseInt(e.target.value);
@@ -628,7 +627,7 @@ export default function CaisseContent() {
                                                                     <span className="text-[10px] font-bold text-slate-500 uppercase shrink-0">Prix Achat :</span>
                                                                     <div className="flex-1 flex gap-1 items-center">
                                                                         <input
-                                                                            className="flex-1 bg-black/40 border border-[#ec5b13]/20 rounded-lg px-2 py-1 text-[11px] text-white outline-none focus:border-[#ec5b13]/50 transition-colors"
+                                                                            className="flex-1 bg-black/40 border border-[var(--primary)]/20 rounded-lg px-2 py-1 text-[11px] text-white outline-none focus:border-[var(--primary)]/50 transition-colors"
                                                                             type="text"
                                                                             value={itemPriceOverrides[item.id]?.price || ""}
                                                                             placeholder="0.00"
@@ -638,7 +637,7 @@ export default function CaisseContent() {
                                                                             }))}
                                                                         />
                                                                         <select
-                                                                            className="bg-black/40 border border-[#ec5b13]/20 rounded-lg px-1 py-1 text-[11px] text-white outline-none cursor-pointer"
+                                                                            className="bg-black/40 border border-[var(--primary)]/20 rounded-lg px-1 py-1 text-[11px] text-white outline-none cursor-pointer"
                                                                             value={itemPriceOverrides[item.id]?.currency || "USD"}
                                                                             onChange={(e) => setItemPriceOverrides(prev => ({
                                                                                 ...prev,
@@ -658,7 +657,7 @@ export default function CaisseContent() {
                                         </div>
 
                                         {/* Financial Block */}
-                                        <div className="border-t border-slate-200 dark:border-[#ec5b13]/20 pt-6 space-y-4 shrink-0">
+                                        <div className="border-t border-slate-200 dark:border-[var(--primary)]/20 pt-6 space-y-4 shrink-0">
                                             <div className="flex justify-between items-center text-sm font-medium">
                                                 <span className="text-slate-500">Sous-total</span>
                                                 <span className="whitespace-nowrap">{formatCurrency(currentOrder.totalAmount, 'DZD')}</span>
@@ -666,7 +665,7 @@ export default function CaisseContent() {
 
                                             {/* Remise & Client Block */}
                                             <div className="grid grid-cols-2 gap-3">
-                                                <div className="flex flex-col gap-1.5 p-3 bg-slate-50 dark:bg-white/5 rounded-xl border border-slate-200 dark:border-white/10">
+                                                <div className="flex flex-col gap-1.5 p-3 bg-[#1a1a1a] rounded-xl border border-[#262626]">
                                                     <span className="text-[10px] uppercase font-bold text-slate-500">Remise (DZD)</span>
                                                     <input
                                                         className="bg-transparent border-none focus:ring-0 p-0 font-bold text-emerald-500 outline-none w-full"
@@ -676,10 +675,10 @@ export default function CaisseContent() {
                                                         onChange={(e) => setRemise(Number(e.target.value))}
                                                     />
                                                 </div>
-                                                <div className="flex flex-col gap-1.5 p-3 bg-slate-50 dark:bg-white/5 rounded-xl border border-slate-200 dark:border-white/10">
+                                                <div className="flex flex-col gap-1.5 p-3 bg-[#1a1a1a] rounded-xl border border-[#262626]">
                                                     <span className="text-[10px] uppercase font-bold text-slate-500">Montant Reçu</span>
                                                     <input
-                                                        className="bg-transparent border-none focus:ring-0 p-0 font-bold text-[#ec5b13] outline-none w-full"
+                                                        className="bg-transparent border-none focus:ring-0 p-0 font-bold text-[var(--primary)] outline-none w-full"
                                                         type="number"
                                                         placeholder="0"
                                                         value={montantRecu}
@@ -709,7 +708,7 @@ export default function CaisseContent() {
                                             </div>
 
                                             {/* Client Selection */}
-                                            <div className="p-3 bg-slate-50 dark:bg-white/5 rounded-xl border border-slate-200 dark:border-white/10 space-y-2">
+                                            <div className="p-3 bg-[#1a1a1a] rounded-xl border border-[#262626] space-y-2">
                                                 <div className="flex justify-between items-center">
                                                     <span className="text-[10px] uppercase font-bold text-slate-500 flex items-center gap-1">
                                                         <UserIcon size={10} /> Client (Optionnel)
@@ -720,7 +719,7 @@ export default function CaisseContent() {
                                                 </div>
                                                 <div className="flex gap-2">
                                                     <select
-                                                        className="bg-transparent border-none focus:ring-0 p-0 text-sm font-semibold text-[#ec5b13] dark:text-white flex-1 outline-none"
+                                                        className="bg-transparent border-none focus:ring-0 p-0 text-sm font-semibold text-[var(--primary)] dark:text-white flex-1 outline-none"
                                                         value={selectedClientId || ""}
                                                         onChange={(e) => setSelectedClientId(Number(e.target.value) || null)}
                                                     >
@@ -731,7 +730,7 @@ export default function CaisseContent() {
                                                     </select>
                                                     <button
                                                         onClick={() => setIsCreatingClient(true)}
-                                                        className="p-1 rounded bg-[#ec5b13]/20 text-[#ec5b13] hover:bg-[#ec5b13]/30 transition-colors"
+                                                        className="p-1 rounded bg-[var(--primary)]/20 text-[var(--primary)] hover:bg-[var(--primary)]/30 transition-colors"
                                                     >
                                                         <Plus size={14} />
                                                     </button>
@@ -741,13 +740,27 @@ export default function CaisseContent() {
                                             <div className="flex justify-between items-end pt-2">
                                                 <span className="text-sm font-bold uppercase tracking-widest text-slate-500 pb-2">Reste à payer</span>
                                                 <div className="text-right">
-                                                    <span className={`text-4xl font-black tracking-tight whitespace-nowrap ${(Number(currentOrder.totalAmount) - remise - (montantRecu === "" ? (Number(currentOrder.totalAmount) - remise) : Number(montantRecu))) > 0 ? 'text-red-500' : 'text-[#ec5b13]'}`}>
+                                                    <span className={`text-4xl font-black tracking-tight whitespace-nowrap ${(Number(currentOrder.totalAmount) - remise - (montantRecu === "" ? (Number(currentOrder.totalAmount) - remise) : Number(montantRecu))) > 0 ? 'text-red-500' : 'text-[var(--primary)]'}`}>
                                                         {formatCurrency(Math.max(0, Number(currentOrder.totalAmount) - remise - (montantRecu === "" ? (Number(currentOrder.totalAmount) - remise) : Number(montantRecu))), 'DZD')}
                                                     </span>
                                                     <span className="text-xl font-bold ml-1 opacity-50">DZD</span>
                                                 </div>
                                             </div>
                                         </div>
+
+                                        {/* Reprint Button — commandes déjà traitées */}
+                                        {currentOrder.status !== 'EN_ATTENTE' && (
+                                            <div className="mt-6 shrink-0 pb-2">
+                                                <button
+                                                    onClick={() => handlePrint(currentOrder)}
+                                                    disabled={isUpdating}
+                                                    className="w-full flex items-center justify-center gap-2 p-4 rounded-xl bg-white/5 border border-white/10 text-slate-300 hover:bg-white/10 active:scale-95 transition-all font-bold text-sm disabled:opacity-50"
+                                                >
+                                                    <span className="material-symbols-outlined">print</span>
+                                                    <span>Réimprimer le Ticket</span>
+                                                </button>
+                                            </div>
+                                        )}
 
                                         {/* Payment Actions */}
                                         {currentOrder.status === 'EN_ATTENTE' && (
@@ -788,34 +801,6 @@ export default function CaisseContent() {
                                     </div>
                                 )}
                             </section>
-                        </div>
-                    </Tab>
-                    <Tab
-                        key="catalogue"
-                        title={
-                            <div className="flex items-center space-x-2">
-                                <LayoutGrid size={16} />
-                                <span>Catalogue POS</span>
-                            </div>
-                        }
-                    >
-                        <div className="flex h-[calc(100vh-140px)] p-4">
-                            <CatalogueCaisse />
-                        </div>
-                    </Tab>
-                    <Tab
-                        key="cart"
-                        title={
-                            <div className="flex items-center space-x-2">
-                                <ShoppingCart size={16} />
-                                <span>Mon Panier</span>
-                            </div>
-                        }
-                    >
-                        <div className="flex h-[calc(100vh-140px)] p-4">
-                            <div className="flex-1 max-w-2xl mx-auto h-full">
-                                <CartSection />
-                            </div>
                         </div>
                     </Tab>
                 </Tabs>
@@ -969,7 +954,7 @@ export default function CaisseContent() {
                                             <span className="text-[10px] uppercase font-bold text-slate-500">Nom Complet</span>
                                             <input
                                                 autoFocus
-                                                className="w-full bg-[#0a0a0a] border border-[#262626] rounded-xl p-3 text-sm focus:border-[#ec5b13] outline-none transition-colors"
+                                                className="w-full bg-[#0a0a0a] border border-[#262626] rounded-xl p-3 text-sm focus:border-[var(--primary)] outline-none transition-colors"
                                                 placeholder="Ex: Ahmed Ben"
                                                 value={newClientName}
                                                 onChange={(e) => setNewClientName(e.target.value)}
@@ -978,7 +963,7 @@ export default function CaisseContent() {
                                         <div className="flex flex-col gap-2">
                                             <span className="text-[10px] uppercase font-bold text-slate-500">Téléphone (Optionnel)</span>
                                             <input
-                                                className="w-full bg-[#0a0a0a] border border-[#262626] rounded-xl p-3 text-sm focus:border-[#ec5b13] outline-none transition-colors"
+                                                className="w-full bg-[#0a0a0a] border border-[#262626] rounded-xl p-3 text-sm focus:border-[var(--primary)] outline-none transition-colors"
                                                 placeholder="0X XX XX XX XX"
                                                 value={newClientPhone}
                                                 onChange={(e) => setNewClientPhone(e.target.value)}
@@ -989,7 +974,7 @@ export default function CaisseContent() {
                                 <ModalFooter>
                                     <Button variant="flat" onPress={onClose} className="text-slate-400">Ignorer</Button>
                                     <Button
-                                        className="bg-[#ec5b13] text-white font-bold px-8"
+                                        className="bg-[var(--primary)] text-white font-bold px-8"
                                         onPress={innerSave}
                                     >
                                         Valider & Sélectionner

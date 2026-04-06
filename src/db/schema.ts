@@ -121,6 +121,7 @@ export const digitalCodes = pgTable("digital_codes", {
     variantId: integer("variant_id").references(() => productVariants.id, { onDelete: "cascade" }).notNull(),
     code: text("code").notNull(),
     outlookPassword: text("outlook_password"), // Encrypted outlook password
+    isRelayed: boolean("is_relayed").default(false).notNull(),
     status: digitalCodeStatusEnum("status").default("DISPONIBLE").notNull(),
     purchasePrice: numeric("purchase_price", { precision: 12, scale: 2 }), // Cost of the account
     purchaseCurrency: text("purchase_currency").default("DZD"),
@@ -128,6 +129,13 @@ export const digitalCodes = pgTable("digital_codes", {
     orderItemId: integer("order_item_id").references(() => orderItems.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at", { mode: 'date' }).defaultNow(),
     expiresAt: timestamp("expires_at", { mode: 'date' }),
+
+    // Microsoft Graph Integration
+    msRefreshToken: text("ms_refresh_token"), // Encrypted refresh token
+    msStatus: text("ms_status").default("NONE"), // CONNECTED, EXPIRED, NONE
+    msAccountEmail: text("ms_account_email"), // The Outlook/Hotmail email that authorized the app
+    msClientId: text("ms_client_id"), // The Specific Azure Client ID used for this account
+    msLastSync: timestamp("ms_last_sync", { mode: 'date' }),
 
 }, (table) => {
     return {
@@ -226,7 +234,7 @@ export const shopSettings = pgTable("shop_settings", {
     chatbotEnabled: boolean("chatbot_enabled").default(false).notNull(),
     chatbotGreeting: text("chatbot_greeting"),
     whatsappWebhookUrl: text("whatsapp_webhook_url"),
-    whatsappVerifyToken: text("whatsapp_verify_token").default("flexbox_direct_webhook_secret"),
+    whatsappVerifyToken: text("whatsapp_verify_token"),
     geminiApiKey: text("gemini_api_key"),
     chatbotRole: text("chatbot_role"),
     n8nWebhookUrl: text("n8n_webhook_url"),
@@ -236,6 +244,10 @@ export const shopSettings = pgTable("shop_settings", {
     stockAlertThreshold: integer("stock_alert_threshold").default(5).notNull(),
     netflixResolverEmail: text("netflix_resolver_email"),
     netflixResolverPassword: text("netflix_resolver_password"),
+    microsoftClientId: text("microsoft_client_id"),
+    microsoftTenantId: text("microsoft_tenant_id"),
+    microsoftClientSecret: text("microsoft_client_secret"),
+    microsoftRedirectUri: text("microsoft_redirect_uri"),
 });
 
 export const whatsappFaqs = pgTable("whatsapp_faqs", {

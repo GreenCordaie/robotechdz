@@ -25,7 +25,7 @@ const FLOAT_DURATIONS = ["6s", "7s", "5.5s", "6.5s"];
 
 export default function IdleView({ products = [] }: IdleViewProps) {
     const { setStep } = useKioskStore();
-    const { shopName } = useSettingsStore();
+    const { shopName, logoUrl } = useSettingsStore();
     const [isSupportOpen, setIsSupportOpen] = useState(false);
 
     const featuredProducts = products.slice(0, 4);
@@ -44,29 +44,24 @@ export default function IdleView({ products = [] }: IdleViewProps) {
             <div className="absolute inset-0 z-0 pointer-events-none">
                 <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_50%_0%,rgba(236,91,19,0.08),transparent_55%)]" />
                 <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_85%_90%,rgba(236,91,19,0.05),transparent_45%)]" />
-                {/* Grid lines */}
-                <div
-                    className="absolute inset-0 opacity-[0.05]"
-                    style={{
-                        backgroundImage:
-                            "linear-gradient(rgba(0,0,0,0.4) 1px, transparent 1px), linear-gradient(90deg, rgba(0,0,0,0.4) 1px, transparent 1px)",
-                        backgroundSize: "80px 80px",
-                    }}
-                />
             </div>
 
             {/* ── Header ── */}
             <header className="relative z-10 flex items-center justify-between px-12 pt-10 pointer-events-none">
                 {/* Logo */}
                 <div className="flex items-center gap-4">
-                    <div className="size-12 bg-primary rounded-xl flex items-center justify-center shadow-lg shadow-primary/30">
-                        <svg className="text-white" fill="none" height="24" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" width="24">
-                            <path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-                        </svg>
-                    </div>
+                    {logoUrl ? (
+                        <Image src={logoUrl} alt={shopName} width={48} height={48} className="object-contain rounded-xl" style={{ width: 'auto', height: 'auto' }} />
+                    ) : (
+                        <div className="size-12 bg-primary rounded-xl flex items-center justify-center shadow-lg shadow-primary/30">
+                            <svg className="text-white" fill="none" height="24" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" width="24">
+                                <path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                            </svg>
+                        </div>
+                    )}
                     <div>
                         <p className="text-[10px] font-bold tracking-[0.3em] text-black/30 uppercase">Bienvenue chez</p>
-                        <h2 className="text-lg font-black tracking-tight text-black leading-none">{shopName || "FLEXBOX"}</h2>
+                        <h2 className="text-lg font-black tracking-tight text-black leading-none">{shopName}</h2>
                     </div>
                 </div>
 
@@ -100,7 +95,7 @@ export default function IdleView({ products = [] }: IdleViewProps) {
                         <span
                             className="inline-block"
                             style={{
-                                background: "linear-gradient(135deg, #ec5b13 0%, #ff9a4a 60%, #ffb347 100%)",
+                                background: `linear-gradient(135deg, var(--primary) 0%, #ff9a4a 60%, #ffb347 100%)`,
                                 WebkitBackgroundClip: "text",
                                 WebkitTextFillColor: "transparent",
                                 backgroundClip: "text",
@@ -133,20 +128,20 @@ export default function IdleView({ products = [] }: IdleViewProps) {
                         </button>
 
                         {/* Secondary Actions */}
-                        <div className="flex items-center gap-3 mt-2">
+                        <div className="flex items-center gap-3 mt-4">
                             <button
                                 onClick={(e) => { e.stopPropagation(); setIsSupportOpen(true); }}
-                                className="flex items-center gap-2 px-5 py-3 bg-black/5 hover:bg-black/10 rounded-xl text-black/50 hover:text-black text-xs font-bold tracking-widest uppercase transition-all"
+                                className="flex items-center gap-2 px-6 h-11 bg-black/5 hover:bg-black/10 rounded-xl text-black/60 hover:text-black text-xs font-bold tracking-widest uppercase transition-all border border-black/5"
                             >
-                                <LifeBuoy size={14} />
+                                <LifeBuoy size={16} />
                                 Besoin d&apos;aide ?
                             </button>
                             <Link
                                 href="/suivi"
                                 onClick={(e) => e.stopPropagation()}
-                                className="flex items-center gap-2 px-5 py-3 bg-black/5 hover:bg-black/10 rounded-xl text-black/50 hover:text-black text-xs font-bold tracking-widest uppercase transition-all"
+                                className="flex items-center gap-2 px-6 h-11 bg-black/5 hover:bg-black/10 rounded-xl text-black/60 hover:text-black text-xs font-bold tracking-widest uppercase transition-all border border-black/5"
                             >
-                                <PackageSearch size={14} />
+                                <PackageSearch size={16} />
                                 Suivre ma commande
                             </Link>
                         </div>
@@ -243,7 +238,7 @@ export default function IdleView({ products = [] }: IdleViewProps) {
                 </div>
 
                 <p className="text-[10px] font-bold tracking-[0.2em] text-black/20 uppercase">
-                    © {new Date().getFullYear()} {shopName || "FLEXBOX"} — Borne Interactive
+                    © {new Date().getFullYear()} {shopName} — Borne Interactive
                 </p>
             </footer>
 

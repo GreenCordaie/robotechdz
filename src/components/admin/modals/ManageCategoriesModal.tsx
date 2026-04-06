@@ -74,7 +74,7 @@ export const ManageCategoriesModal = ({ isOpen, onClose, categories, onEdit }: M
                 {(onClose) => (
                     <>
                         <ModalHeader className="flex items-center gap-3">
-                            <span className="material-symbols-outlined text-[#ec5b13]">settings_suggest</span>
+                            <span className="material-symbols-outlined text-[var(--primary)]">settings_suggest</span>
                             <h2 className="text-slate-100 text-lg font-bold">Gérer les Catégories</h2>
                         </ModalHeader>
                         <ModalBody className="p-0">

@@ -14,7 +14,7 @@ export class SystemQueries {
         const settings = await db.query.shopSettings.findFirst();
         if (!settings) {
             const [newSettings] = await db.insert(shopSettings).values({
-                shopName: "FLEXBOX DIRECT",
+                shopName: "Ma Boutique",
             }).returning();
             return newSettings;
         }
@@ -29,7 +29,10 @@ export class SystemQueries {
         return {
             isB2bEnabled: !!settings?.isB2bEnabled,
             isMaintenanceMode: !!settings?.isMaintenanceMode,
-            shopName: settings?.shopName || "FLEXBOX DIRECT"
+            shopName: settings?.shopName || "Ma Boutique",
+            accentColor: settings?.accentColor || "#ec5b13",
+            logoUrl: settings?.logoUrl || null,
+            faviconUrl: settings?.faviconUrl || null,
         };
     });
 

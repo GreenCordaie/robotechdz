@@ -14,11 +14,12 @@ import {
 import { Button, Card, CardBody, Chip, Spinner, Dropdown, DropdownTrigger, DropdownMenu, DropdownItem, Pagination } from "@heroui/react";
 import { formatCurrency } from "@/lib/formatters";
 import NextImage from "next/image";
-import { AddProductModal } from "@/components/admin/modals/AddProductModal";
-import { AddCategoryModal } from "@/components/admin/modals/AddCategoryModal";
-import { ManageCategoriesModal } from "@/components/admin/modals/ManageCategoriesModal";
-import { RechargeBalanceModal } from "@/components/admin/modals/RechargeBalanceModal";
-import { MassImportModal } from "@/components/admin/modals/MassImportModal";
+import dynamic from "next/dynamic";
+const AddProductModal = dynamic(() => import("@/components/admin/modals/AddProductModal").then(m => m.AddProductModal), { ssr: false });
+const AddCategoryModal = dynamic(() => import("@/components/admin/modals/AddCategoryModal").then(m => m.AddCategoryModal), { ssr: false });
+const ManageCategoriesModal = dynamic(() => import("@/components/admin/modals/ManageCategoriesModal").then(m => m.ManageCategoriesModal), { ssr: false });
+const RechargeBalanceModal = dynamic(() => import("@/components/admin/modals/RechargeBalanceModal").then(m => m.RechargeBalanceModal), { ssr: false });
+const MassImportModal = dynamic(() => import("@/components/admin/modals/MassImportModal").then(m => m.MassImportModal), { ssr: false });
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { deleteProductAction, toggleProductStatusAction } from "@/app/admin/catalogue/actions";
 import { toast } from "react-hot-toast";
@@ -229,7 +230,7 @@ export default function CatalogueMobile({
                 <div className="flex gap-2 overflow-x-auto no-scrollbar">
                     <button
                         onClick={() => updateParams({ status: "all" })}
-                        className={`px-4 py-2 rounded-full text-[10px] font-black uppercase whitespace-nowrap transition-all ${initialStatus === "all" || !initialStatus ? "bg-[#ec5b13]/20 text-[#ec5b13] border border-[#ec5b13]/30" : "bg-white/5 text-slate-500"}`}
+                        className={`px-4 py-2 rounded-full text-[10px] font-black uppercase whitespace-nowrap transition-all ${initialStatus === "all" || !initialStatus ? "bg-[var(--primary)]/20 text-[var(--primary)] border border-[var(--primary)]/30" : "bg-white/5 text-slate-500"}`}
                     >
                         Tous Statuts
                     </button>

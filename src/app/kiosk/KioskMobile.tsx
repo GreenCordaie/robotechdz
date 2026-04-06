@@ -82,7 +82,7 @@ export default function KioskMobile({ products: initialProducts, categories: ini
                         <div className="relative group cursor-pointer transition-transform duration-500 hover:scale-105 active:scale-95">
                             <div className="absolute -inset-4 bg-primary/20 rounded-full blur-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-700"></div>
                             <div className="relative w-56 h-56 mb-12 drop-shadow-2xl">
-                                <Image src="/logo.png" alt="Robotech" fill className="object-contain" priority />
+                                <Image src="/logo.png" alt="Robotech" fill sizes="224px" className="object-contain" priority />
                             </div>
                         </div>
 
@@ -127,7 +127,7 @@ export default function KioskMobile({ products: initialProducts, categories: ini
             {(step === "IDLE" || step === "CATALOGUE") && cart.length > 0 && (
                 <button
                     onClick={() => setIsDeliveryModalOpen(true)}
-                    className="fixed bottom-10 right-6 bg-primary text-white size-16 rounded-full shadow-2xl shadow-primary/30 flex items-center justify-center hover:scale-110 active:scale-95 transition-all z-40 group"
+                    className="fixed bottom-10 left-1/2 -translate-x-1/2 bg-primary text-white size-16 rounded-full shadow-2xl shadow-primary/30 flex items-center justify-center hover:scale-110 active:scale-95 transition-all z-40 group"
                 >
                     <div className="absolute -top-1 -right-1 size-7 bg-white text-primary rounded-full flex items-center justify-center text-xs font-black shadow-lg border-2 border-primary">
                         {cart.length}
@@ -215,7 +215,7 @@ function CatalogueView({ products, categories, selectedCategory, setSelectedCate
             </header>
 
             {/* Categories Scroll Horizontal */}
-            <div className="flex overflow-x-auto gap-2 pb-4 no-scrollbar -mx-4 px-4 sticky top-0 bg-[#F4F7FE] z-10 pt-2">
+            <div className="flex overflow-x-auto gap-2 pb-4 hide-scrollbar -mx-4 px-4 sticky top-0 bg-[#F8F9FA] z-10 pt-2">
                 <button
                     onClick={() => setSelectedCategory("all")}
                     className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all border whitespace-nowrap shrink-0 ${selectedCategory === "all"
@@ -265,6 +265,7 @@ function CatalogueView({ products, categories, selectedCategory, setSelectedCate
                                             src={product.imageUrl}
                                             alt={product.name}
                                             fill
+                                            sizes="96px"
                                             className="object-cover group-hover:scale-110 transition-transform duration-500"
                                         />
                                     ) : (
@@ -293,7 +294,7 @@ function CatalogueView({ products, categories, selectedCategory, setSelectedCate
                                                 <span className="text-[10px] text-slate-400 font-bold uppercase mt-1">Multi-variantes</span>
                                             )}
                                         </div>
-                                        <div className="size-10 bg-primary rounded-xl flex items-center justify-center text-white shadow-lg shadow-primary/20">
+                                        <div className="size-11 bg-primary rounded-xl flex items-center justify-center text-white shadow-lg shadow-primary/20">
                                             <span className="material-symbols-outlined">add_shopping_cart</span>
                                         </div>
                                     </div>

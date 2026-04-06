@@ -56,7 +56,7 @@ export default function ResellerOrders() {
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
                 <div>
                     <h1 className="text-3xl font-black text-white tracking-tight flex items-center gap-3">
-                        <History className="text-[#ec5b13] size-8" />
+                        <History className="text-[var(--primary)] size-8" />
                         Mes Commandes
                     </h1>
                     <p className="text-slate-500 font-medium mt-1 uppercase tracking-widest text-[10px]">Historique complet de vos achats B2B</p>
@@ -102,7 +102,7 @@ export default function ResellerOrders() {
                                                 <span className="text-xs text-slate-400">Articles en gros</span>
                                             </div>
                                         </TableCell>
-                                        <TableCell className="font-black text-[#ec5b13]">{formatCurrency(order.totalAmount, 'DZD')}</TableCell>
+                                        <TableCell className="font-black text-[var(--primary)]">{formatCurrency(order.totalAmount, 'DZD')}</TableCell>
                                         <TableCell>{getStatusChip(order.status)}</TableCell>
                                         <TableCell>
                                             <button className="p-2 rounded-lg bg-white/5 hover:bg-white/10 transition-all text-slate-400 hover:text-white">

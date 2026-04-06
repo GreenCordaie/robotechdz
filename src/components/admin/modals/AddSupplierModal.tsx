@@ -82,7 +82,7 @@ export const AddSupplierModal = ({ isOpen, onClose }: AddSupplierModalProps) => 
                         <ModalHeader>
                             <div className="flex flex-col">
                                 <div className="flex items-center gap-3">
-                                    <span className="material-symbols-outlined text-[#ec5b13] text-2xl font-bold">person_add</span>
+                                    <span className="material-symbols-outlined text-[var(--primary)] text-2xl font-bold">person_add</span>
                                     <h3 className="text-xl font-bold text-white tracking-tight">Ajouter un Nouveau Fournisseur</h3>
                                 </div>
                                 {error && (
@@ -95,7 +95,7 @@ export const AddSupplierModal = ({ isOpen, onClose }: AddSupplierModalProps) => 
                                 <div className="space-y-2">
                                     <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Nom du Fournisseur</label>
                                     <input
-                                        className="w-full bg-black/30 border border-[#3d261c] rounded-xl h-12 px-4 text-white focus:ring-2 focus:ring-[#ec5b13]/50 focus:border-[#ec5b13] transition-all outline-none"
+                                        className="w-full bg-black/30 border border-[#3d261c] rounded-xl h-12 px-4 text-white focus:ring-2 focus:ring-[var(--primary)]/50 focus:border-[var(--primary)] transition-all outline-none"
                                         placeholder="ex: G2A, PrepaidForge, etc."
                                         type="text"
                                         required
@@ -110,14 +110,14 @@ export const AddSupplierModal = ({ isOpen, onClose }: AddSupplierModalProps) => 
                                         <button
                                             type="button"
                                             onClick={() => setCurrency('USD')}
-                                            className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${currency === 'USD' ? 'bg-[#ec5b13] text-white' : 'text-slate-500 hover:text-slate-300'}`}
+                                            className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${currency === 'USD' ? 'bg-[var(--primary)] text-white' : 'text-slate-500 hover:text-slate-300'}`}
                                         >
                                             USD
                                         </button>
                                         <button
                                             type="button"
                                             onClick={() => setCurrency('DZD')}
-                                            className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${currency === 'DZD' ? 'bg-[#ec5b13] text-white' : 'text-slate-500 hover:text-slate-300'}`}
+                                            className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${currency === 'DZD' ? 'bg-[var(--primary)] text-white' : 'text-slate-500 hover:text-slate-300'}`}
                                         >
                                             DZD
                                         </button>
@@ -130,7 +130,7 @@ export const AddSupplierModal = ({ isOpen, onClose }: AddSupplierModalProps) => 
                                     </label>
                                     <div className="relative group">
                                         <input
-                                            className="w-full bg-black/30 border border-[#3d261c] rounded-xl h-12 px-4 text-white focus:ring-2 focus:ring-[#ec5b13]/50 focus:border-[#ec5b13] transition-all outline-none"
+                                            className="w-full bg-black/30 border border-[#3d261c] rounded-xl h-12 px-4 text-white focus:ring-2 focus:ring-[var(--primary)]/50 focus:border-[var(--primary)] transition-all outline-none"
                                             placeholder="0.00"
                                             type="number"
                                             step="0.01"
@@ -153,7 +153,7 @@ export const AddSupplierModal = ({ isOpen, onClose }: AddSupplierModalProps) => 
                                         Annuler
                                     </button>
                                     <button
-                                        className="flex-[2] h-12 rounded-xl bg-[#ec5b13] text-white font-bold text-sm shadow-lg shadow-[#ec5b13]/20 hover:bg-orange-600 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                                        className="flex-[2] h-12 rounded-xl bg-[var(--primary)] text-white font-bold text-sm shadow-lg shadow-[var(--primary)]/20 hover:bg-orange-600 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
                                         type="submit"
                                         disabled={isSaving}
                                     >

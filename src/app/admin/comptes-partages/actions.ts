@@ -38,14 +38,15 @@ export async function getSharedAccountsInventory() {
         }
     });
 
-    // Decrypt codes for admin view — outlookPassword is NEVER exposed (only hasOutlookPassword boolean)
+    // Decrypt codes for admin view — outlookPassword exposed (decrypted) for admin Microsoft linking
     return results.map(v => ({
         ...v,
         digitalCodes: v.digitalCodes.map(dc => ({
             ...dc,
             code: decrypt(dc.code) || dc.code,
-            outlookPassword: undefined, // never expose
+            outlookPassword: dc.outlookPassword ? (decrypt(dc.outlookPassword) || undefined) : undefined,
             hasOutlookPassword: !!dc.outlookPassword,
+            msStatus: dc.msStatus, // DISCONNECTED, CONNECTED, EXPIRED
             slots: dc.slots.map(s => ({
                 ...s,
                 code: s.code ? (decrypt(s.code) || s.code) : null
@@ -74,6 +75,7 @@ export const addSharedAccount = withAuth(
             email: z.string().min(1),
             password: z.string().min(1),
             outlookPassword: z.string().optional(),
+            isRelayed: z.boolean().optional().default(false),
             slots: z.array(z.object({
                 profileName: z.string().optional(),
                 pinCode: z.string().optional()
@@ -83,7 +85,7 @@ export const addSharedAccount = withAuth(
             expiresAt: z.string().optional()
         })
     },
-    async ({ variantId, email, password, outlookPassword, slots: slotsData, purchasePrice, purchaseCurrency, expiresAt }) => {
+    async ({ variantId, email, password, outlookPassword, isRelayed, slots: slotsData, purchasePrice, purchaseCurrency, expiresAt }) => {
         try {
             const variant = await db.query.productVariants.findFirst({
                 where: eq(productVariants.id, variantId),
@@ -99,6 +101,7 @@ export const addSharedAccount = withAuth(
                 email,
                 password,
                 outlookPassword,
+                isRelayed,
                 purchasePrice,
                 purchaseCurrency,
                 expiresAt,
@@ -300,6 +303,7 @@ export const updateSharedAccount = withAuth(
             email: z.string().min(1),
             password: z.string().min(1),
             outlookPassword: z.string().optional(),
+            isRelayed: z.boolean().optional(),
             slots: z.array(z.object({
                 id: z.number(),
                 profileName: z.string().optional(),
@@ -309,7 +313,7 @@ export const updateSharedAccount = withAuth(
             purchaseCurrency: z.string().optional()
         })
     },
-    async ({ id, email, password, outlookPassword, slots: slotsData, purchasePrice, purchaseCurrency }) => {
+    async ({ id, email, password, outlookPassword, isRelayed, slots: slotsData, purchasePrice, purchaseCurrency }) => {
         try {
             const fullCode = `${email} | ${password}`;
 
@@ -321,6 +325,9 @@ export const updateSharedAccount = withAuth(
                 };
                 if (outlookPassword !== undefined) {
                     updateData.outlookPassword = outlookPassword ? encrypt(outlookPassword) : null;
+                }
+                if (isRelayed !== undefined) {
+                    updateData.isRelayed = isRelayed;
                 }
 
                 await tx.update(digitalCodes)
@@ -461,41 +468,66 @@ export const attribuerSlotAutomatiqueAction = withAuth(
 export const getSharedAccountsHistory = withAuth(
     { roles: [UserRole.ADMIN] },
     async () => {
-        const results = await db.query.digitalCodes.findMany({
-            where: eq(digitalCodes.status, "VENDU"),
+        // Fetch ALL shared accounts (all statuses) with full slot + client context
+        const variants = await db.query.productVariants.findMany({
+            where: eq(productVariants.isSharing, true),
             with: {
-                variant: {
+                product: true,
+                digitalCodes: {
                     with: {
-                        product: true
-                    }
-                },
-                slots: {
-                    with: {
-                        orderItem: {
+                        slots: {
                             with: {
-                                order: {
+                                orderItem: {
                                     with: {
-                                        client: true
+                                        order: {
+                                            with: { client: true }
+                                        }
                                     }
                                 }
                             }
                         }
-                    }
+                    },
+                    orderBy: [desc(digitalCodes.createdAt)]
                 }
-            },
-            orderBy: [desc(digitalCodes.id)],
-            limit: 50
+            }
         });
 
-        // Decrypt for admin view
-        return results.map(dc => ({
-            ...dc,
-            code: decrypt(dc.code) || dc.code,
-            slots: dc.slots.map(s => ({
-                ...s,
-                code: s.code ? (decrypt(s.code) || s.code) : null
-            }))
-        }));
+        // Fetch recent resolver audit logs
+        const resolverLogs = await db.query.auditLogs.findMany({
+            where: (al, { inArray }) => inArray(al.action, ['NETFLIX_RESOLVE_MANUAL', 'NETFLIX_RESOLVE_AUTO']),
+            orderBy: [desc(auditLogs.createdAt)],
+            limit: 200
+        });
+
+        // Build a map slotId → [logs]
+        const logsBySlot: Record<string, any[]> = {};
+        for (const log of resolverLogs) {
+            const sid = log.entityId ?? "";
+            if (!sid) continue;
+            if (!logsBySlot[sid]) logsBySlot[sid] = [];
+            logsBySlot[sid].push(log);
+        }
+
+        // Flatten all accounts with decrypted data
+        const accounts: any[] = [];
+        for (const variant of variants) {
+            for (const dc of variant.digitalCodes) {
+                accounts.push({
+                    ...dc,
+                    code: decrypt(dc.code) || dc.code,
+                    outlookPassword: undefined,
+                    hasOutlookPassword: !!dc.outlookPassword,
+                    variant: { ...variant, digitalCodes: undefined },
+                    slots: dc.slots.map(s => ({
+                        ...s,
+                        code: s.code ? (decrypt(s.code) || s.code) : null,
+                        resolverLogs: logsBySlot[String(s.id)] || []
+                    }))
+                });
+            }
+        }
+
+        return { accounts, totalLogs: resolverLogs.length };
     }
 );
 
@@ -523,30 +555,37 @@ export const resolveHouseholdAction = withAuth(
             });
 
             if (!slot) throw new Error("Slot introuvable");
-            if (slot.status !== "VENDU") throw new Error("Le slot n'est pas au statut VENDU");
-            if (!slot.digitalCode?.outlookPassword) throw new Error("Le mot de passe Outlook est manquant pour ce compte");
+
+            if (!slot.digitalCode?.msRefreshToken) {
+                throw new Error("Compte non lié à Microsoft Graph. Veuillez d'abord lier le compte via le bouton Microsoft.");
+            }
 
             const rawPhone = slot.orderItem?.order?.customerPhone || slot.orderItem?.order?.client?.telephone;
             if (!rawPhone) throw new Error("Le client n'a pas de numéro de téléphone associé");
 
             const phone = rawPhone.replace(/\D/g, '') + '@c.us';
 
+            const settings = await db.query.shopSettings.findFirst();
+
             const { NetflixResolverService } = await import("@/services/netflix-resolver.service");
-            const outlookPass = decrypt(slot.digitalCode.outlookPassword!) || "";
             const codeRaw = decrypt(slot.digitalCode.code!) || "";
             const [email] = codeRaw.split('|').map(s => s.trim());
 
-            const result = await NetflixResolverService.resolve(email, outlookPass);
+            const result = await NetflixResolverService.resolve(
+                email,
+                slot.digitalCode.msRefreshToken,
+                slot.digitalCode.msClientId,
+                slot.digitalCode.id  // pour rotation du token
+            );
 
             if (result.type === 'NOT_FOUND') {
-                return { success: false, error: "Aucun email de vérification trouvé ces 15 dernières minutes" };
+                return { success: false, error: "Aucun email de vérification Netflix trouvé sur ce compte Microsoft" };
             }
             if (result.type === 'ERROR') {
-                return { success: false, error: "Erreur technique lors de la connexion IMAP: " + result.error };
+                return { success: false, error: "Erreur technique lors de la connexion Microsoft Graph: " + result.error };
             }
 
             const { sendWhatsAppMessage } = await import("@/lib/whatsapp");
-            const settings = await db.query.shopSettings.findFirst();
             const waSettings = {
                 whatsappApiUrl: settings?.whatsappApiUrl ?? undefined,
                 whatsappApiKey: settings?.whatsappApiKey ?? undefined,
@@ -574,6 +613,22 @@ export const resolveHouseholdAction = withAuth(
 
             return { success: true, result };
 
+        } catch (error) {
+            return { success: false, error: (error as Error).message };
+        }
+    }
+);
+
+export const getMicrosoftAuthUrlAction = withAuth(
+    { roles: [UserRole.ADMIN] },
+    async (input: any, user) => {
+        try {
+            const codeId = typeof input === 'number' ? input : input?.codeId;
+            if (!codeId) return { success: false, error: "ID de compte manquant" };
+
+            const { MicrosoftAuthService } = await import("@/services/microsoft-auth.service");
+            const url = await MicrosoftAuthService.getAuthorizationUrl(codeId);
+            return { success: true, url };
         } catch (error) {
             return { success: false, error: (error as Error).message };
         }

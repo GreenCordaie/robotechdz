@@ -172,19 +172,19 @@ export default function OrderDetailModal({
                                     <section key={item.id} className="bg-white/5 border border-white/5 rounded-lg p-4">
                                         <div className="flex justify-between items-start mb-4">
                                             <div className="flex items-center gap-3">
-                                                <div className="w-10 h-10 bg-[#ec5b13]/10 rounded-lg flex items-center justify-center shrink-0 border border-[#ec5b13]/20">
-                                                    <Gamepad2 className="text-[#ec5b13] w-5 h-5" />
+                                                <div className="w-10 h-10 bg-[var(--primary)]/10 rounded-lg flex items-center justify-center shrink-0 border border-[var(--primary)]/20">
+                                                    <Gamepad2 className="text-[var(--primary)] w-5 h-5" />
                                                 </div>
                                                 <div className="flex flex-col">
                                                     <h2 className="text-slate-100 text-sm font-black uppercase tracking-tight">{item.quantity}x {item.name}</h2>
-                                                    <div className="text-[9px] text-[#ec5b13] font-black uppercase tracking-[0.15em] mt-0.5 flex flex-wrap items-center gap-x-2.5 gap-y-1">
+                                                    <div className="text-[9px] text-[var(--primary)] font-black uppercase tracking-[0.15em] mt-0.5 flex flex-wrap items-center gap-x-2.5 gap-y-1">
                                                         {item.customData && (
                                                             <span className="flex items-center gap-1">
                                                                 ID: {item.customData}
                                                             </span>
                                                         )}
                                                         {item.playerNickname && (
-                                                            <span className={`flex items-center gap-1 opacity-70 ${item.customData ? 'border-l border-[#ec5b13]/30 pl-2.5' : ''}`}>
+                                                            <span className={`flex items-center gap-1 opacity-70 ${item.customData ? 'border-l border-[var(--primary)]/30 pl-2.5' : ''}`}>
                                                                 PSEUDO: {item.playerNickname}
                                                             </span>
                                                         )}
@@ -204,13 +204,13 @@ export default function OrderDetailModal({
                                                                 <div className="flex items-center gap-1">
                                                                     <input
                                                                         type="text"
-                                                                        className="w-16 h-5 bg-black border border-[#ec5b13]/50 rounded text-[9px] px-1 text-white outline-none"
+                                                                        className="w-16 h-5 bg-black border border-[var(--primary)]/50 rounded text-[9px] px-1 text-white outline-none"
                                                                         value={tempPurchasePrice}
                                                                         onChange={(e) => setTempPurchasePrice(e.target.value)}
                                                                         autoFocus
                                                                     />
                                                                     <select
-                                                                        className="h-5 bg-black border border-[#ec5b13]/50 rounded text-[9px] text-white outline-none px-0.5"
+                                                                        className="h-5 bg-black border border-[var(--primary)]/50 rounded text-[9px] text-white outline-none px-0.5"
                                                                         value={tempPurchaseCurrency}
                                                                         onChange={(e) => setTempPurchaseCurrency(e.target.value)}
                                                                     >
@@ -238,12 +238,12 @@ export default function OrderDetailModal({
                                                                         setTempPurchasePrice((item as any).purchasePrice);
                                                                         setTempPurchaseCurrency((item as any).purchaseCurrency || 'USD');
                                                                     }}
-                                                                    className="flex items-center gap-1 hover:text-[#ec5b13] transition-colors"
+                                                                    className="flex items-center gap-1 hover:text-[var(--primary)] transition-colors"
                                                                 >
                                                                     <span className="text-[10px] text-slate-400 font-black">
                                                                         {formatCurrency((item as any).purchasePrice, (item as any).purchaseCurrency || 'USD')}
                                                                     </span>
-                                                                    <RefreshCw size={8} className="text-slate-600 group-hover/edit:text-[#ec5b13]" />
+                                                                    <RefreshCw size={8} className="text-slate-600 group-hover/edit:text-[var(--primary)]" />
                                                                 </button>
                                                             )}
                                                         </div>
@@ -284,8 +284,8 @@ export default function OrderDetailModal({
                                             {item.fullCodes?.map((codeObj, idx) => (
                                                 <div key={`code-${codeObj.id}`} className="flex items-center justify-between group gap-2">
                                                     <div className="flex items-center gap-2.5 overflow-hidden flex-1">
-                                                        <Key className="text-[#ec5b13] w-3.5 h-3.5 shrink-0" />
-                                                        <code className="font-mono text-[#ec5b13] text-[11px] sm:text-xs tracking-[0.1em] font-black truncate">
+                                                        <Key className="text-[var(--primary)] w-3.5 h-3.5 shrink-0" />
+                                                        <code className="font-mono text-[var(--primary)] text-[11px] sm:text-xs tracking-[0.1em] font-black truncate">
                                                             [CODE] : {codeObj.code}
                                                         </code>
                                                     </div>
@@ -293,7 +293,7 @@ export default function OrderDetailModal({
                                                         <Button
                                                             size="sm"
                                                             variant="light"
-                                                            className="h-7 text-[9px] font-black text-slate-400 bg-white/5 hover:bg-[#ec5b13] px-2 rounded-md transition-all uppercase"
+                                                            className="h-7 text-[9px] font-black text-slate-400 bg-white/5 hover:bg-[var(--primary)] px-2 rounded-md transition-all uppercase"
                                                             onClick={() => copyToClipboard(codeObj.code)}
                                                         >
                                                             <Copy size={12} />
@@ -301,7 +301,7 @@ export default function OrderDetailModal({
                                                         {onReplaceCode && (
                                                             <Dropdown>
                                                                 <DropdownTrigger>
-                                                                    <Button size="sm" variant="light" className="h-7 text-[9px] font-black text-[#ec5b13] bg-[#ec5b13]/10 border border-[#ec5b13]/20 px-2 rounded-md transition-all uppercase">
+                                                                    <Button size="sm" variant="light" className="h-7 text-[9px] font-black text-[var(--primary)] bg-[var(--primary)]/10 border border-[var(--primary)]/20 px-2 rounded-md transition-all uppercase">
                                                                         <RefreshCw size={12} className="mr-1" /> Remplacer
                                                                     </Button>
                                                                 </DropdownTrigger>
@@ -463,7 +463,7 @@ export default function OrderDetailModal({
                             )}
 
                             <Button
-                                className="bg-white text-black hover:bg-[#ec5b13] hover:text-white px-6 py-2.5 rounded-lg transition-all font-black text-[11px] flex items-center gap-2 shadow-lg active:scale-95 shrink-0 h-10 uppercase tracking-widest border border-white"
+                                className="bg-white text-black hover:bg-[var(--primary)] hover:text-white px-6 py-2.5 rounded-lg transition-all font-black text-[11px] flex items-center gap-2 shadow-lg active:scale-95 shrink-0 h-10 uppercase tracking-widest border border-white"
                                 onClick={() => onReprint?.(order.id)}
                             >
                                 <Printer size={14} className="mr-1" />

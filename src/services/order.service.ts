@@ -149,11 +149,8 @@ export class OrderService {
             (item.codes && item.codes.length > 0) || (item.slots && item.slots.length > 0)
         );
 
-        // Also fire for WhatsApp delivery on paid/complete orders even if no codes yet
-        const isWhatsAppPaid = (result as any).deliveryMethod === DeliveryMethod.WHATSAPP
-            && (result.status === OrderStatus.PAYE || result.status === OrderStatus.TERMINE);
-
-        if (isFullyAuto || hasCodesOrSlots || isWhatsAppPaid) {
+        // Only fire ORDER_DELIVERED when codes are actually available — prevents empty WhatsApp on manual orders
+        if (isFullyAuto || hasCodesOrSlots) {
             eventBus.publish(SystemEvent.ORDER_DELIVERED, { orderId: result.id });
         }
 
@@ -203,7 +200,8 @@ export class OrderService {
         });
 
         if (result?.status === OrderStatus.TERMINE) {
-            await db.update(orders).set({ printStatus: "print_pending" }).where(eq(orders.id, id));
+            const isWhatsApp = (result as any).deliveryMethod === DeliveryMethod.WHATSAPP;
+            await db.update(orders).set({ printStatus: isWhatsApp ? "idle" : "print_pending" }).where(eq(orders.id, id));
             eventBus.publish(SystemEvent.ORDER_PRINTED, { orderId: id });
             eventBus.publish(SystemEvent.ORDER_DELIVERED, { orderId: id });
         }
@@ -246,11 +244,12 @@ export class OrderService {
 
             if (insertedCount > 0) {
                 const nextStatus = order.status === OrderStatus.PAYE ? OrderStatus.TERMINE : order.status;
+                const isWhatsApp = (order as any).deliveryMethod === DeliveryMethod.WHATSAPP;
                 await tx.update(orders)
                     .set({
                         status: nextStatus,
                         isDelivered: true,
-                        printStatus: "print_pending"
+                        printStatus: isWhatsApp ? "idle" : "print_pending"
                     })
                     .where(eq(orders.id, order.id));
 

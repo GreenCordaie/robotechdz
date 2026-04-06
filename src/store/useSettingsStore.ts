@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { getShopSettingsAction } from "@/app/admin/settings/actions";
+// getShopSettingsAction removed in favor of fetch API
 
 interface SettingsState {
     shopName: string;
@@ -13,6 +13,7 @@ interface SettingsState {
     logoUrl: string;
     dashboardLogoUrl: string;
     faviconUrl: string;
+    accentColor: string;
     isB2bEnabled: boolean;
     isLoading: boolean;
     fetchSettings: () => Promise<void>;
@@ -20,7 +21,7 @@ interface SettingsState {
 }
 
 export const useSettingsStore = create<SettingsState>((set) => ({
-    shopName: "FLEXBOX Direct",
+    shopName: "Ma Boutique",
     shopTel: "",
     shopAddress: "",
     footerMessage: "Merci de votre visite !",
@@ -31,15 +32,17 @@ export const useSettingsStore = create<SettingsState>((set) => ({
     logoUrl: "",
     dashboardLogoUrl: "",
     faviconUrl: "",
+    accentColor: "#ec5b13",
     isB2bEnabled: false,
     isLoading: false,
     fetchSettings: async () => {
         set({ isLoading: true });
         try {
-            const res = await getShopSettingsAction({});
+            const res = await fetch("/api/v1/public/settings").then((r) => r.json());
             if (res.success && res.data) {
+                const color = res.data.accentColor || "#ec5b13";
                 set({
-                    shopName: res.data.shopName || "FLEXBOX Direct",
+                    shopName: res.data.shopName || "Ma Boutique",
                     shopTel: res.data.shopTel || "",
                     shopAddress: res.data.shopAddress || "",
                     footerMessage: res.data.footerMessage || "Merci de votre visite !",
@@ -50,8 +53,12 @@ export const useSettingsStore = create<SettingsState>((set) => ({
                     logoUrl: res.data.logoUrl || "",
                     dashboardLogoUrl: res.data.dashboardLogoUrl || "",
                     faviconUrl: res.data.faviconUrl || "",
+                    accentColor: color,
                     isB2bEnabled: !!res.data.isB2bEnabled,
                 });
+                if (typeof document !== "undefined") {
+                    document.documentElement.style.setProperty("--primary", color);
+                }
             }
         } catch (err) {
             console.error("Failed to fetch settings:", err);

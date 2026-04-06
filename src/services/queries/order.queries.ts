@@ -1,7 +1,7 @@
 import "server-only";
 import { db } from "@/db";
 import { orders, digitalCodes, digitalCodeSlots, orderItems, suppliers, supplierTransactions, productVariantSuppliers, clients, clientPayments, shopSettings, resellers } from "@/db/schema";
-import { eq, sql, desc, exists, and, inArray, count, gte, asc } from "drizzle-orm";
+import { eq, sql, desc, exists, and, inArray, count, gte, asc, or, ilike } from "drizzle-orm";
 import { cache } from "react";
 import { decrypt } from "@/lib/encryption";
 import { OrderStatus } from "@/lib/constants";
@@ -215,9 +215,9 @@ export class OrderQueries {
     });
 
     /**
-     * Gets finished orders (limited to 20).
+     * Gets finished orders (limited to 50).
      */
-    static getFinished = cache(async () => {
+    static getFinished = cache(async (limit = 50) => {
         const results = await db.query.orders.findMany({
             where: (orders, { eq }) => eq(orders.status, OrderStatus.TERMINE),
             with: {
@@ -229,7 +229,7 @@ export class OrderQueries {
                     }
                 }
             },
-            limit: 20,
+            limit,
             orderBy: (orders, { desc }) => [desc(orders.createdAt)]
         });
 
@@ -331,4 +331,63 @@ export class OrderQueries {
             })
         }));
     });
+
+    static getHistoryPaginated = async (page: number = 1, limit: number = 20, search: string = "") => {
+        const offset = (page - 1) * limit;
+
+        const where = search
+            ? or(
+                ilike(orders.orderNumber, `%${search}%`),
+                ilike(orders.customerPhone, `%${search}%`)
+            )
+            : undefined;
+
+        const [totalResult, results] = await Promise.all([
+            db.select({ count: count() }).from(orders).where(where),
+            db.query.orders.findMany({
+                where,
+                with: {
+                    items: {
+                        with: {
+                            codes: true,
+                            slots: { with: { digitalCode: true } },
+                            variant: { with: { product: true } }
+                        }
+                    },
+                    client: { columns: { nomComplet: true, telephone: true } }
+                },
+                limit,
+                offset,
+                orderBy: (orders, { desc }) => [desc(orders.createdAt)]
+            })
+        ]);
+
+        const total = totalResult[0]?.count || 0;
+
+        const data = (results as any[]).map(res => ({
+            ...res,
+            clientName: res.client?.nomComplet || "Anonyme",
+            items: (res.items || []).map((item: any) => ({
+                ...item,
+                name: item.variant?.product?.name || item.name,
+                fullCodes: (item.codes || []).map((c: any) => ({
+                    id: c.id,
+                    code: (() => { try { return decrypt(c.code) || "[Invalide]"; } catch { return "[Erreur]"; } })()
+                })),
+                fullSlots: (item.slots || []).map((s: any) => {
+                    try {
+                        return {
+                            id: s.id,
+                            slotNumber: s.slotNumber,
+                            profileName: s.profileName,
+                            parentCode: decrypt(s.digitalCode?.code) || "[Erreur Compte]",
+                            code: s.code ? decrypt(s.code) : null
+                        };
+                    } catch { return null; }
+                }).filter(Boolean)
+            }))
+        }));
+
+        return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
+    };
 }

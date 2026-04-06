@@ -113,8 +113,8 @@ export function ReceiptSettings() {
             <div className="lg:w-3/5 space-y-8">
                 <div className="bg-[#161616] p-8 rounded-[32px] border border-white/5 shadow-2xl">
                     <div className="flex items-center gap-3 mb-8">
-                        <div className="p-3 bg-[#ec5b13]/10 rounded-2xl">
-                            <Store className="text-[#ec5b13] size-6" />
+                        <div className="p-3 bg-[var(--primary)]/10 rounded-2xl">
+                            <Store className="text-[var(--primary)] size-6" />
                         </div>
                         <div>
                             <h2 className="text-xl font-black text-white uppercase tracking-tight">Configuration du Reçu</h2>
@@ -129,7 +129,7 @@ export function ReceiptSettings() {
                                     <Type size={12} /> Nom Commercial
                                 </label>
                                 <input
-                                    className="w-full bg-black/40 border border-white/5 rounded-2xl px-5 py-4 focus:border-[#ec5b13]/50 transition-all outline-none text-white font-bold"
+                                    className="w-full bg-black/40 border border-white/5 rounded-2xl px-5 py-4 focus:border-[var(--primary)]/50 transition-all outline-none text-white font-bold"
                                     type="text"
                                     value={shopName}
                                     onChange={(e) => setShopName(e.target.value)}
@@ -140,7 +140,7 @@ export function ReceiptSettings() {
                                     <Phone size={12} /> Téléphone
                                 </label>
                                 <input
-                                    className="w-full bg-black/40 border border-white/5 rounded-2xl px-5 py-4 focus:border-[#ec5b13]/50 transition-all outline-none text-white font-bold"
+                                    className="w-full bg-black/40 border border-white/5 rounded-2xl px-5 py-4 focus:border-[var(--primary)]/50 transition-all outline-none text-white font-bold"
                                     type="text"
                                     value={shopTel}
                                     onChange={(e) => setShopTel(e.target.value)}
@@ -153,7 +153,7 @@ export function ReceiptSettings() {
                                 <MapPin size={12} /> Adresse Complète
                             </label>
                             <input
-                                className="w-full bg-black/40 border border-white/5 rounded-2xl px-5 py-4 focus:border-[#ec5b13]/50 transition-all outline-none text-white font-bold"
+                                className="w-full bg-black/40 border border-white/5 rounded-2xl px-5 py-4 focus:border-[var(--primary)]/50 transition-all outline-none text-white font-bold"
                                 type="text"
                                 value={shopAddress}
                                 onChange={(e) => setShopAddress(e.target.value)}
@@ -165,7 +165,7 @@ export function ReceiptSettings() {
                                 <Type size={12} /> Message de Pied de Page
                             </label>
                             <textarea
-                                className="w-full bg-black/40 border border-white/5 rounded-2xl px-5 py-4 focus:border-[#ec5b13]/50 transition-all outline-none text-white font-bold min-h-[100px]"
+                                className="w-full bg-black/40 border border-white/5 rounded-2xl px-5 py-4 focus:border-[var(--primary)]/50 transition-all outline-none text-white font-bold min-h-[100px]"
                                 value={footerMessage}
                                 onChange={(e) => setFooterMessage(e.target.value)}
                             />
@@ -175,33 +175,33 @@ export function ReceiptSettings() {
                             {/* Toggle Cards */}
                             <button
                                 onClick={() => setShowLogo(!showLogo)}
-                                className={`p-4 rounded-2xl border transition-all flex flex-col items-center gap-3 ${showLogo ? 'bg-[#ec5b13]/10 border-[#ec5b13]/30 text-white' : 'bg-black/40 border-white/5 text-slate-500'}`}
+                                className={`p-4 rounded-2xl border transition-all flex flex-col items-center gap-3 ${showLogo ? 'bg-[var(--primary)]/10 border-[var(--primary)]/30 text-white' : 'bg-black/40 border-white/5 text-slate-500'}`}
                             >
-                                <ImageIcon size={20} className={showLogo ? 'text-[#ec5b13]' : ''} />
+                                <ImageIcon size={20} className={showLogo ? 'text-[var(--primary)]' : ''} />
                                 <span className="text-[10px] font-black uppercase tracking-widest">Logo</span>
                             </button>
 
                             <button
                                 onClick={() => setShowDateTime(!showDateTime)}
-                                className={`p-4 rounded-2xl border transition-all flex flex-col items-center gap-3 ${showDateTime ? 'bg-[#ec5b13]/10 border-[#ec5b13]/30 text-white' : 'bg-black/40 border-white/5 text-slate-500'}`}
+                                className={`p-4 rounded-2xl border transition-all flex flex-col items-center gap-3 ${showDateTime ? 'bg-[var(--primary)]/10 border-[var(--primary)]/30 text-white' : 'bg-black/40 border-white/5 text-slate-500'}`}
                             >
-                                <Clock size={20} className={showDateTime ? 'text-[#ec5b13]' : ''} />
+                                <Clock size={20} className={showDateTime ? 'text-[var(--primary)]' : ''} />
                                 <span className="text-[10px] font-black uppercase tracking-widest">Date/Heure</span>
                             </button>
 
                             <button
                                 onClick={() => setShowCashier(!showCashier)}
-                                className={`p-4 rounded-2xl border transition-all flex flex-col items-center gap-3 ${showCashier ? 'bg-[#ec5b13]/10 border-[#ec5b13]/30 text-white' : 'bg-black/40 border-white/5 text-slate-500'}`}
+                                className={`p-4 rounded-2xl border transition-all flex flex-col items-center gap-3 ${showCashier ? 'bg-[var(--primary)]/10 border-[var(--primary)]/30 text-white' : 'bg-black/40 border-white/5 text-slate-500'}`}
                             >
-                                <UserIcon size={20} className={showCashier ? 'text-[#ec5b13]' : ''} />
+                                <UserIcon size={20} className={showCashier ? 'text-[var(--primary)]' : ''} />
                                 <span className="text-[10px] font-black uppercase tracking-widest">Caissier</span>
                             </button>
 
                             <button
                                 onClick={() => setShowTrackQr(!showTrackQr)}
-                                className={`p-4 rounded-2xl border transition-all flex flex-col items-center gap-3 ${showTrackQr ? 'bg-[#ec5b13]/10 border-[#ec5b13]/30 text-white' : 'bg-black/40 border-white/5 text-slate-500'}`}
+                                className={`p-4 rounded-2xl border transition-all flex flex-col items-center gap-3 ${showTrackQr ? 'bg-[var(--primary)]/10 border-[var(--primary)]/30 text-white' : 'bg-black/40 border-white/5 text-slate-500'}`}
                             >
-                                <Type size={20} className={showTrackQr ? 'text-[#ec5b13]' : ''} />
+                                <Type size={20} className={showTrackQr ? 'text-[var(--primary)]' : ''} />
                                 <span className="text-[10px] font-black uppercase tracking-widest">QR Code</span>
                             </button>
                         </div>
@@ -211,7 +211,7 @@ export function ReceiptSettings() {
                 <button
                     onClick={handleSave}
                     disabled={isSaving}
-                    className="w-full bg-[#ec5b13] hover:bg-orange-600 text-white font-black py-5 rounded-2xl shadow-xl shadow-[#ec5b13]/30 transition-all transform active:scale-[0.98] mt-10 flex items-center justify-center gap-3 disabled:opacity-50 uppercase tracking-[0.2em] text-xs"
+                    className="w-full bg-[var(--primary)] hover:bg-orange-600 text-white font-black py-5 rounded-2xl shadow-xl shadow-[var(--primary)]/30 transition-all transform active:scale-[0.98] mt-10 flex items-center justify-center gap-3 disabled:opacity-50 uppercase tracking-[0.2em] text-xs"
                 >
                     {isSaving ? <Loader2 className="animate-spin size-5" /> : <Save className="size-5" />}
                     {isSaving ? "Enregistrement..." : "Appliquer les Changements"}
@@ -240,8 +240,8 @@ export function ReceiptSettings() {
 
                         {/* Scissors icon to show cut point */}
                         <div className="absolute -bottom-8 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 rotate-180">
-                            <div className="w-px h-12 bg-gradient-to-t from-[#ec5b13] to-transparent" />
-                            <span className="text-[10px] font-black text-[#ec5b13] uppercase tracking-widest">Point de Coupe</span>
+                            <div className="w-px h-12 bg-gradient-to-t from-[var(--primary)] to-transparent" />
+                            <span className="text-[10px] font-black text-[var(--primary)] uppercase tracking-widest">Point de Coupe</span>
                         </div>
                     </div>
 

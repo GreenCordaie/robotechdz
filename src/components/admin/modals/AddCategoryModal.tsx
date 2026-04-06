@@ -113,7 +113,7 @@ export const AddCategoryModal = ({ isOpen, onClose, categoryToEdit }: AddCategor
                 {(onClose) => (
                     <>
                         <ModalHeader className="flex items-center gap-3">
-                            <span className="material-symbols-outlined text-[#ec5b13]">
+                            <span className="material-symbols-outlined text-[var(--primary)]">
                                 {categoryToEdit ? "edit_note" : "category"}
                             </span>
                             <h2 className="text-slate-100 text-lg font-bold">
@@ -124,7 +124,7 @@ export const AddCategoryModal = ({ isOpen, onClose, categoryToEdit }: AddCategor
                             <div className="flex flex-col gap-2">
                                 <label className="text-slate-400 text-xs font-bold uppercase tracking-widest">Nom de la catégorie</label>
                                 <input
-                                    className="w-full bg-[#0a0a0a] border border-[#262626] rounded-xl px-4 py-3 text-slate-100 focus:ring-1 focus:ring-[#ec5b13] outline-none transition-all"
+                                    className="w-full bg-[#0a0a0a] border border-[#262626] rounded-xl px-4 py-3 text-slate-100 focus:ring-1 focus:ring-[var(--primary)] outline-none transition-all"
                                     placeholder="ex: Cartes Cadeaux"
                                     value={name}
                                     onChange={(e) => setName(e.target.value)}
@@ -142,7 +142,7 @@ export const AddCategoryModal = ({ isOpen, onClose, categoryToEdit }: AddCategor
                                 />
                                 <div
                                     onClick={() => fileInputRef.current?.click()}
-                                    className="aspect-video border-2 border-dashed border-[#262626] bg-[#0a0a0a] rounded-xl flex flex-col items-center justify-center gap-2 cursor-pointer hover:border-[#ec5b13]/50 transition-all group overflow-hidden relative"
+                                    className="aspect-video border-2 border-dashed border-[#262626] bg-[#0a0a0a] rounded-xl flex flex-col items-center justify-center gap-2 cursor-pointer hover:border-[var(--primary)]/50 transition-all group overflow-hidden relative"
                                 >
                                     {previewUrl ? (
                                         <Image src={previewUrl} className="object-cover" alt="Preview" fill sizes="(max-width: 768px) 100vw, 400px" />
@@ -158,7 +158,7 @@ export const AddCategoryModal = ({ isOpen, onClose, categoryToEdit }: AddCategor
                         <ModalFooter>
                             <Button variant="light" onPress={onClose} className="text-slate-400 font-bold">Annuler</Button>
                             <Button
-                                className="bg-[#ec5b13] text-white font-bold px-8 shadow-lg shadow-[#ec5b13]/20"
+                                className="bg-[var(--primary)] text-white font-bold px-8 shadow-lg shadow-[var(--primary)]/20"
                                 onClick={handleSubmit}
                                 isLoading={isSaving}
                             >

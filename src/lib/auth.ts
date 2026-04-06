@@ -1,4 +1,4 @@
-import { cookies, headers } from "next/headers";
+import { cookies } from "next/headers";
 import { encrypt, decrypt } from "./jwt";
 
 async function getAuthDeps() {
@@ -18,13 +18,10 @@ export async function createSession(user: { id: number; role: string; tokenVersi
         .set({ lastActiveAt: new Date() })
         .where(eq(users.id, user.id));
 
-    const headerList = headers();
-    const isHttps = headerList.get("x-forwarded-proto") === "https";
-
     cookies().set("session", session, {
         expires,
         httpOnly: true,
-        secure: process.env.NODE_ENV === "production" || isHttps,
+        secure: process.env.NODE_ENV === "production",
         sameSite: "lax",
         path: "/",
     });
@@ -47,17 +44,11 @@ export async function deleteSession() {
 
 export async function getSession() {
     const session = cookies().get("session")?.value;
-    if (!session) {
-        const headerList = headers();
-        const host = headerList.get("host");
-        console.log(`🚫 SESSION COOKIE MISSING (Host: ${host})`);
-        return null;
-    }
+    if (!session) return null;
     try {
         const payload = await decrypt(session);
         return payload;
-    } catch (e) {
-        console.error("🚫 SESSION DECRYPT FAILED:", e);
+    } catch {
         return null;
     }
 }

@@ -10,7 +10,8 @@ import { formatCurrency } from "@/lib/formatters";
 import { requeueForPrint } from "./actions";
 import { useSettingsStore } from "@/store/useSettingsStore";
 import { ThermalReceiptV2 } from "@/components/admin/receipt/ThermalReceiptV2";
-import OrderDetailModal from "@/components/admin/modals/OrderDetailModal";
+import dynamic from "next/dynamic";
+const OrderDetailModal = dynamic(() => import("@/components/admin/modals/OrderDetailModal"), { ssr: false });
 import { getAllClients, createClient } from "../clients/actions";
 import { refundFullOrder, replaceOrderItemCode, refundOrderItem, payOrder, getTodayOrders, cancelOrderAction } from "./actions";
 
@@ -192,7 +193,7 @@ export default function CaisseMobile() {
             {/* Header */}
             <header className="p-4 border-b border-white/5 flex items-center justify-between sticky top-0 bg-[#0a0a0a]/80 backdrop-blur-md z-30">
                 <div>
-                    <h1 className="text-xl font-black tracking-tight text-[#ec5b13]">Caisse Mobile</h1>
+                    <h1 className="text-xl font-black tracking-tight text-[var(--primary)]">Caisse Mobile</h1>
                     <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">{allTodayOrders.length} Commandes</p>
                 </div>
                 <div className="flex items-center gap-2">
@@ -276,7 +277,7 @@ export default function CaisseMobile() {
                         <div className="space-y-4 pt-4 border-t border-white/10">
                             <div className="flex justify-between items-center">
                                 <span className="text-slate-400">Total à payer</span>
-                                <span className="text-2xl font-black text-[#ec5b13]">{formatCurrency(currentOrder.totalAmount, 'DZD')}</span>
+                                <span className="text-2xl font-black text-[var(--primary)]">{formatCurrency(currentOrder.totalAmount, 'DZD')}</span>
                             </div>
 
                             {['EN_ATTENTE', 'PARTIEL', 'NON_PAYE'].includes(currentOrder.status) && (
@@ -295,7 +296,7 @@ export default function CaisseMobile() {
                                         <div className="flex flex-col gap-1.5 p-3 bg-white/5 rounded-2xl border border-white/10">
                                             <span className="text-[10px] uppercase font-bold text-slate-500">Payé (DZD)</span>
                                             <input
-                                                className="bg-transparent border-none focus:ring-0 p-0 font-bold text-[#ec5b13] outline-none w-full text-base"
+                                                className="bg-transparent border-none focus:ring-0 p-0 font-bold text-[var(--primary)] outline-none w-full text-base"
                                                 type="number"
                                                 placeholder="0"
                                                 value={montantRecu}
@@ -307,7 +308,7 @@ export default function CaisseMobile() {
                                     <div className="flex justify-between items-center px-2">
                                         <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Reste à payer</span>
                                         <div className="text-right">
-                                            <span className={`text-xl font-black ${(Number(currentOrder.totalAmount) - remise - (montantRecu === "" ? (Number(currentOrder.totalAmount) - remise) : Number(montantRecu))) > 0 ? 'text-red-500' : 'text-[#ec5b13]'}`}>
+                                            <span className={`text-xl font-black ${(Number(currentOrder.totalAmount) - remise - (montantRecu === "" ? (Number(currentOrder.totalAmount) - remise) : Number(montantRecu))) > 0 ? 'text-red-500' : 'text-[var(--primary)]'}`}>
                                                 {formatCurrency(Math.max(0, Number(currentOrder.totalAmount) - remise - (montantRecu === "" ? (Number(currentOrder.totalAmount) - remise) : Number(montantRecu))), 'DZD')}
                                             </span>
                                         </div>
@@ -342,7 +343,7 @@ export default function CaisseMobile() {
                                         </div>
                                         <div className="flex gap-2 text-white">
                                             <select
-                                                className="bg-transparent border-none focus:ring-0 p-0 text-sm font-semibold text-[#ec5b13] dark:text-white flex-1 outline-none appearance-none"
+                                                className="bg-transparent border-none focus:ring-0 p-0 text-sm font-semibold text-[var(--primary)] dark:text-white flex-1 outline-none appearance-none"
                                                 value={selectedClientId || ""}
                                                 onChange={(e) => setSelectedClientId(Number(e.target.value) || null)}
                                             >
@@ -353,7 +354,7 @@ export default function CaisseMobile() {
                                             </select>
                                             <button
                                                 onClick={() => setIsCreatingClient(true)}
-                                                className="p-1 rounded bg-[#ec5b13]/20 text-[#ec5b13]"
+                                                className="p-1 rounded bg-[var(--primary)]/20 text-[var(--primary)]"
                                             >
                                                 <Plus size={14} />
                                             </button>
@@ -381,7 +382,7 @@ export default function CaisseMobile() {
                             <input
                                 type="text"
                                 placeholder="Rechercher #..."
-                                className="w-full bg-white/5 border border-white/10 rounded-2xl py-3 pl-12 pr-4 outline-none focus:border-[#ec5b13]/50 transition-all font-bold placeholder:text-slate-600"
+                                className="w-full bg-white/5 border border-white/10 rounded-2xl py-3 pl-12 pr-4 outline-none focus:border-[var(--primary)]/50 transition-all font-bold placeholder:text-slate-600"
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
                             />
@@ -392,7 +393,7 @@ export default function CaisseMobile() {
                                 <button
                                     key={s}
                                     onClick={() => setFilterStatus(orderStatusDisplayMap[s])} // Assuming filterStatus uses the display name
-                                    className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-tighter transition-all whitespace-nowrap ${filterStatus === orderStatusDisplayMap[s] ? "bg-[#ec5b13] text-white shadow-lg shadow-[#ec5b13]/20" : "bg-white/5 text-slate-500"
+                                    className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-tighter transition-all whitespace-nowrap ${filterStatus === orderStatusDisplayMap[s] ? "bg-[var(--primary)] text-white shadow-lg shadow-[var(--primary)]/20" : "bg-white/5 text-slate-500"
                                         }`}
                                 >
                                     {orderStatusDisplayMap[s]}
@@ -423,7 +424,7 @@ export default function CaisseMobile() {
                                 </div>
                                 <div className="text-right flex items-center gap-3">
                                     <div>
-                                        <p className="font-black text-[#ec5b13] text-lg leading-none">{formatCurrency(o.totalAmount, 'DZD')}</p>
+                                        <p className="font-black text-[var(--primary)] text-lg leading-none">{formatCurrency(o.totalAmount, 'DZD')}</p>
                                         <p className="text-[9px] text-slate-500 font-bold mt-1 uppercase">{o.items?.length} article(s)</p>
                                     </div>
                                     <div className="flex items-center gap-1">
@@ -544,7 +545,7 @@ export default function CaisseMobile() {
                                 </ModalBody>
                                 <ModalFooter>
                                     <Button onPress={onClose} variant="flat">Ignorer</Button>
-                                    <Button className="bg-[#ec5b13] text-white font-bold" onPress={innerSave}>Enregistrer & Payer</Button>
+                                    <Button className="bg-[var(--primary)] text-white font-bold" onPress={innerSave}>Enregistrer & Payer</Button>
                                 </ModalFooter>
                             </>
                         );

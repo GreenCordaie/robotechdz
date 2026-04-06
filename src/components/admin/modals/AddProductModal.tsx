@@ -310,7 +310,7 @@ export const AddProductModal = ({ isOpen, onClose, categories, suppliers, produc
                             <ModalHeader>
                                 <div className="flex flex-col gap-1">
                                     <div className="flex items-center gap-3">
-                                        <PlusCircle className="text-[#ec5b13] size-6" />
+                                        <PlusCircle className="text-[var(--primary)] size-6" />
                                         <h2 className="text-slate-900 dark:text-slate-100 text-lg font-black leading-tight tracking-tight uppercase">
                                             {productToEdit ? "Modifier le Produit" : "Ajouter un Nouveau Produit"}
                                         </h2>
@@ -337,14 +337,14 @@ export const AddProductModal = ({ isOpen, onClose, categories, suppliers, produc
                                             />
                                             <div
                                                 onClick={() => fileInputRef.current?.click()}
-                                                className="flex-1 min-h-[260px] border-2 border-dashed border-slate-200 dark:border-[#262626] bg-slate-50 dark:bg-[#0a0a0a] rounded-xl flex flex-col items-center justify-center gap-4 cursor-pointer hover:border-[#ec5b13]/50 transition-all group p-6 relative overflow-hidden"
+                                                className="flex-1 min-h-[260px] border-2 border-dashed border-slate-200 dark:border-[#262626] bg-slate-50 dark:bg-[#0a0a0a] rounded-xl flex flex-col items-center justify-center gap-4 cursor-pointer hover:border-[var(--primary)]/50 transition-all group p-6 relative overflow-hidden"
                                             >
                                                 {previewUrl ? (
                                                     <Image src={previewUrl} className="object-cover" alt="Preview" fill sizes="(max-width: 768px) 100vw, 400px" />
                                                 ) : (
                                                     <>
                                                         <div className="size-16 rounded-full bg-white/5 flex items-center justify-center group-hover:scale-110 transition-transform">
-                                                            <ImageIcon className="text-slate-400 size-8 group-hover:text-[#ec5b13]" />
+                                                            <ImageIcon className="text-slate-400 size-8 group-hover:text-[var(--primary)]" />
                                                         </div>
                                                         <div className="text-center">
                                                             <p className="text-slate-900 dark:text-slate-100 text-sm font-black uppercase tracking-tight">Glissez l&apos;image ou cliquez</p>
@@ -365,7 +365,7 @@ export const AddProductModal = ({ isOpen, onClose, categories, suppliers, produc
                                             <div className="flex flex-col gap-2">
                                                 <label className="text-slate-400 text-xs font-black uppercase tracking-widest">Nom du Produit</label>
                                                 <input
-                                                    className="w-full bg-slate-50 dark:bg-[#0a0a0a] border border-slate-200 dark:border-[#262626] rounded-xl px-4 py-3.5 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-600 focus:ring-1 focus:ring-[#ec5b13] focus:border-[#ec5b13] outline-none transition-all font-bold text-sm"
+                                                    className="w-full bg-slate-50 dark:bg-[#0a0a0a] border border-slate-200 dark:border-[#262626] rounded-xl px-4 py-3.5 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-600 focus:ring-1 focus:ring-[var(--primary)] focus:border-[var(--primary)] outline-none transition-all font-bold text-sm"
                                                     placeholder="ex: Netflix Premium"
                                                     type="text"
                                                     value={name}
@@ -377,7 +377,7 @@ export const AddProductModal = ({ isOpen, onClose, categories, suppliers, produc
                                                 <label className="text-slate-400 text-xs font-black uppercase tracking-widest">Catégorie</label>
                                                 <div className="relative group">
                                                     <select
-                                                        className="w-full bg-slate-50 dark:bg-[#0a0a0a] border border-slate-200 dark:border-[#262626] rounded-xl px-4 py-3.5 text-slate-900 dark:text-slate-100 appearance-none focus:ring-1 focus:ring-[#ec5b13] focus:border-[#ec5b13] outline-none transition-all cursor-pointer font-bold text-sm"
+                                                        className="w-full bg-slate-50 dark:bg-[#0a0a0a] border border-slate-200 dark:border-[#262626] rounded-xl px-4 py-3.5 text-slate-900 dark:text-slate-100 appearance-none focus:ring-1 focus:ring-[var(--primary)] focus:border-[var(--primary)] outline-none transition-all cursor-pointer font-bold text-sm"
                                                         value={categoryId}
                                                         onChange={(e) => setCategoryId(e.target.value)}
                                                     >
@@ -386,14 +386,14 @@ export const AddProductModal = ({ isOpen, onClose, categories, suppliers, produc
                                                             <option key={cat.id} value={String(cat.id)} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100">{cat.name}</option>
                                                         ))}
                                                     </select>
-                                                    <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none group-focus-within:text-[#ec5b13] transition-colors size-5" />
+                                                    <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none group-focus-within:text-[var(--primary)] transition-colors size-5" />
                                                 </div>
                                             </div>
 
                                             <div className="flex flex-col gap-2">
                                                 <label className="text-slate-400 text-xs font-black uppercase tracking-widest">Description</label>
                                                 <textarea
-                                                    className="w-full bg-slate-50 dark:bg-[#0a0a0a] border border-slate-200 dark:border-[#262626] rounded-xl px-4 py-3.5 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-600 focus:ring-1 focus:ring-[#ec5b13] focus:border-[#ec5b13] outline-none transition-all resize-none h-[115px] font-bold text-sm"
+                                                    className="w-full bg-slate-50 dark:bg-[#0a0a0a] border border-slate-200 dark:border-[#262626] rounded-xl px-4 py-3.5 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-600 focus:ring-1 focus:ring-[var(--primary)] focus:border-[var(--primary)] outline-none transition-all resize-none h-[115px] font-bold text-sm"
                                                     placeholder="Décrivez les fonctionnalités..."
                                                     value={description}
                                                     onChange={(e) => setDescription(e.target.value)}
@@ -463,20 +463,20 @@ export const AddProductModal = ({ isOpen, onClose, categories, suppliers, produc
                                     <section className="flex flex-col gap-6">
                                         <div className="flex items-center justify-between">
                                             <h3 className="text-slate-900 dark:text-slate-100 font-black flex items-center gap-2 uppercase tracking-tight">
-                                                <Layers className="text-[#ec5b13] size-5" />
+                                                <Layers className="text-[var(--primary)] size-5" />
                                                 Variantes du Produit
                                             </h3>
                                         </div>
 
                                         <div className="space-y-6">
                                             {variants.map((v) => (
-                                                <div key={v.id} className="bg-slate-50 dark:bg-[#0a0a0a] border border-slate-200 dark:border-[#262626] rounded-xl p-6 flex flex-col gap-6 group relative shadow-lg hover:border-[#ec5b13]/20 transition-colors">
+                                                <div key={v.id} className="bg-slate-50 dark:bg-[#0a0a0a] border border-slate-200 dark:border-[#262626] rounded-xl p-6 flex flex-col gap-6 group relative shadow-lg hover:border-[var(--primary)]/20 transition-colors">
                                                     {/* Variant Main Info Row */}
                                                     <div className="flex flex-col md:flex-row items-end gap-4 w-full">
                                                         <div className="flex-1 w-full flex flex-col gap-2">
                                                             <label className="text-slate-500 text-[10px] font-black uppercase tracking-widest">Nom de la variante</label>
                                                             <input
-                                                                className="w-full bg-white/50 dark:bg-black/40 border border-slate-200 dark:border-[#262626] rounded-lg px-4 py-2.5 text-slate-900 dark:text-slate-100 focus:ring-1 focus:ring-[#ec5b13] outline-none font-bold text-sm"
+                                                                className="w-full bg-white/50 dark:bg-black/40 border border-slate-200 dark:border-[#262626] rounded-lg px-4 py-2.5 text-slate-900 dark:text-slate-100 focus:ring-1 focus:ring-[var(--primary)] outline-none font-bold text-sm"
                                                                 placeholder="Standard Edition"
                                                                 type="text"
                                                                 value={v.name}
@@ -487,7 +487,7 @@ export const AddProductModal = ({ isOpen, onClose, categories, suppliers, produc
                                                             <label className="text-slate-500 text-[10px] font-black uppercase tracking-widest">Prix de vente (DZD)</label>
                                                             <div className="relative">
                                                                 <input
-                                                                    className="w-full bg-white/50 dark:bg-black/40 border border-slate-200 dark:border-[#262626] rounded-lg pl-4 pr-16 py-2.5 text-slate-900 dark:text-slate-100 focus:ring-1 focus:ring-[#ec5b13] outline-none font-black text-sm"
+                                                                    className="w-full bg-white/50 dark:bg-black/40 border border-slate-200 dark:border-[#262626] rounded-lg pl-4 pr-16 py-2.5 text-slate-900 dark:text-slate-100 focus:ring-1 focus:ring-[var(--primary)] outline-none font-black text-sm"
                                                                     placeholder="0.00"
                                                                     type="number"
                                                                     value={v.salePrice}
@@ -523,7 +523,7 @@ export const AddProductModal = ({ isOpen, onClose, categories, suppliers, produc
                                                             <div className="w-48 flex flex-col gap-2">
                                                                 <label className="text-slate-500 text-[9px] font-black uppercase tracking-widest px-1">Profils par Compte</label>
                                                                 <input
-                                                                    className="w-full bg-white/50 dark:bg-black/40 border border-slate-200 dark:border-[#262626] rounded-lg px-4 py-2 text-sm text-slate-900 dark:text-slate-100 focus:ring-1 focus:ring-[#ec5b13] outline-none font-black"
+                                                                    className="w-full bg-white/50 dark:bg-black/40 border border-slate-200 dark:border-[#262626] rounded-lg px-4 py-2 text-sm text-slate-900 dark:text-slate-100 focus:ring-1 focus:ring-[var(--primary)] outline-none font-black"
                                                                     type="number"
                                                                     min="1"
                                                                     max="10"
@@ -538,7 +538,7 @@ export const AddProductModal = ({ isOpen, onClose, categories, suppliers, produc
                                                     <div className="flex flex-col gap-4 pt-4 border-t border-white/5">
                                                         <div className="flex items-center justify-between">
                                                             <h4 className="text-slate-400 text-[10px] font-black uppercase tracking-[0.2em] flex items-center gap-2">
-                                                                <LinkIcon size={12} className="text-[#ec5b13]" />
+                                                                <LinkIcon size={12} className="text-[var(--primary)]" />
                                                                 Fournisseurs Liés
                                                             </h4>
                                                         </div>
@@ -550,21 +550,21 @@ export const AddProductModal = ({ isOpen, onClose, categories, suppliers, produc
                                                                         <select
                                                                             value={ls.supplierId}
                                                                             onChange={(e) => updateLinkedSupplier(v.id, ls.id, "supplierId", e.target.value)}
-                                                                            className="w-full bg-white/50 dark:bg-black/40 border border-slate-200 dark:border-[#262626] rounded-lg px-3 py-2 text-slate-900 dark:text-slate-100 text-sm appearance-none focus:ring-1 focus:ring-[#ec5b13] outline-none transition-all cursor-pointer font-bold"
+                                                                            className="w-full bg-white/50 dark:bg-black/40 border border-slate-200 dark:border-[#262626] rounded-lg px-3 py-2 text-slate-900 dark:text-slate-100 text-sm appearance-none focus:ring-1 focus:ring-[var(--primary)] outline-none transition-all cursor-pointer font-bold"
                                                                         >
                                                                             <option value="" disabled>Choisir un fournisseur</option>
                                                                             {suppliers.map(s => (
                                                                                 <option key={s.id} value={s.id}>{s.name}</option>
                                                                             ))}
                                                                         </select>
-                                                                        <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none group-focus-within:text-[#ec5b13] size-4" />
+                                                                        <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none group-focus-within:text-[var(--primary)] size-4" />
                                                                     </div>
                                                                     <div className="w-full md:w-40 relative">
                                                                         {ls.currency === "USD" ? (
                                                                             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-xs font-black">$</span>
                                                                         ) : null}
                                                                         <input
-                                                                            className={`w-full bg-white/50 dark:bg-black/40 border border-slate-200 dark:border-[#262626] rounded-lg ${ls.currency === "USD" ? "pl-6 pr-12" : "pl-3 pr-12"} py-2 text-slate-900 dark:text-slate-100 text-sm focus:ring-1 focus:ring-[#ec5b13] outline-none transition-all font-black`}
+                                                                            className={`w-full bg-white/50 dark:bg-black/40 border border-slate-200 dark:border-[#262626] rounded-lg ${ls.currency === "USD" ? "pl-6 pr-12" : "pl-3 pr-12"} py-2 text-slate-900 dark:text-slate-100 text-sm focus:ring-1 focus:ring-[var(--primary)] outline-none transition-all font-black`}
                                                                             placeholder="Achat"
                                                                             type="number"
                                                                             step="0.01"
@@ -590,7 +590,7 @@ export const AddProductModal = ({ isOpen, onClose, categories, suppliers, produc
                                                         {/* Add Supplier Button */}
                                                         <button
                                                             onClick={() => addLinkedSupplier(v.id)}
-                                                            className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-[#ec5b13]/80 hover:text-[#ec5b13] transition-colors w-fit group/add"
+                                                            className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-[var(--primary)]/80 hover:text-[var(--primary)] transition-colors w-fit group/add"
                                                         >
                                                             <PlusCircle size={14} className="group-hover/add:scale-110 transition-transform" />
                                                             Lier un fournisseur
@@ -603,7 +603,7 @@ export const AddProductModal = ({ isOpen, onClose, categories, suppliers, produc
                                         {/* Add Variant Ghost Button */}
                                         <button
                                             onClick={addVariant}
-                                            className="flex items-center justify-center gap-2 py-5 border-2 border-dashed border-[#ec5b13]/20 rounded-xl text-[#ec5b13] font-black text-xs uppercase tracking-[0.2em] hover:bg-[#ec5b13]/5 hover:border-[#ec5b13]/40 transition-all active:scale-[0.99]"
+                                            className="flex items-center justify-center gap-2 py-5 border-2 border-dashed border-[var(--primary)]/20 rounded-xl text-[var(--primary)] font-black text-xs uppercase tracking-[0.2em] hover:bg-[var(--primary)]/5 hover:border-[var(--primary)]/40 transition-all active:scale-[0.99]"
                                         >
                                             <PlusCircle size={18} />
                                             Ajouter une autre variante
@@ -620,7 +620,7 @@ export const AddProductModal = ({ isOpen, onClose, categories, suppliers, produc
                                     Annuler
                                 </button>
                                 <button
-                                    className="px-10 py-3 bg-[#ec5b13] text-white font-black text-xs uppercase tracking-[0.2em] rounded-xl shadow-lg shadow-[#ec5b13]/20 hover:bg-[#ec5b13]/90 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center gap-2.5"
+                                    className="px-10 py-3 bg-[var(--primary)] text-white font-black text-xs uppercase tracking-[0.2em] rounded-xl shadow-lg shadow-[var(--primary)]/20 hover:bg-[var(--primary)]/90 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center gap-2.5"
                                     onClick={handleSubmit}
                                     disabled={isSaving}
                                 >

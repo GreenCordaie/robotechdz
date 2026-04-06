@@ -6,6 +6,8 @@ import { getCachedSettings } from "@/lib/security";
 
 export const dynamic = "force-dynamic";
 
+
+
 interface ServiceStatus {
     name: string;
     status: "ok" | "degraded";

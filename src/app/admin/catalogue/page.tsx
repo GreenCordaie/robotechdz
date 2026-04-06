@@ -5,7 +5,7 @@ import { getCurrentUser } from "@/lib/security";
 import { redirect } from "next/navigation";
 import { UserRole, ProductStatus } from "@/lib/constants";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 60;
 
 export default async function CataloguePage({
     searchParams,

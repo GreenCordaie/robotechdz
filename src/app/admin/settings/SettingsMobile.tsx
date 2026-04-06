@@ -383,7 +383,7 @@ export default function SettingsMobile() {
             title: "Configuration Boutique",
             items: [
                 { name: "Identité Boutique", icon: Store, color: "text-blue-500", bg: "bg-blue-500/10", desc: "Infos, Logos, Coordonnées", roles: ["ADMIN"] },
-                { name: "Équipe & Accès", icon: Users, color: "text-[#ec5b13]", bg: "bg-[#ec5b13]/10", desc: "Membres, Rôles, Permissions", roles: ["ADMIN"] },
+                { name: "Équipe & Accès", icon: Users, color: "text-[var(--primary)]", bg: "bg-[var(--primary)]/10", desc: "Membres, Rôles, Permissions", roles: ["ADMIN"] },
                 ...(isB2bEnabled ? [{ name: "B2B & Partners", icon: Smartphone, color: "text-emerald-500", bg: "bg-emerald-500/10", href: "/admin/b2b", desc: "Revendeurs, API, Tarifs", roles: ["ADMIN"] }] : []),
                 { name: "Ticket de Caisse", icon: CreditCard, color: "text-amber-500", bg: "bg-amber-500/10", desc: "Logiciel de caisse, Reçus", roles: ["ADMIN"] },
                 { name: "Apparence & Visuels", icon: Palette, color: "text-purple-400", bg: "bg-purple-400/10", desc: "Logos, Couleurs, Favicon", roles: ["ADMIN"] },
@@ -414,7 +414,7 @@ export default function SettingsMobile() {
             {/* Header / Profile Summary */}
             <header className="p-8 pt-10   bg-gradient-to-b from-[#1a110d] to-black border-b border-white/5 rounded-b-[3rem]">
                 <div className="flex items-center gap-5">
-                    <div className="size-16 rounded-full bg-[#ec5b13] flex items-center justify-center font-black text-2xl border-4 border-black shadow-xl">
+                    <div className="size-16 rounded-full bg-[var(--primary)] flex items-center justify-center font-black text-2xl border-4 border-black shadow-xl">
                         {user?.nom?.substring(0, 1).toUpperCase() || "A"}
                     </div>
                     <div>
@@ -630,8 +630,8 @@ export default function SettingsMobile() {
                                 />
                             </div>
 
-                            <div className="p-5 bg-[#ec5b13]/10 border border-[#ec5b13]/20 rounded-3xl space-y-4">
-                                <div className="flex items-center gap-3 text-[#ec5b13]">
+                            <div className="p-5 bg-[var(--primary)]/10 border border-[var(--primary)]/20 rounded-3xl space-y-4">
+                                <div className="flex items-center gap-3 text-[var(--primary)]">
                                     <Smartphone size={18} />
                                     <h3 className="text-xs font-black uppercase tracking-wider">Accès Rapide Webhook WhatsApp</h3>
                                 </div>
@@ -641,7 +641,7 @@ export default function SettingsMobile() {
                                 <div className="space-y-2">
                                     <label className="text-[9px] font-black uppercase text-slate-500 ml-1">URL du Webhook</label>
                                     <input
-                                        className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-xs font-mono outline-none focus:border-[#ec5b13]/50 transition-all text-[#ec5b13]"
+                                        className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-xs font-mono outline-none focus:border-[var(--primary)]/50 transition-all text-[var(--primary)]"
                                         placeholder="https://xyz.trycloudflare.com/api/webhooks/whatsapp"
                                         value={shopData.whatsappWebhookUrl || ""}
                                         onChange={(e) => setShopData({ ...shopData, whatsappWebhookUrl: e.target.value })}
@@ -724,11 +724,11 @@ export default function SettingsMobile() {
 
                                         <div className="space-y-2">
                                             <div className="flex items-center gap-2 text-white ml-1">
-                                                <Globe size={12} className="text-[#ec5b13]" />
+                                                <Globe size={12} className="text-[var(--primary)]" />
                                                 <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">IP Whitelisting</span>
                                             </div>
                                             <textarea
-                                                className="w-full bg-black/40 border border-white/10 rounded-2xl p-4 text-xs text-white placeholder:text-slate-800 outline-none focus:border-[#ec5b13]/50 transition-all min-h-[80px] font-mono"
+                                                className="w-full bg-black/40 border border-white/10 rounded-2xl p-4 text-xs text-white placeholder:text-slate-800 outline-none focus:border-[var(--primary)]/50 transition-all min-h-[80px] font-mono"
                                                 placeholder="123.456.78.90, ..."
                                                 value={shopData?.allowedIps || ""}
                                                 onChange={(e) => setShopData({ ...shopData, allowedIps: e.target.value })}
@@ -742,8 +742,8 @@ export default function SettingsMobile() {
                             <Card className="bg-[#161616] border border-white/5 rounded-[2rem] overflow-hidden shadow-2xl">
                                 <CardBody className="p-6 space-y-6">
                                     <div className="flex items-center gap-4">
-                                        <div className="p-3 bg-[#ec5b13]/10 rounded-2xl">
-                                            <Lock className="text-[#ec5b13] w-5 h-5" />
+                                        <div className="p-3 bg-[var(--primary)]/10 rounded-2xl">
+                                            <Lock className="text-[var(--primary)] w-5 h-5" />
                                         </div>
                                         <div>
                                             <h3 className="text-sm font-black text-white uppercase tracking-tight">Double Auth (2FA)</h3>
@@ -756,7 +756,7 @@ export default function SettingsMobile() {
                                             <p className="text-slate-500 text-[11px] font-medium leading-relaxed italic">&quot;Applique une seconde vérification via votre application mobile de sécurité.&quot;</p>
                                             <Button
                                                 onPress={handleGenerateMfa}
-                                                className="bg-[#ec5b13] text-white font-black uppercase tracking-widest text-[10px] py-4 px-8 rounded-xl w-full"
+                                                className="bg-[var(--primary)] text-white font-black uppercase tracking-widest text-[10px] py-4 px-8 rounded-xl w-full"
                                             >
                                                 Configurer le 2FA
                                             </Button>
@@ -770,7 +770,7 @@ export default function SettingsMobile() {
                                             <input
                                                 type="text"
                                                 placeholder="Code 6 chiffres"
-                                                className="w-full bg-black/40 border border-white/10 rounded-xl py-3 px-4 text-center text-lg font-black tracking-[0.4em] text-[#ec5b13] outline-none"
+                                                className="w-full bg-black/40 border border-white/10 rounded-xl py-3 px-4 text-center text-lg font-black tracking-[0.4em] text-[var(--primary)] outline-none"
                                                 maxLength={6}
                                                 value={mfaInputCode}
                                                 onChange={(e) => setMfaInputCode(e.target.value)}
@@ -922,7 +922,7 @@ export default function SettingsMobile() {
 
                         <main className="p-6 flex-1 overflow-y-auto space-y-8">
                             <section className="space-y-4">
-                                <h3 className="text-xs font-black uppercase tracking-widest text-[#ec5b13]">Couleur d&apos;accent</h3>
+                                <h3 className="text-xs font-black uppercase tracking-widest text-[var(--primary)]">Couleur d&apos;accent</h3>
                                 <div className="flex flex-wrap gap-4">
                                     {["#ec5b13", "#4169e1", "#10b981", "#ef4444", "#8b5cf6", "#f59e0b"].map(c => (
                                         <button
@@ -936,7 +936,7 @@ export default function SettingsMobile() {
                             </section>
 
                             <section className="space-y-6">
-                                <h3 className="text-xs font-black uppercase tracking-widest text-[#ec5b13]">Logos & Branding</h3>
+                                <h3 className="text-xs font-black uppercase tracking-widest text-[var(--primary)]">Logos & Branding</h3>
 
                                 {[
                                     { label: 'Logo Principal', key: 'logoUrl', ref: logoInputRef, target: 'logo', loading: isUploadingLogo },

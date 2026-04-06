@@ -197,7 +197,7 @@ export default function SharedAccountsMobile() {
         try {
             let res: { success: boolean; error?: string };
             if (modalMode === "ADD") {
-                res = await addSharedAccount({ variantId: parseInt(selectedVariantId), email, password, purchaseCurrency: "DZD", slots: slotsData }) as { success: boolean; error?: string };
+                res = await addSharedAccount({ variantId: parseInt(selectedVariantId), email, password, isRelayed: false, purchaseCurrency: "DZD", slots: slotsData }) as { success: boolean; error?: string };
             } else {
                 res = await updateSharedAccount({
                     id: editingAccount.id, email, password,

@@ -181,7 +181,7 @@ export const AddResellerModal = ({ isOpen, onOpenChange, onSuccess }: AddReselle
                                     Annuler
                                 </Button>
                                 <Button
-                                    className="bg-[#ec5b13] text-white font-bold rounded-xl shadow-lg shadow-orange-900/20"
+                                    className="bg-[var(--primary)] text-white font-bold rounded-xl shadow-lg shadow-orange-900/20"
                                     type="submit"
                                     isLoading={isLoading}
                                     startContent={!isLoading && <UserPlus className="size-4" />}

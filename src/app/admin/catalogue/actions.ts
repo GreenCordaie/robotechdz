@@ -28,6 +28,16 @@ export const getPaginatedProducts = withAuth(
     }
 );
 
+export const getCategoriesAction = withAuth(
+    {
+        roles: [UserRole.ADMIN, UserRole.CAISSIER, UserRole.TRAITEUR],
+        schema: z.object({})
+    },
+    async () => {
+        return await ProductQueries.getCategories();
+    }
+);
+
 export const createProductAction = withAuth(
     {
         roles: [UserRole.ADMIN],

@@ -41,12 +41,12 @@ const DiscussionList = ({ discussions, selectedPhone, onSelect }: DiscussionList
                             className={cn(
                                 "w-full p-4 flex gap-3 items-start border-b border-white/5 transition-all text-left",
                                 selectedPhone === disc.phone
-                                    ? "bg-[#ec5b13]/10 border-l-4 border-l-[#ec5b13]"
+                                    ? "bg-[var(--primary)]/10 border-l-4 border-l-[var(--primary)]"
                                     : "hover:bg-white/[0.02] border-l-4 border-l-transparent"
                             )}
                         >
                             <div className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center flex-shrink-0">
-                                <User size={18} className={disc.clientName ? "text-[#ec5b13]" : "text-slate-600"} />
+                                <User size={18} className={disc.clientName ? "text-[var(--primary)]" : "text-slate-600"} />
                             </div>
 
                             <div className="flex-1 min-w-0">
@@ -61,7 +61,7 @@ const DiscussionList = ({ discussions, selectedPhone, onSelect }: DiscussionList
                                 </div>
 
                                 {disc.clientName && (
-                                    <div className="text-[10px] font-bold text-[#ec5b13] uppercase tracking-wider mb-1">
+                                    <div className="text-[10px] font-bold text-[var(--primary)] uppercase tracking-wider mb-1">
                                         {formatWhatsApp(disc.phone)}
                                     </div>
                                 )}
@@ -73,7 +73,7 @@ const DiscussionList = ({ discussions, selectedPhone, onSelect }: DiscussionList
 
                             <div className="flex flex-col items-end gap-1 self-start mt-1">
                                 {disc.unreadCount > 0 ? (
-                                    <div className="flex items-center justify-center min-w-[18px] h-[18px] rounded-full bg-[#ec5b13] px-1 shadow-[0_0_8px_rgba(236,91,19,0.4)]">
+                                    <div className="flex items-center justify-center min-w-[18px] h-[18px] rounded-full bg-[var(--primary)] px-1 shadow-[0_0_8px_rgba(236,91,19,0.4)]">
                                         <span className="text-[9px] font-black text-white leading-none">{disc.unreadCount}</span>
                                     </div>
                                 ) : disc.status === 'OUVERT' && (

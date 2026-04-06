@@ -41,7 +41,8 @@ export async function checkApiRateLimit(keyHash: string): Promise<boolean> {
         }
         return count > API_RATE_LIMIT;
     } catch {
-        return false; // graceful degradation
+        // Fail-closed: if Redis is unavailable, block the request
+        return true;
     }
 }
 

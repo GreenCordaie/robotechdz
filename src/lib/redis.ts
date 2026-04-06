@@ -1,16 +1,10 @@
-import Redis from "ioredis";
+import { Redis } from "@upstash/redis";
 
-const globalForRedis = globalThis as unknown as { redis: Redis | undefined };
-
-export const redis =
-    globalForRedis.redis ??
-    new Redis(process.env.REDIS_URL ?? "redis://localhost:6379", {
-        lazyConnect: true,
-        enableOfflineQueue: false,
-        maxRetriesPerRequest: 1,
-    });
-
-if (process.env.NODE_ENV !== "production") globalForRedis.redis = redis;
+// Utilisation d'Upstash Redis (HTTP) pour la compatibilité Edge / Cloudflare Pages
+export const redis = new Redis({
+    url: process.env.UPSTASH_REDIS_REST_URL!,
+    token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+});
 
 // ---------------------------------------------------------------------------
 // Helpers — all with try/catch for graceful degradation
@@ -18,9 +12,8 @@ if (process.env.NODE_ENV !== "production") globalForRedis.redis = redis;
 
 export async function cacheGet<T>(key: string): Promise<T | null> {
     try {
-        const raw = await redis.get(key);
-        if (raw === null) return null;
-        return JSON.parse(raw) as T;
+        const data = await redis.get<T>(key);
+        return data;
     } catch {
         return null;
     }
@@ -28,7 +21,7 @@ export async function cacheGet<T>(key: string): Promise<T | null> {
 
 export async function cacheSet<T>(key: string, value: T, ttlSeconds: number): Promise<void> {
     try {
-        await redis.set(key, JSON.stringify(value), "EX", ttlSeconds);
+        await redis.set(key, value, { ex: ttlSeconds });
     } catch {
         // no-op on error
     }
