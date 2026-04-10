@@ -2,6 +2,63 @@
 
 Toutes les modifications notables de ce projet seront documentées dans ce fichier.
 
+## [11.0.0] - 2026-04-10
+
+### 🚀 Release v11.0.0 — Production VPS
+
+Migration complète de l'infrastructure locale vers un VPS dédié (Ubuntu 24.04, 8 Go RAM). L'application tourne désormais 24/7 sans dépendance au PC local.
+
+#### 🏗️ Infrastructure & Déploiement
+- **VPS Production** : Déploiement Docker complet sur serveur dédié (187.124.191.30)
+- **Docker Compose Production** : `docker-compose.prod.yml` avec 6 services (App, PostgreSQL, Redis, n8n, WAHA, MongoDB)
+- **Dockerfile optimisé** : Build multi-stage Next.js standalone, user non-root (`nextjs`)
+- **Cloudflare Tunnel** : Installé en service systemd sur le VPS (plus besoin de cloudflared local)
+- **Tailscale VPN** : Réseau privé entre VPS et PC caisse pour l'impression thermique
+- **Script de déploiement** : `deploy.sh` (setup, deploy, update, status, logs, backup, restore)
+- **`.env.production.example`** : Template documenté pour toutes les variables d'environnement
+
+#### 🔒 Audit de Sécurité & Corrections
+- **CRITICAL** : Endpoints debug (`/api/debug-codes`, `/api/diag-netflix`, `/api/list-all-emails`) protégés par `CRON_SECRET`
+- **CRITICAL** : Validation `SESSION_SECRET` ≥ 32 caractères au démarrage (`jwt.ts`)
+- **HIGH** : SSH durci — `PasswordAuthentication no`, clé SSH uniquement
+- **HIGH** : Fail2ban configuré — 3 tentatives max, ban 1h
+- **HIGH** : Rate-limit fail-closed — bloque quand Redis est indisponible (au lieu de laisser passer)
+- **HIGH** : Healthchecks Docker sur tous les services (app, db, redis, n8n)
+- **HIGH** : Limites CPU/RAM par container (prévention DoS)
+- **HIGH** : WAHA `WHATSAPP_API_KEY` sans valeur par défaut (crash si non configuré)
+- **MEDIUM** : Port PostgreSQL exposé uniquement en `127.0.0.1` (+ Tailscale pour le build)
+- **MEDIUM** : Firewall UFW — ports 22, 80, 443 uniquement
+
+#### 🖨️ Impression Thermique via Tailscale
+- **`printer.ts`** : `PRINT_SERVICE_URL` configurable via variable d'environnement (plus de `127.0.0.1` en dur)
+- **`print-service/server.js`** : Écoute sur `0.0.0.0`, autorise le réseau Tailscale (`100.x.x.x`)
+- **`print-service/config.json`** : `serverUrl` pointe vers le VPS via Tailscale (`http://100.97.177.62:3000`)
+
+#### 📱 Corrections UI
+- **MobileNavbar** : Texte qui dépasse corrigé — `"Validation"` → `"Traiter"`, `flex-1` + `truncate` sur les labels
+
+#### ⚙️ Configuration Next.js
+- **`next.config.mjs`** : Ajout `output: 'standalone'` pour le build Docker
+- **`.dockerignore`** : Exclusion node_modules, .git, backups, tmp
+
+#### 📝 Fichiers modifiés
+- `docker-compose.prod.yml` (nouveau)
+- `deploy.sh` (nouveau)
+- `.env.production.example` (nouveau)
+- `.dockerignore` (nouveau)
+- `next.config.mjs`
+- `Dockerfile`
+- `start.bat`
+- `src/app/api/debug-codes/route.ts`
+- `src/app/api/diag-netflix/route.ts`
+- `src/app/api/list-all-emails/route.ts`
+- `src/lib/jwt.ts`
+- `src/lib/printer.ts`
+- `src/services/rate-limit.service.ts`
+- `src/components/admin/MobileNavbar.tsx`
+- `print-service/config.json`
+- `print-service/server.js`
+
 ## [10.1.1] - 2026-04-06
 
 ### 🚀 Release v10.1.1 (Stable)

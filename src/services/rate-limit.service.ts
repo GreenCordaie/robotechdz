@@ -36,7 +36,8 @@ export class RateLimitService {
                 blockedUntil,
             };
         } catch {
-            return { isBlocked: false, remaining: maxAttempts };
+            // Fail-closed: block requests when Redis is unavailable
+            return { isBlocked: true, remaining: 0 };
         }
     }
 

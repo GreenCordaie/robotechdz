@@ -6,6 +6,10 @@ import { decrypt } from "@/lib/encryption";
 import { NetflixResolverService } from "@/services/netflix-resolver.service";
 
 export async function GET(req: Request) {
+    const secret = req.headers.get("authorization")?.replace("Bearer ", "");
+    if (!secret || secret !== process.env.CRON_SECRET) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
     try {
         const { searchParams } = new URL(req.url);
         const emailParam = searchParams.get('email') || "Arahamplin5568@outlook.com";

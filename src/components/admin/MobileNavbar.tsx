@@ -39,7 +39,7 @@ export const MobileNavbar = () => {
     const navItems = [
         { name: "Dash", icon: "dashboard", href: "/admin/dashboard", activeColor: "text-blue-500", roles: ["ADMIN", "CAISSIER"] },
         { name: "Caisse", icon: "account_balance_wallet", href: "/admin/caisse", badge: pendingOrders, activeColor: "text-[var(--primary)]", roles: ["ADMIN", "CAISSIER"] },
-        { name: "Validation", icon: "sync_alt", href: "/admin/traitement", activeColor: "text-emerald-500", roles: ["ADMIN", "CAISSIER", "TRAITEUR"] },
+        { name: "Traiter", icon: "sync_alt", href: "/admin/traitement", activeColor: "text-emerald-500", roles: ["ADMIN", "CAISSIER", "TRAITEUR"] },
         { name: "Stock", icon: "inventory_2", href: "/admin/catalogue", activeColor: "text-amber-500", roles: ["ADMIN", "CAISSIER", "TRAITEUR"] },
         { name: "Menu", icon: "menu", href: "/admin/settings", activeColor: "text-purple-500", roles: ["ADMIN", "CAISSIER", "TRAITEUR"] },
     ];
@@ -60,7 +60,7 @@ export const MobileNavbar = () => {
                     <Link
                         key={item.href}
                         href={item.href}
-                        className={`flex flex-col items-center gap-1 min-w-[54px] pb-1 transition-all duration-200 relative ${isActive ? item.activeColor : "text-slate-400"}`}
+                        className={`flex flex-col items-center gap-1 min-w-0 flex-1 pb-1 transition-all duration-200 relative ${isActive ? item.activeColor : "text-slate-400"}`}
                     >
                         {isActive && (
                             <div className={`absolute -top-2.5 w-6 h-[3px] rounded-full ${item.activeColor.replace('text-', 'bg-')}`} />
@@ -78,7 +78,7 @@ export const MobileNavbar = () => {
                                 </span>
                             ) : null}
                         </div>
-                        <span className="text-[10px] font-medium">
+                        <span className="text-[10px] font-medium truncate max-w-full">
                             {item.name}
                         </span>
                     </Link>

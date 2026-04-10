@@ -3,6 +3,7 @@
   "printerPort": 9100,
   "secret": "robotech-print-secret-change-moi",
   "port": 6543,
-  "serverUrl": "http://100.112.49.95:1556",
+  "host": "0.0.0.0",
+  "serverUrl": "http://100.97.177.62:3000",
   "pollIntervalMs": 5000
 }

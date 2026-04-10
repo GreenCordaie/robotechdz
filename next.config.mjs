@@ -24,6 +24,7 @@ const nextConfig = {
             { protocol: 'https', hostname: '*.r2.dev' },
         ],
     },
+    output: 'standalone',
     eslint: {
         ignoreDuringBuilds: true,
     },
