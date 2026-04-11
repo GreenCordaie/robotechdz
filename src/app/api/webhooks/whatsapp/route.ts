@@ -500,38 +500,57 @@ export async function POST(req: NextRequest) {
                 let matchedSlots = uniqueSlots;
                 if (uniqueSlots.length > 1) {
                     console.log(`[NETFLIX_AUTO] Multiple slots, filtering by text: "${text}"`);
-                    // Texte nettoyé : retire #, C, N°, espaces, tirets → "C379-270" devient "379270"
-                    const cleanedText = text.toLowerCase().replace(/[#cn°\s\-]/g, '');
-                    matchedSlots = uniqueSlots.filter(s => {
-                        const [email] = (decrypt(s.account.code) || '').split('|').map(str => str.trim().toLowerCase());
-                        const orderId = String(s.order.id);
-                        const orderNumber = String(s.order.orderNumber || '').toLowerCase();
-                        // "#C379-270" → segments: ["379", "270"]
-                        const orderSegments = orderNumber.replace(/[^0-9\-]/g, '').split('-').filter(Boolean);
-                        // Tous les chiffres collés: "379270"
-                        const orderDigitsOnly = orderNumber.replace(/\D/g, '');
-                        // Dernier segment: "270" (le plus souvent cité par le client)
-                        const lastSegment = orderSegments[orderSegments.length - 1] || '';
-                        const profile = (s.slot.profileName || '').toLowerCase();
-                        const msgText = text.toLowerCase();
 
-                        const isMatch =
-                            // Email complet
-                            msgText.includes(email) ||
-                            // ID base de données
-                            msgText.includes(orderId) ||
-                            // Numéro complet ex: "#C379-270"
-                            (orderNumber && msgText.includes(orderNumber.replace('#', ''))) ||
-                            // Texte nettoyé ↔ chiffres collés ex: "379270"
-                            (orderDigitsOnly.length >= 3 && cleanedText.includes(orderDigitsOnly)) ||
-                            // Dernier segment ex: "270" → client peut taper juste "270"
-                            (lastSegment.length >= 3 && cleanedText.includes(lastSegment)) ||
-                            // Profil
-                            (profile && msgText.includes(profile));
+                    // ── Réponse par index: "1", "2", "3" → sélection directe dans la liste ──
+                    const indexMatch = text.trim().match(/^(\d)$/);
+                    if (indexMatch) {
+                        const idx = parseInt(indexMatch[1], 10) - 1;
+                        if (idx >= 0 && idx < uniqueSlots.length) {
+                            console.log(`[NETFLIX_AUTO] Index selection: ${idx + 1} → slot ${uniqueSlots[idx].slot.id}`);
+                            matchedSlots = [uniqueSlots[idx]];
+                        }
+                    }
 
-                        if (isMatch) console.log(`[NETFLIX_AUTO] Match slot ${s.slot.id} (Order: ${s.order.orderNumber || s.order.id})`);
-                        return isMatch;
-                    });
+                    // ── Réponse par email partiel: "arahamp" ou "john" ──
+                    if (matchedSlots.length > 1) {
+                        const msgLower = text.toLowerCase().trim();
+                        const emailMatch = uniqueSlots.filter(s => {
+                            const [email] = (decrypt(s.account.code) || '').split('|').map(str => str.trim().toLowerCase());
+                            // Match si le message contient une partie significative de l'email (min 4 chars)
+                            return msgLower.length >= 4 && email.includes(msgLower);
+                        });
+                        if (emailMatch.length === 1) {
+                            console.log(`[NETFLIX_AUTO] Email partial match → slot ${emailMatch[0].slot.id}`);
+                            matchedSlots = emailMatch;
+                        }
+                    }
+
+                    // ── Réponse par numéro de commande, profil, etc. ──
+                    if (matchedSlots.length > 1) {
+                        const cleanedText = text.toLowerCase().replace(/[#cn°\s\-]/g, '');
+                        const filtered = uniqueSlots.filter(s => {
+                            const [email] = (decrypt(s.account.code) || '').split('|').map(str => str.trim().toLowerCase());
+                            const orderId = String(s.order.id);
+                            const orderNumber = String(s.order.orderNumber || '').toLowerCase();
+                            const orderSegments = orderNumber.replace(/[^0-9\-]/g, '').split('-').filter(Boolean);
+                            const orderDigitsOnly = orderNumber.replace(/\D/g, '');
+                            const lastSegment = orderSegments[orderSegments.length - 1] || '';
+                            const profile = (s.slot.profileName || '').toLowerCase();
+                            const msgText = text.toLowerCase();
+
+                            const isMatch =
+                                msgText.includes(email) ||
+                                msgText.includes(orderId) ||
+                                (orderNumber && msgText.includes(orderNumber.replace('#', ''))) ||
+                                (orderDigitsOnly.length >= 3 && cleanedText.includes(orderDigitsOnly)) ||
+                                (lastSegment.length >= 3 && cleanedText.includes(lastSegment)) ||
+                                (profile && profile.length >= 3 && msgText.includes(profile));
+
+                            if (isMatch) console.log(`[NETFLIX_AUTO] Match slot ${s.slot.id} (Order: ${s.order.orderNumber || s.order.id})`);
+                            return isMatch;
+                        });
+                        if (filtered.length > 0) matchedSlots = filtered;
+                    }
                 }
 
                 console.log(`[NETFLIX_AUTO] Final matched slots: ${matchedSlots.length}`);
@@ -699,16 +718,14 @@ export async function POST(req: NextRequest) {
                         return NextResponse.json({ success: true });
                     }
                 } else if (uniqueSlots.length > 1) {
-                    // Trop de choix, on demande d'identifier
-                    let listMsg = `🤔 Vous avez plusieurs comptes Netflix. Pour lequel voulez-vous le code ?\n\n`;
+                    // Plusieurs comptes, demander lequel
+                    let listMsg = `🤔 Vous avez *${uniqueSlots.length} comptes Netflix*. Pour lequel voulez-vous le code ?\n\n`;
                     uniqueSlots.forEach((s, i) => {
                         const [email] = (decrypt(s.account.code) || '').split('|').map(str => str.trim());
                         const orderRef = String(s.order.orderNumber || s.order.id);
-                        // Extraire le dernier segment pour guider le client ex: "#C379-270" → "270"
-                        const lastPart = orderRef.replace(/[^0-9\-]/g, '').split('-').filter(Boolean).pop() || orderRef;
-                        listMsg += `${i + 1}. *${email}*\n   Commande : *${orderRef}*${s.slot.profileName ? ` · Profil : ${s.slot.profileName}` : ''}\n\n`;
+                        listMsg += `*${i + 1}.* ${email}\n   📋 Commande : *${orderRef}*${s.slot.profileName ? ` · Profil : ${s.slot.profileName}` : ''}\n\n`;
                     });
-                    listMsg += `👉 Répondez avec les *derniers chiffres* de votre commande\n_(ex: si votre commande est #C379-270, tapez *270*)_`;
+                    listMsg += `👉 Répondez *1*, *2*... pour choisir\n_ou tapez le début de l'email (ex: *john*)_`;
 
                     await sendWhatsAppMessage(senderPhone, listMsg, waSettings);
                     return NextResponse.json({ success: true });

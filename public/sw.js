@@ -75,19 +75,39 @@ self.addEventListener('fetch', (event) => {
     );
 });
 
+// ─── Badge counter (persisted across notifications) ──────────────────────────
+let badgeCount = 0;
+
+async function updateBadge(delta) {
+    badgeCount = Math.max(0, badgeCount + delta);
+    if (navigator.setAppBadge) {
+        if (badgeCount > 0) {
+            await navigator.setAppBadge(badgeCount);
+        } else {
+            await navigator.clearAppBadge();
+        }
+    }
+}
+
 self.addEventListener('push', (event) => {
     if (!event.data) return;
 
     try {
         const data = event.data.json();
         event.waitUntil(
-            self.registration.showNotification(data.title || 'Notification', {
-                body: data.body || '',
-                icon: data.icon || '/logo.png',
-                badge: '/logo.png',
-                data: { url: data.url || '/admin/dashboard' },
-                vibrate: [200, 100, 200],
-            })
+            Promise.all([
+                self.registration.showNotification(data.title || 'Notification', {
+                    body: data.body || '',
+                    icon: data.icon || '/icon-192.png',
+                    badge: '/badge-96.png',
+                    tag: data.tag || 'default',
+                    renotify: true,
+                    data: { url: data.url || '/admin/dashboard' },
+                    vibrate: [200, 100, 200],
+                    actions: data.actions || [],
+                }),
+                updateBadge(1),
+            ])
         );
     } catch (err) {
         // Ignore malformed push payloads
@@ -98,14 +118,25 @@ self.addEventListener('notificationclick', (event) => {
     event.notification.close();
     const target = event.notification.data?.url || '/admin/dashboard';
     event.waitUntil(
-        clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
-            for (const client of clientList) {
-                if (client.url.includes(self.location.origin) && 'focus' in client) {
-                    client.navigate(target);
-                    return client.focus();
+        Promise.all([
+            updateBadge(-1),
+            clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+                for (const client of clientList) {
+                    if (client.url.includes(self.location.origin) && 'focus' in client) {
+                        client.navigate(target);
+                        return client.focus();
+                    }
                 }
-            }
-            if (clients.openWindow) return clients.openWindow(target);
-        })
+                if (clients.openWindow) return clients.openWindow(target);
+            }),
+        ])
     );
+});
+
+// Clear badge when user opens the app
+self.addEventListener('message', (event) => {
+    if (event.data === 'CLEAR_BADGE') {
+        badgeCount = 0;
+        if (navigator.clearAppBadge) navigator.clearAppBadge();
+    }
 });

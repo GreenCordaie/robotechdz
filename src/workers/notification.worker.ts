@@ -61,6 +61,20 @@ export function initNotificationWorker() {
                     return { name: item.variant?.product?.name || 'Produit', quantity: item.quantity, credentials };
                 });
                 await N8nService.notifyOrderEvent("ORDER_PRINTED", order as any, items);
+
+                // Push notification to admin/caissier
+                const { sendPushToRoleAction } = await import("@/app/admin/push/actions");
+                const amount = parseFloat((order as any).totalAmount || '0').toLocaleString('fr-DZ');
+                sendPushToRoleAction('ADMIN', {
+                    title: `Commande ${(order as any).orderNumber}`,
+                    body: `${amount} DZD — ${items.length} article(s)`,
+                    url: '/admin/caisse',
+                }).catch(() => {});
+                sendPushToRoleAction('CAISSIER', {
+                    title: `Nouvelle commande ${(order as any).orderNumber}`,
+                    body: `${amount} DZD — ${items.length} article(s)`,
+                    url: '/admin/caisse',
+                }).catch(() => {});
             }
         } catch (error: any) {
             console.error(`[Worker] Failed to handle ORDER_PAID:`, error.message);

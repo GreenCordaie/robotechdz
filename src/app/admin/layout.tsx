@@ -35,7 +35,59 @@ export default function AdminLayout({
     useEffect(() => {
         setIsMounted(true);
         fetchSettings();
+
+        // Inject admin manifest
+        let link = document.querySelector<HTMLLinkElement>('link[rel="manifest"]');
+        if (link) {
+            link.href = "/api/admin-manifest";
+        } else {
+            link = document.createElement("link");
+            link.rel = "manifest";
+            link.href = "/api/admin-manifest";
+            document.head.appendChild(link);
+        }
     }, [fetchSettings]);
+
+    // Auto-subscribe push notifications + clear badge on app open
+    useEffect(() => {
+        if (!isAuthenticated || pathname === "/admin/login") return;
+
+        // Clear badge when user opens the app
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.ready.then(reg => {
+                reg.active?.postMessage('CLEAR_BADGE');
+            });
+            if ('clearAppBadge' in navigator) {
+                (navigator as any).clearAppBadge().catch(() => {});
+            }
+        }
+
+        // Auto-subscribe if permission already granted but not subscribed
+        (async () => {
+            try {
+                if (!('Notification' in window) || Notification.permission !== 'granted') return;
+                const reg = await navigator.serviceWorker.ready;
+                const existingSub = await reg.pushManager.getSubscription();
+                if (existingSub) return; // already subscribed
+
+                const { getPushPublicKeyAction, subscribeToPushAction } = await import("./push/actions");
+                const keyRes = await getPushPublicKeyAction({});
+                if (!keyRes.success || !keyRes.publicKey) return;
+
+                const padding = "=".repeat((4 - (keyRes.publicKey.length % 4)) % 4);
+                const base64 = (keyRes.publicKey + padding).replace(/-/g, "+").replace(/_/g, "/");
+                const rawData = window.atob(base64);
+                const appServerKey = new Uint8Array(rawData.length);
+                for (let i = 0; i < rawData.length; ++i) appServerKey[i] = rawData.charCodeAt(i);
+
+                const subscription = await reg.pushManager.subscribe({
+                    userVisibleOnly: true,
+                    applicationServerKey: appServerKey,
+                });
+                await subscribeToPushAction({ subscription });
+            } catch { /* silent */ }
+        })();
+    }, [isAuthenticated, pathname]);
 
     useEffect(() => {
         if (typeof document !== "undefined") {

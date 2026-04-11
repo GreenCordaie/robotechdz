@@ -2,6 +2,38 @@
 
 Toutes les modifications notables de ce projet seront documentées dans ce fichier.
 
+## [11.1.0] - 2026-04-11
+
+### 🔔 Notifications Push & PWA + Netflix Multi-Compte
+
+#### Notifications Push (Badge icône)
+- **Badge compteur** sur l'icône de l'app (comme WhatsApp/Facebook) via Badging API
+- **Push automatiques** : nouvelle commande payée → notification ADMIN + CAISSIER
+- **Auto-subscribe** au login si permission déjà accordée
+- **Clear badge** à l'ouverture de l'app
+- **Toggle dans Paramètres** : switch ON/OFF avec liste des événements notifiés
+
+#### PWA Double Manifest (Admin + Kiosk)
+- **2 manifests séparés** : `/api/admin-manifest` (scope `/admin`) et `/api/kiosk-manifest` (scope `/kiosk`)
+- Installables **indépendamment** — installer le kiosk ne bloque pas l'installation admin
+- Chaque manifest a son propre `id`, `scope`, `start_url`
+- Suppression du `manifest.ts` racine (remplacé par les routes API)
+
+#### Icônes PWA
+- **4 icônes générées** via Sharp : 192px + 512px, versions `maskable` (padding 20%) et `any`
+- **Badge notification** : `badge-96.png` pour la barre des tâches du téléphone
+- Logo correctement dimensionné, plus de rognage
+
+#### Bandeau Installation Kiosk
+- Bannière orange "Installez [nom boutique] sur votre appareil" avec bouton Installer
+- Disparaît si déjà installé ou fermé
+
+#### Netflix Multi-Compte (Disambiguation)
+- **Sélection par index** : client répond "1", "2" pour choisir le bon compte
+- **Match partiel email** : client tape "john" → match `john@outlook.com` (min 4 chars)
+- **Message amélioré** : liste numérotée claire avec instructions
+- Conserve aussi le match par n° commande et profil
+
 ## [11.0.1] - 2026-04-11
 
 ### 🐛 Fix: Livraison WhatsApp automatique
