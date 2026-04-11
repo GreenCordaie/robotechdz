@@ -40,41 +40,55 @@ export function initNotificationWorker() {
         }
     });
 
-    // 3. Order Paid (n8n or Telegram)
+    // 3. Order Paid (n8n notification — direct)
     eventBus.on(SystemEvent.ORDER_PAID, async (data: { orderId: number; isFullyAuto: boolean }) => {
         try {
             console.log(`[Worker] Handling ORDER_PAID for order: ${data.orderId}`);
-            await addNotificationJob(NotificationJobType.TRIGGER_N8N, {
-                orderId: data.orderId,
-                isFullyAuto: data.isFullyAuto
+            const { N8nService } = await import("@/services/n8n.service");
+            const { db } = await import("@/db");
+            const { eq } = await import("drizzle-orm");
+            const { orders } = await import("@/db/schema");
+            const { decrypt } = await import("@/lib/encryption");
+            const order = await db.query.orders.findFirst({
+                where: eq(orders.id, data.orderId),
+                with: { client: true, items: { with: { codes: true, slots: { with: { digitalCode: true } }, variant: { with: { product: true } } } } }
             });
+            if (order) {
+                const items = (order as any).items.map((item: any) => {
+                    const credentials: any[] = [];
+                    (item.codes || []).forEach((c: any) => { const d = decrypt(c.code); if (d) credentials.push({ label: "Code", value: d }); });
+                    (item.slots || []).forEach((s: any) => { const p = s.digitalCode?.code ? decrypt(s.digitalCode.code) : null; if (p) credentials.push({ label: "Accès", value: p }); });
+                    return { name: item.variant?.product?.name || 'Produit', quantity: item.quantity, credentials };
+                });
+                await N8nService.notifyOrderEvent("ORDER_PRINTED", order as any, items);
+            }
         } catch (error: any) {
             console.error(`[Worker] Failed to handle ORDER_PAID:`, error.message);
         }
     });
 
-    // 4. Order Delivered (WhatsApp sending of codes)
+    // 4. Order Delivered (WhatsApp sending of codes — direct, no queue)
     eventBus.on(SystemEvent.ORDER_DELIVERED, async (data: { orderId: number }) => {
         try {
-            console.log(`[Worker] Handling ORDER_DELIVERED for order: ${data.orderId} (BusID: ${eb.instanceId})`);
-            await addNotificationJob(NotificationJobType.TRIGGER_N8N, {
-                orderId: data.orderId,
-                context: 'DELIVERY'
-            });
-            console.log(`[Worker] Enqueued n8n trigger for delivery: ${data.orderId}`);
+            console.log(`[Worker] Handling ORDER_DELIVERED for order: ${data.orderId} — direct delivery`);
+            const { triggerOrderDelivery } = await import("@/lib/delivery");
+            const result = await triggerOrderDelivery(data.orderId);
+            console.log(`[Worker] ORDER_DELIVERED #${data.orderId}: ${result.success ? 'OK' : result.error || 'skipped'}`);
         } catch (error: any) {
             console.error(`[Worker] Failed to handle ORDER_DELIVERED:`, error.message);
         }
     });
 
-    // 5. Order Printed (Archival)
+    // 5. Order Printed / Archived (n8n notification — direct)
     eventBus.on(SystemEvent.ORDER_PRINTED, async (data: { orderId: number }) => {
         try {
             console.log(`[Worker] Handling ORDER_PRINTED for: ${data.orderId}`);
-            await addNotificationJob(NotificationJobType.TRIGGER_N8N, {
-                orderId: data.orderId,
-                context: 'ARCHIVAL'
-            });
+            const { N8nService } = await import("@/services/n8n.service");
+            const { db } = await import("@/db");
+            const { eq } = await import("drizzle-orm");
+            const { orders } = await import("@/db/schema");
+            const order = await db.query.orders.findFirst({ where: eq(orders.id, data.orderId), with: { client: true } });
+            if (order) await N8nService.notifyOrderArchival(order as any);
         } catch (error: any) {
             console.error(`[Worker] Failed to handle ORDER_PRINTED:`, error.message);
         }
@@ -84,9 +98,12 @@ export function initNotificationWorker() {
     eventBus.on(SystemEvent.TICKET_PRINTED, async (data: { orderId: number }) => {
         try {
             console.log(`[Worker] Handling TICKET_PRINTED for: ${data.orderId}`);
-            await addNotificationJob(NotificationJobType.TRIGGER_N8N, {
-                orderId: data.orderId
-            });
+            const { N8nService } = await import("@/services/n8n.service");
+            const { db } = await import("@/db");
+            const { eq } = await import("drizzle-orm");
+            const { orders } = await import("@/db/schema");
+            const order = await db.query.orders.findFirst({ where: eq(orders.id, data.orderId), with: { client: true } });
+            if (order) await N8nService.notifyOrderArchival(order as any);
         } catch (error: any) {
             console.error(`[Worker] Failed to handle TICKET_PRINTED:`, error.message);
         }

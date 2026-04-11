@@ -16,18 +16,11 @@ class AppEventBus extends EventEmitter {
     }
 
     public static getInstance(): AppEventBus {
-        if (process.env.NODE_ENV === "development") {
-            const globalAny = globalThis as any;
-            if (!globalAny.__eventBus) {
-                globalAny.__eventBus = new AppEventBus();
-            }
-            return globalAny.__eventBus;
+        const globalAny = globalThis as any;
+        if (!globalAny.__eventBus) {
+            globalAny.__eventBus = new AppEventBus();
         }
-
-        if (!AppEventBus.instance) {
-            AppEventBus.instance = new AppEventBus();
-        }
-        return AppEventBus.instance;
+        return globalAny.__eventBus;
     }
 
     /**

@@ -2,6 +2,20 @@
 
 Toutes les modifications notables de ce projet seront documentées dans ce fichier.
 
+## [11.0.1] - 2026-04-11
+
+### 🐛 Fix: Livraison WhatsApp automatique
+
+**Problème** : Les messages WhatsApp ne partaient pas automatiquement après paiement/validation d'une commande, mais le bouton "Renvoyer" fonctionnait.
+
+**Cause racine** (2 bugs) :
+1. **EventBus double instance** : En production, `AppEventBus.instance` (variable statique) et `globalThis.__eventBus` créaient 2 instances séparées. L'événement `ORDER_DELIVERED` était émis sur une instance, le worker écoutait sur l'autre.
+2. **BullMQ inaccessible** : Le bundle standalone Next.js n'inclut pas `ioredis`/`bullmq` — la queue échouait silencieusement sans jamais exécuter le job de livraison.
+
+**Corrections** :
+- **`src/lib/events.ts`** : EventBus utilise `globalThis` en production aussi (plus de double instance)
+- **`src/workers/notification.worker.ts`** : `ORDER_DELIVERED` appelle `triggerOrderDelivery()` directement (bypass BullMQ). Idem pour `ORDER_PAID` et `ORDER_PRINTED` → appels directs à `N8nService`
+
 ## [11.0.0] - 2026-04-10
 
 ### 🚀 Release v11.0.0 — Production VPS
