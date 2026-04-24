@@ -27,7 +27,7 @@ import { generateOrderEscPos } from "@/lib/escpos";
 import { useSettingsStore } from "@/store/useSettingsStore";
 import { useAuthStore } from "@/store/useAuthStore";
 import { ThermalReceiptV2 } from "@/components/admin/receipt/ThermalReceiptV2";
-import { Usb, Loader2 } from "lucide-react";
+import { Usb, Loader2, Tv } from "lucide-react";
 import {
     AreaChart,
     Area,
@@ -223,6 +223,21 @@ export default function DashboardMobile({ stats }: DashboardMobileProps) {
                             <div>
                                 <p className="font-bold text-sm text-slate-900 dark:text-white">Attente Caisse</p>
                                 <p className="text-[10px] text-slate-500 font-bold uppercase">{stats.pendingOrdersCount} commandes à encaisser</p>
+                            </div>
+                        </div>
+                        <div className="size-8 rounded-full bg-white/5 flex items-center justify-center">
+                            <ArrowRight size={14} className="text-slate-500" />
+                        </div>
+                    </Link>
+
+                    <Link href="/admin/iptv" className="flex items-center justify-between p-5 bg-white dark:bg-white/5 border border-slate-200 dark:border-white/5 rounded-3xl active:scale-95 transition-all shadow-sm">
+                        <div className="flex items-center gap-4">
+                            <div className="size-12 rounded-2xl bg-cyan-500/10 flex items-center justify-center text-cyan-500">
+                                <Tv size={20} />
+                            </div>
+                            <div>
+                                <p className="font-bold text-sm text-slate-900 dark:text-white">IPTV</p>
+                                <p className="text-[10px] text-slate-500 font-bold uppercase">Lignes provisionnées</p>
                             </div>
                         </div>
                         <div className="size-8 rounded-full bg-white/5 flex items-center justify-center">

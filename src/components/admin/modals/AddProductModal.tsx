@@ -32,6 +32,7 @@ interface Variant {
     salePrice: string;
     isSharing: boolean;
     totalSlots: number;
+    loadbrainSlug: string;
     linkedSuppliers: LinkedSupplier[];
 }
 
@@ -58,7 +59,7 @@ export const AddProductModal = ({ isOpen, onClose, categories, suppliers, produc
     const fileInputRef = React.useRef<HTMLInputElement>(null);
 
     const [variants, setVariants] = useState<Variant[]>([
-        { id: Math.random().toString(), name: "", salePrice: "", isSharing: false, totalSlots: 5, linkedSuppliers: [] }
+        { id: Math.random().toString(), name: "", salePrice: "", isSharing: false, totalSlots: 5, loadbrainSlug: "", linkedSuppliers: [] }
     ]);
 
     // Initialize state when modal opens or productToEdit changes
@@ -81,6 +82,7 @@ export const AddProductModal = ({ isOpen, onClose, categories, suppliers, produc
                     salePrice: v.salePriceDzd,
                     isSharing: v.isSharing || false,
                     totalSlots: v.totalSlots || 5,
+                    loadbrainSlug: v.loadbrainSlug || "",
                     linkedSuppliers: (v.variantSuppliers || []).map((vs: any) => ({
                         id: Math.random().toString(),
                         supplierId: vs.supplierId?.toString() || "",
@@ -113,7 +115,7 @@ export const AddProductModal = ({ isOpen, onClose, categories, suppliers, produc
         setRequiresPlayerId(false);
         setIsManualDelivery(true);
         setTutorialText("");
-        setVariants([{ id: Math.random().toString(), name: "", salePrice: "", isSharing: false, totalSlots: 5, linkedSuppliers: [] }]);
+        setVariants([{ id: Math.random().toString(), name: "", salePrice: "", isSharing: false, totalSlots: 5, loadbrainSlug: "", linkedSuppliers: [] }]);
         setError(null);
     };
 
@@ -165,11 +167,12 @@ export const AddProductModal = ({ isOpen, onClose, categories, suppliers, produc
                 isManualDelivery,
                 tutorialText,
                 variants: variants.map(v => ({
-                    id: v.id.includes('.') ? null : parseInt(v.id), // Only send real numeric IDs for updates
+                    id: v.id.includes('.') ? null : parseInt(v.id),
                     name: v.name,
                     salePriceDzd: v.salePrice,
                     isSharing: v.isSharing,
                     totalSlots: v.totalSlots,
+                    loadbrainSlug: v.loadbrainSlug || null,
                     linkedSuppliers: (v.linkedSuppliers || []).map(ls => ({
                         supplierId: Number(ls.supplierId),
                         purchasePrice: ls.purchasePrice,
@@ -533,6 +536,24 @@ export const AddProductModal = ({ isOpen, onClose, categories, suppliers, produc
                                                             </div>
                                                         )}
                                                     </div>
+
+                                                    {/* LoadBrain Slug (IPTV) */}
+                                                    {!isManualDelivery && (
+                                                        <div className="flex items-center gap-3 pt-2">
+                                                            <div className="flex-1 flex flex-col gap-2">
+                                                                <label className="text-slate-500 text-[9px] font-black uppercase tracking-widest px-1 flex items-center gap-1.5">
+                                                                    <span className="material-symbols-outlined text-cyan-400 !text-[12px]">live_tv</span>
+                                                                    LoadBrain Slug (IPTV)
+                                                                </label>
+                                                                <input
+                                                                    className="w-full bg-white/50 dark:bg-black/40 border border-slate-200 dark:border-[#262626] rounded-lg px-4 py-2 text-sm text-slate-900 dark:text-slate-100 focus:ring-1 focus:ring-cyan-500 outline-none font-mono"
+                                                                    placeholder="ex: iptv-12m"
+                                                                    value={v.loadbrainSlug}
+                                                                    onChange={(e) => updateVariant(v.id, "loadbrainSlug", e.target.value)}
+                                                                />
+                                                            </div>
+                                                        </div>
+                                                    )}
 
                                                     {/* Linked Suppliers Sub-section */}
                                                     <div className="flex flex-col gap-4 pt-4 border-t border-white/5">

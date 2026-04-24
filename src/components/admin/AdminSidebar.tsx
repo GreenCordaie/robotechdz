@@ -19,7 +19,9 @@ import {
     Headset,
     Settings2,
     BarChart3,
-    Activity
+    Activity,
+    Blocks,
+    Tv
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -84,18 +86,21 @@ export const AdminSidebar = () => {
         { name: "Caisse", icon: Wallet, href: "/admin/caisse", badge: pendingOrders, roles: ["ADMIN", "CAISSIER"] },
         { name: "Commandes", icon: History, href: "/admin/commandes", roles: ["ADMIN", "CAISSIER"] },
         { name: "Comptes Partagés", icon: LayoutGrid, href: "/admin/comptes-partages", roles: ["ADMIN", "CAISSIER"] },
+        { name: "IPTV", icon: Tv, href: "/admin/iptv", roles: ["ADMIN", "SUPER_ADMIN", "CAISSIER", "TRAITEUR"] },
         { name: "Traitement", icon: RefreshCw, href: "/admin/traitement", badge: paidOrders, roles: ["ADMIN", "CAISSIER", "TRAITEUR"] },
         { name: "Clients & Crédits", icon: Contact, href: "/admin/clients", roles: ["ADMIN", "CAISSIER"] },
         { name: "Fournisseurs", icon: Users, href: "/admin/fournisseurs", roles: ["ADMIN"] },
         ...(isB2bEnabled ? [{ name: "B2B & Revendeurs", icon: Building2, href: "/admin/b2b", roles: ["ADMIN"] }] : []),
         { name: "Tickets Support", icon: Headset, href: "/admin/support", badge: openTickets, roles: ["ADMIN", "CAISSIER", "TRAITEUR"] },
         { name: "Analytics", icon: BarChart3, href: "/admin/analytics", roles: ["ADMIN"] },
+        { name: "Modules", icon: Blocks, href: "/admin/modules", roles: ["ADMIN"] },
         { name: "Monitoring", icon: Activity, href: "/admin/monitoring", roles: ["ADMIN", "SUPER_ADMIN"] },
         { name: "Paramètres", icon: Settings2, href: "/admin/settings", roles: ["ADMIN"] },
     ];
 
     const visibleItems = navItems.filter(item => {
         if (!user) return false;
+        if (user.role === "SUPER_ADMIN") return true; // SUPER_ADMIN voit tout
         return (item.roles as string[]).includes(user.role);
     });
 

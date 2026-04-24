@@ -45,6 +45,12 @@ export async function allocateOrderStock(
     for (const item of items) {
         let currentItemSlots: any[] = [];
 
+        // Skip IPTV items — provisioned asynchronously via LoadBrain webhook
+        if (item.variant?.loadbrainSlug) {
+            hasManualDelivery = true;
+            continue;
+        }
+
         // 1. Digital Stock Allocation
         if (item.variant?.product?.isManualDelivery === false) {
             if (item.variant.isSharing) {

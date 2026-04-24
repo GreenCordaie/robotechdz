@@ -135,7 +135,8 @@ export class OrderService {
         if (!result) return null;
 
         const hasManualProducts = (result as any).items?.some((item: any) => item.variant?.product?.isManualDelivery) || false;
-        const isFullyAuto = result.status === OrderStatus.TERMINE || (!hasManualProducts && result.status === OrderStatus.PAYE);
+        const hasIptvProducts = (result as any).items?.some((item: any) => item.variant?.loadbrainSlug) || false;
+        const isFullyAuto = result.status === OrderStatus.TERMINE || (!hasManualProducts && !hasIptvProducts && result.status === OrderStatus.PAYE);
 
         // Post-payment triggers via Event Bus
         if (result.status === OrderStatus.PAYE || result.status === OrderStatus.TERMINE || result.status === OrderStatus.PARTIEL) {
@@ -149,9 +150,33 @@ export class OrderService {
             (item.codes && item.codes.length > 0) || (item.slots && item.slots.length > 0)
         );
 
-        // Only fire ORDER_DELIVERED when codes are actually available — prevents empty WhatsApp on manual orders
-        if (isFullyAuto || hasCodesOrSlots) {
+        // Only fire ORDER_DELIVERED when codes are actually available — skip IPTV (webhook completes)
+        if ((isFullyAuto || hasCodesOrSlots) && !hasIptvProducts) {
             eventBus.publish(SystemEvent.ORDER_DELIVERED, { orderId: result.id });
+        }
+
+        // Dispatch IPTV provisioning — webhook handles completion
+        if (hasIptvProducts && (result.status === OrderStatus.PAYE || result.status === OrderStatus.TERMINE)) {
+            import("@/lib/iptv").then(async ({ provisionIptvOrder }) => {
+                try {
+                    const iptvResult = await provisionIptvOrder(result.id);
+                    if (iptvResult.provisioned === 0) {
+                        console.error(`[IPTV] Zero items provisioned for order #${result.id}`);
+                        const { sendTelegramNotification } = await import("@/lib/telegram");
+                        sendTelegramNotification(
+                            `⚠️ *IPTV — 0 items provisionnés*\n\nCommande: \`${(result as any).orderNumber}\`\nVérifiez LoadBrain et les slugs produits.`,
+                            ["ADMIN"]
+                        ).catch(() => {});
+                    }
+                } catch (err: any) {
+                    console.error(`[IPTV] Fatal dispatch error for order #${result.id}:`, err.message);
+                    const { sendTelegramNotification } = await import("@/lib/telegram");
+                    sendTelegramNotification(
+                        `🔴 *IPTV — Erreur fatale provisioning*\n\nCommande: \`${(result as any).orderNumber}\`\nErreur: ${err.message}`,
+                        ["ADMIN"]
+                    ).catch(() => {});
+                }
+            });
         }
 
         return result;

@@ -72,7 +72,7 @@ import { useWebUSBPrinter } from "@/hooks/useWebUSBPrinter";
 import { generateOrderEscPos } from "@/lib/escpos";
 import { useSettingsStore } from "@/store/useSettingsStore";
 import { ThermalReceiptV2 } from "@/components/admin/receipt/ThermalReceiptV2";
-import { Usb, Loader2, Activity } from "lucide-react";
+import { Usb, Loader2, Activity, Tv } from "lucide-react";
 import { LiveActivityFeed } from "./dashboard/LiveActivityFeed";
 import { useLiveEvents } from "@/hooks/useLiveEvents";
 
@@ -283,6 +283,18 @@ export default function DashboardContent({ stats }: DashboardContentProps) {
                     </div>
                     <p className="text-[11px] text-slate-500 mt-3 font-medium">{stats.pendingOrdersCount} en attente</p>
                 </div>
+
+                {/* IPTV */}
+                <Link href="/admin/iptv" className="card-premium p-6 hover:border-[var(--primary)]/30 group">
+                    <div className="flex justify-between items-start mb-4">
+                        <span className="text-slate-400 text-xs font-bold uppercase tracking-wider">IPTV</span>
+                        <Tv className="text-cyan-500 w-4 h-4" />
+                    </div>
+                    <div className="text-[28px] font-black leading-none tracking-tighter text-cyan-500">
+                        <span className="text-sm font-bold opacity-70 uppercase">Lignes actives</span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 mt-3 font-medium group-hover:text-[var(--primary)] transition-colors">Gérer les provisions IPTV</p>
+                </Link>
 
                 {/* Support Tickets */}
                 <Link href="/admin/support" className="card-premium p-6 hover:border-[var(--primary)]/30 group">

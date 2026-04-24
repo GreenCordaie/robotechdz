@@ -117,10 +117,31 @@ function buildWhatsAppMessage(order: any, shopName: string, appUrl: string, tota
         lines.push(`_${totalAccess} accès reçu${totalAccess > 1 ? 's' : ''} · ${formatAmount(item.price * item.quantity)}_`);
         lines.push(``);
 
-        if (codes.length > 0) {
-            lines.push(`🔑 *Code${codes.length > 1 ? 's' : ''} d'activation :*`);
-            for (const code of codes) {
+        // Separate IPTV credentials (4 segments: user | pass | m3u | epg) from regular codes
+        const iptvCreds = codes.filter(c => c.split(' | ').length >= 3);
+        const regularCodes = codes.filter(c => c.split(' | ').length < 3);
+
+        if (regularCodes.length > 0) {
+            lines.push(`🔑 *Code${regularCodes.length > 1 ? 's' : ''} d'activation :*`);
+            for (const code of regularCodes) {
                 lines.push(`• \`${code}\``);
+            }
+        }
+
+        if (iptvCreds.length > 0) {
+            lines.push(`📡 *Accès IPTV :*`);
+            for (const cred of iptvCreds) {
+                const parts = cred.split(' | ');
+                const username = parts[0] || "";
+                const password = parts[1] || "";
+                const m3uUrl = parts[2] || "";
+                const epgUrl = parts[3] || "";
+
+                lines.push(`• *Utilisateur :* \`${username}\``);
+                lines.push(`  *Mot de passe :* \`${password}\``);
+                if (m3uUrl) lines.push(`  *M3U :* \`${m3uUrl}\``);
+                if (epgUrl) lines.push(`  *EPG :* \`${epgUrl}\``);
+                lines.push(``);
             }
         }
 
@@ -225,6 +246,29 @@ export async function triggerOrderDelivery(orderId: number): Promise<{ success: 
                     }).catch(err => console.warn(`[DELIVERY] Netflix instructions failed:`, err));
 
                     console.log(`[DELIVERY] 📺 Netflix instructions text sent to ${customerPhone}`);
+                }
+
+                // ── IPTV instructions (si credentials IPTV détectées) ──
+                const hasIptvCodes = (order as any).items?.some((item: any) =>
+                    (item.codes || []).some((c: any) => {
+                        const d = decrypt(c.code);
+                        return d && d.split(' | ').length >= 3;
+                    })
+                );
+
+                if (hasIptvCodes) {
+                    const iptvMsg =
+                        `📡 *Comment configurer votre IPTV :*\n\n` +
+                        `1️⃣ Ouvrez votre application IPTV (Smarters, TiviMate, etc.)\n` +
+                        `2️⃣ Ajoutez un abonnement avec les identifiants reçus\n` +
+                        `3️⃣ Ou utilisez le lien M3U dans votre lecteur\n\n` +
+                        `⚡ *L'accès est activé immédiatement !*`;
+
+                    await sendWhatsAppMessage(customerPhone, iptvMsg, {
+                        whatsappApiUrl: settings?.whatsappApiUrl ?? undefined,
+                        whatsappApiKey: settings?.whatsappApiKey ?? undefined,
+                        whatsappInstanceName: settings?.whatsappInstanceName ?? undefined,
+                    }).catch(err => console.warn(`[DELIVERY] IPTV instructions failed:`, err));
                 }
             } else {
                 console.error(`[DELIVERY] ❌ WhatsApp failed: ${wahaResult.error}`);

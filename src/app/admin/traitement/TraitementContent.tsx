@@ -514,6 +514,16 @@ export default function TraitementContent({ initialOrders = [], initialFinished 
                                                         </div>
                                                     </div>
                                                 </div>
+                                                {item.variant?.loadbrainSlug ? (
+                                                    <div className="pl-18 py-2">
+                                                        <div className="flex items-center gap-2 text-xs bg-cyan-500/5 border border-cyan-500/10 rounded-xl px-4 py-3">
+                                                            <span className="material-symbols-outlined text-cyan-400 text-sm">live_tv</span>
+                                                            <span className="text-cyan-400 font-bold">IPTV LoadBrain</span>
+                                                            <span className="text-slate-500">— Provisionnement automatique via webhook</span>
+                                                            <a href="/admin/iptv" className="ml-auto text-[10px] text-violet-400 hover:text-violet-300 font-bold uppercase">Voir IPTV →</a>
+                                                        </div>
+                                                    </div>
+                                                ) : (
                                                 <div className="grid grid-cols-2 gap-3 pl-18">
                                                     {Array.from({ length: item.quantity }).map((_, i) => {
                                                         const isPreassigned = item.codes && item.codes[i];
@@ -538,6 +548,7 @@ export default function TraitementContent({ initialOrders = [], initialFinished 
                                                         );
                                                     })}
                                                 </div>
+                                                )}
                                             </div>
                                         ))}
                                     </div>

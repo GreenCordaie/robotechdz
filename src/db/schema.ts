@@ -43,6 +43,7 @@ export const productVariants = pgTable("product_variants", {
     stockStatus: boolean("stock_status").default(true),
     isSharing: boolean("is_sharing").default(false).notNull(),
     totalSlots: integer("total_slots").default(1).notNull(),
+    loadbrainSlug: text("loadbrain_slug"), // ex: "iptv-12m" → mappe vers plan LoadBrain
 }, (table) => {
     return {
         productIdIdx: index("product_id_idx").on(table.productId),
@@ -162,6 +163,26 @@ export const digitalCodeSlots = pgTable("digital_code_slots", {
         orderItemIdIdx: index("dcs_order_item_id_idx").on(table.orderItemId),
     };
 });
+
+// ─── IPTV Provisioning (LoadBrain) ──────────────────────────────────────────
+export const iptvProvisions = pgTable("iptv_provisions", {
+    id: serial("id").primaryKey(),
+    orderId: integer("order_id").references(() => orders.id, { onDelete: "cascade" }).notNull(),
+    orderItemId: integer("order_item_id").references(() => orderItems.id, { onDelete: "cascade" }).notNull(),
+    variantId: integer("variant_id").references(() => productVariants.id, { onDelete: "set null" }),
+    taskId: text("task_id").notNull(),
+    loadbrainSlug: text("loadbrain_slug").notNull(),
+    status: text("status").default("queued").notNull(), // queued | processing | completed | failed
+    error: text("error"),
+    errorCode: text("error_code"),
+    credentialsEncrypted: text("credentials_encrypted"),
+    completedAt: timestamp("completed_at", { mode: 'date' }),
+    createdAt: timestamp("created_at", { mode: 'date' }).defaultNow(),
+}, (table) => ({
+    orderIdIdx: index("ip_order_id_idx").on(table.orderId),
+    taskIdIdx: index("ip_task_id_idx").on(table.taskId),
+    statusIdx: index("ip_status_idx").on(table.status),
+}));
 
 export const clientPayments = pgTable("client_payments", {
     id: serial("id").primaryKey(),
@@ -477,6 +498,7 @@ export const ordersRelations = relations(orders, ({ one, many }) => ({
     items: many(orderItems),
     payments: many(clientPayments),
     tickets: many(supportTickets),
+    iptvProvisions: many(iptvProvisions),
 }));
 
 export const supportTicketsRelations = relations(supportTickets, ({ one }) => ({
@@ -582,6 +604,21 @@ export const resellerTransactionsRelations = relations(resellerTransactions, ({ 
 }));
 
 // Removed split ordersRelationsB2b to merge with ordersRelations
+
+export const iptvProvisionsRelations = relations(iptvProvisions, ({ one }) => ({
+    order: one(orders, {
+        fields: [iptvProvisions.orderId],
+        references: [orders.id],
+    }),
+    orderItem: one(orderItems, {
+        fields: [iptvProvisions.orderItemId],
+        references: [orderItems.id],
+    }),
+    variant: one(productVariants, {
+        fields: [iptvProvisions.variantId],
+        references: [productVariants.id],
+    }),
+}));
 
 export const auditLogsRelations = relations(auditLogs, ({ one }) => ({
     user: one(users, {

@@ -216,8 +216,9 @@ export default function CatalogueView({ products, categories }: CatalogueViewPro
                                     // Nouveau : Un produit n'est en rupture QUE s'il n'est pas manuel ET n'a pas de stock
                                     // Si isManualDelivery est true, on n'est jamais en rupture
                                     // Si totalStock === 0 mais que c'est un produit auto, il bascule en manuel (donc pas de blocage)
-                                    const isAutoAndOutOfStock = !product.isManualDelivery && totalStock === 0 && variants.length > 0;
-                                    const isManual = product.isManualDelivery || totalStock === 0;
+                                    const hasIptvVariant = variants.some((v: any) => v.loadbrainSlug);
+                                    const isAutoAndOutOfStock = !product.isManualDelivery && !hasIptvVariant && totalStock === 0 && variants.length > 0;
+                                    const isManual = !hasIptvVariant && (product.isManualDelivery || totalStock === 0);
 
                                     const minPrice = variants.length > 0
                                         ? Math.min(...variants.map((v: any) => Number(v.salePriceDzd) || 0))
@@ -241,7 +242,12 @@ export default function CatalogueView({ products, categories }: CatalogueViewPro
 
                                                 {/* Badge type de livraison sur l'image */}
                                                 <div className="absolute top-4 left-4 flex flex-col gap-2">
-                                                    {isManual ? (
+                                                    {hasIptvVariant ? (
+                                                        <div className="flex items-center gap-1 px-3 py-1.5 bg-cyan-500/90 backdrop-blur-md text-white rounded-full text-[10px] font-black uppercase tracking-wider shadow-lg">
+                                                            <span className="material-symbols-outlined !text-[14px]">live_tv</span>
+                                                            Auto
+                                                        </div>
+                                                    ) : isManual ? (
                                                         <div className="flex items-center gap-1 px-3 py-1.5 bg-blue-600/90 backdrop-blur-md text-white rounded-full text-[10px] font-black uppercase tracking-wider shadow-lg">
                                                             <span className="material-symbols-outlined !text-[14px]">person</span>
                                                             Manuel

@@ -53,7 +53,11 @@ export enum SystemEvent {
     STOCK_LOW = "inventory.stock_low",
 
     // CRM
-    CUSTOMER_UPDATED = "customer.updated"
+    CUSTOMER_UPDATED = "customer.updated",
+
+    // IPTV Provisioning
+    IPTV_PROVISION_COMPLETED = "iptv.provision.completed",
+    IPTV_PROVISION_FAILED = "iptv.provision.failed"
 }
 
 export const eventBus = AppEventBus.getInstance();

@@ -20,6 +20,7 @@ interface OrderItem {
     fullSlots?: { id: number; code: string; slotNumber: number; profileName?: string; parentCode: string }[];
     customData?: string;
     playerNickname?: string;
+    variant?: { loadbrainSlug?: string | null } | null;
 }
 
 interface OrderDetailModalProps {
@@ -389,10 +390,18 @@ export default function OrderDetailModal({
                                             ))}
 
                                             {(!item.fullCodes?.length && !item.fullSlots?.length) && (
-                                                <div className="flex items-center gap-2 text-slate-500 italic text-[11px] py-1">
-                                                    <AlertTriangle size={12} />
-                                                    Livrable manuellement par le traiteur
-                                                </div>
+                                                item.variant?.loadbrainSlug ? (
+                                                    <div className="flex items-center gap-2 text-cyan-400 text-[11px] py-1">
+                                                        <span className="material-symbols-outlined !text-[14px]">live_tv</span>
+                                                        IPTV LoadBrain — Provisionnement automatique
+                                                        <a href="/admin/iptv" className="ml-auto text-[9px] text-violet-400 hover:text-violet-300 font-bold uppercase">Voir →</a>
+                                                    </div>
+                                                ) : (
+                                                    <div className="flex items-center gap-2 text-slate-500 italic text-[11px] py-1">
+                                                        <AlertTriangle size={12} />
+                                                        Livrable manuellement par le traiteur
+                                                    </div>
+                                                )
                                             )}
                                         </div>
                                     </section>

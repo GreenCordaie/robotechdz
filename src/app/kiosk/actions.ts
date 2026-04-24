@@ -151,15 +151,19 @@ export async function getKioskData() {
     // Reassemble safe data
     const safeProducts = productsList.map(p => ({
         ...p,
-        variants: p.variants.map(v => ({
-            id: v.id,
-            name: v.name,
-            salePriceDzd: v.salePriceDzd,
-            isSharing: v.isSharing,
-            totalSlots: v.totalSlots,
-            stockCount: v.isSharing ? (sharingMap.get(v.id) || 0) : (standardMap.get(v.id) || 0)
-        })),
-        // On s'assure que isManualDelivery est explicitement passé
+        variants: p.variants.map(v => {
+            const isIptv = !!(v as any).loadbrainSlug;
+            return {
+                id: v.id,
+                name: v.name,
+                salePriceDzd: v.salePriceDzd,
+                isSharing: v.isSharing,
+                totalSlots: v.totalSlots,
+                loadbrainSlug: (v as any).loadbrainSlug || null,
+                // IPTV products always show as "in stock" — provisioned on demand
+                stockCount: isIptv ? 999 : (v.isSharing ? (sharingMap.get(v.id) || 0) : (standardMap.get(v.id) || 0)),
+            };
+        }),
         isManualDelivery: !!p.isManualDelivery
     }));
 

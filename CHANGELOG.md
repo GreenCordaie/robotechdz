@@ -2,6 +2,67 @@
 
 Toutes les modifications notables de ce projet seront documentées dans ce fichier.
 
+## [12.0.0] - 2026-04-24
+
+### 🚀 Release v12.0.0 — LoadBrain IPTV Integration
+
+Intégration complète du module LoadBrain pour le provisionnement automatique IPTV (King365).
+
+#### 📦 Module LoadBrain SDK v3.0.1
+- `@loadbrain/sdk@3.0.1` + `@loadbrain/site-integration@3.0.1` installés
+- Proxy sécurisé via `createNextRouteHandler()` — API key jamais exposée au navigateur
+- `ProductManager` avec `apiBasePath` — mapping produits → plans LoadBrain
+- Config `siteUrl` pour les webhooks automatiques
+
+#### 🗄️ Schema DB
+- `loadbrainSlug` sur `product_variants` — liaison variante → plan LoadBrain
+- Table `iptv_provisions` — suivi provisioning (taskId, status, credentials encryptées)
+
+#### ⚡ Pipeline Commande IPTV
+- `allocateOrderStock()` skip les items IPTV (provisionnés via LoadBrain)
+- `payOrder()` dispatch automatique `provisionIptvOrder()` après paiement
+- **Polling automatique** — vérifie le task LoadBrain toutes les 5s pendant 60s
+- Si le task est `completed`, injecte les credentials en DB + marque TERMINE + envoie WhatsApp
+- Guard `ORDER_DELIVERED` — empêche l'envoi WhatsApp prématuré pour les commandes IPTV
+
+#### 📡 Webhook Handler
+- `/api/loadbrain/webhook` — vérifie signature HMAC, crée `digital_codes`, complète la commande
+- Fallback HMAC avec 3 variantes de body (raw, trimmed, re-stringified)
+- Validation idempotency — skip si credentials déjà existantes
+- Events `IPTV_PROVISION_COMPLETED` et `IPTV_PROVISION_FAILED` publiés
+
+#### 📱 WhatsApp IPTV
+- Message formaté : username, mot de passe, M3U URL, EPG URL
+- M3U construit automatiquement si LoadBrain retourne vide
+- Instructions IPTV (Smarters, TiviMate) envoyées après les credentials
+
+#### 🖥️ Pages Admin
+- **`/admin/iptv`** — liste des lignes provisionnées avec credentials, filtres, statuts
+- Boutons : Relancer, Renvoyer webhook, Annuler, Renouveler, Saisie manuelle
+- Statut "cancelled" ajouté
+- **`/admin/modules`** — ProductManager LoadBrain v3.0.0, exports listés
+- **Dashboard** — carte IPTV sur desktop + mobile
+- **Traitement** — items IPTV affichent "IPTV LoadBrain — Provisionnement automatique" au lieu des champs code
+- **Commandes** — statut IPTV dans le détail commande
+
+#### 🛒 Kiosk
+- Produits IPTV visibles avec badge cyan "Auto"
+- Stock IPTV = "Disponible — Instant" (pas de compteur)
+- `loadbrainSlug` exposé au frontend pour détection
+
+#### 📋 Catalogue Admin
+- Champ "LoadBrain Slug (IPTV)" dans le formulaire variante
+- Validation slug — vérifie que le slug existe dans LoadBrain avant création
+- Visible uniquement quand "Livraison manuelle" est désactivé
+
+#### 🔒 Sécurité
+- Proxy `/api/loadbrain/[...path]` avec path allowlist
+- `/api/loadbrain/provision-status` avec auth session
+- `/admin/iptv` dans le middleware RBAC whitelist (ADMIN, SUPER_ADMIN, CAISSIER, TRAITEUR)
+
+#### ⏰ Cron Expiration
+- `/api/admin/cron/iptv-expiry` — alerte Telegram pour lignes expirant dans 3 jours
+
 ## [11.1.0] - 2026-04-11
 
 ### 🔔 Notifications Push & PWA + Netflix Multi-Compte

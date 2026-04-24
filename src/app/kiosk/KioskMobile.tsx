@@ -17,6 +17,7 @@ interface Variant {
     salePriceDzd: number;
     stockCount: number;
     isSharing?: boolean;
+    loadbrainSlug?: string | null;
 }
 
 interface Product {
@@ -271,11 +272,15 @@ function CatalogueView({ products, categories, selectedCategory, setSelectedCate
                                     ) : (
                                         <span className="material-symbols-outlined text-slate-200 !text-3xl">image_not_supported</span>
                                     )}
-                                    {product.isManualDelivery && (
+                                    {product.variants?.some((v: any) => v.loadbrainSlug) ? (
+                                        <div className="absolute top-1 left-1 px-1.5 py-0.5 bg-cyan-500/80 backdrop-blur-md rounded-md text-[7px] font-black uppercase text-white tracking-tighter">
+                                            Auto
+                                        </div>
+                                    ) : product.isManualDelivery ? (
                                         <div className="absolute top-1 left-1 px-1.5 py-0.5 bg-blue-500/80 backdrop-blur-md rounded-md text-[7px] font-black uppercase text-white tracking-tighter">
                                             Manuel
                                         </div>
-                                    )}
+                                    ) : null}
                                 </div>
 
                                 {/* Contenu à droite */}

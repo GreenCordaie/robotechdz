@@ -81,6 +81,7 @@ export async function middleware(request: NextRequest) {
                         "/admin/traitement",
                         "/admin/commandes",
                         "/admin/support",
+                        "/admin/iptv",
                         "/admin/login"
                     ];
 

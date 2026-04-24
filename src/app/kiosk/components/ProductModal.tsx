@@ -150,8 +150,9 @@ export default function ProductModal({ isOpen, onClose, product }: ProductModalP
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     {product.variants && product.variants.map((variant: any) => {
                                         const qty = selectedQuantities[variant.id] || 0;
-                                        const stockCount = variant.stockCount || 0;
-                                        const isManual = product.isManualDelivery || stockCount === 0;
+                                        const isIptv = !!variant.loadbrainSlug;
+                                        const stockCount = isIptv ? 999 : (variant.stockCount || 0);
+                                        const isManual = !isIptv && (product.isManualDelivery || stockCount === 0);
 
                                         return (
                                             <div
@@ -177,6 +178,10 @@ export default function ProductModal({ isOpen, onClose, product }: ProductModalP
                                                             <span className="text-[9px] font-black uppercase tracking-wider text-blue-600 flex items-center gap-1">
                                                                 <span className="material-symbols-outlined !text-[12px]">schedule</span>
                                                                 Délai: ~15min
+                                                            </span>
+                                                        ) : isIptv ? (
+                                                            <span className="text-[9px] font-black uppercase tracking-wider text-cyan-600">
+                                                                Disponible — Instant
                                                             </span>
                                                         ) : (
                                                             <span className={`text-[9px] font-black uppercase tracking-wider ${stockCount > 5 ? 'text-black/30' : 'text-orange-500'}`}>
