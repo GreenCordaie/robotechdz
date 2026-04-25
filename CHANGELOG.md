@@ -2,6 +2,24 @@
 
 Toutes les modifications notables de ce projet seront documentées dans ce fichier.
 
+## [12.2.0] - 2026-04-25
+
+### 🚀 Iron Max TV — Second Provider IPTV
+
+#### Multi-Provider IPTV
+- **Iron Max TV** ajouté comme second provider IPTV aux côtés de King365TV
+- 5 variantes : 12 Mois, 6 Mois, 3 Mois, 1 Mois, Trial 2 Jours
+- Slugs : `ironmax-12m`, `ironmax-6m`, `ironmax-3m`, `ironmax-1m`, `ironmax-trial`
+- Mappings LoadBrain créés — provisioning automatique (~25s)
+- Webhook Iron Max → credentials en clair (username, password, M3U, EPG)
+- Architecture multi-provider validée — aucun code modifié, tout fonctionne par configuration
+
+#### Corrections additionnelles
+- Nettoyage DB : suppression produits test "karim test king365"
+- Nettoyage LoadBrain : doublons de mappings identifiés (à supprimer côté LoadBrain)
+- Commandes orphelines nettoyées (8 tests supprimés, 2 annulées)
+- SDK LoadBrain v3.1.0 — `createNextWebhookHandler` + `expiresAt` DD-MM-YYYY parsing
+
 ## [12.1.0] - 2026-04-25
 
 ### 🔒 Audit de Sécurité & Corrections — 21 fixes
