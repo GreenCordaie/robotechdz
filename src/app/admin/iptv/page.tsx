@@ -312,7 +312,7 @@ export default function IptvPage() {
                             {p.status === "completed" && p.credentials?.screens && (
                                 <div className="p-4 space-y-3">
                                     {p.credentials.screens.map((screen, i) => (
-                                        <CredentialCard key={i} screen={screen} expiresAt={p.completedAt} />
+                                        <CredentialCard key={screen.screenNumber || i} screen={screen} expiresAt={screen.expiresAt} />
                                     ))}
                                 </div>
                             )}

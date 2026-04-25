@@ -61,16 +61,19 @@ export default function ModulesPage() {
     const [activeModule, setActiveModule] = useState<string | null>(null);
 
     useEffect(() => {
+        // Verify modules via API proxy (can't use require() in browser)
         const checks: Record<string, boolean> = {};
-        MODULES.forEach((mod) => {
-            try {
-                require(mod.packageName);
-                checks[mod.packageName] = true;
-            } catch {
-                checks[mod.packageName] = false;
+        (async () => {
+            for (const mod of MODULES) {
+                try {
+                    const res = await fetch("/api/loadbrain/catalog");
+                    checks[mod.packageName] = res.ok;
+                } catch {
+                    checks[mod.packageName] = false;
+                }
             }
-        });
-        setVerified(checks);
+            setVerified(checks);
+        })();
     }, []);
 
     // Product Manager view — uses proxy at /api/loadbrain (no API key in browser)

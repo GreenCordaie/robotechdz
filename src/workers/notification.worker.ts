@@ -60,7 +60,7 @@ export function initNotificationWorker() {
                     (item.slots || []).forEach((s: any) => { const p = s.digitalCode?.code ? decrypt(s.digitalCode.code) : null; if (p) credentials.push({ label: "Accès", value: p }); });
                     return { name: item.variant?.product?.name || 'Produit', quantity: item.quantity, credentials };
                 });
-                await N8nService.notifyOrderEvent("ORDER_PRINTED", order as any, items);
+                await N8nService.notifyOrderEvent("ORDER_PAID", order as any, items);
 
                 // Push notification to admin/caissier
                 const { sendPushToRoleAction } = await import("@/app/admin/push/actions");

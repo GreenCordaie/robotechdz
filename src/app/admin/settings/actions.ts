@@ -122,7 +122,8 @@ export const activateTelegramWebhookAction = withAuth(
     async ({ token, url }) => {
         try {
             const webhookPath = url.endsWith('/') ? url + 'api/telegram/webhook' : url + '/api/telegram/webhook';
-            const secretToken = process.env.TELEGRAM_SECRET_TOKEN || "flexbox_secure_token_2026";
+            const secretToken = process.env.TELEGRAM_SECRET_TOKEN;
+            if (!secretToken) throw new Error("TELEGRAM_SECRET_TOKEN not configured in environment");
 
             const response = await fetch(`https://api.telegram.org/bot${token}/setWebhook`, {
                 method: "POST",

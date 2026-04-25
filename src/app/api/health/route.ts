@@ -33,7 +33,14 @@ async function checkWithTimeout<T>(
     }
 }
 
-export async function GET(): Promise<NextResponse> {
+export async function GET(req: Request): Promise<NextResponse> {
+    // Basic auth — require CRON_SECRET for detailed health info
+    const authHeader = (req.headers.get("authorization") || "").replace("Bearer ", "");
+    const cronSecret = process.env.CRON_SECRET;
+    if (cronSecret && authHeader !== cronSecret) {
+        return NextResponse.json({ status: "ok" }); // Public: only "ok", no details
+    }
+
     const settings = await getCachedSettings().catch(() => null);
 
     const telegramToken = settings?.telegramBotToken || "";

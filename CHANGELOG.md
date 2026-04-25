@@ -2,6 +2,37 @@
 
 Toutes les modifications notables de ce projet seront documentées dans ce fichier.
 
+## [12.1.0] - 2026-04-25
+
+### 🔒 Audit de Sécurité & Corrections — 21 fixes
+
+#### CRITIQUES (9 corrigés)
+- **HMAC constant-time** — `timingSafeEqual` au lieu de `!==` dans webhook LoadBrain
+- **Idempotency TOCTOU** — check déplacé dans la transaction DB
+- **Rate-limit atomique** — EXPIRE toujours appelé + try/catch anti-lockout permanent
+- **Telegram fallback hardcodé** — `"flexbox_secure_token_2026"` supprimé, fail si absent
+- **IPTV credentials masquées** — password `••••••••` dans Telegram (plus de plaintext)
+- **PIN verification** — `session.user.id` → `session.userId` (écran PIN fonctionnel)
+- **Settings publics** — `/api/v1/public/settings` filtre les tokens/secrets/clés API
+- **require() client** — remplacé par `fetch()` dans la page Modules
+- **deliveryMethod case** — `"whatsapp"` → `"WHATSAPP"` (bouton resend visible)
+
+#### HIGH (10 corrigés)
+- **decrypt null-check** — guard `s.digitalCode?.code` avant décryptage (2 endroits)
+- **/api/health** — détails protégés par CRON_SECRET (public = juste "ok")
+- **IPTV retry** — provisions `queued` bloquées maintenant retryable
+- **OrderStatus.TERMINE** — enum au lieu de string hardcodé
+- **JSON.parse** — try/catch retourne 400 au lieu de 500
+- **checkExpiringProvisions** — utilise `expiresAt` avec threshold réel
+- **Turnstile** — token requis si configuré (plus de bypass)
+- **CredentialCard** — `screen.expiresAt` au lieu de `completedAt`
+- **n8n event** — `ORDER_PAID` au lieu de `ORDER_PRINTED`
+- **Dashboard mobile** — +/- pourcentage avec couleur conditionnelle
+
+#### MEDIUM (2 corrigés)
+- **useSettingsStore** — appel unique au lieu de double souscription
+- **expiresAt date format** — parsing DD-MM-YYYY (format LoadBrain)
+
 ## [12.0.0] - 2026-04-24
 
 ### 🚀 Release v12.0.0 — LoadBrain IPTV Integration

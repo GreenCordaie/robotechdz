@@ -134,7 +134,7 @@ export default function DashboardMobile({ stats }: DashboardMobileProps) {
                         {user?.role === 'ADMIN' ? formatCurrency(stats.totalTurnover, 'DZD').split(',')[0] : '************'}
                         <span className="text-[10px] ml-1 opacity-50">DZD</span>
                     </p>
-                    <p className="text-[9px] font-bold text-emerald-500">+{stats.turnoverChange.toFixed(0)}%</p>
+                    <p className={`text-[9px] font-bold ${stats.turnoverChange >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>{stats.turnoverChange >= 0 ? '+' : ''}{stats.turnoverChange.toFixed(0)}%</p>
                 </div>
                 <div className="bg-white dark:bg-[#161616] border border-slate-200 dark:border-white/5 p-5 rounded-[2rem] space-y-2 shadow-sm">
                     <div className="flex justify-between items-center">
@@ -145,7 +145,7 @@ export default function DashboardMobile({ stats }: DashboardMobileProps) {
                         {user?.role === 'ADMIN' ? formatCurrency(stats.totalProfit, 'DZD').split(',')[0] : '************'}
                         <span className="text-[10px] ml-1 opacity-50">DZD</span>
                     </p>
-                    <p className="text-[9px] font-bold text-primary">+{stats.profitChange.toFixed(0)}%</p>
+                    <p className={`text-[9px] font-bold ${stats.profitChange >= 0 ? 'text-primary' : 'text-red-500'}`}>{stats.profitChange >= 0 ? '+' : ''}{stats.profitChange.toFixed(0)}%</p>
                 </div>
             </div>
 

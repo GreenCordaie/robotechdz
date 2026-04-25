@@ -31,6 +31,7 @@ export function formatOrderItemsText(items: any[]): string {
         const codes = (item.codes || []).map(decryptCode).filter(Boolean);
         const slots = (item.slots || []).map((s: any) => {
             try {
+                if (!s.digitalCode?.code) return null;
                 return {
                     parentCode: decrypt(s.digitalCode.code),
                     slotNumber: s.slotNumber,
@@ -101,6 +102,7 @@ function buildWhatsAppMessage(order: any, shopName: string, appUrl: string, tota
         const codes = (item.codes || []).map(decryptCode).filter(Boolean) as string[];
         const slots = (item.slots || []).map((s: any) => {
             try {
+                if (!s.digitalCode?.code) return null;
                 return {
                     parentCode: decrypt(s.digitalCode.code),
                     slotNumber: s.slotNumber,

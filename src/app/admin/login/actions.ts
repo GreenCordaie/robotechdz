@@ -39,9 +39,12 @@ export async function loginAction(formData: FormData) {
 
     const { db, users, eq, bcrypt, createSession, logSecurityAction, checkRateLimit, recordFailure, resetRateLimit, turnstileSecret } = await getDeps();
 
-    // 0. Turnstile check — skip si le widget n'a pas pu se charger (token absent)
+    // 0. Turnstile check — require token if Turnstile is configured
     const turnstileToken = formData.get("cf-turnstile-response") as string;
-    if (turnstileSecret && turnstileToken) {
+    if (turnstileSecret) {
+        if (!turnstileToken) {
+            return { success: false, error: "Vérification de sécurité requise" };
+        }
         const isValid = await verifyTurnstile(turnstileToken, turnstileSecret);
         if (!isValid) {
             return { success: false, error: "Vérification de sécurité échouée" };
@@ -208,7 +211,7 @@ export async function verifyPinAction(pin: string) {
         const session = await getSession();
         if (!session) return { success: false, error: "Session expirée" };
 
-        const user = await db.select().from(users).where(eq(users.id, session.user.id)).limit(1);
+        const user = await db.select().from(users).where(eq(users.id, (session as any).userId)).limit(1);
 
         if (user.length === 0) return { success: false, error: "Utilisateur introuvable" };
 

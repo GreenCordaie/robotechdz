@@ -457,7 +457,7 @@ export default function TraitementContent({ initialOrders = [], initialFinished 
                                         </p>
                                     </div>
                                     <div className="flex gap-2">
-                                        {selectedOrder.deliveryMethod === "whatsapp" && (
+                                        {selectedOrder.deliveryMethod === "WHATSAPP" && (
                                             <button
                                                 onClick={() => handleResendWhatsApp(selectedOrder.id)}
                                                 disabled={isResending}

@@ -87,7 +87,7 @@ export default function DashboardContent({ stats }: DashboardContentProps) {
     const [chartPeriod, setChartPeriod] = React.useState<"7" | "30">("7");
     const { printToIframe } = useThermalPrinter();
     const settings = useSettingsStore();
-    const { accentColor } = useSettingsStore();
+    const { accentColor } = settings;
     const webusb = useWebUSBPrinter();
 
     // The useLiveEvents hook already handles router.refresh() on relevant events.

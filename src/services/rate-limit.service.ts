@@ -46,9 +46,12 @@ export class RateLimitService {
      * On the first increment, sets the TTL window.
      */
     static async recordFailure(key: string) {
-        const count = await cacheIncr(key);
-        if (count === 1) {
+        try {
+            const count = await cacheIncr(key);
+            // Always set TTL to prevent permanent lockout if EXPIRE fails separately
             await cacheExpire(key, CACHE_TTL.RATE_LIMIT);
+        } catch {
+            // Fail silently — rate limit is best-effort
         }
     }
 

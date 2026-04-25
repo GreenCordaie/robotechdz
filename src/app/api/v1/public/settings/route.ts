@@ -11,7 +11,22 @@ export const dynamic = "force-dynamic";
  */
 export async function GET() {
     try {
-        const settings = await db.query.shopSettings.findFirst();
+        const raw = await db.query.shopSettings.findFirst();
+        // Only expose safe public fields — never tokens, secrets, or API keys
+        const settings = raw ? {
+            shopName: raw.shopName,
+            shopAddress: raw.shopAddress,
+            shopTel: raw.shopTel,
+            raisonSociale: raw.raisonSociale,
+            ein: raw.ein,
+            footerMessage: raw.footerMessage,
+            accentColor: raw.accentColor,
+            logoUrl: raw.logoUrl,
+            dashboardLogoUrl: raw.dashboardLogoUrl,
+            faviconUrl: raw.faviconUrl,
+            isB2bEnabled: raw.isB2bEnabled,
+            usdExchangeRate: raw.usdExchangeRate,
+        } : null;
 
         return NextResponse.json({ success: true, data: settings }, {
             headers: {

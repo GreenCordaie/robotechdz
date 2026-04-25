@@ -109,122 +109,7 @@ export async function provisionIptvOrder(orderId: number): Promise<{ provisioned
         }
     }
 
-    // Poll LoadBrain for completion (fallback if webhook doesn't arrive)
-    if (taskIds.length > 0) {
-        pollAndCompleteProvisions(order.id, taskIds).catch(err =>
-            console.error(`[IPTV] Poll error for order #${order.id}:`, err.message)
-        );
-    }
-
     return { provisioned: taskIds.length, taskIds };
-}
-
-/**
- * Poll LoadBrain tasks and complete provisions if webhook doesn't arrive.
- * Runs in background — checks every 5s for 60s.
- */
-async function pollAndCompleteProvisions(orderId: number, taskIds: string[]) {
-    if (!lbClient) return;
-
-    const { encrypt } = await import("@/lib/encryption");
-    const { eventBus, SystemEvent } = await import("@/lib/events");
-    const { OrderStatus, DeliveryMethod, DigitalCodeStatus } = await import("@/lib/constants");
-
-    for (let attempt = 0; attempt < 12; attempt++) {
-        await new Promise(r => setTimeout(r, 5000)); // Wait 5s
-
-        // Check if already completed via webhook
-        const provisions = await db.query.iptvProvisions.findMany({
-            where: eq(iptvProvisions.orderId, orderId),
-        });
-        const allDone = provisions.every(p => p.status === "completed" || p.status === "failed");
-        if (allDone && provisions.some(p => p.status === "completed")) {
-            console.log(`[IPTV] Order #${orderId} already completed via webhook`);
-            return;
-        }
-
-        // Poll each pending task
-        for (const taskId of taskIds) {
-            const provision = provisions.find(p => p.taskId === taskId);
-            if (!provision || provision.status !== "queued") continue;
-
-            try {
-                const task = await lbClient!.getTask(taskId);
-                if (task.task.status === "completed" && task.task.credentials?.screens?.length) {
-                    console.log(`[IPTV] Poll: task ${taskId} completed — injecting credentials`);
-
-                    const screens = task.task.credentials.screens;
-                    for (const screen of screens) {
-                        // Build M3U URL from EPG if missing
-                        let m3uUrl = screen.m3uUrl || "";
-                        if (!m3uUrl && screen.epgUrl) {
-                            const host = screen.epgUrl.split("/xmltv")[0];
-                            m3uUrl = `${host}/get.php?username=${screen.username}&password=${screen.password}&type=m3u_plus`;
-                        } else if (!m3uUrl && screen.username && screen.password) {
-                            m3uUrl = `http://azerty365.net:80/get.php?username=${screen.username}&password=${screen.password}&type=m3u_plus`;
-                        }
-
-                        const codeString = [
-                            screen.username,
-                            screen.password,
-                            m3uUrl,
-                            screen.epgUrl || "",
-                        ].join(" | ");
-
-                        // Check idempotency
-                        const existing = await db.query.digitalCodes.findFirst({
-                            where: eq(digitalCodes.orderItemId, provision.orderItemId),
-                        });
-                        if (existing) continue;
-
-                        await db.insert(digitalCodes).values({
-                            variantId: provision.variantId!,
-                            orderItemId: provision.orderItemId,
-                            code: encrypt(codeString),
-                            status: DigitalCodeStatus.VENDU,
-                            expiresAt: screen.expiresAt && screen.expiresAt !== "pending" ? new Date(screen.expiresAt) : null,
-                        });
-                    }
-
-                    // Update provision
-                    await db.update(iptvProvisions).set({
-                        status: "completed",
-                        credentialsEncrypted: encrypt(JSON.stringify(task.task.credentials)),
-                        completedAt: new Date(),
-                    }).where(eq(iptvProvisions.id, provision.id));
-
-                    // Check if all provisions are done → mark order TERMINE
-                    const updatedProvisions = await db.query.iptvProvisions.findMany({
-                        where: eq(iptvProvisions.orderId, orderId),
-                    });
-                    if (updatedProvisions.every(p => p.status === "completed")) {
-                        await db.update(orders).set({
-                            status: OrderStatus.TERMINE,
-                            isDelivered: true,
-                            printStatus: "idle",
-                        }).where(eq(orders.id, orderId));
-
-                        eventBus.publish(SystemEvent.ORDER_DELIVERED, { orderId });
-                        console.log(`[IPTV] Order #${orderId} completed via polling`);
-                    }
-                    return; // Done
-                } else if (task.task.status === "failed") {
-                    await db.update(iptvProvisions).set({
-                        status: "failed",
-                        error: task.task.error || "Unknown error",
-                    }).where(eq(iptvProvisions.id, provision.id));
-
-                    const { sendTelegramNotification } = await import("@/lib/telegram");
-                    sendTelegramNotification(
-                        `❌ *IPTV échoué (poll)*\n📋 Commande #${orderId}\n❌ ${task.task.error}`,
-                        ["ADMIN"]
-                    ).catch(() => {});
-                    return;
-                }
-            } catch {}
-        }
-    }
-    console.log(`[IPTV] Poll timeout for order #${orderId} — waiting for webhook`);
 }
 
 /**
@@ -245,7 +130,7 @@ export async function retryIptvProvision(provisionId: number): Promise<{ success
     if (!lbClient) return { success: false, error: "LoadBrain disabled" };
 
     const provision = await db.query.iptvProvisions.findFirst({
-        where: and(eq(iptvProvisions.id, provisionId), eq(iptvProvisions.status, "failed")),
+        where: and(eq(iptvProvisions.id, provisionId), inArray(iptvProvisions.status, ["failed", "queued"])),
         with: { order: true },
     });
 
@@ -335,19 +220,27 @@ export async function validateLoadBrainSlug(slug: string): Promise<boolean> {
  * Check for IPTV provisions expiring within N days.
  */
 export async function checkExpiringProvisions(daysThreshold: number = 3) {
-    const { sql } = await import("drizzle-orm");
+    const { sql, lte } = await import("drizzle-orm");
     const thresholdDate = new Date();
     thresholdDate.setDate(thresholdDate.getDate() + daysThreshold);
 
-    return db.query.iptvProvisions.findMany({
+    // Find digital codes with IPTV credentials expiring within threshold
+    const expiringCodes = await db.query.digitalCodes.findMany({
         where: and(
-            eq(iptvProvisions.status, "completed"),
-            sql`${iptvProvisions.completedAt} IS NOT NULL`
+            eq(digitalCodes.status, "VENDU"),
+            sql`${digitalCodes.expiresAt} IS NOT NULL AND ${digitalCodes.expiresAt} <= ${thresholdDate} AND ${digitalCodes.expiresAt} > NOW()`
         ),
         with: {
-            order: { with: { client: true } },
-            variant: { with: { product: true } },
+            orderItem: {
+                with: {
+                    order: { with: { client: true } },
+                    variant: { with: { product: true } },
+                }
+            }
         },
-        orderBy: [desc(iptvProvisions.createdAt)],
+        limit: 50,
     });
+
+    // Filter only IPTV codes
+    return expiringCodes.filter((c: any) => c.orderItem?.variant?.loadbrainSlug);
 }
