@@ -44,6 +44,7 @@ export const productVariants = pgTable("product_variants", {
     isSharing: boolean("is_sharing").default(false).notNull(),
     totalSlots: integer("total_slots").default(1).notNull(),
     loadbrainSlug: text("loadbrain_slug"), // ex: "iptv-12m" → mappe vers plan LoadBrain
+    kioskVisible: boolean("kiosk_visible").notNull().default(true),
 }, (table) => {
     return {
         productIdIdx: index("product_id_idx").on(table.productId),

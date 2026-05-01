@@ -12,7 +12,8 @@ export async function createKioskOrder(
     items: { variantId: number; quantity: number; name: string; customData?: string; playerNickname?: string }[],
     clientTotalAmount: string,
     deliveryMethod: "TICKET" | "WHATSAPP" = "TICKET",
-    customerPhone?: string
+    customerPhone?: string,
+    iptvDeliveryMethod?: "credentials" | "code"
 ) {
     // 1. Recalculate Short Order ID
     const countResult = await db.select({ count: sql`count(*)` }).from(orders);
@@ -52,7 +53,15 @@ export async function createKioskOrder(
                     supplierId: supplierInfo?.supplierId || null,
                     purchasePrice: supplierInfo?.purchasePrice || null,
                     purchaseCurrency: supplierInfo?.currency || null,
-                    customData: item.customData,
+                    // Ibosol items carry their own JSON customData (mac+appId) — keep it.
+                    // Other IPTV items use the global iptvDeliveryMethod ("credentials"|"code").
+                    // Non-IPTV items keep their original customData (player ID, etc.).
+                    customData: (() => {
+                        const slug = (variant as any).loadbrainSlug;
+                        if (slug?.startsWith("ibo-")) return item.customData;
+                        if (slug && iptvDeliveryMethod) return iptvDeliveryMethod;
+                        return item.customData;
+                    })(),
                     playerNickname: item.playerNickname
                 });
             }
@@ -108,7 +117,9 @@ export async function getKioskData() {
         where: eq(products.status, "ACTIVE"),
         with: {
             category: true,
-            variants: true
+            variants: {
+                where: eq(productVariants.kioskVisible, true),
+            }
         }
     });
 
