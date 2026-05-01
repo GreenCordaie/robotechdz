@@ -10,12 +10,14 @@ LoadBrain orchestre 4 panels IPTV en production : King365TV, Iron Max TV, Atlas 
 
 IBOSOL expose 4 plans :
 
-| Plan (slug) | Rôle | Prix | Combo IPTV |
+| Plan (slug) | Rôle | Prix DZD (à définir admin) | Combo IPTV |
 |-------------|------|------|-----------|
-| `ibo-check` | Vérifie le statut d'un device par MAC | 0 € | ❌ Impossible |
-| `ibo-activate-yearly` | Active un device pour 1 an | 5 € | ✅ Optionnel |
-| `ibo-activate-lifetime` | Active un device à vie | 10 € | ✅ Optionnel |
-| `ibo-inject` | Injecte une playlist IPTV dans un device déjà activé | 0 € | ✅ Obligatoire |
+| `ibo-check` | Vérifie le statut d'un device par MAC | 0 DZD (gratuit, hors panier) | ❌ Impossible |
+| `ibo-activate-yearly` | Active un device pour 1 an | À fixer dans `/admin/catalogue` | ✅ Optionnel |
+| `ibo-activate-lifetime` | Active un device à vie | À fixer dans `/admin/catalogue` | ✅ Optionnel |
+| `ibo-inject` | Injecte une playlist IPTV dans un device déjà activé | Admin only — prix éditable au cas par cas | ✅ Obligatoire |
+
+> Note : LoadBrain expose des prix de référence en EUR dans son catalog (5€ activation 1 an, 10€ lifetime), mais ROBOTECH applique ses propres prix DZD stockés dans `product_variants.sale_price_dzd`. Les variantes 120-123 sont actuellement à 0 DZD et doivent être configurées par l'admin avant mise en production du kiosk.
 
 Le mode **combo** est une particularité d'IBOSOL : sur les plans `ibo-activate-*` et `ibo-inject`, on peut passer dans `customerInfo` les champs `iptvProvider`, `iptvProviderId`, `iptvPlanId`. Le worker IBOSOL active alors le device, crée la ligne IPTV chez le provider choisi, et injecte la playlist — le tout en une seule commande LoadBrain.
 
