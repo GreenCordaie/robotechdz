@@ -2,7 +2,9 @@ import "server-only";
 import { db } from "@/db";
 import { orders, orderItems, productVariants, iptvProvisions, digitalCodes } from "@/db/schema";
 import { eq, and, inArray, desc } from "drizzle-orm";
-import { lbClient, isLoadBrainEnabled } from "@/lib/loadbrain";
+import { lbClient, lbConfig, isLoadBrainEnabled } from "@/lib/loadbrain";
+import { parseIbosolCustomData } from "@/lib/ibosol-credentials";
+import { getProviderSlug } from "@/lib/loadbrain-providers";
 
 /**
  * Check if an order item is an IPTV product (has LoadBrain slug).
@@ -52,24 +54,96 @@ export async function provisionIptvOrder(orderId: number): Promise<{ provisioned
     const customerName = (order as any).client?.nomComplet || "Client";
     const taskIds: string[] = [];
 
-    for (const item of iptvItems) {
+    for (let idx = 0; idx < iptvItems.length; idx++) {
+        const item = iptvItems[idx];
         const slug = item.variant.loadbrainSlug;
         const itemOrderId = iptvItems.length > 1
             ? `${order.orderNumber}-item-${item.id}`
             : order.orderNumber;
 
+        // LoadBrain has a 3s Chrome launch cooldown between provisions
+        if (idx > 0) {
+            await new Promise(r => setTimeout(r, 5000));
+        }
+
         try {
             console.log(`[IPTV] Provisioning ${slug} for order ${itemOrderId}`);
 
-            const result = await lbClient.provisionProduct(slug, {
+            const isIbosolSlug = slug.startsWith("ibo-");
+            const ibosolData = isIbosolSlug ? parseIbosolCustomData(item.customData) : null;
+            const iptvDelivery: string = isIbosolSlug ? "" : (item.customData || "credentials");
+
+            // Resolve slug → providerId + planId from LoadBrain
+            const mapping = await lbClient.listProducts();
+            let product = (mapping as any).products?.find((p: any) => p.productId === slug);
+
+            // Fallback for Ibosol: slug starts with "ibo-", resolve via internal module
+            if (!product && slug.startsWith("ibo-")) {
+                const iboRes = await fetch(`${lbConfig!.baseUrl}/api/v1/catalog`, {
+                    headers: { "X-API-Key": lbConfig!.apiKey },
+                });
+                const catalog = await iboRes.json();
+                const iboProvider = (catalog.data?.providers || []).find((p: any) => p.type === "ibosol");
+                if (iboProvider) {
+                    // Match by slug convention: ibo-check, ibo-activate-yearly, etc.
+                    const slugToName: Record<string, string> = {
+                        "ibo-check": "Check MAC",
+                        "ibo-activate-yearly": "Activation 1 Year",
+                        "ibo-activate-lifetime": "Activation Lifetime",
+                        "ibo-inject": "Inject",
+                    };
+                    const keyword = slugToName[slug];
+                    const plan = keyword
+                        ? iboProvider.plans?.find((p: any) => p.displayName?.includes(keyword))
+                        : null;
+                    if (plan) {
+                        product = { providerId: iboProvider.id, planId: plan.id, screenCount: 1 };
+                    }
+                }
+            }
+
+            if (!product) throw new Error(`LoadBrain slug "${slug}" not mapped`);
+
+            const customerInfo: Record<string, unknown> = {
+                name: customerName,
+                phone: customerPhone,
+                orderNumber: order.orderNumber,
+            };
+            if (isIbosolSlug) {
+                if (!ibosolData?.mac) throw new Error(`MAC address required for Ibosol product "${slug}"`);
+                customerInfo.mac = ibosolData.mac;
+                customerInfo.appId = ibosolData.appId;
+
+                if (ibosolData.combo) {
+                    customerInfo.iptvProvider = getProviderSlug(ibosolData.combo.iptvProviderId);
+                    customerInfo.iptvProviderId = ibosolData.combo.iptvProviderId;
+                    customerInfo.iptvPlanId = ibosolData.combo.iptvPlanId;
+                }
+            }
+
+            const provisionPayload: Record<string, unknown> = {
                 orderId: itemOrderId,
                 customerId: String((order as any).clientId || order.id),
-                customerInfo: {
-                    name: customerName,
-                    phone: customerPhone,
-                    orderNumber: order.orderNumber,
-                },
+                customerInfo,
+                providerId: product.providerId,
+                planId: product.planId,
+                screenCount: product.screenCount || 1,
+                webhookUrl: `${lbConfig!.siteUrl.replace(/\/$/, "")}/api/loadbrain/webhook`,
+                webhookSecret: lbConfig!.webhookSecret,
+            };
+            // Only IPTV (non-Ibosol) supports the deliveryMethod toggle
+            if (!isIbosolSlug) {
+                provisionPayload.deliveryMethod = iptvDelivery;
+            }
+
+            const res = await fetch(`${lbConfig!.baseUrl}/api/v1/provision`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "X-API-Key": lbConfig!.apiKey },
+                body: JSON.stringify(provisionPayload),
             });
+            const json = await res.json();
+            if (!json.success) throw new Error(json.error || "Provision failed");
+            const result = json.data;
 
             // Create tracking record
             await db.insert(iptvProvisions).values({
