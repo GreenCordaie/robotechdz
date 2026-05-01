@@ -1,7 +1,10 @@
 import { db } from "@/db";
+import { iptvProvisions } from "@/db/schema";
+import { and, eq } from "drizzle-orm";
 import { N8nService } from "@/services/n8n.service";
 import { decrypt } from "@/lib/encryption";
 import { sendWhatsAppMessage, sendWhatsAppButtons } from "@/lib/whatsapp";
+import { parseIbosolCustomData } from "@/lib/ibosol-credentials";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -9,6 +12,110 @@ function decryptCode(raw: any): string | null {
     if (!raw) return null;
     if (typeof raw === 'string') return raw;
     try { return decrypt(raw.code) || raw.code || null; } catch { return null; }
+}
+
+// ─── Ibosol helpers ──────────────────────────────────────────────────────────
+
+const IBOSOL_APP_NAMES: Record<number, string> = {
+    1: "IBO Player",
+    2: "SmartOne",
+    3: "BOB Player",
+    4: "IBO Pro",
+};
+
+function formatExpiresFr(raw?: string): string {
+    if (!raw) return "N/A";
+    const d = new Date(raw);
+    if (isNaN(d.getTime())) return raw;
+    return d.toLocaleDateString("fr-FR");
+}
+
+interface IbosolFormatInput {
+    mac?: string;
+    activationCode?: string;
+    expiresAt?: string;
+    appId?: number;
+    iptvUsername?: string;
+    iptvPassword?: string;
+    m3uUrl?: string;
+    iptvProductName?: string;
+    isPartial?: boolean;
+}
+
+function buildIbosolMessage(input: IbosolFormatInput): string {
+    const appName = IBOSOL_APP_NAMES[input.appId ?? 1] ?? "IBO Player";
+
+    if (input.isPartial) {
+        return [
+            `🎉 *Activation ${appName} réussie*`,
+            ``,
+            `📱 *Device activé*`,
+            `MAC : ${input.mac}`,
+            input.activationCode ? `Code activation : ${input.activationCode}` : null,
+            input.expiresAt ? `Expire le : ${formatExpiresFr(input.expiresAt)}` : null,
+            ``,
+            `⚠️ *IPTV en cours de traitement*`,
+            `Notre service va vous recontacter sous peu pour finaliser votre abonnement IPTV.`,
+        ].filter(Boolean).join("\n");
+    }
+
+    if (input.iptvUsername && input.iptvPassword) {
+        // Combo OK
+        return [
+            `🎉 *Votre ${appName} + IPTV est prêt*`,
+            ``,
+            `📱 *Device activé*`,
+            `MAC : ${input.mac}`,
+            input.activationCode ? `Code activation : ${input.activationCode}` : null,
+            input.expiresAt ? `Expire le : ${formatExpiresFr(input.expiresAt)}` : null,
+            ``,
+            `📺 *Abonnement ${input.iptvProductName || "IPTV"}*`,
+            `Identifiant : ${input.iptvUsername}`,
+            `Mot de passe : ${input.iptvPassword}`,
+            input.m3uUrl ? `URL M3U : ${input.m3uUrl}` : null,
+            ``,
+            `✅ La playlist est déjà injectée dans votre device — il suffit d'ouvrir ${appName}.`,
+        ].filter(Boolean).join("\n");
+    }
+
+    // Activation seule
+    return [
+        `🎉 *Votre activation ${appName}*`,
+        ``,
+        `📱 *Device*`,
+        `MAC : ${input.mac}`,
+        `Application : ${appName}`,
+        ``,
+        `🔑 *Code activation*`,
+        input.activationCode || "—",
+        ``,
+        input.expiresAt ? `📅 Expire le : ${formatExpiresFr(input.expiresAt)}` : null,
+        ``,
+        `💡 *Comment activer :*`,
+        `1. Ouvrez ${appName} sur votre device`,
+        `2. Allez dans Paramètres → Activer`,
+        `3. Entrez le code ci-dessus`,
+        `4. Profitez !`,
+    ].filter(Boolean).join("\n");
+}
+
+/** Parse the joined Ibosol code string back into fields (reverse of formatIbosolCode in webhook) */
+function parseIbosolCodeString(decryptedCode: string): Record<string, string> {
+    const fields: Record<string, string> = {};
+    for (const part of decryptedCode.split(" | ")) {
+        const idx = part.indexOf(": ");
+        if (idx > 0) {
+            const key = part.substring(0, idx).trim();
+            const value = part.substring(idx + 2).trim();
+            fields[key] = value;
+        }
+    }
+    return fields;
+}
+
+function isIbosolItem(item: any): boolean {
+    const slug = item?.variant?.loadbrainSlug;
+    return typeof slug === "string" && slug.startsWith("ibo-");
 }
 
 function formatDate(date: string | Date): string {
@@ -28,6 +135,9 @@ function formatAmount(amount: any): string {
 export function formatOrderItemsText(items: any[]): string {
     let text = "";
     for (const item of items) {
+        // Ibosol items get their own dedicated WhatsApp message
+        if (isIbosolItem(item)) continue;
+
         const codes = (item.codes || []).map(decryptCode).filter(Boolean);
         const slots = (item.slots || []).map((s: any) => {
             try {
@@ -99,6 +209,9 @@ function buildWhatsAppMessage(order: any, shopName: string, appUrl: string, tota
     // ── Produits & codes ──
     const items: any[] = order.items || [];
     for (const item of items) {
+        // Ibosol items get their own dedicated WhatsApp message
+        if (isIbosolItem(item)) continue;
+
         const codes = (item.codes || []).map(decryptCode).filter(Boolean) as string[];
         const slots = (item.slots || []).map((s: any) => {
             try {
@@ -119,9 +232,13 @@ function buildWhatsAppMessage(order: any, shopName: string, appUrl: string, tota
         lines.push(`_${totalAccess} accès reçu${totalAccess > 1 ? 's' : ''} · ${formatAmount(item.price * item.quantity)}_`);
         lines.push(``);
 
-        // Separate IPTV credentials (4 segments: user | pass | m3u | epg) from regular codes
-        const iptvCreds = codes.filter(c => c.split(' | ').length >= 3);
-        const regularCodes = codes.filter(c => c.split(' | ').length < 3);
+        // Detect if this item is IPTV (has loadbrainSlug on variant, but excluding ibo-* which has its own template)
+        const slug = (item as any).variant?.loadbrainSlug as string | undefined;
+        const isIptvItem = !!slug && !slug.startsWith("ibo-");
+
+        // Separate IPTV credentials from regular codes
+        const iptvCreds = isIptvItem ? codes : codes.filter(c => c.split(' | ').length >= 3);
+        const regularCodes = isIptvItem ? [] : codes.filter(c => c.split(' | ').length < 3);
 
         if (regularCodes.length > 0) {
             lines.push(`🔑 *Code${regularCodes.length > 1 ? 's' : ''} d'activation :*`);
@@ -131,7 +248,6 @@ function buildWhatsAppMessage(order: any, shopName: string, appUrl: string, tota
         }
 
         if (iptvCreds.length > 0) {
-            lines.push(`📡 *Accès IPTV :*`);
             for (const cred of iptvCreds) {
                 const parts = cred.split(' | ');
                 const username = parts[0] || "";
@@ -139,11 +255,28 @@ function buildWhatsAppMessage(order: any, shopName: string, appUrl: string, tota
                 const m3uUrl = parts[2] || "";
                 const epgUrl = parts[3] || "";
 
-                lines.push(`• *Utilisateur :* \`${username}\``);
-                lines.push(`  *Mot de passe :* \`${password}\``);
-                if (m3uUrl) lines.push(`  *M3U :* \`${m3uUrl}\``);
-                if (epgUrl) lines.push(`  *EPG :* \`${epgUrl}\``);
-                lines.push(``);
+                // Mode "code" — single activation code (no password/m3u)
+                if (username && !password && !m3uUrl) {
+                    lines.push(`🔑 *Code d'activation IPTV :*`);
+                    lines.push(`• \`${username}\``);
+                    lines.push(``);
+                    lines.push(`📲 Pour obtenir votre mot de passe, Smarters et M3U, cliquez ici :`);
+                    lines.push(`https://t.me/MYIRON_BOT`);
+                    lines.push(``);
+                } else if (!username && !password && !m3uUrl) {
+                    // Code vide — juste envoyer le lien bot
+                    lines.push(`📲 Pour obtenir vos accès IPTV, cliquez ici :`);
+                    lines.push(`https://t.me/MYIRON_BOT`);
+                    lines.push(``);
+                } else {
+                    // Mode "credentials" — full line (username/password/m3u/epg)
+                    lines.push(`📡 *Accès IPTV :*`);
+                    lines.push(`• *Utilisateur :* \`${username}\``);
+                    lines.push(`  *Mot de passe :* \`${password}\``);
+                    if (m3uUrl) lines.push(`  *M3U :* \`${m3uUrl}\``);
+                    if (epgUrl) lines.push(`  *EPG :* \`${epgUrl}\``);
+                    lines.push(``);
+                }
             }
         }
 
@@ -180,7 +313,8 @@ export async function triggerOrderDelivery(orderId: number): Promise<{ success: 
             items: {
                 with: {
                     codes: true,
-                    slots: { with: { digitalCode: true } }
+                    slots: { with: { digitalCode: true } },
+                    variant: true
                 }
             }
         }
@@ -251,26 +385,94 @@ export async function triggerOrderDelivery(orderId: number): Promise<{ success: 
                 }
 
                 // ── IPTV instructions (si credentials IPTV détectées) ──
+                // Ibosol items are excluded — they get their own dedicated message below.
                 const hasIptvCodes = (order as any).items?.some((item: any) =>
+                    !isIbosolItem(item) &&
                     (item.codes || []).some((c: any) => {
                         const d = decrypt(c.code);
                         return d && d.split(' | ').length >= 3;
                     })
                 );
 
-                if (hasIptvCodes) {
-                    const iptvMsg =
+                const hasAnyIptv = (order as any).items?.some((item: any) =>
+                    item.variant?.loadbrainSlug && !item.variant.loadbrainSlug.startsWith('ibo-')
+                );
+
+                const hasIronMaxCode = (order as any).items?.some((item: any) =>
+                    item.variant?.loadbrainSlug?.startsWith('ironmax') &&
+                    (item.codes || []).some((c: any) => {
+                        const d = decrypt(c.code);
+                        return d && !d.includes(' | ');
+                    })
+                );
+
+                if (hasIptvCodes || hasAnyIptv) {
+                    let iptvMsg =
                         `📡 *Comment configurer votre IPTV :*\n\n` +
                         `1️⃣ Ouvrez votre application IPTV (Smarters, TiviMate, etc.)\n` +
                         `2️⃣ Ajoutez un abonnement avec les identifiants reçus\n` +
                         `3️⃣ Ou utilisez le lien M3U dans votre lecteur\n\n` +
                         `⚡ *L'accès est activé immédiatement !*`;
 
+                    if (hasIronMaxCode) {
+                        iptvMsg += `\n\n📲 *Pour obtenir votre mot de passe, Smarters et M3U :*\n` +
+                            `👉 Cliquez ici : https://t.me/MYIRON_BOT\n` +
+                            `Entrez votre code d'activation reçu ci-dessus dans le bot.`;
+                    }
+
                     await sendWhatsAppMessage(customerPhone, iptvMsg, {
                         whatsappApiUrl: settings?.whatsappApiUrl ?? undefined,
                         whatsappApiKey: settings?.whatsappApiKey ?? undefined,
                         whatsappInstanceName: settings?.whatsappInstanceName ?? undefined,
                     }).catch(err => console.warn(`[DELIVERY] IPTV instructions failed:`, err));
+                }
+
+                // ── Ibosol delivery (3 templates: activation seule / combo OK / combo partiel) ──
+                const ibosolItems = ((order as any).items || []).filter(isIbosolItem);
+
+                for (const ibo of ibosolItems) {
+                    const codes = ibo.codes || [];
+                    if (codes.length === 0) continue;
+
+                    const decryptedCode = decryptCode(codes[0]);
+                    if (!decryptedCode) continue;
+
+                    const fields = parseIbosolCodeString(decryptedCode);
+                    const customData = parseIbosolCustomData(ibo.customData);
+
+                    // Determine partial status from iptv_provisions table
+                    let isPartial = false;
+                    try {
+                        const provision = await db.query.iptvProvisions.findFirst({
+                            where: and(
+                                eq(iptvProvisions.orderId, (order as any).id),
+                                eq(iptvProvisions.orderItemId, ibo.id)
+                            ),
+                        });
+                        isPartial = provision?.status === "completed_partial";
+                    } catch (err: any) {
+                        console.warn(`[DELIVERY] Ibosol provision lookup failed:`, err?.message);
+                    }
+
+                    const ibosolMsg = buildIbosolMessage({
+                        mac: fields["MAC"],
+                        activationCode: fields["Code activation"],
+                        expiresAt: fields["Expire"],
+                        appId: customData?.appId ?? 1,
+                        iptvUsername: fields["User"],
+                        iptvPassword: fields["Pass"],
+                        m3uUrl: fields["M3U"],
+                        iptvProductName: customData?.combo?.iptvProductName,
+                        isPartial,
+                    });
+
+                    await sendWhatsAppMessage(customerPhone, ibosolMsg, {
+                        whatsappApiUrl: settings?.whatsappApiUrl ?? undefined,
+                        whatsappApiKey: settings?.whatsappApiKey ?? undefined,
+                        whatsappInstanceName: settings?.whatsappInstanceName ?? undefined,
+                    }).catch(err => console.warn(`[DELIVERY] Ibosol message failed for item #${ibo.id}:`, err));
+
+                    console.log(`[DELIVERY] 📺 Ibosol message sent for item #${ibo.id} (partial=${isPartial})`);
                 }
             } else {
                 console.error(`[DELIVERY] ❌ WhatsApp failed: ${wahaResult.error}`);
