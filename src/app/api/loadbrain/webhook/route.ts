@@ -6,6 +6,13 @@ import { encrypt } from "@/lib/encryption";
 import { eventBus, SystemEvent } from "@/lib/events";
 import { sendTelegramNotification } from "@/lib/telegram";
 import { DigitalCodeStatus, DeliveryMethod, OrderStatus } from "@/lib/constants";
+import {
+    isIbosolPayload,
+    isPartialSuccess,
+    formatIbosolCode,
+    parseIbosolExpires,
+    parseIbosolCustomData,
+} from "@/lib/ibosol-credentials";
 
 export async function POST(request: NextRequest) {
     const webhookSecret = process.env.LOADBRAIN_WEBHOOK_SECRET;
@@ -34,14 +41,14 @@ export async function POST(request: NextRequest) {
         }
 
         // HMAC verification (constant-time)
-        function safeCompare(a: string, b: string): boolean {
+        const safeCompare = (a: string, b: string): boolean => {
             try {
                 const bufA = Buffer.from(a);
                 const bufB = Buffer.from(b);
                 if (bufA.length !== bufB.length) return false;
                 return crypto.timingSafeEqual(bufA, bufB);
             } catch { return false; }
-        }
+        };
 
         const expected = "sha256=" + crypto.createHmac("sha256", webhookSecret).update(`${ts}.${rawBody}`).digest("hex");
         if (!safeCompare(sig, expected)) {
@@ -101,51 +108,65 @@ async function handleComplete(event: any) {
 
     if (!targetItem) return;
 
-    const screens = event.credentials?.screens || [];
-    if (screens.length === 0) return;
+    const creds = event.credentials || {};
+    const ibosolMode = isIbosolPayload(creds);
+    const screens = creds.screens || [];
+
+    if (!ibosolMode && screens.length === 0) return;
+
+    // Detect partial success for combo orders
+    const targetCustomData = parseIbosolCustomData(targetItem.customData);
+    const comboRequested = !!targetCustomData?.combo;
+    const partial = ibosolMode && isPartialSuccess(creds, comboRequested);
+    const finalStatus = partial ? "completed_partial" : "completed";
 
     await db.transaction(async (tx) => {
-        // Idempotency check INSIDE transaction to prevent TOCTOU race
         const existing = await tx.query.digitalCodes.findFirst({
             where: eq(digitalCodes.orderItemId, targetItem.id),
         });
         if (existing) return;
-        for (const screen of screens) {
-            let m3uUrl = screen.m3uUrl || "";
-            if (!m3uUrl && screen.epgUrl) {
-                const host = screen.epgUrl.split("/xmltv")[0];
-                m3uUrl = `${host}/get.php?username=${screen.username}&password=${screen.password}&type=m3u_plus`;
-            }
 
-            // Parse expiresAt — LoadBrain sends "DD-MM-YYYY HH:mm" format
-            let expiresAt: Date | null = null;
-            if (screen.expiresAt && screen.expiresAt !== "pending") {
-                const match = screen.expiresAt.match(/^(\d{2})-(\d{2})-(\d{4})\s+(\d{2}):(\d{2})$/);
-                if (match) {
-                    expiresAt = new Date(`${match[3]}-${match[2]}-${match[1]}T${match[4]}:${match[5]}:00Z`);
-                } else {
-                    const d = new Date(screen.expiresAt);
-                    if (!isNaN(d.getTime())) expiresAt = d;
-                }
-            }
-
+        if (ibosolMode) {
+            const codeValue = formatIbosolCode(creds);
             await tx.insert(digitalCodes).values({
                 variantId: targetItem.variantId,
                 orderItemId: targetItem.id,
-                code: encrypt([screen.username, screen.password, m3uUrl, screen.epgUrl || ""].join(" | ")),
+                code: encrypt(codeValue),
                 status: DigitalCodeStatus.VENDU,
-                expiresAt,
+                expiresAt: parseIbosolExpires(creds.expiresAt),
             });
+        } else {
+            for (const screen of screens) {
+                const isCodeMode = screen.code && !screen.username;
+                let m3uUrl = screen.m3uUrl || "";
+                if (!isCodeMode && !m3uUrl && screen.epgUrl) {
+                    const host = screen.epgUrl.split("/xmltv")[0];
+                    m3uUrl = `${host}/get.php?username=${screen.username}&password=${screen.password}&type=m3u_plus`;
+                }
+                const codeValue = isCodeMode
+                    ? screen.code
+                    : [screen.username, screen.password, m3uUrl, screen.epgUrl || ""].join(" | ");
+
+                await tx.insert(digitalCodes).values({
+                    variantId: targetItem.variantId,
+                    orderItemId: targetItem.id,
+                    code: encrypt(codeValue),
+                    status: DigitalCodeStatus.VENDU,
+                    expiresAt: parseIbosolExpires(screen.expiresAt),
+                });
+            }
         }
 
         await tx.update(iptvProvisions).set({
-            status: "completed",
+            status: finalStatus,
+            error: partial ? "IPTV combo not delivered" : null,
+            errorCode: partial ? "PARTIAL_IPTV" : null,
             credentialsEncrypted: encrypt(JSON.stringify(event.credentials)),
             completedAt: new Date(),
         }).where(and(
             eq(iptvProvisions.orderId, order.id),
             eq(iptvProvisions.orderItemId, targetItem.id),
-            inArray(iptvProvisions.status, ["queued", "processing"]),
+            inArray(iptvProvisions.status, ["queued", "processing", "failed"]),
         ));
 
         const isWhatsApp = (order as any).deliveryMethod === DeliveryMethod.WHATSAPP;
@@ -158,9 +179,19 @@ async function handleComplete(event: any) {
 
     eventBus.publish(SystemEvent.ORDER_DELIVERED, { orderId: order.id });
 
-    const s = screens[0];
+    const summary = ibosolMode
+        ? (partial
+            ? `⚠️ IBO activé, IPTV échouée (action SAV requise)`
+            : (creds.iptvUsername
+                ? `🔑 ${creds.mac} + IPTV ${creds.iptvUsername}`
+                : `🔑 ${creds.mac} ${creds.activationCode ? "→ activé" : ""}`.trim()))
+        : `🔑 ${screens[0]?.username || screens[0]?.code || "code"} / ${"•".repeat(8)}`;
+
+    const emoji = partial ? "⚠️" : "✅";
+    const title = partial ? "IBO partiel" : (ibosolMode ? "IBO livré" : "IPTV livré");
+
     sendTelegramNotification(
-        `✅ *IPTV livré*\n📋 \`${order.orderNumber}\`\n👤 ${(order as any).client?.nomComplet || "N/A"}\n🔑 ${s.username} / ${"•".repeat(8)}`,
+        `${emoji} *${title}*\n📋 \`${order.orderNumber}\`\n👤 ${(order as any).client?.nomComplet || "N/A"}\n${summary}`,
         ["ADMIN"]
     ).catch(() => {});
 }
