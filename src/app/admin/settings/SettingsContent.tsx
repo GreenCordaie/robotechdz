@@ -60,10 +60,11 @@ import { ReceiptSettings } from "@/components/admin/settings/ReceiptSettings";
 import { ApiBotSettings } from "@/components/admin/settings/ApiBotSettings";
 import { FaqBotSettings } from "@/components/admin/settings/FaqBotSettings";
 import ApiKeysSection from "@/app/admin/settings/ApiKeysSection";
+import { PrinterSettings } from "@/components/admin/settings/PrinterSettings";
 import { useAuthStore } from "@/store/useAuthStore";
 
 export default function SettingsContent() {
-    const [activeTab, setActiveTab] = useState<"general" | "team" | "api" | "faq" | "b2b" | "appearance" | "receipt" | "security">("general");
+    const [activeTab, setActiveTab] = useState<"general" | "team" | "api" | "faq" | "b2b" | "appearance" | "receipt" | "security" | "printer">("general");
     const { isOpen, onOpen, onOpenChange } = useDisclosure();
     const updateGlobalSettings = useSettingsStore((state) => state.updateSettings);
     const currentUser = useAuthStore((state) => state.user);
@@ -112,6 +113,11 @@ export default function SettingsContent() {
     const [isMaintenanceMode, setIsMaintenanceMode] = useState(false);
     const [allowedIps, setAllowedIps] = useState("");
     const [stockAlertThreshold, setStockAlertThreshold] = useState(5);
+
+    // Printer
+    const [printerPaperWidth, setPrinterPaperWidth] = useState(80);
+    const [printerAutoCut, setPrinterAutoCut] = useState(true);
+    const [printerAutoPrintPaid, setPrinterAutoPrintPaid] = useState(false);
 
     // MFA States
     const [mfaSecret, setMfaSecret] = useState<string | null>(null);
@@ -167,6 +173,9 @@ export default function SettingsContent() {
                 setIsMaintenanceMode(s.isMaintenanceMode ?? false);
                 setAllowedIps(s.allowedIps || "");
                 setStockAlertThreshold(s.stockAlertThreshold ?? 5);
+                setPrinterPaperWidth(s.printerPaperWidth ?? 80);
+                setPrinterAutoCut(s.printerAutoCut ?? true);
+                setPrinterAutoPrintPaid(s.printerAutoPrintPaid ?? false);
             }
 
             if (teamRes.success) {
@@ -210,6 +219,9 @@ export default function SettingsContent() {
                 isMaintenanceMode,
                 allowedIps,
                 stockAlertThreshold,
+                printerPaperWidth: printerPaperWidth as 58 | 80,
+                printerAutoCut,
+                printerAutoPrintPaid,
             });
 
             if (!res.success) {
@@ -547,6 +559,13 @@ export default function SettingsContent() {
                                 {activeTab === "receipt" && <span className="absolute bottom-0 left-0 w-full h-0.5 bg-[var(--primary)] rounded-full"></span>}
                             </button>
                             <button
+                                onClick={() => setActiveTab("printer")}
+                                className={`pb-4 border-b-2 text-sm transition-all relative whitespace-nowrap ${activeTab === "printer" ? "text-[var(--primary)] font-bold" : "text-slate-500 hover:text-slate-200 font-medium"}`}
+                            >
+                                Imprimante USB
+                                {activeTab === "printer" && <span className="absolute bottom-0 left-0 w-full h-0.5 bg-[var(--primary)] rounded-full"></span>}
+                            </button>
+                            <button
                                 onClick={() => setActiveTab("b2b")}
                                 className={`pb-4 border-b-2 text-sm transition-all relative whitespace-nowrap ${activeTab === "b2b" ? "text-[var(--primary)] font-bold" : "text-slate-500 hover:text-slate-200 font-medium"}`}
                             >
@@ -829,6 +848,26 @@ export default function SettingsContent() {
 
                     {activeTab === "receipt" && (
                         <ReceiptSettings />
+                    )}
+
+                    {activeTab === "printer" && (
+                        <div className="max-w-3xl animate-in fade-in slide-in-from-bottom-2 duration-300">
+                            <div className="mb-6">
+                                <h2 className="text-xl font-bold text-white mb-1">Imprimante USB</h2>
+                                <p className="text-sm text-slate-400">Connectez et configurez votre imprimante thermique ESC/POS pour les tickets de caisse.</p>
+                            </div>
+                            <PrinterSettings
+                                initialPaperWidth={printerPaperWidth}
+                                initialAutoCut={printerAutoCut}
+                                initialAutoPrintPaid={printerAutoPrintPaid}
+                                shopName={shopName}
+                                onChange={(c) => {
+                                    if (c.printerPaperWidth !== undefined) setPrinterPaperWidth(c.printerPaperWidth);
+                                    if (c.printerAutoCut !== undefined) setPrinterAutoCut(c.printerAutoCut);
+                                    if (c.printerAutoPrintPaid !== undefined) setPrinterAutoPrintPaid(c.printerAutoPrintPaid);
+                                }}
+                            />
+                        </div>
                     )}
 
                     {activeTab === "appearance" && (

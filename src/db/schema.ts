@@ -231,6 +231,10 @@ export const shopSettings = pgTable("shop_settings", {
     showDateTimeOnReceipt: boolean("show_date_time_on_receipt").default(true),
     showLogoOnReceipt: boolean("show_logo_on_receipt").default(false),
     showTrackQrOnReceipt: boolean("show_track_qr_on_receipt").default(true),
+    // Printer (USB ESC/POS)
+    printerPaperWidth: integer("printer_paper_width").notNull().default(80),
+    printerAutoCut: boolean("printer_auto_cut").notNull().default(true),
+    printerAutoPrintPaid: boolean("printer_auto_print_paid").notNull().default(false),
     accentColor: text("accent_color").default("#ec5b13"),
     logoUrl: text("logo_url"),
     dashboardLogoUrl: text("dashboard_logo_url"),

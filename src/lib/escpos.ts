@@ -226,3 +226,47 @@ export function generateOrderEscPos(orderData: any, shopSettings: any) {
 
     return encoder.encode();
 }
+
+/**
+ * Generate a small ESC/POS test ticket to validate printer connectivity
+ * and configuration (paper width, encoding, cut command).
+ */
+export function generateTestTicket(opts: {
+    shopName?: string;
+    paperWidth?: number;  // 58 or 80 (mm)
+    autoCut?: boolean;
+} = {}): Uint8Array {
+    const encoder = new EscPosEncoder();
+    const lineLen = opts.paperWidth === 58 ? 32 : 48;
+    (encoder as any).lineLength = lineLen;
+
+    encoder.add(COMMANDS.INITIALIZE);
+
+    encoder.add(COMMANDS.ALIGN_CENTER);
+    encoder.doubleStrike((opts.shopName || "TEST IMPRIMANTE").toUpperCase());
+    encoder.add(COMMANDS.LINE_FEED);
+
+    encoder.line("Test de connexion USB");
+    encoder.line(new Date().toLocaleString("fr-FR"));
+    encoder.separator();
+
+    encoder.add(COMMANDS.ALIGN_LEFT);
+    encoder.bold("Encodage caracteres :");
+    encoder.line("ABCDEFGHIJKLMNOPQRSTUVWXYZ");
+    encoder.line("abcdefghijklmnopqrstuvwxyz");
+    encoder.line("0123456789 / + - * = ! ? .");
+    encoder.line(`Largeur papier : ${opts.paperWidth || 80}mm (${lineLen} cols)`);
+    encoder.separator();
+
+    encoder.add(COMMANDS.ALIGN_CENTER);
+    encoder.bold("OK — Imprimante prete");
+    encoder.line();
+    encoder.line();
+    encoder.line();
+
+    if (opts.autoCut !== false) {
+        encoder.cut();
+    }
+
+    return encoder.encode();
+}

@@ -88,6 +88,10 @@ export const saveShopSettingsAction = withAuth(
             microsoftClientSecret: z.string().nullable().optional(),
             microsoftTenantId: z.string().nullable().optional(),
             microsoftRedirectUri: z.string().nullable().optional(),
+            // Printer (USB ESC/POS)
+            printerPaperWidth: z.union([z.literal(58), z.literal(80)]).optional(),
+            printerAutoCut: z.boolean().optional(),
+            printerAutoPrintPaid: z.boolean().optional(),
         })
     },
     async (data, user) => {
