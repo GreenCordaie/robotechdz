@@ -1,11 +1,12 @@
 "use server";
 
 import { db } from "@/db";
-import { iptvProvisions, digitalCodes } from "@/db/schema";
-import { eq, desc, and } from "drizzle-orm";
+import { iptvProvisions, digitalCodes, orders, orderItems, productVariants } from "@/db/schema";
+import { eq, desc, and, sql } from "drizzle-orm";
 import { withAuth } from "@/lib/security";
 import { UserRole, DigitalCodeStatus } from "@/lib/constants";
 import { decrypt, encrypt } from "@/lib/encryption";
+import { OrderService } from "@/services/order.service";
 import { z } from "zod";
 
 export const getIptvProvisions = withAuth(
@@ -176,6 +177,86 @@ export const renewIptvAction = withAuth(
             return { success: true };
         } catch (error) {
             return { success: false, error: (error as Error).message };
+        }
+    }
+);
+
+/**
+ * Admin SAV: manually inject an IPTV playlist into an already-activated IBO device.
+ * Creates an #ADM- order and runs it through the standard payment + provisioning pipeline.
+ */
+export const manualInjectIptvAction = withAuth(
+    {
+        roles: [UserRole.ADMIN, UserRole.CAISSIER],
+        schema: z.object({
+            mac: z.string().regex(/^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$/),
+            appId: z.number().int().min(1).max(10),
+            iptvVariantId: z.number().int(),
+            iptvProviderId: z.string().min(1),
+            iptvPlanId: z.string().min(1),
+            iptvProductName: z.string().min(1),
+            iptvPrice: z.string(),
+            customPrice: z.string(),
+            customerPhone: z.string().optional(),
+        }),
+    },
+    async (input, user) => {
+        try {
+            // Generate admin order number
+            const countResult = await db.select({ count: sql<number>`count(*)` }).from(orders);
+            const c = (Number(countResult[0]?.count || 0) % 999) + 1;
+            const orderNumber = `#ADM-${c}-${Date.now().toString().slice(-3)}`;
+
+            const customDataJson = JSON.stringify({
+                type: "ibosol",
+                mac: input.mac,
+                appId: input.appId,
+                combo: {
+                    iptvVariantId: input.iptvVariantId,
+                    iptvProviderId: input.iptvProviderId,
+                    iptvPlanId: input.iptvPlanId,
+                    iptvProductName: input.iptvProductName,
+                    iptvPrice: input.iptvPrice,
+                },
+            });
+
+            // Find ibo-inject variant in DB
+            const injectVariant = await db.query.productVariants.findFirst({
+                where: eq(productVariants.loadbrainSlug, "ibo-inject"),
+            });
+            if (!injectVariant) {
+                return { success: false, error: "Variant ibo-inject introuvable" };
+            }
+
+            const [order] = await db
+                .insert(orders)
+                .values({
+                    orderNumber,
+                    status: "EN_ATTENTE",
+                    totalAmount: input.customPrice,
+                    deliveryMethod: input.customerPhone ? "WHATSAPP" : "TICKET",
+                    customerPhone: input.customerPhone || null,
+                })
+                .returning();
+
+            await db.insert(orderItems).values({
+                orderId: order.id,
+                variantId: injectVariant.id,
+                name: `Inject ${input.iptvProductName} → ${input.mac}`,
+                price: input.customPrice,
+                quantity: 1,
+                customData: customDataJson,
+            });
+
+            // Pay (admin user) — triggers provisionIptvOrder via payOrder
+            await OrderService.payOrder(order.id, user.id, {
+                remise: 0,
+                montantPaye: parseFloat(input.customPrice),
+            });
+
+            return { success: true, orderNumber };
+        } catch (err) {
+            return { success: false, error: (err as Error).message };
         }
     }
 );
