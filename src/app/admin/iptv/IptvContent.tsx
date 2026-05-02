@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { Tv, RefreshCw, CheckCircle, XCircle, Clock, Copy, ExternalLink, User, Phone, Hash, Calendar, AlertTriangle, Loader2, Wifi } from "lucide-react";
 import { toast } from "react-hot-toast";
-import { getIptvProvisions, retryIptvProvisionAction, resendWebhookAction, cancelIptvOrderAction, manualCredentialEntryAction, renewIptvAction } from "./actions";
+import { getIptvProvisions, retryIptvProvisionAction, resendWebhookAction, cancelIptvOrderAction, manualCredentialEntryAction, renewIptvAction, retryPartialIptvAction } from "./actions";
 import IbosolToolsBar from "./components/IbosolToolsBar";
 import type { IptvPlan } from "@/app/kiosk/components/IbosolComboModal";
 
@@ -41,6 +41,7 @@ function StatusBadge({ status }: { status: string }) {
         queued: { color: "bg-amber-500/10 text-amber-400 border-amber-500/20", icon: <Clock className="w-3 h-3" />, label: "En attente" },
         processing: { color: "bg-blue-500/10 text-blue-400 border-blue-500/20", icon: <Loader2 className="w-3 h-3 animate-spin" />, label: "En cours" },
         completed: { color: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20", icon: <CheckCircle className="w-3 h-3" />, label: "Actif" },
+        completed_partial: { color: "bg-amber-500/10 text-amber-400 border-amber-500/20", icon: <AlertTriangle className="w-3 h-3" />, label: "Partiel" },
         failed: { color: "bg-red-500/10 text-red-400 border-red-500/20", icon: <XCircle className="w-3 h-3" />, label: "Échoué" },
         cancelled: { color: "bg-slate-500/10 text-slate-400 border-slate-500/20", icon: <XCircle className="w-3 h-3" />, label: "Annulé" },
     };
@@ -118,7 +119,7 @@ function CredentialCard({ screen, expiresAt }: { screen: Screen; expiresAt?: str
 export default function IptvContent({ initialProvisions = [] }: { initialProvisions?: Provision[] }) {
     const [provisions, setProvisions] = useState<Provision[]>(initialProvisions);
     const [loading, setLoading] = useState(false);
-    const [filter, setFilter] = useState<"all" | "completed" | "pending" | "failed">("all");
+    const [filter, setFilter] = useState<"all" | "completed" | "pending" | "failed" | "partial">("all");
     const [iptvPlans, setIptvPlans] = useState<IptvPlan[]>([]);
 
     useEffect(() => {
@@ -171,11 +172,19 @@ export default function IptvContent({ initialProvisions = [] }: { initialProvisi
         else toast.error(res.error || "Erreur");
     };
 
+    const handleRetryPartial = async (provisionId: number) => {
+        if (!confirm("Lancer une nouvelle provision IPTV pour finaliser ce combo ?")) return;
+        const res: any = await retryPartialIptvAction({ provisionId });
+        if (res.success) { toast.success("IPTV relancée"); refresh(); }
+        else toast.error(res.error || "Erreur");
+    };
+
     const filtered = provisions.filter(p => {
         if (filter === "all") return true;
         if (filter === "completed") return p.status === "completed";
         if (filter === "pending") return p.status === "queued" || p.status === "processing";
         if (filter === "failed") return p.status === "failed";
+        if (filter === "partial") return p.status === "completed_partial";
         return true;
     });
 
@@ -184,6 +193,7 @@ export default function IptvContent({ initialProvisions = [] }: { initialProvisi
         completed: provisions.filter(p => p.status === "completed").length,
         pending: provisions.filter(p => p.status === "queued" || p.status === "processing").length,
         failed: provisions.filter(p => p.status === "failed").length,
+        partial: provisions.filter(p => p.status === "completed_partial").length,
     };
 
     return (
@@ -210,8 +220,8 @@ export default function IptvContent({ initialProvisions = [] }: { initialProvisi
 
             {/* Filters */}
             <div className="flex gap-2">
-                {(["all", "completed", "pending", "failed"] as const).map((f) => {
-                    const labels = { all: "Tout", completed: "Actifs", pending: "En attente", failed: "Échoués" };
+                {(["all", "completed", "pending", "failed", "partial"] as const).map((f) => {
+                    const labels = { all: "Tout", completed: "Actifs", pending: "En attente", failed: "Échoués", partial: "Partiels" };
                     const isActive = filter === f;
                     return (
                         <button
@@ -288,6 +298,14 @@ export default function IptvContent({ initialProvisions = [] }: { initialProvisi
                                     {(p.status === "queued" || p.status === "processing") && (
                                         <button onClick={() => handleCancel(p.order.orderNumber, p.id)} className="flex items-center gap-1 text-[10px] font-bold text-red-400 bg-red-500/10 hover:bg-red-500/20 px-2.5 py-1.5 rounded-lg border border-red-500/20 transition-colors">
                                             <XCircle className="w-3 h-3" /> Annuler
+                                        </button>
+                                    )}
+                                    {p.status === "completed_partial" && (
+                                        <button
+                                            onClick={() => handleRetryPartial(p.id)}
+                                            className="flex items-center gap-1 text-[10px] font-bold text-amber-400 bg-amber-500/10 hover:bg-amber-500/20 px-2.5 py-1.5 rounded-lg border border-amber-500/20 transition-colors"
+                                        >
+                                            <RefreshCw className="w-3 h-3" /> Relancer IPTV
                                         </button>
                                     )}
                                 </div>

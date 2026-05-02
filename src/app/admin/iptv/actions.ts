@@ -182,6 +182,63 @@ export const renewIptvAction = withAuth(
 );
 
 /**
+ * Relance la provision IPTV pour un combo Ibosol terminé en `completed_partial`
+ * (activation IBO OK, mais playlist IPTV non créée). Crée un nouvel order_item
+ * ciblant le variant IPTV du combo, puis relance le flow IPTV classique.
+ */
+export const retryPartialIptvAction = withAuth(
+    {
+        roles: [UserRole.ADMIN, UserRole.CAISSIER],
+        schema: z.object({ provisionId: z.number() }),
+    },
+    async ({ provisionId }) => {
+        try {
+            const provision = await db.query.iptvProvisions.findFirst({
+                where: eq(iptvProvisions.id, provisionId),
+            });
+            if (!provision) return { success: false, error: "Provision introuvable" };
+            if (provision.status !== "completed_partial") {
+                return { success: false, error: "Provision non partielle" };
+            }
+
+            const orderItem = await db.query.orderItems.findFirst({
+                where: eq(orderItems.id, provision.orderItemId),
+            });
+            if (!orderItem) return { success: false, error: "Order item introuvable" };
+
+            const { parseIbosolCustomData } = await import("@/lib/ibosol-credentials");
+            const ibosolData = parseIbosolCustomData(orderItem.customData);
+            if (!ibosolData?.combo) {
+                return { success: false, error: "Pas de combo dans customData" };
+            }
+
+            // Créer un nouvel order_item ciblant le variant IPTV (flow IPTV classique)
+            await db.insert(orderItems).values({
+                orderId: provision.orderId,
+                variantId: ibosolData.combo.iptvVariantId,
+                name: `${ibosolData.combo.iptvProductName} (relance après combo partiel)`,
+                price: ibosolData.combo.iptvPrice,
+                quantity: 1,
+                customData: "credentials",
+            });
+
+            // Lancer la provision sur tous les items IPTV non encore provisionnés
+            const { provisionIptvOrder } = await import("@/lib/iptv");
+            await provisionIptvOrder(provision.orderId);
+
+            // Mettre à jour la provision Ibosol originale
+            await db.update(iptvProvisions)
+                .set({ status: "completed", error: null, errorCode: null })
+                .where(eq(iptvProvisions.id, provisionId));
+
+            return { success: true };
+        } catch (err) {
+            return { success: false, error: (err as Error).message };
+        }
+    }
+);
+
+/**
  * Admin SAV: manually inject an IPTV playlist into an already-activated IBO device.
  * Creates an #ADM- order and runs it through the standard payment + provisioning pipeline.
  */

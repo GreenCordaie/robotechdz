@@ -47,8 +47,20 @@ export async function provisionIptvOrder(orderId: number): Promise<{ provisioned
         return { provisioned: 0, taskIds: [] };
     }
 
-    const iptvItems = (order as any).items.filter((item: any) => item.variant?.loadbrainSlug);
-    if (iptvItems.length === 0) return { provisioned: 0, taskIds: [] };
+    const allIptvItems = (order as any).items.filter((item: any) => item.variant?.loadbrainSlug);
+    if (allIptvItems.length === 0) return { provisioned: 0, taskIds: [] };
+
+    // Skip items that already have a provision row (idempotence: protège contre
+    // les double-appels et permet la relance après un completed_partial).
+    const existingProvisions = await db.query.iptvProvisions.findMany({
+        where: eq(iptvProvisions.orderId, orderId),
+    });
+    const provisionedItemIds = new Set(existingProvisions.map(p => p.orderItemId));
+    const iptvItems = allIptvItems.filter((it: any) => !provisionedItemIds.has(it.id));
+    if (iptvItems.length === 0) {
+        console.log(`[IPTV] All items for order #${orderId} already provisioned — skipping`);
+        return { provisioned: 0, taskIds: [] };
+    }
 
     const customerPhone = (order as any).customerPhone || (order as any).client?.telephone || "";
     const customerName = (order as any).client?.nomComplet || "Client";
