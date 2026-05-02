@@ -38,13 +38,15 @@ export default function IbosolComboModal({
 
     useEffect(() => {
         if (isOpen) {
-            setMode("none");
+            // If no IPTV plans available (LoadBrain catalog API failed), force skip mode
+            setMode(availablePlans.length === 0 ? "skip" : "none");
             setSelectedPlan(null);
             const firstProvider = availablePlans[0]?.providerName || "";
             setActiveProvider(firstProvider);
         }
     }, [isOpen, availablePlans]);
 
+    const noPlansAvailable = availablePlans.length === 0;
     const providers = Array.from(new Set(availablePlans.map(p => p.providerName)));
     const plansByProvider = availablePlans
         .filter(p => p.providerName === activeProvider)
@@ -89,8 +91,20 @@ export default function IbosolComboModal({
                             </div>
                         </header>
 
+                        {/* Empty state — IPTV catalog unavailable */}
+                        {noPlansAvailable && (
+                            <div className="mb-5 p-4 bg-amber-50 border-2 border-amber-200 rounded-2xl">
+                                <p className="text-xs font-black uppercase tracking-wider text-amber-800 mb-1">
+                                    Plans IPTV indisponibles
+                                </p>
+                                <p className="text-xs text-amber-700">
+                                    Le catalogue IPTV est temporairement indisponible. Vous pouvez continuer avec l&apos;activation IBO seule.
+                                </p>
+                            </div>
+                        )}
+
                         {/* Choix mode */}
-                        <div className="grid grid-cols-2 gap-3 mb-5">
+                        <div className={`grid grid-cols-${noPlansAvailable ? "1" : "2"} gap-3 mb-5`}>
                             <button
                                 onClick={() => { setMode("skip"); setSelectedPlan(null); }}
                                 className={`p-4 border-2 rounded-2xl text-left transition-all ${
@@ -99,21 +113,23 @@ export default function IbosolComboModal({
                                         : "border-slate-200 bg-white hover:border-slate-300"
                                 }`}
                             >
-                                <div className="font-black text-black mb-1">Non, IBO seul</div>
+                                <div className="font-black text-black mb-1">{noPlansAvailable ? "Continuer avec IBO seul" : "Non, IBO seul"}</div>
                                 <div className="text-sm font-bold text-slate-500">{formatCurrency(parseFloat(iboPrice), "DZD")}</div>
                             </button>
 
-                            <button
-                                onClick={() => setMode("combo")}
-                                className={`p-4 border-2 rounded-2xl text-left transition-all ${
-                                    mode === "combo"
-                                        ? "border-cyan-500 bg-cyan-50"
-                                        : "border-slate-200 bg-white hover:border-slate-300"
-                                }`}
-                            >
-                                <div className="font-black text-black mb-1">Oui, ajouter un IPTV</div>
-                                <div className="text-sm font-bold text-cyan-600">Choisir un plan ↓</div>
-                            </button>
+                            {!noPlansAvailable && (
+                                <button
+                                    onClick={() => setMode("combo")}
+                                    className={`p-4 border-2 rounded-2xl text-left transition-all ${
+                                        mode === "combo"
+                                            ? "border-cyan-500 bg-cyan-50"
+                                            : "border-slate-200 bg-white hover:border-slate-300"
+                                    }`}
+                                >
+                                    <div className="font-black text-black mb-1">Oui, ajouter un IPTV</div>
+                                    <div className="text-sm font-bold text-cyan-600">Choisir un plan ↓</div>
+                                </button>
+                            )}
                         </div>
 
                         {/* Picker IPTV */}

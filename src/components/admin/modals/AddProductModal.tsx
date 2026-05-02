@@ -97,7 +97,8 @@ export const AddProductModal = ({ isOpen, onClose, categories, suppliers, produc
                     salePrice: "",
                     isSharing: false,
                     totalSlots: 5,
-                    linkedSuppliers: []
+                    linkedSuppliers: [],
+                    loadbrainSlug: ""
                 }]);
             }
         } else if (!productToEdit && isOpen) {
@@ -210,6 +211,7 @@ export const AddProductModal = ({ isOpen, onClose, categories, suppliers, produc
             salePrice: "",
             isSharing: false,
             totalSlots: 5,
+            loadbrainSlug: "",
             linkedSuppliers: []
         }]);
     };

@@ -1,6 +1,8 @@
 import React, { useState } from "react";
 import { Modal, ModalContent } from "@heroui/react";
 import { Printer, ChevronRight, Key, Tv } from "lucide-react";
+import { useKioskStore } from "@/store/useKioskStore";
+import { formatCurrency } from "@/lib/formatters";
 
 interface DeliveryMethodModalProps {
     isOpen: boolean;
@@ -11,6 +13,7 @@ interface DeliveryMethodModalProps {
 }
 
 export default function DeliveryMethodModal({ isOpen, onClose, onConfirm, isSubmitting, hasIptvProducts }: DeliveryMethodModalProps) {
+    const { cart, getTotalAmount } = useKioskStore();
     const [method, setMethod] = useState<"TICKET" | "WHATSAPP">("TICKET");
     const [iptvDelivery, setIptvDelivery] = useState<"credentials" | "code">("credentials");
     const [callingCode, setCallingCode] = useState("+213");
@@ -45,14 +48,40 @@ export default function DeliveryMethodModal({ isOpen, onClose, onConfirm, isSubm
                 {(onClose) => (
                     <main className="flex flex-col p-8 md:p-12">
                         {/* Header */}
-                        <header className="text-center mb-10">
-                            <h1 className="text-3xl font-bold text-slate-900 mb-3 tracking-tight">
+                        <header className="text-center mb-6 md:mb-10">
+                            <h1 className="text-2xl md:text-3xl font-bold text-slate-900 mb-2 md:mb-3 tracking-tight">
                                 Comment souhaitez-vous récupérer vos codes ?
                             </h1>
-                            <p className="text-xl text-slate-500 font-medium">
+                            <p className="text-base md:text-xl text-slate-500 font-medium">
                                 Choisissez votre méthode de réception préférée.
                             </p>
                         </header>
+
+                        {/* Cart Summary — confirmation des items achetés */}
+                        {cart.length > 0 && (
+                            <section className="mb-6 md:mb-8 p-4 bg-slate-50 border border-slate-200 rounded-2xl">
+                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-3">Récapitulatif</p>
+                                <div className="space-y-2">
+                                    {cart.map((it: any) => (
+                                        <div key={`${it.variantId}-${it.customData || ""}`} className="text-sm">
+                                            <div className="flex justify-between font-bold text-slate-800">
+                                                <span>{it.productName ? `${it.productName} — ` : ""}{it.name}{it.quantity > 1 ? ` × ${it.quantity}` : ""}</span>
+                                                <span>{formatCurrency((parseFloat(it.price) + (it.combo ? parseFloat(it.combo.iptvPrice) : 0)) * it.quantity, "DZD")}</span>
+                                            </div>
+                                            {it.combo && (
+                                                <div className="ml-3 mt-0.5 text-xs text-cyan-700">
+                                                    + {it.combo.iptvProductName}
+                                                </div>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                                <div className="mt-3 pt-3 border-t border-slate-200 flex justify-between font-black text-slate-900">
+                                    <span>Total</span>
+                                    <span>{formatCurrency(getTotalAmount(), "DZD")}</span>
+                                </div>
+                            </section>
+                        )}
 
                         {/* Delivery Method */}
                         <section className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">

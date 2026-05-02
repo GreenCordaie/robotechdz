@@ -670,7 +670,7 @@ export async function POST(req: NextRequest) {
                                 }).catch(() => { });
 
                                 // ── Telegram alert on 2nd delivery ──
-                                if (!isFoyerSlot && deliveryCount24h === 1 && result.type !== 'NONE') {
+                                if (!isFoyerSlot && deliveryCount24h === 1 && (result.type === 'CODE' || result.type === 'LINK')) {
                                     sendTelegramNotification(
                                         `⚠️ *Netflix — 2ème code livré (dernière autorisation)*\n\n` +
                                         `📧 Compte : \`${email}\`\n` +
@@ -743,7 +743,7 @@ export async function POST(req: NextRequest) {
 
         if (!settings?.chatbotEnabled) return NextResponse.json({ success: true });
 
-        const geminiApiKey = settings.geminiApiKey;
+        const geminiApiKey = settings?.geminiApiKey;
         if (!geminiApiKey) return NextResponse.json({ success: true });
 
         const phoneDigits = senderPhone.replace(/\D/g, '');
@@ -792,7 +792,7 @@ ANTI-RÉPÉTITION (RÈGLE ABSOLUE) :
 
 ESCALADE : Si après 2 échanges le problème persiste → ajoute le marqueur [TICKET] à la toute fin de ta réponse (invisible pour le client, juste le tag).`;
 
-        const systemPrompt = `${settings.chatbotRole || defaultRole}
+        const systemPrompt = `${settings?.chatbotRole || defaultRole}
 
 ${faqContext ? faqContext + "\n" : ""}${catalogContext}
 
@@ -805,7 +805,7 @@ RÈGLE : Aide concrètement. Ne dis jamais "je ne peux pas aider". Termine par l
         console.log(`[WHATSAPP_WEBHOOK] Calling AI for ${maskedPhone}...`);
         let rawReply: string;
         try {
-            rawReply = await getGeminiResponse(safeText, senderPhone, geminiApiKey, systemPrompt, conversationHistory);
+            rawReply = await getGeminiResponse(safeText, senderPhone, geminiApiKey as string, systemPrompt, conversationHistory);
         } catch (aiErr: any) {
             console.error('[WHATSAPP_WEBHOOK] AI error:', aiErr.message);
             rawReply = "🤖 Désolé, une erreur technique s'est produite. Réessayez dans un instant.";
@@ -846,7 +846,7 @@ RÈGLE : Aide concrètement. Ne dis jamais "je ne peux pas aider". Termine par l
 
                 const recentOrder = await db.query.orders.findFirst({
                     where: client?.id
-                        ? or(eq(orders.clientId, client.id), like(orders.customerPhone, `%${resolvedDigits}%`))
+                        ? or(eq(orders.clientId, client!.id), like(orders.customerPhone, `%${resolvedDigits}%`))
                         : like(orders.customerPhone, `%${resolvedDigits}%`),
                     orderBy: (o, { desc }) => [desc(o.createdAt)]
                 });

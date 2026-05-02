@@ -42,6 +42,16 @@ export default function CaisseMobile() {
 
     const settings = useSettingsStore();
 
+    const handlePrint = async (data: any) => {
+        if (!data?.id) return;
+        const res: any = await requeueForPrint({ orderId: data.id });
+        if (res?.success) {
+            toast.success(`🖨️ Ticket #${data.orderNumber} en file d'impression`);
+        } else {
+            toast.error(`🖨️ Erreur: ${res?.error || 'Impossible de mettre en file'}`);
+        }
+    };
+
     const loadOrders = useCallback(async (silent = false) => {
         if (!silent) setIsLoading(true);
         try {

@@ -106,13 +106,51 @@ async function handleComplete(event: any) {
         ? iptvItems.find((i: any) => i.id === parseInt(itemIdMatch[1]))
         : iptvItems[0];
 
-    if (!targetItem) return;
+    if (!targetItem) {
+        console.error(`[LoadBrain] No matching IPTV order_item for ${event.orderId}`);
+        return;
+    }
+
+    // Defensive: variantId must exist before inserting digital_codes (FK constraint)
+    if (!targetItem.variantId) {
+        console.error(`[LoadBrain] order_item #${targetItem.id} has null variantId — cannot insert credentials`);
+        await db.update(iptvProvisions).set({
+            status: "failed",
+            error: "order_item.variantId is null",
+            errorCode: "INVALID_ORDER_ITEM",
+        }).where(and(
+            eq(iptvProvisions.orderId, order.id),
+            eq(iptvProvisions.orderItemId, targetItem.id),
+        ));
+        sendTelegramNotification(
+            `❌ *Webhook anomalie*\n📋 \`${order.orderNumber}\`\nOrder item #${targetItem.id} sans variantId — credentials non enregistrées.`,
+            ["ADMIN"]
+        ).catch(() => {});
+        return;
+    }
 
     const creds = event.credentials || {};
     const ibosolMode = isIbosolPayload(creds);
     const screens = creds.screens || [];
 
-    if (!ibosolMode && screens.length === 0) return;
+    // event.status === "completed" but no usable credentials → mark failed instead of silent drop
+    if (!ibosolMode && screens.length === 0) {
+        console.error(`[LoadBrain] completed event with empty credentials for ${event.orderId}`);
+        await db.update(iptvProvisions).set({
+            status: "failed",
+            error: "Empty credentials in completed webhook",
+            errorCode: "EMPTY_CREDENTIALS",
+        }).where(and(
+            eq(iptvProvisions.orderId, order.id),
+            eq(iptvProvisions.orderItemId, targetItem.id),
+            inArray(iptvProvisions.status, ["queued", "processing"]),
+        ));
+        sendTelegramNotification(
+            `⚠️ *Webhook vide*\n📋 \`${order.orderNumber}\`\nLoadBrain a renvoyé completed sans credentials. Action SAV requise.`,
+            ["ADMIN"]
+        ).catch(() => {});
+        return;
+    }
 
     // Detect partial success for combo orders
     const targetCustomData = parseIbosolCustomData(targetItem.customData);

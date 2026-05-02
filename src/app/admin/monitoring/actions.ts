@@ -28,7 +28,9 @@ export const getQueueStats = withAuth(
     { roles: [UserRole.ADMIN, UserRole.SUPER_ADMIN], schema: z.any().optional() },
     async () => {
         try {
-            const { notificationQueue } = await import("@/lib/queue");
+            const { Queue } = await import("bullmq");
+            const { NOTIFICATION_QUEUE, connection } = await import("@/lib/queue");
+            const notificationQueue = new Queue(NOTIFICATION_QUEUE, { connection });
             const counts = await notificationQueue.getJobCounts('wait', 'active', 'completed', 'failed', 'delayed');
 
             return {
