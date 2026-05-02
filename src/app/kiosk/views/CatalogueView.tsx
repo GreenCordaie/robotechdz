@@ -5,6 +5,7 @@ import { useKioskStore } from "@/store/useKioskStore";
 import { useSettingsStore } from "@/store/useSettingsStore";
 import ProductModal from "../components/ProductModal";
 import DeliveryMethodModal from "../components/DeliveryMethodModal";
+import type { IptvPlan } from "../components/IbosolComboModal";
 import { createKioskOrder } from "../actions";
 import { useDisclosure } from "@heroui/react";
 import { formatCurrency } from "@/lib/formatters";
@@ -65,6 +66,7 @@ export default function CatalogueView({ products, categories }: CatalogueViewPro
     const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null);
     const [searchTerm, setSearchTerm] = useState("");
     const [selectedProduct, setSelectedProduct] = useState<any | null>(null);
+    const [iptvPlans, setIptvPlans] = useState<IptvPlan[]>([]);
     const scrollContainerRef = useRef<HTMLDivElement>(null);
 
     // Reset scroll and search on category change
@@ -75,7 +77,20 @@ export default function CatalogueView({ products, categories }: CatalogueViewPro
         setSearchTerm("");
     }, [selectedCategoryId]);
 
-    const confirmOrder = async (deliveryMethod: "TICKET" | "WHATSAPP", phone?: string) => {
+    // Load IPTV plans for combo picker
+    useEffect(() => {
+        fetch("/api/iptv-combo-catalog")
+            .then(r => r.json())
+            .then(d => setIptvPlans(d.plans || []))
+            .catch(() => { });
+    }, []);
+
+    // Only IPTV providers with credentials/code choice (Ibosol uses MAC, no toggle)
+    const hasIptvInCart = cart.some((item: any) =>
+        item.loadbrainSlug && !String(item.loadbrainSlug).startsWith("ibo-")
+    );
+
+    const confirmOrder = async (deliveryMethod: "TICKET" | "WHATSAPP", phone?: string, iptvDelivery?: "credentials" | "code") => {
         setIsSubmitting(true);
         try {
             const formattedItems = cart.map(i => ({
@@ -84,9 +99,10 @@ export default function CatalogueView({ products, categories }: CatalogueViewPro
                 price: i.price,
                 quantity: i.quantity,
                 customData: i.customData,
-                playerNickname: i.playerNickname
+                playerNickname: i.playerNickname,
+                combo: i.combo,
             }));
-            const order = await createKioskOrder(formattedItems, totalAmount.toFixed(2), deliveryMethod, phone);
+            const order = await createKioskOrder(formattedItems, totalAmount.toFixed(2), deliveryMethod, phone, iptvDelivery);
 
             if (deliveryMethod === "TICKET") {
                 toast.success("Demande transmise à la caisse.");
@@ -347,6 +363,15 @@ export default function CatalogueView({ products, categories }: CatalogueViewPro
                                         <p className="text-[#FF8000] font-bold text-sm mt-0.5">
                                             {formatCurrency(Number(item.price), "DZD")}
                                         </p>
+                                        {item.combo && (
+                                            <div className="mt-1.5 ml-2 pl-2 border-l-2 border-cyan-200 text-[11px] text-slate-500 space-y-0.5">
+                                                <div className="font-bold text-cyan-700 uppercase tracking-wider text-[9px]">+ Combo IPTV</div>
+                                                <div className="line-clamp-1">{item.combo.iptvProductName}</div>
+                                                <div className="font-bold text-cyan-700">
+                                                    {formatCurrency(Number(item.combo.iptvPrice), "DZD")}
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
 
                                     {/* T025 — Contrôles quantité */}
@@ -434,6 +459,7 @@ export default function CatalogueView({ products, categories }: CatalogueViewPro
                 isOpen={!!selectedProduct}
                 onClose={() => setSelectedProduct(null)}
                 product={selectedProduct}
+                iptvPlans={iptvPlans}
             />
 
             <DeliveryMethodModal
@@ -441,6 +467,7 @@ export default function CatalogueView({ products, categories }: CatalogueViewPro
                 onClose={onCheckoutClose}
                 onConfirm={confirmOrder}
                 isSubmitting={isSubmitting}
+                hasIptvProducts={hasIptvInCart}
             />
 
 

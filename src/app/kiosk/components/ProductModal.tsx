@@ -8,6 +8,12 @@ import {
 } from "@heroui/react";
 import { useKioskStore } from "@/store/useKioskStore";
 import PlayerIdModal from "./PlayerIdModal";
+import IbosolDeviceModal from "./IbosolDeviceModal";
+import IbosolComboModal, { type IptvPlan } from "./IbosolComboModal";
+import IbosolCheckModal from "./IbosolCheckModal";
+import IbosolCheckResultModal from "./IbosolCheckResultModal";
+import { checkIbosolDevice, type CheckDeviceResult } from "../actions/check-device";
+import { toast } from "react-hot-toast";
 import Image from "next/image";
 import { formatCurrency } from "@/lib/formatters";
 
@@ -15,14 +21,35 @@ interface ProductModalProps {
     isOpen: boolean;
     onClose: () => void;
     product: any;
+    iptvPlans?: IptvPlan[];
 }
 
-export default function ProductModal({ isOpen, onClose, product }: ProductModalProps) {
+interface ComboPayload {
+    iptvVariantId: number;
+    iptvProviderId: string;
+    iptvPlanId: string;
+    iptvProductName: string;
+    iptvPrice: string;
+}
+
+export default function ProductModal({ isOpen, onClose, product, iptvPlans = [] }: ProductModalProps) {
     const { addToCart } = useKioskStore();
 
     // State for local selection
     const [selectedQuantities, setSelectedQuantities] = useState<Record<number, number>>({});
     const [isPlayerIdModalOpen, setIsPlayerIdModalOpen] = useState(false);
+    const [isIbosolModalOpen, setIsIbosolModalOpen] = useState(false);
+
+    // Sequential Ibosol flow
+    const [isComboModalOpen, setIsComboModalOpen] = useState(false);
+    const [pendingDevice, setPendingDevice] = useState<{ mac: string; appId: number } | null>(null);
+
+    // Free check flow
+    const [isCheckModalOpen, setIsCheckModalOpen] = useState(false);
+    const [isCheckResultOpen, setIsCheckResultOpen] = useState(false);
+    const [checkLoading, setCheckLoading] = useState(false);
+    const [checkResult, setCheckResult] = useState<CheckDeviceResult | null>(null);
+    const [lastCheckedDevice, setLastCheckedDevice] = useState<{ mac: string; appId: number } | null>(null);
 
     // Reset selection when modal opens with a new product
     useEffect(() => {
@@ -45,8 +72,45 @@ export default function ProductModal({ isOpen, onClose, product }: ProductModalP
         });
     };
 
+    // Detect if any selected variant is an Ibosol product (slug starts with "ibo-")
+    const hasIbosolSelected = product?.variants?.some((v: any) =>
+        (selectedQuantities[v.id] || 0) > 0 && typeof v.loadbrainSlug === "string" && v.loadbrainSlug.startsWith("ibo-")
+    );
+
+    const productHasIbosolVariant = product?.variants?.some?.(
+        (v: any) => typeof v.loadbrainSlug === "string" && v.loadbrainSlug.startsWith("ibo-")
+    );
+
+    const getSelectedIbosolPrice = (): string => {
+        const variant = product?.variants?.find((v: any) =>
+            v.loadbrainSlug?.startsWith?.("ibo-") && (selectedQuantities[v.id] || 0) > 0
+        );
+        return variant?.salePriceDzd ?? "0";
+    };
+
+    const getSelectedIbosolName = (): string => {
+        const variant = product?.variants?.find((v: any) =>
+            v.loadbrainSlug?.startsWith?.("ibo-") && (selectedQuantities[v.id] || 0) > 0
+        );
+        return variant?.name ?? "Activation IBO";
+    };
+
     const handleAddToCart = () => {
         if (Object.keys(selectedQuantities).length === 0) return;
+
+        const cart = useKioskStore.getState().cart;
+        const hasIboInCart = cart.some((it: any) =>
+            typeof it.loadbrainSlug === "string" && it.loadbrainSlug.startsWith("ibo-")
+        );
+
+        if (hasIbosolSelected) {
+            if (hasIboInCart) {
+                toast.error("Vous avez déjà un IBO Player au panier. Faites une commande séparée pour activer un autre device.");
+                return;
+            }
+            setIsIbosolModalOpen(true);
+            return;
+        }
 
         if (product.requiresPlayerId) {
             setIsPlayerIdModalOpen(true);
@@ -56,7 +120,11 @@ export default function ProductModal({ isOpen, onClose, product }: ProductModalP
         finalizeAddToCart();
     };
 
-    const finalizeAddToCart = (customData?: string, playerNickname?: string) => {
+    const finalizeAddToCart = (
+        customData?: string,
+        playerNickname?: string,
+        combo?: ComboPayload
+    ) => {
         product.variants.forEach((variant: any) => {
             const qty = selectedQuantities[variant.id];
             if (qty && qty > 0) {
@@ -69,7 +137,9 @@ export default function ProductModal({ isOpen, onClose, product }: ProductModalP
                     quantity: qty,
                     imageUrl: product.imageUrl,
                     customData,
-                    playerNickname
+                    playerNickname,
+                    loadbrainSlug: variant.loadbrainSlug || null,
+                    combo,
                 });
             }
         });
@@ -151,6 +221,7 @@ export default function ProductModal({ isOpen, onClose, product }: ProductModalP
                                     {product.variants && product.variants.map((variant: any) => {
                                         const qty = selectedQuantities[variant.id] || 0;
                                         const isIptv = !!variant.loadbrainSlug;
+                                        const isIbosolVariant = typeof variant.loadbrainSlug === "string" && variant.loadbrainSlug.startsWith("ibo-");
                                         const stockCount = isIptv ? 999 : (variant.stockCount || 0);
                                         const isManual = !isIptv && (product.isManualDelivery || stockCount === 0);
 
@@ -190,26 +261,62 @@ export default function ProductModal({ isOpen, onClose, product }: ProductModalP
                                                         )}
                                                     </div>
 
-                                                    <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl p-1 shadow-sm">
+                                                    {isIbosolVariant ? (
                                                         <button
-                                                            onClick={(e) => { e.stopPropagation(); updateVariantQuantity(variant.id, -1); }}
-                                                            className="size-11 rounded-lg flex items-center justify-center text-slate-400 hover:text-black hover:bg-slate-50 transition-all active:scale-90"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                setSelectedQuantities(prev => {
+                                                                    const current = prev[variant.id] || 0;
+                                                                    if (current > 0) {
+                                                                        const { [variant.id]: _, ...rest } = prev;
+                                                                        return rest;
+                                                                    }
+                                                                    // Force qty=1 — and unselect any other Ibosol variants of this product
+                                                                    const next: Record<number, number> = { ...prev };
+                                                                    product.variants.forEach((v: any) => {
+                                                                        if (typeof v.loadbrainSlug === "string" && v.loadbrainSlug.startsWith("ibo-")) {
+                                                                            delete next[v.id];
+                                                                        }
+                                                                    });
+                                                                    next[variant.id] = 1;
+                                                                    return next;
+                                                                });
+                                                            }}
+                                                            className={`px-4 h-11 rounded-xl font-black text-xs uppercase transition-colors ${qty > 0 ? "bg-cyan-600 text-white" : "bg-slate-100 text-slate-700 hover:bg-slate-200"}`}
                                                         >
-                                                            <span className="material-symbols-outlined !text-lg">remove</span>
+                                                            {qty > 0 ? "✓ Sélectionné" : "Choisir"}
                                                         </button>
-                                                        <span className="text-sm font-black w-4 text-center tabular-nums text-black">{qty}</span>
-                                                        <button
-                                                            onClick={(e) => { e.stopPropagation(); updateVariantQuantity(variant.id, 1); }}
-                                                            className="size-11 rounded-lg flex items-center justify-center text-[var(--primary)] hover:bg-orange-50 transition-all active:scale-90"
-                                                        >
-                                                            <span className="material-symbols-outlined !text-lg">add</span>
-                                                        </button>
-                                                    </div>
+                                                    ) : (
+                                                        <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl p-1 shadow-sm">
+                                                            <button
+                                                                onClick={(e) => { e.stopPropagation(); updateVariantQuantity(variant.id, -1); }}
+                                                                className="size-11 rounded-lg flex items-center justify-center text-slate-400 hover:text-black hover:bg-slate-50 transition-all active:scale-90"
+                                                            >
+                                                                <span className="material-symbols-outlined !text-lg">remove</span>
+                                                            </button>
+                                                            <span className="text-sm font-black w-4 text-center tabular-nums text-black">{qty}</span>
+                                                            <button
+                                                                onClick={(e) => { e.stopPropagation(); updateVariantQuantity(variant.id, 1); }}
+                                                                className="size-11 rounded-lg flex items-center justify-center text-[var(--primary)] hover:bg-orange-50 transition-all active:scale-90"
+                                                            >
+                                                                <span className="material-symbols-outlined !text-lg">add</span>
+                                                            </button>
+                                                        </div>
+                                                    )}
                                                 </div>
                                             </div>
                                         );
                                     })}
                                 </div>
+
+                                {productHasIbosolVariant && (
+                                    <button
+                                        onClick={() => setIsCheckModalOpen(true)}
+                                        className="mt-3 w-full h-12 bg-cyan-50 border-2 border-cyan-100 text-cyan-700 font-black text-xs uppercase tracking-wider rounded-xl hover:bg-cyan-100 transition-colors"
+                                    >
+                                        🔍 Vérifier mon device gratuitement
+                                    </button>
+                                )}
                             </div>
 
                             {/* 3. Footer CTA Section */}
@@ -246,6 +353,94 @@ export default function ProductModal({ isOpen, onClose, product }: ProductModalP
                 onConfirm={(id, pseudo) => finalizeAddToCart(id, pseudo)}
                 productName={product.name}
                 productImage={product.imageUrl}
+            />
+
+            <IbosolDeviceModal
+                isOpen={isIbosolModalOpen}
+                onClose={() => setIsIbosolModalOpen(false)}
+                onConfirm={(mac, appId) => {
+                    setPendingDevice({ mac, appId });
+                    setIsIbosolModalOpen(false);
+                    setIsComboModalOpen(true);
+                }}
+                productName={product.name}
+            />
+
+            <IbosolComboModal
+                isOpen={isComboModalOpen}
+                onClose={() => {
+                    setIsComboModalOpen(false);
+                    setPendingDevice(null);
+                }}
+                onConfirm={(combo) => {
+                    if (!pendingDevice) {
+                        setIsComboModalOpen(false);
+                        return;
+                    }
+                    const customData: Record<string, unknown> = {
+                        type: "ibosol",
+                        mac: pendingDevice.mac,
+                        appId: pendingDevice.appId,
+                    };
+                    if (combo) {
+                        customData.combo = {
+                            iptvVariantId: combo.variantId,
+                            iptvProviderId: combo.providerId,
+                            iptvPlanId: combo.planId,
+                            iptvProductName: combo.productName,
+                            iptvPrice: combo.price,
+                        };
+                    }
+                    finalizeAddToCart(
+                        JSON.stringify(customData),
+                        undefined,
+                        combo
+                            ? {
+                                iptvVariantId: combo.variantId,
+                                iptvProviderId: combo.providerId,
+                                iptvPlanId: combo.planId,
+                                iptvProductName: combo.productName,
+                                iptvPrice: combo.price,
+                            }
+                            : undefined,
+                    );
+                    setIsComboModalOpen(false);
+                    setPendingDevice(null);
+                }}
+                iboPrice={getSelectedIbosolPrice()}
+                iboName={getSelectedIbosolName()}
+                availablePlans={iptvPlans}
+            />
+
+            <IbosolCheckModal
+                isOpen={isCheckModalOpen}
+                onClose={() => setIsCheckModalOpen(false)}
+                onSubmit={async (mac, appId) => {
+                    setIsCheckModalOpen(false);
+                    setCheckLoading(true);
+                    setIsCheckResultOpen(true);
+                    setLastCheckedDevice({ mac, appId });
+                    const result = await checkIbosolDevice({ mac, appId });
+                    setCheckResult(result);
+                    setCheckLoading(false);
+                }}
+            />
+
+            <IbosolCheckResultModal
+                isOpen={isCheckResultOpen}
+                onClose={() => {
+                    setIsCheckResultOpen(false);
+                    setCheckResult(null);
+                }}
+                result={checkResult}
+                loading={checkLoading}
+                inputMac={lastCheckedDevice?.mac}
+                inputAppId={lastCheckedDevice?.appId}
+                onActivate={(mac, appId) => {
+                    setIsCheckResultOpen(false);
+                    setPendingDevice({ mac, appId });
+                    setIsComboModalOpen(true);
+                }}
             />
         </>
     );
