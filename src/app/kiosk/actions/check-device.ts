@@ -1,6 +1,6 @@
 "use server";
 
-import { lbClient, isLoadBrainEnabled } from "@/lib/loadbrain";
+import { lbClient, lbConfig, isLoadBrainEnabled } from "@/lib/loadbrain";
 import { z } from "zod";
 
 const inputSchema = z.object({
@@ -28,42 +28,108 @@ const APP_NAMES: Record<number, string> = {
     4: "IBO Pro",
 };
 
+const POLL_INTERVAL_MS = 1500;
+const POLL_MAX_ATTEMPTS = 20;          // ~30s d'attente max
+const ORDER_PREFIX = "#CHK";            // tasks de check préfixées pour ne pas polluer #C ni #ADM
+
+/**
+ * Check IBOSOL device status via the public /api/v1/provision endpoint
+ * with planId=ibo-check (0 crédit IBOSOL, gratuit).
+ *
+ * Le SDK IbosolModule.checkDevice() pointe sur /api/v1/ibosol/internal/check-device
+ * qui n'est pas exposé sur l'API gateway publique. On contourne en utilisant
+ * /api/v1/provision avec le plan ibo-check, puis on poll getTask jusqu'à completion.
+ */
 export async function checkIbosolDevice(input: { mac: string; appId: number }): Promise<CheckDeviceResult> {
     const parsed = inputSchema.safeParse(input);
     if (!parsed.success) {
         return { success: false, error: "MAC invalide" };
     }
 
-    if (!isLoadBrainEnabled() || !lbClient) {
+    if (!isLoadBrainEnabled() || !lbClient || !lbConfig) {
         return { success: false, error: "Service indisponible" };
     }
 
     try {
-        // SDK 3.2.0 exposes ibosol.checkDevice synchronously.
-        // The site-integration LoadBrainClient wraps the SDK without
-        // surfacing the IbosolModule, so reach through `sdk` defensively.
-        const sdk = (lbClient as any).sdk ?? lbClient;
-        const ibosolModule = sdk?.ibosol;
-        const result = ibosolModule?.checkDevice
-            ? await ibosolModule.checkDevice({ mac: parsed.data.mac, appId: parsed.data.appId })
-            : null;
-
-        if (!result) {
-            return { success: false, error: "SDK ibosol.checkDevice indisponible" };
+        // 1. Résoudre IBOSOL providerId + ibo-check planId via le catalog
+        const catRes = await fetch(`${lbConfig.baseUrl}/api/v1/catalog`, {
+            headers: { "X-API-Key": lbConfig.apiKey },
+            cache: "no-store",
+        });
+        const catalog = await catRes.json();
+        const iboProvider = (catalog?.data?.providers || []).find((p: any) => p.type === "ibosol");
+        if (!iboProvider) {
+            return { success: false, error: "IBOSOL provider indisponible" };
+        }
+        const checkPlan = iboProvider.plans?.find((p: any) => p.displayName?.includes("Check MAC"));
+        if (!checkPlan) {
+            return { success: false, error: "Plan ibo-check introuvable" };
         }
 
-        return {
-            success: true,
-            data: {
-                mac: result.mac || parsed.data.mac,
-                appName: APP_NAMES[parsed.data.appId] || "IBO Player",
-                isActivated: !!result.isActivated,
-                expiresAt: result.expiresAt || null,
-                ip: result.device?.ip || null,
-                playlistInjected: !!result.playlistInjected,
+        // 2. POST /provision (gratuit, 0 crédit)
+        const orderId = `${ORDER_PREFIX}-${parsed.data.mac.replace(/[:-]/g, "")}-${Date.now()}`;
+        const provisionRes = await fetch(`${lbConfig.baseUrl}/api/v1/provision`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "X-API-Key": lbConfig.apiKey,
             },
-        };
-    } catch (err: any) {
-        return { success: false, error: err?.message || "Erreur de vérification" };
+            body: JSON.stringify({
+                orderId,
+                customerId: "check-device",
+                customerInfo: {
+                    mac: parsed.data.mac,
+                    appId: parsed.data.appId,
+                },
+                providerId: iboProvider.id,
+                planId: checkPlan.id,
+                screenCount: 1,
+            }),
+        });
+        const provisionJson = await provisionRes.json();
+        if (!provisionJson?.success || !provisionJson?.data?.taskId) {
+            return { success: false, error: provisionJson?.error || "Échec création tâche check" };
+        }
+        const taskId = provisionJson.data.taskId;
+
+        // 3. Poll getTask jusqu'à completion (max ~30s)
+        for (let attempt = 0; attempt < POLL_MAX_ATTEMPTS; attempt++) {
+            await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+
+            const taskRes = await fetch(`${lbConfig.baseUrl}/api/v1/provision/${taskId}`, {
+                headers: { "X-API-Key": lbConfig.apiKey },
+                cache: "no-store",
+            });
+            const taskJson = await taskRes.json();
+            const task = taskJson?.data?.task ?? taskJson?.data ?? null;
+            if (!task) continue;
+
+            if (task.status === "completed") {
+                const creds = task.credentials || {};
+                return {
+                    success: true,
+                    data: {
+                        mac: creds.mac || parsed.data.mac,
+                        appName: APP_NAMES[parsed.data.appId] || "IBO Player",
+                        isActivated: !!creds.isActivated,
+                        expiresAt: creds.expiresAt || null,
+                        ip: creds.device?.ip || null,
+                        playlistInjected: !!creds.playlistInjected,
+                    },
+                };
+            }
+            if (task.status === "failed") {
+                return {
+                    success: false,
+                    error: task.error || task.errorCode || "Vérification échouée côté panel",
+                };
+            }
+            // queued / processing → continue polling
+        }
+
+        return { success: false, error: "Timeout — vérification toujours en cours après 30s" };
+    } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : "Erreur de vérification";
+        return { success: false, error: message };
     }
 }
