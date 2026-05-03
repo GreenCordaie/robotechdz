@@ -89,7 +89,8 @@ export async function provisionIptvOrder(orderId: number): Promise<{ provisioned
             const mapping = await lbClient.listProducts();
             let product = (mapping as any).products?.find((p: any) => p.productId === slug);
 
-            // Fallback for Ibosol: slug starts with "ibo-", resolve via internal module
+            // Fallback for Ibosol: IBOSOL doesn't expose site_product_mappings,
+            // resolve providerId + planId from the catalog by displayName keyword.
             if (!product && slug.startsWith("ibo-")) {
                 const iboRes = await fetch(`${lbConfig!.baseUrl}/api/v1/catalog`, {
                     headers: { "X-API-Key": lbConfig!.apiKey },
@@ -97,14 +98,15 @@ export async function provisionIptvOrder(orderId: number): Promise<{ provisioned
                 const catalog = await iboRes.json();
                 const iboProvider = (catalog.data?.providers || []).find((p: any) => p.type === "ibosol");
                 if (iboProvider) {
-                    // Match by slug convention: ibo-check, ibo-activate-yearly, etc.
-                    const slugToName: Record<string, string> = {
+                    // Keywords matching prod displayNames:
+                    // "Check MAC Address", "IBO Player 1 Year", "IBO Player Lifetime", "Inject IPTV Playlist"
+                    const slugToKeyword: Record<string, string> = {
                         "ibo-check": "Check MAC",
-                        "ibo-activate-yearly": "Activation 1 Year",
-                        "ibo-activate-lifetime": "Activation Lifetime",
+                        "ibo-activate-yearly": "1 Year",
+                        "ibo-activate-lifetime": "Lifetime",
                         "ibo-inject": "Inject",
                     };
-                    const keyword = slugToName[slug];
+                    const keyword = slugToKeyword[slug];
                     const plan = keyword
                         ? iboProvider.plans?.find((p: any) => p.displayName?.includes(keyword))
                         : null;
