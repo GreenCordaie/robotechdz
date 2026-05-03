@@ -67,7 +67,10 @@ export async function checkIbosolDevice(input: { mac: string; appId: number }): 
         }
 
         // 2. POST /provision (gratuit, 0 crédit)
+        // ⚠️ webhookUrl + webhookSecret sont REQUIS par le gateway même quand on poll
+        // (sinon 400 "Provider not found in any module" — message trompeur).
         const orderId = `${ORDER_PREFIX}-${parsed.data.mac.replace(/[:-]/g, "")}-${Date.now()}`;
+        const webhookUrl = `${lbConfig.siteUrl.replace(/\/$/, "")}/api/loadbrain/webhook`;
         const provisionRes = await fetch(`${lbConfig.baseUrl}/api/v1/provision`, {
             method: "POST",
             headers: {
@@ -78,12 +81,15 @@ export async function checkIbosolDevice(input: { mac: string; appId: number }): 
                 orderId,
                 customerId: "check-device",
                 customerInfo: {
+                    name: "Check Device",
                     mac: parsed.data.mac,
                     appId: parsed.data.appId,
                 },
                 providerId: iboProvider.id,
                 planId: checkPlan.id,
                 screenCount: 1,
+                webhookUrl,
+                webhookSecret: lbConfig.webhookSecret,
             }),
         });
         const provisionJson = await provisionRes.json();
