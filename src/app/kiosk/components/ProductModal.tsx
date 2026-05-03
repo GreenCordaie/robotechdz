@@ -229,7 +229,7 @@ export default function ProductModal({ isOpen, onClose, product }: ProductModalP
                                                                     return next;
                                                                 });
                                                             }}
-                                                            className={`px-4 h-11 rounded-xl font-black text-xs uppercase transition-colors ${qty > 0 ? "bg-cyan-600 text-white" : "bg-slate-100 text-slate-700 hover:bg-slate-200"}`}
+                                                            className={`px-4 h-11 rounded-xl font-black text-xs uppercase transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-600 focus-visible:ring-offset-2 ${qty > 0 ? "bg-cyan-600 text-white" : "bg-slate-100 text-slate-700 hover:bg-slate-200"}`}
                                                         >
                                                             {qty > 0 ? "✓ Sélectionné" : "Choisir"}
                                                         </button>
@@ -237,14 +237,16 @@ export default function ProductModal({ isOpen, onClose, product }: ProductModalP
                                                         <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl p-1 shadow-sm">
                                                             <button
                                                                 onClick={(e) => { e.stopPropagation(); updateVariantQuantity(variant.id, -1); }}
-                                                                className="size-11 rounded-lg flex items-center justify-center text-slate-400 hover:text-black hover:bg-slate-50 transition-all active:scale-90"
+                                                                aria-label={`Retirer ${variant.name}`}
+                                                                className="size-11 rounded-lg flex items-center justify-center text-slate-400 hover:text-black hover:bg-slate-50 transition-all active:scale-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] focus-visible:ring-offset-1"
                                                             >
                                                                 <span className="material-symbols-outlined !text-lg">remove</span>
                                                             </button>
                                                             <span className="text-sm font-black w-4 text-center tabular-nums text-black">{qty}</span>
                                                             <button
                                                                 onClick={(e) => { e.stopPropagation(); updateVariantQuantity(variant.id, 1); }}
-                                                                className="size-11 rounded-lg flex items-center justify-center text-[var(--primary)] hover:bg-orange-50 transition-all active:scale-90"
+                                                                aria-label={`Ajouter ${variant.name}`}
+                                                                className="size-11 rounded-lg flex items-center justify-center text-[var(--primary)] hover:bg-orange-50 transition-all active:scale-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] focus-visible:ring-offset-1"
                                                             >
                                                                 <span className="material-symbols-outlined !text-lg">add</span>
                                                             </button>

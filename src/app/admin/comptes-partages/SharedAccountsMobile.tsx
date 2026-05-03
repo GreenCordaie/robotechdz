@@ -43,6 +43,7 @@ import {
     getAvailableVariantsForLinking,
     linkProductToSharing
 } from "./actions";
+import { ConfirmModal } from "@/components/admin/modals/ConfirmModal";
 import { formatCurrency } from "@/lib/formatters";
 import toast from "react-hot-toast";
 import { useRouter } from "next/navigation";
@@ -57,6 +58,7 @@ export default function SharedAccountsMobile() {
     const [modalMode, setModalMode] = useState<"ADD" | "EDIT" | "VIEW">("ADD");
     const [editingAccount, setEditingAccount] = useState<any>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
 
     // Form state
     const [selectedVariantId, setSelectedVariantId] = useState<string>("");
@@ -152,14 +154,20 @@ export default function SharedAccountsMobile() {
         setSlotsData(newData);
     };
 
-    const handleDeleteClick = async (id: number) => {
-        if (confirm("Supprimer ce compte ?")) {
-            const res = await deleteSharedAccount({ id }) as { success: boolean; error?: string };
-            if (res.success) {
-                toast.success("Supprimé");
-                loadInventory();
-            }
+    const handleDeleteClick = (id: number) => {
+        setPendingDeleteId(id);
+    };
+
+    const confirmDelete = async () => {
+        if (pendingDeleteId === null) return;
+        const res = await deleteSharedAccount({ id: pendingDeleteId }) as { success: boolean; error?: string };
+        if (res.success) {
+            toast.success("Supprimé");
+            loadInventory();
+        } else if (res.error) {
+            toast.error(res.error);
         }
+        setPendingDeleteId(null);
     };
 
     const handleLinkClick = async () => {
@@ -542,6 +550,18 @@ export default function SharedAccountsMobile() {
                     )}
                 </ModalContent>
             </Modal>
+
+            {/* Confirm modal — replaces native window.confirm for delete actions */}
+            <ConfirmModal
+                isOpen={pendingDeleteId !== null}
+                onClose={() => setPendingDeleteId(null)}
+                onConfirm={confirmDelete}
+                title="Supprimer ce compte ?"
+                description="Cette action est irréversible. Le compte partagé et tous ses slots associés seront supprimés."
+                confirmLabel="Supprimer"
+                cancelLabel="Annuler"
+                variant="danger"
+            />
         </div>
     );
 }

@@ -76,18 +76,18 @@ function CredentialCard({ screen, expiresAt }: { screen: Screen; expiresAt?: str
             <div className="grid grid-cols-2 gap-2">
                 <div>
                     <span className="text-[9px] text-slate-400 uppercase">Utilisateur</span>
-                    <div className="flex items-center gap-1.5 mt-0.5">
+                    <div className="flex items-center gap-1 mt-0.5">
                         <code className="text-xs text-emerald-400 font-mono">{screen.username}</code>
-                        <button onClick={() => copyToClipboard(screen.username)} className="text-slate-400 hover:text-white cursor-pointer"><Copy className="w-3 h-3" /></button>
+                        <button onClick={() => copyToClipboard(screen.username)} aria-label="Copier l'utilisateur" className="size-7 inline-flex items-center justify-center rounded-md text-slate-400 hover:text-white hover:bg-white/5 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500 transition-colors"><Copy className="w-3.5 h-3.5" /></button>
                     </div>
                 </div>
                 <div>
                     <span className="text-[9px] text-slate-400 uppercase">Mot de passe</span>
-                    <div className="flex items-center gap-1.5 mt-0.5">
+                    <div className="flex items-center gap-1 mt-0.5">
                         <code className="text-xs text-amber-400 font-mono cursor-pointer" onClick={() => setShowPass(!showPass)}>
                             {showPass ? screen.password : "••••••"}
                         </code>
-                        <button onClick={() => copyToClipboard(screen.password)} className="text-slate-400 hover:text-white cursor-pointer"><Copy className="w-3 h-3" /></button>
+                        <button onClick={() => copyToClipboard(screen.password)} aria-label="Copier le mot de passe" className="size-7 inline-flex items-center justify-center rounded-md text-slate-400 hover:text-white hover:bg-white/5 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500 transition-colors"><Copy className="w-3.5 h-3.5" /></button>
                     </div>
                 </div>
             </div>
@@ -95,10 +95,10 @@ function CredentialCard({ screen, expiresAt }: { screen: Screen; expiresAt?: str
             {screen.m3uUrl && (
                 <div>
                     <span className="text-[9px] text-slate-400 uppercase">M3U URL</span>
-                    <div className="flex items-center gap-1.5 mt-0.5">
+                    <div className="flex items-center gap-1 mt-0.5">
                         <code className="text-[10px] text-blue-400 font-mono truncate max-w-[300px]">{screen.m3uUrl}</code>
-                        <button onClick={() => copyToClipboard(screen.m3uUrl!)} className="text-slate-400 hover:text-white shrink-0 cursor-pointer"><Copy className="w-3 h-3" /></button>
-                        <a href={screen.m3uUrl} target="_blank" rel="noopener" className="text-slate-400 hover:text-white shrink-0 cursor-pointer"><ExternalLink className="w-3 h-3" /></a>
+                        <button onClick={() => copyToClipboard(screen.m3uUrl!)} aria-label="Copier l'URL M3U" className="size-7 inline-flex items-center justify-center rounded-md text-slate-400 hover:text-white hover:bg-white/5 shrink-0 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500 transition-colors"><Copy className="w-3.5 h-3.5" /></button>
+                        <a href={screen.m3uUrl} target="_blank" rel="noopener" aria-label="Ouvrir l'URL M3U" className="size-7 inline-flex items-center justify-center rounded-md text-slate-400 hover:text-white hover:bg-white/5 shrink-0 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500 transition-colors"><ExternalLink className="w-3.5 h-3.5" /></a>
                     </div>
                 </div>
             )}
@@ -106,9 +106,9 @@ function CredentialCard({ screen, expiresAt }: { screen: Screen; expiresAt?: str
             {screen.epgUrl && (
                 <div>
                     <span className="text-[9px] text-slate-400 uppercase">EPG URL</span>
-                    <div className="flex items-center gap-1.5 mt-0.5">
+                    <div className="flex items-center gap-1 mt-0.5">
                         <code className="text-[10px] text-violet-400 font-mono truncate max-w-[300px]">{screen.epgUrl}</code>
-                        <button onClick={() => copyToClipboard(screen.epgUrl!)} className="text-slate-400 hover:text-white shrink-0 cursor-pointer"><Copy className="w-3 h-3" /></button>
+                        <button onClick={() => copyToClipboard(screen.epgUrl!)} aria-label="Copier l'URL EPG" className="size-7 inline-flex items-center justify-center rounded-md text-slate-400 hover:text-white hover:bg-white/5 shrink-0 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500 transition-colors"><Copy className="w-3.5 h-3.5" /></button>
                     </div>
                 </div>
             )}
@@ -243,8 +243,8 @@ export default function IptvContent({ initialProvisions = [] }: { initialProvisi
             {/* Ibosol SAV tools */}
             <IbosolToolsBar iptvPlans={iptvPlans} onActionDone={refresh} />
 
-            {/* Filters */}
-            <div className="flex gap-2">
+            {/* Filters — scrollable horizontally on small viewports */}
+            <div className="flex gap-2 overflow-x-auto -mx-1 px-1 pb-1 snap-x snap-mandatory" role="tablist" aria-label="Filtrer les provisions">
                 {(["all", "completed", "pending", "failed", "partial"] as const).map((f) => {
                     const labels = { all: "Tout", completed: "Actifs", pending: "En attente", failed: "Échoués", partial: "Partiels" };
                     const isActive = filter === f;
@@ -252,7 +252,9 @@ export default function IptvContent({ initialProvisions = [] }: { initialProvisi
                         <button
                             key={f}
                             onClick={() => setFilter(f)}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${isActive ? "bg-[var(--primary)] text-white" : "bg-white/5 text-slate-400 hover:bg-white/10"}`}
+                            role="tab"
+                            aria-selected={isActive}
+                            className={`shrink-0 snap-start px-3 py-1.5 rounded-lg text-xs font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-900 ${isActive ? "bg-[var(--primary)] text-white" : "bg-white/5 text-slate-400 hover:bg-white/10"}`}
                         >
                             {labels[f]} ({counts[f]})
                         </button>
