@@ -74,6 +74,12 @@ export default function IbosolCheckModal({ isOpen, onClose, onSubmit }: IbosolCh
                                 selectedKeys={[appId]}
                                 onChange={(e) => setAppId(e.target.value)}
                                 variant="bordered"
+                                popoverProps={{
+                                    classNames: {
+                                        content: "z-[100000]",
+                                        base: "z-[100000]",
+                                    },
+                                }}
                             >
                                 {APP_OPTIONS.map((opt) => (
                                     <SelectItem key={opt.id}>{opt.label}</SelectItem>

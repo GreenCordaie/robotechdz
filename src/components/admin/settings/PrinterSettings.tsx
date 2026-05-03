@@ -200,7 +200,7 @@ export function PrinterSettings({
 function Stat({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
     return (
         <div>
-            <div className="text-[9px] font-black uppercase tracking-widest text-slate-500">{label}</div>
+            <div className="text-[9px] font-black uppercase tracking-widest text-slate-400">{label}</div>
             <div className={`text-xs text-white mt-0.5 ${mono ? "font-mono" : "font-bold"}`}>{value}</div>
         </div>
     );
@@ -211,7 +211,7 @@ function ToggleRow({
 }: { icon: React.ReactNode; label: string; description: string; checked: boolean; onChange: (v: boolean) => void }) {
     return (
         <label className="flex items-start gap-3 cursor-pointer group">
-            <div className={`p-2 rounded-lg shrink-0 transition-colors ${checked ? "bg-[var(--primary)]/10 text-[var(--primary)]" : "bg-zinc-800/50 text-slate-500"}`}>
+            <div className={`p-2 rounded-lg shrink-0 transition-colors ${checked ? "bg-[var(--primary)]/10 text-[var(--primary)]" : "bg-zinc-800/50 text-slate-400"}`}>
                 {icon}
             </div>
             <div className="flex-1">

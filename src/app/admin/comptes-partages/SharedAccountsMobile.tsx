@@ -385,6 +385,12 @@ export default function SharedAccountsMobile() {
                                             selectedKeys={selectedVariantId ? [selectedVariantId] : []}
                                             onChange={(e) => setSelectedVariantId(e.target.value)}
                                             classNames={{ trigger: "bg-white/5 border border-white/10 rounded-2xl h-14" }}
+                                            popoverProps={{
+                                                classNames: {
+                                                    content: "z-[100000]",
+                                                    base: "z-[100000]",
+                                                },
+                                            }}
                                         >
                                             {sharingVariants.map(v => (
                                                 <SelectItem key={v.id.toString()} textValue={`${v.product.name} - ${v.name}`}>
@@ -493,6 +499,12 @@ export default function SharedAccountsMobile() {
                                         selectedKeys={selectedLinkVariantId ? [selectedLinkVariantId] : []}
                                         onChange={(e) => setSelectedLinkVariantId(e.target.value)}
                                         classNames={{ trigger: "bg-white/5 border border-white/10 rounded-2xl h-14" }}
+                                        popoverProps={{
+                                            classNames: {
+                                                content: "z-[100000]",
+                                                base: "z-[100000]",
+                                            },
+                                        }}
                                     >
                                         {linkableVariants.map(v => (
                                             <SelectItem key={v.id.toString()} textValue={`${v.product.name} - ${v.name}`}>

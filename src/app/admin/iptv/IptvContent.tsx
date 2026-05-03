@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { Tv, RefreshCw, CheckCircle, XCircle, Clock, Copy, ExternalLink, User, Phone, Hash, Calendar, AlertTriangle, Loader2, Wifi } from "lucide-react";
 import { toast } from "react-hot-toast";
-import { getIptvProvisions, retryIptvProvisionAction, resendWebhookAction, cancelIptvOrderAction, manualCredentialEntryAction, renewIptvAction, retryPartialIptvAction } from "./actions";
+import { getIptvProvisions, retryIptvProvisionAction, resendWebhookAction, cancelIptvOrderAction, manualCredentialEntryAction, renewIptvAction, retryPartialIptvAction, syncStaleProvisionsAction } from "./actions";
 import IbosolToolsBar from "./components/IbosolToolsBar";
 import type { IptvPlan } from "@/app/kiosk/components/IbosolComboModal";
 
@@ -75,40 +75,40 @@ function CredentialCard({ screen, expiresAt }: { screen: Screen; expiresAt?: str
 
             <div className="grid grid-cols-2 gap-2">
                 <div>
-                    <span className="text-[9px] text-slate-600 uppercase">Utilisateur</span>
+                    <span className="text-[9px] text-slate-400 uppercase">Utilisateur</span>
                     <div className="flex items-center gap-1.5 mt-0.5">
                         <code className="text-xs text-emerald-400 font-mono">{screen.username}</code>
-                        <button onClick={() => copyToClipboard(screen.username)} className="text-slate-600 hover:text-white"><Copy className="w-3 h-3" /></button>
+                        <button onClick={() => copyToClipboard(screen.username)} className="text-slate-400 hover:text-white cursor-pointer"><Copy className="w-3 h-3" /></button>
                     </div>
                 </div>
                 <div>
-                    <span className="text-[9px] text-slate-600 uppercase">Mot de passe</span>
+                    <span className="text-[9px] text-slate-400 uppercase">Mot de passe</span>
                     <div className="flex items-center gap-1.5 mt-0.5">
                         <code className="text-xs text-amber-400 font-mono cursor-pointer" onClick={() => setShowPass(!showPass)}>
                             {showPass ? screen.password : "••••••"}
                         </code>
-                        <button onClick={() => copyToClipboard(screen.password)} className="text-slate-600 hover:text-white"><Copy className="w-3 h-3" /></button>
+                        <button onClick={() => copyToClipboard(screen.password)} className="text-slate-400 hover:text-white cursor-pointer"><Copy className="w-3 h-3" /></button>
                     </div>
                 </div>
             </div>
 
             {screen.m3uUrl && (
                 <div>
-                    <span className="text-[9px] text-slate-600 uppercase">M3U URL</span>
+                    <span className="text-[9px] text-slate-400 uppercase">M3U URL</span>
                     <div className="flex items-center gap-1.5 mt-0.5">
                         <code className="text-[10px] text-blue-400 font-mono truncate max-w-[300px]">{screen.m3uUrl}</code>
-                        <button onClick={() => copyToClipboard(screen.m3uUrl!)} className="text-slate-600 hover:text-white shrink-0"><Copy className="w-3 h-3" /></button>
-                        <a href={screen.m3uUrl} target="_blank" rel="noopener" className="text-slate-600 hover:text-white shrink-0"><ExternalLink className="w-3 h-3" /></a>
+                        <button onClick={() => copyToClipboard(screen.m3uUrl!)} className="text-slate-400 hover:text-white shrink-0 cursor-pointer"><Copy className="w-3 h-3" /></button>
+                        <a href={screen.m3uUrl} target="_blank" rel="noopener" className="text-slate-400 hover:text-white shrink-0 cursor-pointer"><ExternalLink className="w-3 h-3" /></a>
                     </div>
                 </div>
             )}
 
             {screen.epgUrl && (
                 <div>
-                    <span className="text-[9px] text-slate-600 uppercase">EPG URL</span>
+                    <span className="text-[9px] text-slate-400 uppercase">EPG URL</span>
                     <div className="flex items-center gap-1.5 mt-0.5">
                         <code className="text-[10px] text-violet-400 font-mono truncate max-w-[300px]">{screen.epgUrl}</code>
-                        <button onClick={() => copyToClipboard(screen.epgUrl!)} className="text-slate-600 hover:text-white shrink-0"><Copy className="w-3 h-3" /></button>
+                        <button onClick={() => copyToClipboard(screen.epgUrl!)} className="text-slate-400 hover:text-white shrink-0 cursor-pointer"><Copy className="w-3 h-3" /></button>
                     </div>
                 </div>
             )}
@@ -131,10 +131,29 @@ export default function IptvContent({ initialProvisions = [] }: { initialProvisi
 
     const refresh = useCallback(async () => {
         setLoading(true);
+        // Best-effort sync silencieuse en parallèle (récupère les provisions bloquées
+        // dont le webhook ne nous est jamais arrivé). Ne bloque pas le UI.
+        syncStaleProvisionsAction({}).catch(() => {});
         const res: any = await getIptvProvisions({});
         if (res.success) setProvisions(res.provisions);
         setLoading(false);
     }, []);
+
+    const handleManualSync = async () => {
+        const res: any = await syncStaleProvisionsAction({});
+        if (res.success) {
+            if (res.recovered > 0) {
+                toast.success(`${res.recovered} provision(s) récupérée(s) sur ${res.checked}`);
+            } else if (res.checked === 0) {
+                toast.success("Aucune provision bloquée à synchroniser");
+            } else {
+                toast(`${res.checked} vérifiée(s), aucune récupérable pour l'instant`);
+            }
+            refresh();
+        } else {
+            toast.error(res.error || "Sync échouée");
+        }
+    };
 
     const [manualEntry, setManualEntry] = useState<number | null>(null);
     const [manualForm, setManualForm] = useState({ username: "", password: "", m3uUrl: "", epgUrl: "" });
@@ -209,10 +228,16 @@ export default function IptvContent({ initialProvisions = [] }: { initialProvisi
                     </h1>
                     <p className="text-sm text-slate-500 mt-1">{provisions.length} ligne(s) provisionnée(s)</p>
                 </div>
-                <button onClick={refresh} className="flex items-center gap-2 text-xs font-bold text-slate-400 hover:text-white bg-white/5 hover:bg-white/10 px-3 py-2 rounded-xl transition-colors">
-                    <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
-                    Actualiser
-                </button>
+                <div className="flex gap-2">
+                    <button onClick={handleManualSync} className="flex items-center gap-2 text-xs font-bold text-cyan-400 hover:text-cyan-300 bg-cyan-500/10 hover:bg-cyan-500/20 px-3 py-2 rounded-xl border border-cyan-500/20 transition-colors" title="Synchronise les provisions bloquées avec LoadBrain (récupère les webhooks perdus)">
+                        <Wifi className="w-4 h-4" />
+                        Synchroniser
+                    </button>
+                    <button onClick={refresh} className="flex items-center gap-2 text-xs font-bold text-slate-400 hover:text-white bg-white/5 hover:bg-white/10 px-3 py-2 rounded-xl transition-colors">
+                        <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+                        Actualiser
+                    </button>
+                </div>
             </div>
 
             {/* Ibosol SAV tools */}

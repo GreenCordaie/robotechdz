@@ -113,6 +113,12 @@ export default function IbosolDeviceModal({
                                         trigger: "h-12 border-2 border-slate-200 bg-white rounded-lg shadow-sm",
                                         value: "text-sm font-black text-black",
                                     }}
+                                    popoverProps={{
+                                        classNames: {
+                                            content: "z-[100000]",
+                                            base: "z-[100000]",
+                                        },
+                                    }}
                                 >
                                     {APP_OPTIONS.map((opt) => (
                                         <SelectItem key={opt.id}>{opt.label}</SelectItem>

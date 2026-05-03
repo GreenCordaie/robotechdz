@@ -97,6 +97,24 @@ export const resendWebhookAction = withAuth(
     }
 );
 
+/**
+ * Synchronise les provisions IPTV bloquées avec le statut LoadBrain.
+ * - Manuel : bouton "Synchroniser" dans /admin/iptv
+ * - Auto best-effort : appelé silencieusement au refresh de la liste (ne bloque pas le UI)
+ */
+export const syncStaleProvisionsAction = withAuth(
+    { roles: [UserRole.ADMIN, UserRole.CAISSIER, UserRole.TRAITEUR] },
+    async () => {
+        try {
+            const { syncStaleProvisions } = await import("@/lib/iptv");
+            const result = await syncStaleProvisions();
+            return { success: true, ...result };
+        } catch (error) {
+            return { success: false, error: (error as Error).message };
+        }
+    }
+);
+
 export const cancelIptvOrderAction = withAuth(
     {
         roles: [UserRole.ADMIN],

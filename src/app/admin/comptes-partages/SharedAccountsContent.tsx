@@ -494,6 +494,12 @@ export default function SharedAccountsContent() {
                                             selectedKeys={addVariantId ? [addVariantId] : []}
                                             onChange={(e) => setAddVariantId(e.target.value)}
                                             classNames={{ trigger: "bg-[#1a1a1a] border border-white/5 h-12 rounded-xl" }}
+                                            popoverProps={{
+                                                classNames: {
+                                                    content: "z-[100000]",
+                                                    base: "z-[100000]",
+                                                },
+                                            }}
                                         >
                                             {(v) => (
                                                 <SelectItem key={v.id.toString()} textValue={`${v.product.name} - ${v.name}`}>
@@ -664,6 +670,12 @@ export default function SharedAccountsContent() {
                                             selectedKeys={quickVariantId ? [quickVariantId] : []}
                                             onChange={(e) => setQuickVariantId(e.target.value)}
                                             classNames={{ trigger: "bg-[#1a1a1a] border border-white/5 h-12 rounded-xl" }}
+                                            popoverProps={{
+                                                classNames: {
+                                                    content: "z-[100000]",
+                                                    base: "z-[100000]",
+                                                },
+                                            }}
                                         >
                                             {(v) => (
                                                 <SelectItem key={v.id.toString()} textValue={`${v.product.name} (${v.totalSlots}P)`}>
@@ -1502,7 +1514,13 @@ export default function SharedAccountsContent() {
                                     <Select items={linkableVariants} placeholder="Sélectionner un SKU..." className="dark"
                                         selectedKeys={selectedLinkVariantId ? [selectedLinkVariantId] : []}
                                         onChange={(e) => setSelectedLinkVariantId(e.target.value)}
-                                        classNames={{ trigger: "bg-[#1a1a1a] border border-white/5 h-14 rounded-xl" }}>
+                                        classNames={{ trigger: "bg-[#1a1a1a] border border-white/5 h-14 rounded-xl" }}
+                                        popoverProps={{
+                                            classNames: {
+                                                content: "z-[100000]",
+                                                base: "z-[100000]",
+                                            },
+                                        }}>
                                         {(v) => (
                                             <SelectItem key={v.id.toString()} textValue={`${v.product.name} - ${v.name}`}>
                                                 <div className="flex flex-col py-1">

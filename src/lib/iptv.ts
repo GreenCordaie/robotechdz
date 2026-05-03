@@ -218,6 +218,82 @@ export async function getIptvStatus(orderId: number) {
 }
 
 /**
+ * Polling fallback : pour chaque provision en queued/processing depuis > thresholdMs,
+ * vérifie le statut côté LoadBrain via getTask. Si la task est completed côté LoadBrain
+ * mais pas chez nous, on simule l'arrivée du webhook (idempotent grâce aux checks
+ * existants dans handleComplete).
+ *
+ * Couvre les cas :
+ *   - webhook perdu (réseau, signature rejetée par notre app)
+ *   - app down pendant le POST de LoadBrain
+ *   - re-déploiement qui a tué la requête en vol
+ *
+ * Appelable :
+ *   - Manuellement via /admin/iptv (bouton "Synchroniser")
+ *   - Automatiquement au refresh de la liste (silencieux, best-effort)
+ */
+export async function syncStaleProvisions(thresholdMs: number = 3 * 60 * 1000): Promise<{ checked: number; recovered: number; errors: number }> {
+    if (!isLoadBrainEnabled() || !lbClient) {
+        return { checked: 0, recovered: 0, errors: 0 };
+    }
+
+    const cutoff = new Date(Date.now() - thresholdMs);
+    const stale = await db.query.iptvProvisions.findMany({
+        where: and(
+            inArray(iptvProvisions.status, ["queued", "processing"]),
+        ),
+    });
+    const stuckProvisions = stale.filter(p =>
+        p.createdAt && p.createdAt < cutoff &&
+        !p.taskId.startsWith("dispatch-failed-")
+    );
+
+    if (stuckProvisions.length === 0) {
+        return { checked: 0, recovered: 0, errors: 0 };
+    }
+
+    let recovered = 0;
+    let errors = 0;
+    const { sendTelegramNotification } = await import("@/lib/telegram");
+
+    for (const provision of stuckProvisions) {
+        try {
+            const task = await lbClient.getTask(provision.taskId);
+            const taskData = (task as any).task || task;
+
+            if (taskData.status === "completed") {
+                // Re-dispatch via the resend-webhook API — LoadBrain re-sends the webhook
+                // to our endpoint, which goes through HMAC + handleComplete (idempotent).
+                await lbClient.resendWebhook(provision.taskId).catch(() => {});
+                recovered++;
+                console.log(`[IPTV] Stale provision ${provision.id} (task ${provision.taskId}) recovered — webhook re-dispatched`);
+            } else if (taskData.status === "failed") {
+                // Apply failure manually if we never got the failed webhook
+                await db.update(iptvProvisions).set({
+                    status: "failed",
+                    error: taskData.error || "Failed (sync recovery)",
+                    errorCode: taskData.errorCode || null,
+                }).where(eq(iptvProvisions.id, provision.id));
+                recovered++;
+            }
+            // status still queued/processing → leave as is, retry next sync
+        } catch (err: any) {
+            errors++;
+            console.error(`[IPTV] Sync failed for provision ${provision.id}:`, err.message);
+        }
+    }
+
+    if (recovered > 0) {
+        sendTelegramNotification(
+            `🔄 *Sync IPTV*\nRécupéré ${recovered} provision(s) bloquée(s) sur ${stuckProvisions.length} vérifiées.`,
+            ["ADMIN"]
+        ).catch(() => {});
+    }
+
+    return { checked: stuckProvisions.length, recovered, errors };
+}
+
+/**
  * Option A — Phase 2 dispatcher.
  * Called by the webhook handler after the IPTV phase 1 completes successfully.
  * Provisions an `ibo-inject` item with playlistUrl/Username/Password derived from
