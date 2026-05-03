@@ -255,6 +255,7 @@ export async function syncStaleProvisions(thresholdMs: number = 3 * 60 * 1000): 
     let recovered = 0;
     let errors = 0;
     const { sendTelegramNotification } = await import("@/lib/telegram");
+    const { processCompletedTask, processFailedTask } = await import("@/lib/iptv-webhook-processor");
 
     for (const provision of stuckProvisions) {
         try {
@@ -262,18 +263,22 @@ export async function syncStaleProvisions(thresholdMs: number = 3 * 60 * 1000): 
             const taskData = (task as any).task || task;
 
             if (taskData.status === "completed") {
-                // Re-dispatch via the resend-webhook API — LoadBrain re-sends the webhook
-                // to our endpoint, which goes through HMAC + handleComplete (idempotent).
-                await lbClient.resendWebhook(provision.taskId).catch(() => {});
+                // Apply credentials locally — works even when our public webhook URL
+                // returned 404 (stale prod deploy) or signature was rejected.
+                await processCompletedTask({
+                    orderId: taskData.orderId,
+                    status: "completed",
+                    credentials: taskData.credentials,
+                });
                 recovered++;
-                console.log(`[IPTV] Stale provision ${provision.id} (task ${provision.taskId}) recovered — webhook re-dispatched`);
+                console.log(`[IPTV] Stale provision ${provision.id} (task ${provision.taskId}) recovered — credentials applied`);
             } else if (taskData.status === "failed") {
-                // Apply failure manually if we never got the failed webhook
-                await db.update(iptvProvisions).set({
+                await processFailedTask({
+                    orderId: taskData.orderId,
                     status: "failed",
-                    error: taskData.error || "Failed (sync recovery)",
-                    errorCode: taskData.errorCode || null,
-                }).where(eq(iptvProvisions.id, provision.id));
+                    error: taskData.error,
+                    errorCode: taskData.errorCode,
+                });
                 recovered++;
             }
             // status still queued/processing → leave as is, retry next sync

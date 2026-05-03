@@ -107,7 +107,9 @@ export const syncStaleProvisionsAction = withAuth(
     async () => {
         try {
             const { syncStaleProvisions } = await import("@/lib/iptv");
-            const result = await syncStaleProvisions();
+            // Manual click → recover any age (caller wants results now).
+            // Auto-refresh keeps the default 3-min threshold to avoid hammering LoadBrain.
+            const result = await syncStaleProvisions(0);
             return { success: true, ...result };
         } catch (error) {
             return { success: false, error: (error as Error).message };
