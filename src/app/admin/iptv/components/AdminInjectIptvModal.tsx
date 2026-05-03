@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Modal, ModalContent, ModalBody, Button, Input, Select, SelectItem } from "@heroui/react";
+import { Modal, ModalContent, ModalBody, Button, Input } from "@heroui/react";
 import { toast } from "react-hot-toast";
 import { manualInjectIptvAction } from "../actions";
 import type { IptvPlan } from "@/app/kiosk/components/IbosolComboModal";
@@ -85,16 +85,19 @@ export default function AdminInjectIptvModal({ isOpen, onClose, iptvPlans, onSuc
             placement="center"
             backdrop="blur"
             hideCloseButton
-            classNames={{ base: "bg-white rounded-[24px]", backdrop: "bg-slate-900/40 backdrop-blur-xl" }}
+            classNames={{
+                base: "bg-[#161616] border border-white/10 rounded-[24px]",
+                backdrop: "bg-slate-900/60 backdrop-blur-xl",
+            }}
         >
             <ModalContent>
                 {(closeFn) => (
                     <ModalBody className="p-6">
                         <header className="text-center mb-5">
-                            <h2 className="text-lg font-black uppercase tracking-tight text-black">
+                            <h2 className="text-lg font-black uppercase tracking-tight text-white">
                                 Injecter IPTV manuellement
                             </h2>
-                            <p className="text-xs text-slate-500 mt-1 font-bold uppercase tracking-wider">
+                            <p className="text-xs text-slate-400 mt-1 font-bold uppercase tracking-wider">
                                 SAV — device IBO déjà activé
                             </p>
                         </header>
@@ -107,27 +110,35 @@ export default function AdminInjectIptvModal({ isOpen, onClose, iptvPlans, onSuc
                                 variant="bordered"
                                 placeholder="AA:BB:CC:DD:EE:FF"
                                 isInvalid={mac.length > 0 && !MAC_REGEX.test(mac.trim())}
+                                classNames={{
+                                    input: "text-white font-mono uppercase",
+                                    label: "text-slate-300",
+                                    inputWrapper: "bg-zinc-900/40 border-white/10 group-data-[focus=true]:border-cyan-500",
+                                }}
                             />
 
-                            <Select
-                                label="Application"
-                                selectedKeys={[appId]}
-                                onChange={(e) => setAppId(e.target.value)}
-                                variant="bordered"
-                                popoverProps={{
-                                    classNames: {
-                                        content: "z-[100000]",
-                                        base: "z-[100000]",
-                                    },
-                                }}
-                            >
-                                {APP_OPTIONS.map((opt) => (
-                                    <SelectItem key={opt.id}>{opt.label}</SelectItem>
-                                ))}
-                            </Select>
+                            <div className="space-y-1.5">
+                                <label className="block text-[10px] font-black text-slate-300 uppercase tracking-wider">
+                                    Application
+                                </label>
+                                <div className="relative">
+                                    <select
+                                        value={appId}
+                                        onChange={(e) => setAppId(e.target.value)}
+                                        className="w-full h-12 border-2 border-white/10 bg-zinc-900/40 rounded-lg shadow-sm px-3 pr-10 text-sm font-black text-white focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 outline-none appearance-none cursor-pointer transition-colors"
+                                    >
+                                        {APP_OPTIONS.map((opt) => (
+                                            <option key={opt.id} value={opt.id} className="bg-[#161616] text-white">
+                                                {opt.label}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none !text-lg">expand_more</span>
+                                </div>
+                            </div>
 
                             <div>
-                                <label className="text-[10px] font-black uppercase tracking-wider text-black mb-2 block">
+                                <label className="text-[10px] font-black uppercase tracking-wider text-slate-300 mb-2 block">
                                     Provider IPTV
                                 </label>
                                 <div className="flex gap-2 mb-2 overflow-x-auto">
@@ -136,8 +147,11 @@ export default function AdminInjectIptvModal({ isOpen, onClose, iptvPlans, onSuc
                                             key={p}
                                             type="button"
                                             onClick={() => setActiveProvider(p)}
-                                            className={`px-3 py-1.5 rounded-lg text-xs font-black uppercase whitespace-nowrap ${activeProvider === p ? "bg-cyan-600 text-white" : "bg-slate-100 text-slate-600"
-                                                }`}
+                                            className={`px-3 py-1.5 rounded-lg text-xs font-black uppercase whitespace-nowrap transition-colors ${
+                                                activeProvider === p
+                                                    ? "bg-cyan-600 text-white"
+                                                    : "bg-white/5 text-slate-300 hover:bg-white/10"
+                                            }`}
                                         >
                                             {p}
                                         </button>
@@ -149,11 +163,14 @@ export default function AdminInjectIptvModal({ isOpen, onClose, iptvPlans, onSuc
                                             key={p.planId}
                                             type="button"
                                             onClick={() => setSelectedPlanId(p.planId)}
-                                            className={`w-full p-2 border-2 rounded-lg flex justify-between text-sm ${selectedPlanId === p.planId ? "border-cyan-500 bg-cyan-50" : "border-slate-200"
-                                                }`}
+                                            className={`w-full p-2.5 border-2 rounded-lg flex justify-between text-sm transition-colors ${
+                                                selectedPlanId === p.planId
+                                                    ? "border-cyan-500 bg-cyan-500/10"
+                                                    : "border-white/10 bg-zinc-900/40 hover:border-white/20"
+                                            }`}
                                         >
-                                            <span className="font-bold text-black">{p.productName}</span>
-                                            <span className="font-black text-black">{p.price} DZD</span>
+                                            <span className="font-bold text-white">{p.productName}</span>
+                                            <span className="font-black text-white">{p.price} DZD</span>
                                         </button>
                                     ))}
                                 </div>
@@ -166,6 +183,11 @@ export default function AdminInjectIptvModal({ isOpen, onClose, iptvPlans, onSuc
                                 placeholder={planObj?.price || ""}
                                 variant="bordered"
                                 type="number"
+                                classNames={{
+                                    input: "text-white",
+                                    label: "text-slate-300",
+                                    inputWrapper: "bg-zinc-900/40 border-white/10 group-data-[focus=true]:border-cyan-500",
+                                }}
                             />
 
                             <Input
@@ -174,13 +196,18 @@ export default function AdminInjectIptvModal({ isOpen, onClose, iptvPlans, onSuc
                                 onValueChange={setPhone}
                                 variant="bordered"
                                 placeholder="+213..."
+                                classNames={{
+                                    input: "text-white",
+                                    label: "text-slate-300",
+                                    inputWrapper: "bg-zinc-900/40 border-white/10 group-data-[focus=true]:border-cyan-500",
+                                }}
                             />
                         </div>
 
                         <footer className="grid grid-cols-2 gap-3 mt-6">
                             <Button
                                 onPress={closeFn}
-                                className="bg-white border-2 border-slate-200 text-black font-black"
+                                className="bg-white/5 border border-white/10 text-white font-black"
                             >
                                 Annuler
                             </Button>

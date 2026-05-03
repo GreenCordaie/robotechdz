@@ -20,6 +20,7 @@ export default function AdminCheckDeviceModal({ isOpen, onClose }: AdminCheckDev
             <IbosolCheckModal
                 isOpen={isOpen}
                 onClose={onClose}
+                theme="dark"
                 onSubmit={async (mac, appId) => {
                     onClose();
                     setLoading(true);
@@ -37,6 +38,7 @@ export default function AdminCheckDeviceModal({ isOpen, onClose }: AdminCheckDev
                 }}
                 result={result}
                 loading={loading}
+                theme="dark"
             />
         </>
     );

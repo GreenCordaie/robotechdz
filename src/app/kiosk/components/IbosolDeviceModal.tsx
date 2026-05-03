@@ -7,8 +7,6 @@ import {
     ModalBody,
     Button,
     Input,
-    Select,
-    SelectItem,
 } from "@heroui/react";
 
 const APP_OPTIONS = [
@@ -102,28 +100,25 @@ export default function IbosolDeviceModal({
                                     autoFocus
                                 />
 
-                                <Select
-                                    label="Application"
-                                    selectedKeys={[appId]}
-                                    onChange={(e) => setAppId(e.target.value)}
-                                    size="sm"
-                                    variant="bordered"
-                                    classNames={{
-                                        label: "text-[10px] font-black text-black uppercase tracking-wider",
-                                        trigger: "h-12 border-2 border-slate-200 bg-white rounded-lg shadow-sm",
-                                        value: "text-sm font-black text-black",
-                                    }}
-                                    popoverProps={{
-                                        classNames: {
-                                            content: "z-[100000]",
-                                            base: "z-[100000]",
-                                        },
-                                    }}
-                                >
-                                    {APP_OPTIONS.map((opt) => (
-                                        <SelectItem key={opt.id}>{opt.label}</SelectItem>
-                                    ))}
-                                </Select>
+                                <div className="space-y-1.5">
+                                    <label className="block text-[10px] font-black text-black uppercase tracking-wider">
+                                        Application
+                                    </label>
+                                    <div className="relative">
+                                        <select
+                                            value={appId}
+                                            onChange={(e) => setAppId(e.target.value)}
+                                            className="w-full h-12 border-2 border-slate-200 bg-white rounded-lg shadow-sm px-3 pr-10 text-sm font-black text-black focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 outline-none appearance-none cursor-pointer transition-colors"
+                                        >
+                                            {APP_OPTIONS.map((opt) => (
+                                                <option key={opt.id} value={opt.id}>
+                                                    {opt.label}
+                                                </option>
+                                            ))}
+                                        </select>
+                                        <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none !text-lg">expand_more</span>
+                                    </div>
+                                </div>
 
                                 <div className="flex items-start gap-2.5 p-3.5 bg-cyan-50/50 rounded-xl border border-cyan-100">
                                     <span className="material-symbols-outlined text-cyan-600 !text-lg mt-0.5">info</span>
