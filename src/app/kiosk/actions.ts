@@ -7,21 +7,12 @@ import { sql, eq, and, count, exists } from "drizzle-orm";
 import { sendTelegramNotification } from "@/lib/telegram";
 import { sendPushToRoleAction } from "../admin/push/actions";
 import { cacheGet, cacheSet, cacheDel, CACHE_KEYS, CACHE_TTL } from "@/lib/redis";
-import { parseIbosolCustomData } from "@/lib/ibosol-credentials";
-
 interface KioskOrderItemInput {
     variantId: number;
     quantity: number;
     name: string;
     customData?: string;
     playerNickname?: string;
-    combo?: {
-        iptvVariantId: number;
-        iptvProviderId: string;
-        iptvPlanId: string;
-        iptvProductName: string;
-        iptvPrice: string;
-    };
 }
 
 export async function createKioskOrder(
@@ -54,22 +45,12 @@ export async function createKioskOrder(
 
                 if (!variant) throw new Error("Variante introuvable");
 
-                // Combo IPTV bundled with an Ibosol activation: customData carries
-                // the combo price; sum it into the line total alongside the variant.
-                const ibosolData = parseIbosolCustomData(item.customData);
-                const variantPrice = parseFloat(variant.salePriceDzd) * item.quantity;
-                const comboPrice = ibosolData?.combo
-                    ? parseFloat(ibosolData.combo.iptvPrice) * item.quantity
-                    : 0;
-                const itemTotal = variantPrice + comboPrice;
+                const itemTotal = parseFloat(variant.salePriceDzd) * item.quantity;
                 realTotalAmount += itemTotal;
 
                 const supplierInfo = variant.variantSuppliers?.[0];
                 const productName = (variant as any).product?.name;
-                const baseName = productName ? `${productName} — ${variant.name}` : variant.name;
-                const fullName = ibosolData?.combo
-                    ? `${baseName} + ${ibosolData.combo.iptvProductName}`
-                    : baseName;
+                const fullName = productName ? `${productName} — ${variant.name}` : variant.name;
 
                 secureItems.push({
                     variantId: item.variantId,

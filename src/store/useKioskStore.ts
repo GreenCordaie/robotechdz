@@ -13,13 +13,6 @@ interface CartItem {
     customData?: string;
     playerNickname?: string;
     loadbrainSlug?: string | null;
-    combo?: {
-        iptvVariantId: number;
-        iptvProviderId: string;
-        iptvPlanId: string;
-        iptvProductName: string;
-        iptvPrice: string;
-    };
 }
 
 interface KioskState {

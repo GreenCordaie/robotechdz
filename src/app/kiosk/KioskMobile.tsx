@@ -4,7 +4,6 @@ import React, { useState, useEffect } from "react";
 import { useKioskStore } from "@/store/useKioskStore";
 import { formatCurrency } from "@/lib/formatters";
 import ProductModal from "./components/ProductModal";
-import type { IptvPlan } from "./components/IbosolComboModal";
 import { createKioskOrder } from "./actions";
 import Image from "next/image";
 import { toast } from "react-hot-toast";
@@ -42,15 +41,6 @@ export default function KioskMobile({ products: initialProducts, categories: ini
     const [isProductModalOpen, setIsProductModalOpen] = useState(false);
     const [isDeliveryModalOpen, setIsDeliveryModalOpen] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
-    const [iptvPlans, setIptvPlans] = useState<IptvPlan[]>([]);
-
-    // Load IPTV plans for combo picker
-    useEffect(() => {
-        fetch("/api/iptv-combo-catalog")
-            .then(r => r.json())
-            .then(d => setIptvPlans(d.plans || []))
-            .catch(() => { });
-    }, []);
 
     // Helper to open product modal
     const openProductModal = (product: Product) => {
@@ -74,7 +64,6 @@ export default function KioskMobile({ products: initialProducts, categories: ini
                 quantity: i.quantity,
                 customData: i.customData,
                 playerNickname: i.playerNickname,
-                combo: i.combo,
             }));
 
             const order = await createKioskOrder(formattedItems, total.toFixed(2), method, phone, iptvDelivery);
@@ -168,7 +157,6 @@ export default function KioskMobile({ products: initialProducts, categories: ini
                     isOpen={isProductModalOpen}
                     onClose={() => setIsProductModalOpen(false)}
                     product={selectedProduct}
-                    iptvPlans={iptvPlans}
                 />
             )}
         </div>

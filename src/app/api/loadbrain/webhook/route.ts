@@ -251,6 +251,17 @@ async function handleFailed(event: any) {
         ));
     }
 
+    // Special-case DEVICE_NOT_ACTIVATED: client must launch the IBO Player app
+    // on their TV (free 7-day trial activates the device), then admin retries.
+    if (event.errorCode === "DEVICE_NOT_ACTIVATED") {
+        sendTelegramNotification(
+            `⚠️ *IBO device non activé*\n📋 \`${event.orderId}\`\n` +
+            `Le client doit ouvrir l'app IBO Player sur sa TV (essai gratuit 7j) puis cliquer "Relancer" depuis /admin/iptv.`,
+            ["ADMIN"]
+        ).catch(() => {});
+        return;
+    }
+
     sendTelegramNotification(
         `❌ *IPTV échoué*\n📋 \`${event.orderId}\`\n❌ ${event.error || "Inconnue"}`,
         ["ADMIN"]
