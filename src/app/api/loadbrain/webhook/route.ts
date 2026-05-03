@@ -217,6 +217,50 @@ async function handleComplete(event: any) {
 
     eventBus.publish(SystemEvent.ORDER_DELIVERED, { orderId: order.id });
 
+    // Option A — phase 2 trigger : si une commande SAV a un ibo-inject en attente
+    // de cette IPTV phase 1, déclencher l'inject IBOSOL avec playlistUrl/User/Pass.
+    if (!ibosolMode && screens.length > 0) {
+        const screen = screens[0];
+        const pendingIbo = (order as any).items.find((it: any) => {
+            const cd = parseIbosolCustomData(it.customData);
+            return cd?.awaitsPhase1 === targetItem.id;
+        });
+
+        if (pendingIbo && screen.username && screen.password) {
+            try {
+                // Derive playlistUrl host from m3uUrl or epgUrl
+                const baseUrl = screen.m3uUrl || screen.epgUrl || "";
+                const m = baseUrl.match(/^(https?:\/\/[^/]+)/);
+                const playlistUrl = m ? m[1] : "";
+
+                if (playlistUrl) {
+                    const ibosolData = parseIbosolCustomData(pendingIbo.customData);
+                    if (ibosolData?.mac && ibosolData.appId !== undefined) {
+                        const { provisionIbosolInjectPhase2 } = await import("@/lib/iptv");
+                        const customerPhone = (order as any).customerPhone || (order as any).client?.telephone || "";
+                        const customerName = (order as any).client?.nomComplet || "Client";
+                        await provisionIbosolInjectPhase2({
+                            orderId: order.id,
+                            orderNumber: order.orderNumber,
+                            iboItemId: pendingIbo.id,
+                            iboVariantId: pendingIbo.variantId,
+                            mac: ibosolData.mac,
+                            appId: ibosolData.appId,
+                            playlistUrl,
+                            playlistUsername: screen.username,
+                            playlistPassword: screen.password,
+                            customerName,
+                            customerPhone,
+                        });
+                    }
+                }
+            } catch (err: any) {
+                console.error("[Webhook] Failed to dispatch Option A phase 2:", err.message);
+                // Phase 2 dispatcher already records failure + Telegram alert
+            }
+        }
+    }
+
     const summary = ibosolMode
         ? (partial
             ? `⚠️ IBO activé, IPTV échouée (action SAV requise)`

@@ -264,20 +264,7 @@ export const manualInjectIptvAction = withAuth(
             const c = (Number(countResult[0]?.count || 0) % 999) + 1;
             const orderNumber = `#ADM-${c}-${Date.now().toString().slice(-3)}`;
 
-            const customDataJson = JSON.stringify({
-                type: "ibosol",
-                mac: input.mac,
-                appId: input.appId,
-                combo: {
-                    iptvVariantId: input.iptvVariantId,
-                    iptvProviderId: input.iptvProviderId,
-                    iptvPlanId: input.iptvPlanId,
-                    iptvProductName: input.iptvProductName,
-                    iptvPrice: input.iptvPrice,
-                },
-            });
-
-            // Find ibo-inject variant in DB
+            // Find both variants
             const injectVariant = await db.query.productVariants.findFirst({
                 where: eq(productVariants.loadbrainSlug, "ibo-inject"),
             });
@@ -285,6 +272,14 @@ export const manualInjectIptvAction = withAuth(
                 return { success: false, error: "Variant ibo-inject introuvable" };
             }
 
+            const iptvVariant = await db.query.productVariants.findFirst({
+                where: eq(productVariants.id, input.iptvVariantId),
+            });
+            if (!iptvVariant) {
+                return { success: false, error: "Variant IPTV introuvable" };
+            }
+
+            // Create the SAV order
             const [order] = await db
                 .insert(orders)
                 .values({
@@ -296,16 +291,36 @@ export const manualInjectIptvAction = withAuth(
                 })
                 .returning();
 
+            // Option A — Phase 1 : IPTV order_item (provisionné en premier)
+            const [iptvItem] = await db.insert(orderItems).values({
+                orderId: order.id,
+                variantId: iptvVariant.id,
+                name: input.iptvProductName,
+                price: input.iptvPrice,
+                quantity: 1,
+                customData: "credentials",  // flow IPTV classique
+            }).returning();
+
+            // Option A — Phase 2 : IBO inject order_item (en attente de la phase 1)
+            const ibosolPendingData = JSON.stringify({
+                type: "ibosol",
+                mac: input.mac,
+                appId: input.appId,
+                awaitsPhase1: iptvItem.id,
+                iptvProductName: input.iptvProductName,
+                iptvPrice: input.iptvPrice,
+            });
             await db.insert(orderItems).values({
                 orderId: order.id,
                 variantId: injectVariant.id,
                 name: `Inject ${input.iptvProductName} → ${input.mac}`,
-                price: input.customPrice,
+                price: "0",  // IBO inject est gratuit (0 crédit IBOSOL)
                 quantity: 1,
-                customData: customDataJson,
+                customData: ibosolPendingData,
             });
 
             // Pay (admin user) — triggers provisionIptvOrder via payOrder
+            // provisionIptvOrder skip les items avec awaitsPhase1, dispatch uniquement la phase 1 IPTV
             await OrderService.payOrder(order.id, user.id, {
                 remise: 0,
                 montantPaye: parseFloat(input.customPrice),

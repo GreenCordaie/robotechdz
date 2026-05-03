@@ -56,9 +56,17 @@ export async function provisionIptvOrder(orderId: number): Promise<{ provisioned
         where: eq(iptvProvisions.orderId, orderId),
     });
     const provisionedItemIds = new Set(existingProvisions.map(p => p.orderItemId));
-    const iptvItems = allIptvItems.filter((it: any) => !provisionedItemIds.has(it.id));
+
+    // Option A — phase 2 (ibo-inject avec awaitsPhase1) doit attendre la phase 1
+    // → on les skip ici, le webhook handler les déclenchera après la phase 1.
+    const iptvItems = allIptvItems.filter((it: any) => {
+        if (provisionedItemIds.has(it.id)) return false;
+        const cd = parseIbosolCustomData(it.customData);
+        if (cd?.awaitsPhase1) return false;
+        return true;
+    });
     if (iptvItems.length === 0) {
-        console.log(`[IPTV] All items for order #${orderId} already provisioned — skipping`);
+        console.log(`[IPTV] All items for order #${orderId} already provisioned or awaiting phase 1 — skipping`);
         return { provisioned: 0, taskIds: [] };
     }
 
@@ -207,6 +215,108 @@ export async function getIptvStatus(orderId: number) {
     return db.query.iptvProvisions.findMany({
         where: eq(iptvProvisions.orderId, orderId),
     });
+}
+
+/**
+ * Option A — Phase 2 dispatcher.
+ * Called by the webhook handler after the IPTV phase 1 completes successfully.
+ * Provisions an `ibo-inject` item with playlistUrl/Username/Password derived from
+ * the phase 1 IPTV credentials.
+ */
+export async function provisionIbosolInjectPhase2(input: {
+    orderId: number;
+    orderNumber: string;
+    iboItemId: number;
+    iboVariantId: number;
+    mac: string;
+    appId: number;
+    playlistUrl: string;
+    playlistUsername: string;
+    playlistPassword: string;
+    customerName: string;
+    customerPhone: string;
+}): Promise<{ success: boolean; taskId?: string; error?: string }> {
+    if (!isLoadBrainEnabled() || !lbClient) {
+        return { success: false, error: "LoadBrain disabled" };
+    }
+
+    try {
+        // Resolve ibo-inject planId via catalog (IBOSOL has no site_product_mappings)
+        const iboRes = await fetch(`${lbConfig!.baseUrl}/api/v1/catalog`, {
+            headers: { "X-API-Key": lbConfig!.apiKey },
+        });
+        const catalog = await iboRes.json();
+        const iboProvider = (catalog.data?.providers || []).find((p: any) => p.type === "ibosol");
+        if (!iboProvider) throw new Error("IBOSOL provider not found in catalog");
+        const injectPlan = iboProvider.plans?.find((p: any) => p.displayName?.includes("Inject"));
+        if (!injectPlan) throw new Error("ibo-inject plan not found in IBOSOL catalog");
+
+        const itemOrderId = `${input.orderNumber}-item-${input.iboItemId}`;
+        const provisionPayload = {
+            orderId: itemOrderId,
+            customerId: String(input.orderId),
+            customerInfo: {
+                name: input.customerName,
+                phone: input.customerPhone,
+                orderNumber: input.orderNumber,
+                mac: input.mac,
+                appId: input.appId,
+                playlistUrl: input.playlistUrl,
+                playlistUsername: input.playlistUsername,
+                playlistPassword: input.playlistPassword,
+            },
+            providerId: iboProvider.id,
+            planId: injectPlan.id,
+            screenCount: 1,
+            webhookUrl: `${lbConfig!.siteUrl.replace(/\/$/, "")}/api/loadbrain/webhook`,
+            webhookSecret: lbConfig!.webhookSecret,
+        };
+
+        const res = await fetch(`${lbConfig!.baseUrl}/api/v1/provision`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-API-Key": lbConfig!.apiKey },
+            body: JSON.stringify(provisionPayload),
+        });
+        const json = await res.json();
+        if (!json.success) throw new Error(json.error || "Phase 2 provision failed");
+        const result = json.data;
+
+        await db.insert(iptvProvisions).values({
+            orderId: input.orderId,
+            orderItemId: input.iboItemId,
+            variantId: input.iboVariantId,
+            taskId: result.taskId,
+            loadbrainSlug: "ibo-inject",
+            status: result.status || "queued",
+        });
+
+        console.log(`[IPTV] Option A phase 2 dispatched: ${result.taskId} (order ${input.orderNumber})`);
+        return { success: true, taskId: result.taskId };
+    } catch (err: any) {
+        console.error("[IPTV] Phase 2 dispatch failed:", err.message);
+
+        await db.insert(iptvProvisions).values({
+            orderId: input.orderId,
+            orderItemId: input.iboItemId,
+            variantId: input.iboVariantId,
+            taskId: `dispatch-failed-${input.iboItemId}`,
+            loadbrainSlug: "ibo-inject",
+            status: "failed",
+            error: err.message,
+        }).catch(() => {});
+
+        const { sendTelegramNotification } = await import("@/lib/telegram");
+        sendTelegramNotification(
+            `❌ *Phase 2 IBO inject échouée*\n\n` +
+            `📋 Commande: \`${input.orderNumber}\`\n` +
+            `🔑 IPTV créée mais inject IBO échec\n` +
+            `❌ ${err.message}\n\n` +
+            `→ Action SAV : relancer depuis /admin/iptv`,
+            ["ADMIN"]
+        ).catch(() => {});
+
+        return { success: false, error: err.message };
+    }
 }
 
 /**

@@ -21,6 +21,11 @@ export interface IbosolCustomData {
     type: "ibosol";
     mac: string;
     appId: number;
+    /**
+     * (Deprecated) Combo orchestré par LoadBrain — le worker IBOSOL active le device,
+     * crée la ligne IPTV via iptvProvider/iptvProviderId/iptvPlanId, puis injecte la playlist.
+     * Conservé pour rétrocompat mais préférer Option A (awaitsPhase1).
+     */
     combo?: {
         iptvVariantId: number;
         iptvProviderId: string;
@@ -28,6 +33,16 @@ export interface IbosolCustomData {
         iptvProductName: string;
         iptvPrice: string;
     };
+    /**
+     * (Option A) Ce ibo-inject attend que l'order_item ID référencé (IPTV phase 1) soit
+     * provisionné. Le webhook handler déclenche la phase 2 (IBOSOL inject) automatiquement
+     * en transmettant playlistUrl/Username/Password issus de la phase 1.
+     */
+    awaitsPhase1?: number;
+    /** (Option A) Snapshot du nom du combo pour affichage admin */
+    iptvProductName?: string;
+    /** (Option A) Prix IPTV pour ventilation comptable */
+    iptvPrice?: string;
 }
 
 /** Détecte si un payload webhook est de type Ibosol (vs IPTV classique avec screens[]) */
