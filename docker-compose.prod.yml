@@ -7,6 +7,8 @@ services:
       network: host
       args:
         - DATABASE_URL=postgresql://flexbox_user:${DB_PASSWORD}@127.0.0.1:5432/flexbox
+        - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL}
+        - NEXT_PUBLIC_TURNSTILE_SITE_KEY=${NEXT_PUBLIC_TURNSTILE_SITE_KEY}
     image: robotech-app:latest
     container_name: robotech-app
     restart: always
