@@ -254,59 +254,47 @@ export default function LoginPage() {
 }
 
 function TurnstileWidget({ onToken }: { onToken: (token: string) => void }) {
-    const containerRef = useRef<HTMLDivElement>(null);
-    const widgetId = useRef<string | null>(null);
     const siteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
+    const callbackName = useRef(`onTurnstileCb_${Math.random().toString(36).slice(2)}`);
 
     useEffect(() => {
         if (!siteKey) return;
 
-        const render = () => {
-            if (!containerRef.current) return;
-            if (widgetId.current !== null) return; // déjà rendu
+        // Expose la callback globalement pour que data-callback la trouve
+        (window as any)[callbackName.current] = (token: string) => onToken(token);
+        (window as any)[`${callbackName.current}_expired`] = () => onToken('');
 
-            const w = window as any;
-            if (!w.turnstile) return;
-
-            widgetId.current = w.turnstile.render(containerRef.current, {
-                sitekey: siteKey,
-                theme: 'dark',
-                callback: (token: string) => onToken(token),
-                'expired-callback': () => {
-                    widgetId.current = null;
-                    onToken('');
-                }
-            });
-        };
-
-        // Si le script est déjà chargé
-        if ((window as any).turnstile) {
-            render();
-            return;
-        }
-
-        // Injecter le script une seule fois
-        const existing = document.getElementById('cf-turnstile-script');
-        if (!existing) {
+        // Inject script (declarative auto-render — pas besoin de turnstile.render manuel)
+        if (!document.getElementById('cf-turnstile-script')) {
             const script = document.createElement('script');
             script.id = 'cf-turnstile-script';
-            script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
+            script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js';
             script.async = true;
             script.defer = true;
-            script.onload = render;
             document.head.appendChild(script);
-        } else {
-            // Script déjà injecté mais peut-être pas encore chargé
-            existing.addEventListener('load', render);
         }
 
         return () => {
-            if (widgetId.current !== null && (window as any).turnstile) {
-                (window as any).turnstile.remove(widgetId.current);
-                widgetId.current = null;
-            }
+            delete (window as any)[callbackName.current];
+            delete (window as any)[`${callbackName.current}_expired`];
         };
     }, [siteKey, onToken]);
 
-    return <div ref={containerRef} />;
+    if (!siteKey) {
+        return (
+            <div className="text-xs text-amber-500 text-center font-bold">
+                Turnstile non configuré (NEXT_PUBLIC_TURNSTILE_SITE_KEY manquant)
+            </div>
+        );
+    }
+
+    return (
+        <div
+            className="cf-turnstile"
+            data-sitekey={siteKey}
+            data-theme="dark"
+            data-callback={callbackName.current}
+            data-expired-callback={`${callbackName.current}_expired`}
+        />
+    );
 }
