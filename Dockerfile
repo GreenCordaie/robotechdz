@@ -4,6 +4,9 @@ FROM node:20-alpine AS base
 FROM base AS deps
 RUN apk add --no-cache libc6-compat
 WORKDIR /app
+# Vendored LoadBrain tarballs — package.json references file:../LoadBrain/dist-packages/...
+# which resolves from /app to /LoadBrain inside the container.
+COPY LoadBrain /LoadBrain
 COPY package.json package-lock.json* ./
 RUN npm install --legacy-peer-deps
 
