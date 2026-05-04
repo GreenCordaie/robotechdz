@@ -12,6 +12,16 @@ const nextConfig = {
                     { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
                     { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=()' }
                 ]
+            },
+            {
+                // Service worker MUST never be cached — browsers + intermediaries must always
+                // revalidate. Otherwise an old SW keeps intercepting /_next/ chunks and the
+                // user is stuck on a stale bundle for hours.
+                source: '/sw.js',
+                headers: [
+                    { key: 'Cache-Control', value: 'no-cache, no-store, must-revalidate, max-age=0' },
+                    { key: 'Service-Worker-Allowed', value: '/' }
+                ]
             }
         ];
     },

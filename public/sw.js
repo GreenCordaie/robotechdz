@@ -1,4 +1,4 @@
-const CACHE_NAME = 'pc-ia-v4';
+const CACHE_NAME = 'pc-ia-v5';
 const PRECACHE_ASSETS = [
     '/admin/login',
     '/manifest.webmanifest',
@@ -28,11 +28,16 @@ self.addEventListener('install', (event) => {
 });
 
 self.addEventListener('activate', (event) => {
-    // Remove old caches
+    // Aggressive cleanup: delete ALL caches (including current name) — this forces
+    // any stale Next.js chunks cached by previous SW versions to be purged. Then
+    // tell every open client to reload so they pick up fresh assets immediately.
     event.waitUntil(
-        caches.keys().then((keys) =>
-            Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
-        ).then(() => self.clients.claim())
+        caches.keys()
+            .then((keys) => Promise.all(keys.map((k) => caches.delete(k))))
+            .then(() => self.clients.claim())
+            .then(() => self.clients.matchAll({ type: 'window' }))
+            .then((clients) => clients.forEach((c) => c.navigate(c.url)))
+            .catch(() => {})
     );
 });
 
