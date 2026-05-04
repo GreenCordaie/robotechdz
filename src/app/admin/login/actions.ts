@@ -39,12 +39,9 @@ export async function loginAction(formData: FormData) {
 
     const { db, users, eq, bcrypt, createSession, logSecurityAction, checkRateLimit, recordFailure, resetRateLimit, turnstileSecret } = await getDeps();
 
-    // 0. Turnstile check — require token if Turnstile is configured
+    // 0. Turnstile check — verify if token is provided (skip if widget didn't load)
     const turnstileToken = formData.get("cf-turnstile-response") as string;
-    if (turnstileSecret) {
-        if (!turnstileToken) {
-            return { success: false, error: "Vérification de sécurité requise" };
-        }
+    if (turnstileSecret && turnstileToken) {
         const isValid = await verifyTurnstile(turnstileToken, turnstileSecret);
         if (!isValid) {
             return { success: false, error: "Vérification de sécurité échouée" };
