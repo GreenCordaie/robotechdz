@@ -201,24 +201,195 @@ restore() {
     log "Restore terminé."
 }
 
+# ─── DEPLOY-WITH-BACKUP : Auto-deploy used by GitHub Actions ────────────────
+# Workflow:
+#   1. Snapshot current SHA + DB
+#   2. Tag current image as `previous` and `<short-sha>`
+#   3. Checkout target ref + build new image
+#   4. Restart app + run migrations
+#   5. Health-check; rollback automatically on failure
+#   6. Cleanup old backups (keep 10) + old images (keep 5)
+deploy_with_backup() {
+    local TARGET_REF="${2:-}"
+    [ -z "$TARGET_REF" ] && err "Usage: ./deploy.sh deploy-with-backup <ref>"
+    log "═══ DEPLOY WITH BACKUP — target=$TARGET_REF ═══"
+    cd $APP_DIR
+
+    # 1. Snapshot current state
+    PREV_SHA=$(git rev-parse HEAD)
+    PREV_SHORT=$(git rev-parse --short HEAD)
+    log "Current: $PREV_SHORT"
+
+    # 2. Fetch + checkout target (idempotent if already there)
+    git fetch origin --tags
+    git checkout "$TARGET_REF" 2>&1 | tail -3
+    NEW_SHA=$(git rev-parse HEAD)
+    NEW_SHORT=$(git rev-parse --short HEAD)
+    log "New: $NEW_SHORT"
+
+    if [ "$PREV_SHA" = "$NEW_SHA" ]; then
+        log "Already at $NEW_SHORT — nothing to do."
+        return 0
+    fi
+
+    # 3. DB backup
+    BACKUP_DIR="$APP_DIR/backups"
+    mkdir -p "$BACKUP_DIR"
+    BACKUP_FILE="$BACKUP_DIR/pre_${PREV_SHORT}_to_${NEW_SHORT}_$(date +%Y%m%d_%H%M%S).sql.gz"
+    log "DB backup → $BACKUP_FILE"
+    if ! docker compose -f $COMPOSE_FILE exec -T db \
+        pg_dump -U flexbox_user flexbox 2>/dev/null | gzip > "$BACKUP_FILE"; then
+        warn "DB backup failed — aborting deploy, restoring git HEAD"
+        git checkout "$PREV_SHA"
+        return 1
+    fi
+
+    # 4. Tag current image as previous + sha (for rollback)
+    docker tag robotech-app:latest "robotech-app:$PREV_SHORT" 2>/dev/null || true
+    docker tag robotech-app:latest robotech-app:previous 2>/dev/null || true
+
+    # 5. Build new image
+    log "Building image..."
+    set -a; source .env.production; set +a
+    if ! docker compose -f $COMPOSE_FILE build app; then
+        warn "Build failed — restoring previous git HEAD (image untouched)"
+        git checkout "$PREV_SHA"
+        return 1
+    fi
+    docker tag robotech-app:latest "robotech-app:$NEW_SHORT" 2>/dev/null || true
+
+    # 6. Restart app
+    log "Restarting app..."
+    docker compose -f $COMPOSE_FILE up -d app
+
+    # 7. Run migrations
+    sleep 5
+    log "Running migrations..."
+    if ! docker compose -f $COMPOSE_FILE exec -T app npx drizzle-kit push 2>&1 | tail -10; then
+        warn "Migration failed — rolling back to $PREV_SHORT"
+        rollback_to "$PREV_SHORT"
+        return 1
+    fi
+
+    # 8. Health check (5 retries with backoff)
+    log "Health check..."
+    HTTP=000
+    for i in 1 2 3 4 5; do
+        sleep 3
+        HTTP=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/api/health 2>/dev/null || echo "000")
+        [ "$HTTP" = "200" ] && break
+        log "  attempt $i: HTTP $HTTP"
+    done
+    if [ "$HTTP" != "200" ]; then
+        warn "Health check FAILED (HTTP $HTTP) — rolling back to $PREV_SHORT"
+        rollback_to "$PREV_SHORT"
+        return 1
+    fi
+    log "✅ Health check OK"
+
+    # 9. Cleanup: keep last 10 DB backups
+    ls -t "$BACKUP_DIR"/pre_*.sql.gz 2>/dev/null | tail -n +11 | xargs -r rm
+
+    # 10. Cleanup: keep last 5 SHA-tagged images (preserve latest + previous)
+    docker images robotech-app --format "{{.Tag}}" \
+        | grep -v -E "^(latest|previous|<none>)$" \
+        | tail -n +6 \
+        | xargs -r -I {} docker rmi "robotech-app:{}" 2>/dev/null || true
+
+    log "═══ ✅ DEPLOY OK — $PREV_SHORT → $NEW_SHORT ═══"
+}
+
+# ─── ROLLBACK : Revert to previous (or specified) version ────────────────────
+rollback_to() {
+    local TARGET="${1:-previous}"
+    log "═══ ROLLBACK to $TARGET ═══"
+    cd $APP_DIR
+
+    # If target is an image tag we have, use it. Else rebuild from git ref.
+    if docker image inspect "robotech-app:$TARGET" > /dev/null 2>&1; then
+        log "Using cached image robotech-app:$TARGET"
+        docker tag "robotech-app:$TARGET" robotech-app:latest
+    else
+        warn "No cached image for $TARGET — rebuilding from git"
+        git fetch origin --tags
+        git checkout "$TARGET"
+        set -a; source .env.production; set +a
+        docker compose -f $COMPOSE_FILE build app
+        SHORT=$(git rev-parse --short HEAD)
+        docker tag robotech-app:latest "robotech-app:$SHORT" 2>/dev/null || true
+    fi
+
+    docker compose -f $COMPOSE_FILE up -d app
+
+    sleep 5
+    HTTP=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/api/health 2>/dev/null || echo "000")
+    if [ "$HTTP" = "200" ]; then
+        log "✅ Rollback OK to $TARGET"
+    else
+        err "Rollback health check FAILED (HTTP $HTTP) — manual intervention required"
+    fi
+}
+
+# ─── RESTORE-DB : Restore a specific gzipped pg_dump ────────────────────────
+restore_db() {
+    local BACKUP_FILE="$2"
+    local FORCE="${3:-}"
+    [ -z "$BACKUP_FILE" ] && err "Usage: ./deploy.sh restore-db <backup.sql.gz> [--force]"
+    [ ! -f "$BACKUP_FILE" ] && err "File not found: $BACKUP_FILE"
+
+    if [ "$FORCE" != "--force" ]; then
+        warn "This will OVERWRITE the current database with $BACKUP_FILE!"
+        read -p "Continue? (y/N) " -n 1 -r; echo
+        [[ ! $REPLY =~ ^[Yy]$ ]] && { log "Cancelled."; return 0; }
+    fi
+
+    cd $APP_DIR
+    log "Restoring DB from $BACKUP_FILE..."
+    gunzip -c "$BACKUP_FILE" | docker compose -f $COMPOSE_FILE exec -T db \
+        psql -U flexbox_user -d flexbox > /dev/null 2>&1
+    log "✅ DB restore done."
+}
+
+# ─── LIST-BACKUPS : Show available pre-deploy backups ───────────────────────
+list_backups() {
+    cd $APP_DIR
+    log "═══ AVAILABLE BACKUPS ═══"
+    if [ -d "backups" ]; then
+        ls -lh backups/pre_*.sql.gz 2>/dev/null | awk '{print $9, "("$5", "$6, $7, $8")"}'  || log "(none)"
+    else
+        log "(no backups directory)"
+    fi
+    echo ""
+    log "═══ AVAILABLE IMAGES ═══"
+    docker images robotech-app --format "table {{.Tag}}\t{{.Size}}\t{{.CreatedAt}}" | head -20
+}
+
 # ─── Main ────────────────────────────────────────────────────────────────────
 case "${1:-}" in
-    setup)   setup ;;
-    deploy)  deploy ;;
-    update)  update ;;
-    status)  status ;;
-    logs)    logs "$@" ;;
-    backup)  backup ;;
-    restore) restore "$@" ;;
+    setup)                setup ;;
+    deploy)               deploy ;;
+    update)               update ;;
+    deploy-with-backup)   deploy_with_backup "$@" ;;
+    rollback)             rollback_to "${2:-previous}" ;;
+    restore-db)           restore_db "$@" ;;
+    list-backups)         list_backups ;;
+    status)               status ;;
+    logs)                 logs "$@" ;;
+    backup)               backup ;;
+    restore)              restore "$@" ;;
     *)
-        echo "Usage: ./deploy.sh [setup|deploy|update|status|logs|backup|restore]"
+        echo "Usage: ./deploy.sh <command> [args]"
         echo ""
-        echo "  setup   - Premier déploiement (installe Docker, firewall, etc.)"
-        echo "  deploy  - Build + lance tous les services"
-        echo "  update  - Pull + rebuild app seulement"
-        echo "  status  - État de tous les services"
-        echo "  logs    - Logs (défaut: app). Ex: ./deploy.sh logs whatsapp"
-        echo "  backup  - Sauvegarde PostgreSQL"
-        echo "  restore - Restaurer un backup. Ex: ./deploy.sh restore backup.sql.gz"
+        echo "  setup                       Premier déploiement (Docker, firewall, etc.)"
+        echo "  deploy                      Build + lance tous les services"
+        echo "  update                      Pull + rebuild app seulement"
+        echo "  deploy-with-backup <ref>    Auto-deploy avec backup DB + image + rollback auto si échec"
+        echo "  rollback [<sha>|previous]   Revenir à une version précédente"
+        echo "  restore-db <file.sql.gz>    Restaurer un backup DB (--force pour skip prompt)"
+        echo "  list-backups                Lister backups DB + images disponibles"
+        echo "  status                      État de tous les services"
+        echo "  logs [service]              Logs (défaut: app)"
+        echo "  backup                      Snapshot DB manuel"
+        echo "  restore <file.sql.gz>       Restore DB (legacy interactive)"
         ;;
 esac

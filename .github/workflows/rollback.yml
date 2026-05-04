@@ -1,0 +1,65 @@
+name: Rollback Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Target SHA to rollback to. Use 'previous' for the last good version."
+        required: true
+        default: "previous"
+      restore_db:
+        description: "Also restore the latest pre-deploy DB backup? (yes/no — default no)"
+        required: false
+        default: "no"
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  rollback:
+    name: Rollback via SSH
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: SSH rollback
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT || 22 }}
+          command_timeout: 10m
+          script_stop: true
+          script: |
+            set -euo pipefail
+            cd /opt/robotech
+            ./deploy.sh rollback ${{ github.event.inputs.target }}
+            if [ "${{ github.event.inputs.restore_db }}" = "yes" ]; then
+              LATEST_BACKUP=$(ls -t /opt/robotech/backups/pre_*.sql.gz 2>/dev/null | head -1 || true)
+              if [ -n "$LATEST_BACKUP" ]; then
+                echo "Restoring DB from $LATEST_BACKUP"
+                ./deploy.sh restore-db "$LATEST_BACKUP" --force
+              else
+                echo "No DB backup found — skipping restore"
+              fi
+            fi
+
+      - name: Notify Telegram
+        if: always() && env.TELEGRAM_BOT_TOKEN != ''
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_ADMIN_CHAT_ID }}
+          STATUS: ${{ job.status }}
+        run: |
+          if [ "$STATUS" = "success" ]; then
+            EMOJI="↩️"
+            TITLE="*Rollback OK*"
+          else
+            EMOJI="⚠️"
+            TITLE="*Rollback FAILED*"
+          fi
+          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            -d chat_id="${TELEGRAM_CHAT_ID}" \
+            -d parse_mode=Markdown \
+            -d text="${EMOJI} ${TITLE} — cible \`${{ github.event.inputs.target }}\`%0Apar @${{ github.actor }}"
