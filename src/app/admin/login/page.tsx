@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import { Eye, EyeOff, ShieldCheck } from "lucide-react";
 import Image from "next/image";
 import { useAuthStore } from "@/store/useAuthStore";
@@ -19,7 +19,6 @@ export default function LoginPage() {
     const [mfaRequired, setMfaRequired] = useState(false);
     const [tempUserId, setTempUserId] = useState<number | null>(null);
     const [mfaCode, setMfaCode] = useState("");
-    const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
 
     const setUser = useAuthStore((state) => state.setUser);
     const router = useRouter();
@@ -38,9 +37,6 @@ export default function LoginPage() {
         formData.append("email", email);
         formData.append("password", password);
         formData.append("website_url", websiteUrl);
-        if (turnstileToken) {
-            formData.append("cf-turnstile-response", turnstileToken);
-        }
 
         try {
             const result = await loginAction(formData);
@@ -181,11 +177,6 @@ export default function LoginPage() {
                                 </div>
                             </div>
 
-                            {/* Cloudflare Turnstile */}
-                            <div className="flex justify-center py-2 min-h-[65px]">
-                                <TurnstileWidget onToken={setTurnstileToken} />
-                            </div>
-
                             {error && <p className="text-red-500 text-xs text-center font-bold">{error}</p>}
 
                             {/* Submit Button */}
@@ -253,48 +244,3 @@ export default function LoginPage() {
     );
 }
 
-function TurnstileWidget({ onToken }: { onToken: (token: string) => void }) {
-    const siteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
-    const callbackName = useRef(`onTurnstileCb_${Math.random().toString(36).slice(2)}`);
-
-    useEffect(() => {
-        if (!siteKey) return;
-
-        // Expose la callback globalement pour que data-callback la trouve
-        (window as any)[callbackName.current] = (token: string) => onToken(token);
-        (window as any)[`${callbackName.current}_expired`] = () => onToken('');
-
-        // Inject script (declarative auto-render — pas besoin de turnstile.render manuel)
-        if (!document.getElementById('cf-turnstile-script')) {
-            const script = document.createElement('script');
-            script.id = 'cf-turnstile-script';
-            script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js';
-            script.async = true;
-            script.defer = true;
-            document.head.appendChild(script);
-        }
-
-        return () => {
-            delete (window as any)[callbackName.current];
-            delete (window as any)[`${callbackName.current}_expired`];
-        };
-    }, [siteKey, onToken]);
-
-    if (!siteKey) {
-        return (
-            <div className="text-xs text-amber-500 text-center font-bold">
-                Turnstile non configuré (NEXT_PUBLIC_TURNSTILE_SITE_KEY manquant)
-            </div>
-        );
-    }
-
-    return (
-        <div
-            className="cf-turnstile"
-            data-sitekey={siteKey}
-            data-theme="dark"
-            data-callback={callbackName.current}
-            data-expired-callback={`${callbackName.current}_expired`}
-        />
-    );
-}
