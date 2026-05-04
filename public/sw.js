@@ -1,4 +1,4 @@
-const CACHE_NAME = 'pc-ia-v3';
+const CACHE_NAME = 'pc-ia-v4';
 const PRECACHE_ASSETS = [
     '/admin/login',
     '/manifest.webmanifest',
@@ -47,6 +47,11 @@ self.addEventListener('fetch', (event) => {
 
     // Never intercept API routes — always fresh
     if (url.includes('/api/')) return;
+
+    // Never intercept Next.js bundle/HMR assets — browser HTTP cache + immutable hashes
+    // handle these correctly. SW caching here serves stale chunks after rebuilds and
+    // breaks webpack runtime ("Cannot read properties of undefined (reading 'call')").
+    if (url.includes('/_next/')) return;
 
     // Navigation requests (page loads) — network first, no cache fallback to avoid stale pages
     if (event.request.mode === 'navigate') {
