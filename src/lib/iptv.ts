@@ -269,6 +269,7 @@ export async function syncStaleProvisions(thresholdMs: number = 3 * 60 * 1000): 
                     orderId: taskData.orderId,
                     status: "completed",
                     credentials: taskData.credentials,
+                    completedAt: taskData.completedAt,
                 });
                 recovered++;
                 console.log(`[IPTV] Stale provision ${provision.id} (task ${provision.taskId}) recovered — credentials applied`);
@@ -278,6 +279,7 @@ export async function syncStaleProvisions(thresholdMs: number = 3 * 60 * 1000): 
                     status: "failed",
                     error: taskData.error,
                     errorCode: taskData.errorCode,
+                    completedAt: taskData.completedAt,
                 });
                 recovered++;
             }

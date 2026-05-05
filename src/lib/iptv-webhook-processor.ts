@@ -24,6 +24,20 @@ export interface LoadBrainTaskEvent {
     credentials?: any;
     error?: string;
     errorCode?: string;
+    /** ISO 8601 timestamp from LoadBrain — required for ordering out-of-sequence webhooks */
+    completedAt?: string;
+}
+
+/**
+ * Parse an ISO timestamp from a LoadBrain event, falling back to "now".
+ * Used to compare event recency against existing provision state.
+ */
+function eventTime(event: LoadBrainTaskEvent): Date {
+    if (event.completedAt) {
+        const d = new Date(event.completedAt);
+        if (!isNaN(d.getTime())) return d;
+    }
+    return new Date();
 }
 
 /**
@@ -80,6 +94,21 @@ export async function processCompletedTask(event: LoadBrainTaskEvent): Promise<v
             `❌ *Webhook anomalie*\n📋 \`${order.orderNumber}\`\nOrder item #${targetItem.id} sans variantId — credentials non enregistrées.`,
             ["ADMIN"]
         ).catch(() => {});
+        return;
+    }
+
+    // Timestamp idempotency guard — drop stale events that arrive after a more recent state.
+    // Protects against out-of-order webhook delivery: e.g. a slow `failed` retry arriving
+    // after `completed` has already landed (network reordering, LoadBrain retry storms).
+    const existingProvision = await db.query.iptvProvisions.findFirst({
+        where: and(
+            eq(iptvProvisions.orderId, order.id),
+            eq(iptvProvisions.orderItemId, targetItem.id),
+        ),
+    });
+    const incomingAt = eventTime(event);
+    if (existingProvision?.completedAt && existingProvision.completedAt >= incomingAt) {
+        console.log(`[LoadBrain] Drop stale completed event for ${event.orderId} — existing completedAt=${existingProvision.completedAt.toISOString()} >= incoming=${incomingAt.toISOString()}`);
         return;
     }
 
@@ -243,12 +272,37 @@ export async function processFailedTask(event: LoadBrainTaskEvent): Promise<void
     });
 
     if (order) {
+        // Resolve the specific item (if -item-<id> suffix is present) to scope the update
+        const itemIdMatch = event.orderId?.match(/-item-(\d+)$/);
+        const itemId = itemIdMatch ? parseInt(itemIdMatch[1]) : null;
+
+        // Idempotency: never demote a completed/completed_partial provision back to failed.
+        // Once credentials exist, late-arriving "failed" webhooks are stale (LoadBrain retry
+        // storms, network reordering) and must be ignored.
+        const existing = itemId
+            ? await db.query.iptvProvisions.findFirst({
+                where: and(
+                    eq(iptvProvisions.orderId, order.id),
+                    eq(iptvProvisions.orderItemId, itemId),
+                ),
+            })
+            : await db.query.iptvProvisions.findFirst({
+                where: eq(iptvProvisions.orderId, order.id),
+            });
+
+        if (existing && ["completed", "completed_partial"].includes(existing.status)) {
+            console.log(`[LoadBrain] Drop stale failed event for ${event.orderId} — already ${existing.status} (completedAt=${existing.completedAt?.toISOString() ?? "null"})`);
+            return;
+        }
+
+        // Status filter remains as belt-and-suspenders: only queued/processing get demoted.
         await db.update(iptvProvisions).set({
             status: "failed",
             error: event.error || "Unknown",
             errorCode: event.errorCode || null,
         }).where(and(
             eq(iptvProvisions.orderId, order.id),
+            ...(itemId ? [eq(iptvProvisions.orderItemId, itemId)] : []),
             inArray(iptvProvisions.status, ["queued", "processing"]),
         ));
     }
