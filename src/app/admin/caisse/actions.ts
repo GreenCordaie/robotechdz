@@ -102,6 +102,25 @@ export const requeueForPrint = withAuth(
     }
 );
 
+/**
+ * Mark an order as printed locally via WebUSB on the cashier device.
+ * Prevents the polling print-service (if running) from re-printing the same ticket.
+ */
+export const markOrderPrintedAction = withAuth(
+    {
+        roles: [UserRole.ADMIN, UserRole.CAISSIER, UserRole.TRAITEUR],
+        schema: z.object({ orderId: z.number() })
+    },
+    async ({ orderId }) => {
+        try {
+            await db.update(orders).set({ printStatus: "printed" }).where(eq(orders.id, orderId));
+            return { success: true };
+        } catch (error) {
+            return { success: false, error: (error as Error).message };
+        }
+    }
+);
+
 export const updateOrderStatus = withAuth(
     {
         roles: [UserRole.ADMIN, UserRole.CAISSIER],

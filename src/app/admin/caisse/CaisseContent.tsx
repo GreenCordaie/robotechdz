@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Spinner, Button, Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, Tooltip, Tabs, Tab } from "@heroui/react";
 import { useOrderStore } from "@/store/useOrderStore";
-import { payOrder, getTodayOrders, cancelOrderAction, replaceOrderItemCode, refundOrderItem, refundFullOrder, notifyTraiteurAction, requeueForPrint } from "./actions";
+import { payOrder, getTodayOrders, cancelOrderAction, replaceOrderItemCode, refundOrderItem, refundFullOrder, notifyTraiteurAction, requeueForPrint, markOrderPrintedAction } from "./actions";
 import dynamic from "next/dynamic";
 const InitiateReturnModal = dynamic(() => import("@/components/admin/modals/InitiateReturnModal").then(m => m.InitiateReturnModal), { ssr: false });
 const ApproveReturnModal = dynamic(() => import("@/components/admin/modals/ApproveReturnModal").then(m => m.ApproveReturnModal), { ssr: false });
@@ -11,11 +11,13 @@ const OrderDetailModal = dynamic(() => import("@/components/admin/modals/OrderDe
 const RefundOrderModal = dynamic(() => import("@/components/admin/modals/RefundOrderModal"), { ssr: false });
 import { useAuthStore } from "@/store/useAuthStore";
 import { toast } from "react-hot-toast";
-import { Eye, User as UserIcon, Plus, RotateCcw, Clock } from "lucide-react";
+import { Eye, User as UserIcon, Plus, RotateCcw, Clock, Printer } from "lucide-react";
 import { getAllClients, createClient } from "../clients/actions";
 import { formatCurrency, formatWhatsApp } from "@/lib/formatters";
 import { ThermalReceiptV2 } from "@/components/admin/receipt/ThermalReceiptV2";
 import { useSettingsStore } from "@/store/useSettingsStore";
+import { useWebUSBPrinter } from "@/hooks/useWebUSBPrinter";
+import { generateOrderEscPos } from "@/lib/escpos";
 
 export default function CaisseContent() {
     const {
@@ -47,6 +49,7 @@ export default function CaisseContent() {
     const [orderForInitiateReturn, setOrderForInitiateReturn] = useState<any | null>(null);
     const [orderForApproveReturn, setOrderForApproveReturn] = useState<any | null>(null);
     const settings = useSettingsStore();
+    const webusb = useWebUSBPrinter();
 
     const handlePrint = async (data: any) => {
         if (!data?.id) return;
@@ -156,7 +159,37 @@ export default function CaisseContent() {
                 if (res.order.deliveryMethod === "TICKET") {
                     const hasManual = res.order.items?.some((it: any) => it.variant?.product?.isManualDelivery);
                     if (!hasManual) {
-                        toast.success(`🖨️ Ticket #${res.order.orderNumber} envoyé à l'imprimante`, { duration: 3000 });
+                        // Direct WebUSB print on the requesting device — bypasses polling print-service.
+                        // Only fires when an USB thermal printer was previously paired on this PC.
+                        if (webusb.connected) {
+                            try {
+                                const printData = {
+                                    orderNumber: res.order.orderNumber,
+                                    date: res.order.createdAt || new Date().toISOString(),
+                                    cashier: user?.nom,
+                                    items: res.order.items || [],
+                                    subtotal: res.order.totalAmount,
+                                    discount: remise || 0,
+                                    total: res.order.totalAmount,
+                                    paid: effectiveRecu,
+                                    change: Math.max(0, effectiveRecu - Number(res.order.totalAmount)),
+                                    paymentMethod: paymentMethodLabel,
+                                };
+                                const buffer = generateOrderEscPos(printData, settings);
+                                const ok = await webusb.print(buffer);
+                                if (ok) {
+                                    toast.success(`🖨️ Ticket #${res.order.orderNumber} imprimé localement`, { duration: 3000 });
+                                    markOrderPrintedAction({ orderId: res.order.id }).catch(() => {});
+                                } else {
+                                    toast.success(`🖨️ Ticket #${res.order.orderNumber} mis en file (USB direct échoué)`, { duration: 4000 });
+                                }
+                            } catch (e: any) {
+                                console.error("[Caisse] Direct USB print failed:", e);
+                                toast.success(`🖨️ Ticket #${res.order.orderNumber} mis en file (fallback)`, { duration: 3000 });
+                            }
+                        } else {
+                            toast.success(`🖨️ Ticket #${res.order.orderNumber} envoyé à l'imprimante`, { duration: 3000 });
+                        }
                     } else {
                         toast.success("Commande mixte/manuelle : l'impression se lancera après insertion des codes manquants", { duration: 5000 });
                     }
@@ -265,6 +298,30 @@ export default function CaisseContent() {
             `}</style>
 
             <div className="flex-1 flex flex-col min-h-0 bg-[#0a0a0a] rounded-2xl border border-[#1a1a1a] shadow-2xl overflow-hidden relative mx-4 mb-4">
+                {/* Printer status — paired once per device, prints directly via WebUSB */}
+                <div className="absolute top-3 right-4 z-10">
+                    <button
+                        type="button"
+                        onClick={webusb.connected ? webusb.disconnect : webusb.connect}
+                        disabled={webusb.isConnecting}
+                        title={webusb.connected
+                            ? `Imprimante locale connectée — clic pour déconnecter`
+                            : "Aucune imprimante locale — cliquer pour appairer (1 fois par PC)"}
+                        className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider border transition-all ${
+                            webusb.connected
+                                ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20"
+                                : "bg-amber-500/10 border-amber-500/30 text-amber-400 hover:bg-amber-500/20"
+                        } disabled:opacity-50 disabled:cursor-wait`}
+                    >
+                        <Printer size={12} />
+                        <span className={`size-1.5 rounded-full ${webusb.connected ? "bg-emerald-400 animate-pulse" : "bg-amber-400"}`} />
+                        {webusb.isConnecting
+                            ? "Connexion…"
+                            : webusb.connected
+                                ? "Imprimante prête"
+                                : "Connecter imprimante"}
+                    </button>
+                </div>
                 <Tabs
                     aria-label="Caisse Tabs"
                     variant="underlined"
