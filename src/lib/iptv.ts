@@ -90,13 +90,18 @@ export async function provisionIptvOrder(orderId: number): Promise<{ provisioned
             console.log(`[IPTV] Provisioning ${slug} for order ${itemOrderId}`);
 
             const isIbosolSlug = slug.startsWith("ibo-");
+            const isIronMaxSlug = slug.startsWith("ironmax-") || slug === "iron-trial";
             const ibosolData = isIbosolSlug ? parseIbosolCustomData(item.customData) : null;
-            // NOTE: IronMax `deliveryMethod: "code"` was rolled back on 2026-05-07 because
-            // LoadBrain's getCodeCredentials lookup fails ("code not found in /code/usedcode"
-            // → LINE_CREATION_FAILED) even when the code IS created on the panel. The
-            // "credentials" path is slower (~6-10s) but reliable. Re-enable when LoadBrain
-            // fixes the race / lookup bug.
-            const iptvDelivery: string = isIbosolSlug ? "" : (item.customData || "credentials");
+            // IronMax: re-enabled `deliveryMethod: "code"` after LoadBrain hotfix
+            // (worker now uses Location header for code generation + codeToCredentials
+            // via @MYIRON_BOT for username/password). Webhook returns code + full
+            // credentials in one shot. Faster path than the legacy bot extraction.
+            // Other providers keep their per-item customData / "credentials" default.
+            const iptvDelivery: string = isIbosolSlug
+                ? ""
+                : isIronMaxSlug
+                    ? "code"
+                    : (item.customData || "credentials");
 
             // Resolve slug → providerId + planId from LoadBrain
             const mapping = await lbClient.listProducts();
