@@ -90,8 +90,17 @@ export async function provisionIptvOrder(orderId: number): Promise<{ provisioned
             console.log(`[IPTV] Provisioning ${slug} for order ${itemOrderId}`);
 
             const isIbosolSlug = slug.startsWith("ibo-");
+            const isIronMaxSlug = slug.startsWith("ironmax-") || slug === "iron-trial";
             const ibosolData = isIbosolSlug ? parseIbosolCustomData(item.customData) : null;
-            const iptvDelivery: string = isIbosolSlug ? "" : (item.customData || "credentials");
+            // IronMax: LoadBrain extracts credentials directly from the panel (mode "code")
+            // → ~3-4s instead of ~6-10s on paid plans, plus a `code` field in the webhook.
+            // For trial plans the bot path is still used either way; harmless to force "code".
+            // Other providers: respect existing per-item override or default to "credentials".
+            const iptvDelivery: string = isIbosolSlug
+                ? ""
+                : isIronMaxSlug
+                    ? "code"
+                    : (item.customData || "credentials");
 
             // Resolve slug → providerId + planId from LoadBrain
             const mapping = await lbClient.listProducts();

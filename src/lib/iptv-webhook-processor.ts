@@ -156,15 +156,27 @@ export async function processCompletedTask(event: LoadBrainTaskEvent): Promise<v
             });
         } else {
             for (const screen of screens) {
-                const isCodeMode = screen.code && !screen.username;
+                // Three webhook shapes from LoadBrain:
+                //  1. Pure code-only        → screen.code present, no username (gift-card style)
+                //  2. Pure credentials      → username + password + m3u, no code
+                //  3. IronMax "code" mode   → username + password + m3u + code (additive)
+                const hasCredentials = !!screen.username;
+                const isPureCode = !!screen.code && !hasCredentials;
                 let m3uUrl = screen.m3uUrl || "";
-                if (!isCodeMode && !m3uUrl && screen.epgUrl) {
+                if (hasCredentials && !m3uUrl && screen.epgUrl) {
                     const host = screen.epgUrl.split("/xmltv")[0];
                     m3uUrl = `${host}/get.php?username=${screen.username}&password=${screen.password}&type=m3u_plus`;
                 }
-                const codeValue = isCodeMode
-                    ? screen.code
-                    : [screen.username, screen.password, m3uUrl, screen.epgUrl || ""].join(" | ");
+
+                let codeValue: string;
+                if (isPureCode) {
+                    codeValue = screen.code;
+                } else {
+                    // Pipe-delimited; append the optional activation code at position 5 when present.
+                    const parts = [screen.username, screen.password, m3uUrl, screen.epgUrl || ""];
+                    if (screen.code) parts.push(screen.code);
+                    codeValue = parts.join(" | ");
+                }
 
                 await tx.insert(digitalCodes).values({
                     variantId: targetItem.variantId,
