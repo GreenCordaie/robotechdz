@@ -14,6 +14,8 @@ interface Screen {
     m3uUrl?: string;
     epgUrl?: string;
     expiresAt?: string;
+    /** IronMax "code" deliveryMethod — panel activation identifier for support / reinstall */
+    code?: string;
 }
 
 interface Provision {
@@ -109,6 +111,19 @@ function CredentialCard({ screen, expiresAt }: { screen: Screen; expiresAt?: str
                     <div className="flex items-center gap-1 mt-0.5">
                         <code className="text-[10px] text-violet-400 font-mono truncate max-w-[300px]">{screen.epgUrl}</code>
                         <button onClick={() => copyToClipboard(screen.epgUrl!)} aria-label="Copier l'URL EPG" className="size-7 inline-flex items-center justify-center rounded-md text-slate-400 hover:text-white hover:bg-white/5 shrink-0 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500 transition-colors"><Copy className="w-3.5 h-3.5" /></button>
+                    </div>
+                </div>
+            )}
+
+            {screen.code && screen.code !== screen.username && (
+                <div>
+                    <span className="text-[9px] text-slate-400 uppercase flex items-center gap-1">
+                        Code panel
+                        <span className="text-[8px] text-slate-500 normal-case font-medium">(activation / SAV)</span>
+                    </span>
+                    <div className="flex items-center gap-1 mt-0.5">
+                        <code className="text-xs text-cyan-400 font-mono">{screen.code}</code>
+                        <button onClick={() => copyToClipboard(screen.code!)} aria-label="Copier le code panel" className="size-7 inline-flex items-center justify-center rounded-md text-slate-400 hover:text-white hover:bg-white/5 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500 transition-colors"><Copy className="w-3.5 h-3.5" /></button>
                     </div>
                 </div>
             )}
