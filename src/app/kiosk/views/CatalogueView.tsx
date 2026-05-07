@@ -75,12 +75,7 @@ export default function CatalogueView({ products, categories }: CatalogueViewPro
         setSearchTerm("");
     }, [selectedCategoryId]);
 
-    // Only IPTV providers with credentials/code choice (Ibosol uses MAC, no toggle)
-    const hasIptvInCart = cart.some((item: any) =>
-        item.loadbrainSlug && !String(item.loadbrainSlug).startsWith("ibo-")
-    );
-
-    const confirmOrder = async (deliveryMethod: "TICKET" | "WHATSAPP", phone?: string, iptvDelivery?: "credentials" | "code") => {
+    const confirmOrder = async (deliveryMethod: "TICKET" | "WHATSAPP", phone?: string) => {
         setIsSubmitting(true);
         try {
             const formattedItems = cart.map(i => ({
@@ -91,7 +86,7 @@ export default function CatalogueView({ products, categories }: CatalogueViewPro
                 customData: i.customData,
                 playerNickname: i.playerNickname,
             }));
-            const order = await createKioskOrder(formattedItems, totalAmount.toFixed(2), deliveryMethod, phone, iptvDelivery);
+            const order = await createKioskOrder(formattedItems, totalAmount.toFixed(2), deliveryMethod, phone);
 
             if (deliveryMethod === "TICKET") {
                 toast.success("Demande transmise à la caisse.");
@@ -446,7 +441,6 @@ export default function CatalogueView({ products, categories }: CatalogueViewPro
                 onClose={onCheckoutClose}
                 onConfirm={confirmOrder}
                 isSubmitting={isSubmitting}
-                hasIptvProducts={hasIptvInCart}
             />
 
 

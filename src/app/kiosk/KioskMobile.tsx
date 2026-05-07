@@ -48,12 +48,7 @@ export default function KioskMobile({ products: initialProducts, categories: ini
         setIsProductModalOpen(true);
     };
 
-    // Only IPTV providers with credentials/code choice (Ibosol uses MAC, no toggle)
-    const hasIptvInCart = cart.some((item: any) =>
-        item.loadbrainSlug && !String(item.loadbrainSlug).startsWith("ibo-")
-    );
-
-    const handleConfirmOrder = async (method: "TICKET" | "WHATSAPP", phone?: string, iptvDelivery?: "credentials" | "code") => {
+    const handleConfirmOrder = async (method: "TICKET" | "WHATSAPP", phone?: string) => {
         setIsSubmitting(true);
         try {
             const total = cart.reduce((acc, item) => acc + (Number(item.price) * item.quantity), 0);
@@ -66,7 +61,7 @@ export default function KioskMobile({ products: initialProducts, categories: ini
                 playerNickname: i.playerNickname,
             }));
 
-            const order = await createKioskOrder(formattedItems, total.toFixed(2), method, phone, iptvDelivery);
+            const order = await createKioskOrder(formattedItems, total.toFixed(2), method, phone);
             setLastOrderNumber(order.orderNumber);
             toast.success("Commande envoyée !");
             clearCart();
@@ -148,7 +143,6 @@ export default function KioskMobile({ products: initialProducts, categories: ini
                 onClose={() => setIsDeliveryModalOpen(false)}
                 onConfirm={handleConfirmOrder}
                 isSubmitting={isSubmitting}
-                hasIptvProducts={hasIptvInCart}
             />
 
             {/* Product Selection Modal */}

@@ -1,21 +1,21 @@
 import React, { useState } from "react";
 import { Modal, ModalContent } from "@heroui/react";
-import { Printer, ChevronRight, Key, Tv } from "lucide-react";
+import { Printer, ChevronRight } from "lucide-react";
 import { useKioskStore } from "@/store/useKioskStore";
 import { formatCurrency } from "@/lib/formatters";
 
 interface DeliveryMethodModalProps {
     isOpen: boolean;
     onClose: () => void;
-    onConfirm: (method: "TICKET" | "WHATSAPP", phone?: string, iptvDelivery?: "credentials" | "code") => void;
+    onConfirm: (method: "TICKET" | "WHATSAPP", phone?: string) => void;
     isSubmitting?: boolean;
+    /** @deprecated kept for backwards compat with callers — IPTV always uses credentials path */
     hasIptvProducts?: boolean;
 }
 
-export default function DeliveryMethodModal({ isOpen, onClose, onConfirm, isSubmitting, hasIptvProducts }: DeliveryMethodModalProps) {
+export default function DeliveryMethodModal({ isOpen, onClose, onConfirm, isSubmitting }: DeliveryMethodModalProps) {
     const { cart, getTotalAmount } = useKioskStore();
     const [method, setMethod] = useState<"TICKET" | "WHATSAPP">("TICKET");
-    const [iptvDelivery, setIptvDelivery] = useState<"credentials" | "code">("credentials");
     const [callingCode, setCallingCode] = useState("+213");
     const [phone, setPhone] = useState("");
     const [error, setError] = useState("");
@@ -28,7 +28,7 @@ export default function DeliveryMethodModal({ isOpen, onClose, onConfirm, isSubm
             }
         }
         const fullPhone = method === "WHATSAPP" ? `${callingCode}${phone}` : undefined;
-        onConfirm(method, fullPhone, hasIptvProducts ? iptvDelivery : undefined);
+        onConfirm(method, fullPhone);
     };
 
     return (
@@ -117,38 +117,6 @@ export default function DeliveryMethodModal({ isOpen, onClose, onConfirm, isSubm
                                 <span className="text-slate-500 text-center leading-tight">Recevez vos codes directement sur votre téléphone.</span>
                             </button>
                         </section>
-
-                        {/* IPTV Delivery Type — only for Iron Max / IPTV products */}
-                        {hasIptvProducts && (
-                            <section className="mb-8 animate-in fade-in slide-in-from-top-4 duration-300">
-                                <p className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4 text-center">Type de livraison IPTV</p>
-                                <div className="grid grid-cols-2 gap-4">
-                                    <button
-                                        onClick={() => setIptvDelivery("credentials")}
-                                        className={`flex flex-col items-center p-5 border-2 rounded-2xl transition-all active:scale-[0.98] ${iptvDelivery === "credentials"
-                                            ? "border-cyan-500 bg-cyan-50 ring-2 ring-cyan-500/20"
-                                            : "border-slate-200 bg-white"
-                                            }`}
-                                    >
-                                        <Tv className={`w-8 h-8 mb-2 ${iptvDelivery === "credentials" ? "text-cyan-600" : "text-slate-400"}`} />
-                                        <span className="text-lg font-bold text-slate-900">Ligne</span>
-                                        <span className="text-xs text-slate-500 text-center mt-1">Username, mot de passe & lien M3U</span>
-                                    </button>
-
-                                    <button
-                                        onClick={() => setIptvDelivery("code")}
-                                        className={`flex flex-col items-center p-5 border-2 rounded-2xl transition-all active:scale-[0.98] ${iptvDelivery === "code"
-                                            ? "border-cyan-500 bg-cyan-50 ring-2 ring-cyan-500/20"
-                                            : "border-slate-200 bg-white"
-                                            }`}
-                                    >
-                                        <Key className={`w-8 h-8 mb-2 ${iptvDelivery === "code" ? "text-cyan-600" : "text-slate-400"}`} />
-                                        <span className="text-lg font-bold text-slate-900">Code</span>
-                                        <span className="text-xs text-slate-500 text-center mt-1">Code d'activation à saisir dans l'app</span>
-                                    </button>
-                                </div>
-                            </section>
-                        )}
 
                         {/* Input WhatsApp Number */}
                         {method === "WHATSAPP" && (

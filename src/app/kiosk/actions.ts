@@ -19,8 +19,7 @@ export async function createKioskOrder(
     items: KioskOrderItemInput[],
     clientTotalAmount: string,
     deliveryMethod: "TICKET" | "WHATSAPP" = "TICKET",
-    customerPhone?: string,
-    iptvDeliveryMethod?: "credentials" | "code"
+    customerPhone?: string
 ) {
     // 1. Recalculate Short Order ID
     const countResult = await db.select({ count: sql`count(*)` }).from(orders);
@@ -61,12 +60,14 @@ export async function createKioskOrder(
                     purchasePrice: supplierInfo?.purchasePrice || null,
                     purchaseCurrency: supplierInfo?.currency || null,
                     // Ibosol items carry their own JSON customData (mac+appId) — keep it.
-                    // Other IPTV items use the global iptvDeliveryMethod ("credentials"|"code").
                     // Non-IPTV items keep their original customData (player ID, etc.).
+                    // Other IPTV items always use the "credentials" path (Telegram bot
+                    // extraction). The "code" deliveryMethod was rolled back on 2026-05-07
+                    // due to LoadBrain getCodeCredentials lookup failures.
                     customData: (() => {
                         const slug = (variant as any).loadbrainSlug;
                         if (slug?.startsWith("ibo-")) return item.customData;
-                        if (slug && iptvDeliveryMethod) return iptvDeliveryMethod;
+                        if (slug) return "credentials";
                         return item.customData;
                     })(),
                     playerNickname: item.playerNickname
