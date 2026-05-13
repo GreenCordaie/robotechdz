@@ -17,6 +17,7 @@ import { UserRole } from "@/lib/constants";
 import { z } from "zod";
 import { allocateOrderStock } from "@/lib/orders";
 import { OrderService } from "@/services/order.service";
+import { TierService } from "@/services/tier.service";
 
 export const getCurrentResellerAction = withAuth(
     { roles: [UserRole.RESELLER] },
@@ -109,12 +110,15 @@ export const checkoutResellerAction = withAuth(
             });
 
             const variantMap = new Map(dbVariants.map(v => [v.id, v]));
-            let totalAmount = 0;
+            let grossTotal = 0;
             const enrichedCart = cart.map(item => {
                 const variant = variantMap.get(item.id);
                 if (!variant) throw new Error(`Variante ${item.id} introuvable`);
-                const priceNum = parseFloat(variant.salePriceDzd);
-                totalAmount += priceNum * item.quantity;
+                // EPIC 1 — Prix reseller : override > salePriceDzd
+                const basePrice = variant.resellerPriceOverrideDzd
+                    ? parseFloat(variant.resellerPriceOverrideDzd)
+                    : parseFloat(variant.salePriceDzd);
+                grossTotal += basePrice * item.quantity;
 
                 const supplierInfo = variant.variantSuppliers?.[0];
                 const productName = (variant as any).product?.name;
@@ -123,12 +127,20 @@ export const checkoutResellerAction = withAuth(
                 return {
                     ...item,
                     name: fullName,
-                    price: priceNum,
+                    price: basePrice,
                     supplierId: supplierInfo?.supplierId || null,
                     purchasePrice: supplierInfo?.purchasePrice || null,
                     purchaseCurrency: supplierInfo?.currency || null
                 };
             });
+
+            // EPIC 1 — Appliquer le discount tier (Bronze/Silver/Gold)
+            // Le customDiscount du reseller s'ajoute par-dessus s'il est présent.
+            const tierDiscount = await TierService.applyTierDiscount(reseller.id, grossTotal);
+            const customDiscountPct = reseller.customDiscount
+                ? Math.min(parseFloat(reseller.customDiscount), 100 - tierDiscount.discountPct)
+                : 0;
+            const totalAmount = tierDiscount.discountedAmount * (1 - customDiscountPct / 100);
 
             const orderNumber = `B2B-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
             const userId = user.id;
@@ -189,12 +201,15 @@ export const checkoutResellerAction = withAuth(
                     })
                     .where(eq(resellerWallets.id, lockedReseller.wallet.id));
 
+                const tierLabel = tierDiscount.tierName
+                    ? ` [${tierDiscount.tierName} -${tierDiscount.discountPct}%${customDiscountPct ? ` +custom -${customDiscountPct}%` : ""}]`
+                    : "";
                 const finalResult = await tx.insert(resellerTransactions).values({
                     walletId: lockedReseller.wallet.id,
                     type: "PURCHASE",
                     amount: totalAmount.toString(),
                     orderId: newOrder.id,
-                    description: `Achat B2B - ${orderNumber}`
+                    description: `Achat B2B - ${orderNumber}${tierLabel}`
                 });
 
                 return { id: newOrder.id, orderNumber };
@@ -202,6 +217,11 @@ export const checkoutResellerAction = withAuth(
 
             // 6. Post-Process Triggers (Push, n8n, Instant Delivery)
             await OrderService.finalizeOrderAfterPayment(res.id);
+
+            // 7. Recalcule async le tier du reseller (peut promouvoir vers le tier supérieur)
+            TierService.recalculateTierForReseller(reseller.id).catch((err) => {
+                console.error("[tier] recalculate after checkout failed:", err);
+            });
 
             return { success: true, orderNumber: res.orderNumber };
         } catch (error) {
