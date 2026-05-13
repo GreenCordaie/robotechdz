@@ -4,8 +4,12 @@ import { digitalCodes, orders, clients, digitalCodeSlots, orderItems } from "@/d
 import { ilike, eq, desc } from "drizzle-orm";
 import { decrypt } from "@/lib/encryption";
 import { NetflixResolverService } from "@/services/netflix-resolver.service";
+import { guardDebugRoute } from "@/lib/debug-route-guard";
 
 export async function GET(req: Request) {
+    const guard = guardDebugRoute();
+    if (guard) return guard;
+
     const secret = req.headers.get("authorization")?.replace("Bearer ", "");
     if (!secret || secret !== process.env.CRON_SECRET) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

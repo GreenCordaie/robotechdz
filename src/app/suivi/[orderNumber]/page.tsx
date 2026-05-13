@@ -19,12 +19,13 @@ export default function OrderTrackingPage() {
     const [verifyingPhone, setVerifyingPhone] = useState(false);
     const [phoneError, setPhoneError] = useState("");
 
+    const PHONE_DIGITS_REQUIRED = 6;
     const fetchOrder = async (phoneToVerify?: string) => {
         try {
             let url = `/api/orders/track?orderNumber=${encodeURIComponent(orderNumber)}`;
             if (phoneToVerify) {
                 url += `&phoneDigits=${encodeURIComponent(phoneToVerify)}`;
-            } else if (phoneDigits.length === 4) {
+            } else if (phoneDigits.length === PHONE_DIGITS_REQUIRED) {
                 url += `&phoneDigits=${encodeURIComponent(phoneDigits)}`;
             }
 
@@ -60,8 +61,8 @@ export default function OrderTrackingPage() {
     const handleVerifyPhone = (e: React.FormEvent) => {
         e.preventDefault();
         setPhoneError("");
-        if (phoneDigits.length !== 4) {
-            setPhoneError("Veuillez entrer exactement 4 chiffres.");
+        if (phoneDigits.length !== PHONE_DIGITS_REQUIRED) {
+            setPhoneError(`Veuillez entrer exactement ${PHONE_DIGITS_REQUIRED} chiffres.`);
             return;
         }
         setVerifyingPhone(true);
@@ -209,17 +210,18 @@ export default function OrderTrackingPage() {
                                     <h4 className="text-xl font-bold text-white mb-2">Sécurité des codes</h4>
                                     <p className="text-slate-400 mb-6 text-sm">
                                         Pour afficher vos codes d&apos;accès, veuillez vérifier votre identité en saisissant les
-                                        <strong className="text-white"> 4 derniers chiffres</strong> du numéro de téléphone associé à cette commande.
+                                        <strong className="text-white"> {PHONE_DIGITS_REQUIRED} derniers chiffres</strong> du numéro de téléphone associé à cette commande.
                                     </p>
 
                                     <form onSubmit={handleVerifyPhone} className="flex flex-col items-center">
                                         <div className="flex items-center gap-4 mb-2">
-                                            <div className="text-slate-600 font-mono tracking-widest text-lg">******</div>
+                                            <div className="text-slate-600 font-mono tracking-widest text-lg">****</div>
                                             <input
                                                 type="text"
-                                                maxLength={4}
-                                                className="w-24 text-center text-lg tracking-widest font-mono bg-[#1a1a1a] border border-white/10 rounded-xl text-white focus:outline-none focus:border-[var(--primary)]/50 py-3 transition-all"
-                                                placeholder="XXXX"
+                                                inputMode="numeric"
+                                                maxLength={PHONE_DIGITS_REQUIRED}
+                                                className="w-32 text-center text-lg tracking-widest font-mono bg-[#1a1a1a] border border-white/10 rounded-xl text-white focus:outline-none focus:border-[var(--primary)]/50 py-3 transition-all"
+                                                placeholder="XXXXXX"
                                                 value={phoneDigits}
                                                 onChange={e => setPhoneDigits(e.target.value.replace(/\D/g, ''))}
                                                 required
@@ -229,7 +231,7 @@ export default function OrderTrackingPage() {
 
                                         <button
                                             type="submit"
-                                            disabled={verifyingPhone || phoneDigits.length !== 4}
+                                            disabled={verifyingPhone || phoneDigits.length !== PHONE_DIGITS_REQUIRED}
                                             className="w-full sm:w-auto mt-4 inline-flex justify-center items-center px-6 py-3 rounded-xl text-sm font-bold text-white bg-[var(--primary)] hover:bg-[#d44f0f] focus:outline-none disabled:opacity-50 transition-colors"
                                         >
                                             {verifyingPhone ? 'Vérification...' : (
