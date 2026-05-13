@@ -1,7 +1,0 @@
-﻿<html style="background-color:#e5e5e5; margin-top:0; padding:0; margin:0"><head>
-<meta http-equiv="Content-Type" content="text/html; charset=utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta content="IE=edge"><meta name="format-detection" content="telephone=no"><style type="text/css">
-<!--
-@media (max-width: 499px) {
-u + .body .inbox-fix, u + .body .content-shell-table, u + .body .footer-shell-table, u + .body .footer
-	{min-width:91.5vw!important}
-.mobile-hid
