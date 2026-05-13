@@ -30,6 +30,9 @@ class LoadBrainClient {
     async getCredentialsByOrder(_orderNumber) {
         return null;
     }
+    async renewSubscription(_taskId) {
+        return { success: true, taskId: "stub-renew", status: "queued" };
+    }
 }
 
 function validateConfig(input) {
@@ -39,7 +42,20 @@ function validateConfig(input) {
     return input;
 }
 
-module.exports = { LoadBrainClient, validateConfig };
+// Stub pour le proxy Next.js. En CI on retourne juste des 404 — le code
+// n'appelle de toute façon pas ces handlers (no test E2E sur /api/loadbrain/*).
+function createNextRouteHandler(_config) {
+    const handler = async () => {
+        return new Response(JSON.stringify({ error: "LoadBrain stub — no-op in CI" }), {
+            status: 503,
+            headers: { "content-type": "application/json" },
+        });
+    };
+    return { GET: handler, POST: handler, DELETE: handler, PUT: handler };
+}
+
+module.exports = { LoadBrainClient, validateConfig, createNextRouteHandler };
 module.exports.LoadBrainClient = LoadBrainClient;
 module.exports.validateConfig = validateConfig;
+module.exports.createNextRouteHandler = createNextRouteHandler;
 module.exports.default = module.exports;

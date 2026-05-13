@@ -16,4 +16,13 @@ export declare class LoadBrainClient {
     cancelOrder(orderNumber: string): Promise<{ success: boolean }>;
     resendWebhook(taskId: string): Promise<{ success: boolean }>;
     getCredentialsByOrder(orderNumber: string): Promise<null | Record<string, unknown>>;
+    renewSubscription(taskId: string): Promise<{ success: boolean; taskId: string; status: string }>;
 }
+
+type AnyHandler = (req: Request) => Promise<Response>;
+export declare function createNextRouteHandler(config: LoadBrainConfig): {
+    GET: AnyHandler;
+    POST: AnyHandler;
+    DELETE: AnyHandler;
+    PUT: AnyHandler;
+};
