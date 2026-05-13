@@ -210,6 +210,35 @@ export async function processCompletedTask(event: LoadBrainTaskEvent): Promise<v
 
     eventBus.publish(SystemEvent.ORDER_DELIVERED, { orderId: order.id });
 
+    // EPIC 6.2 — auto-WhatsApp credentials ready si l'order est B2B (reseller)
+    // Fire-and-forget, no-op safe si WhatsApp non configuré ou pas de reseller.
+    if ((order as { resellerId?: number | null }).resellerId) {
+        try {
+            const { ResellerNotifications } = await import("@/services/reseller-notifications.service");
+            const { resellers } = await import("@/db/schema");
+            const reseller = await db.query.resellers.findFirst({
+                where: eq(resellers.id, (order as { resellerId: number }).resellerId),
+            });
+            if (reseller) {
+                const summary = ibosolMode
+                    ? (creds.iptvUsername ? `IPTV ${creds.iptvUsername}` : `MAC ${creds.mac ?? "—"}`)
+                    : (screens[0]?.username
+                        ? `User ${screens[0].username}`
+                        : (screens[0]?.code ? `Code ${screens[0].code.slice(0, 4)}…` : undefined));
+                ResellerNotifications.notifyOrderCredentialsReady({
+                    companyName: reseller.companyName,
+                    contactPhone: reseller.contactPhone,
+                    orderNumber: order.orderNumber,
+                    credentialSummary: summary,
+                }).catch((err) => {
+                    console.warn("[loadbrain] reseller notif failed (non-bloquant):", err);
+                });
+            }
+        } catch (err) {
+            console.warn("[loadbrain] reseller notif lookup failed:", err);
+        }
+    }
+
     // Option A — phase 2 trigger
     if (!ibosolMode && screens.length > 0) {
         const screen = screens[0];

@@ -18,6 +18,7 @@ import { z } from "zod";
 import { allocateOrderStock } from "@/lib/orders";
 import { OrderService } from "@/services/order.service";
 import { TierService } from "@/services/tier.service";
+import { ResellerNotifications } from "@/services/reseller-notifications.service";
 
 export const getCurrentResellerAction = withAuth(
     { roles: [UserRole.RESELLER] },
@@ -425,6 +426,23 @@ export const checkoutResellerAction = withAuth(
             // 7. Recalcule async le tier du reseller (peut promouvoir vers le tier supérieur)
             TierService.recalculateTierForReseller(reseller.id).catch((err) => {
                 console.error("[tier] recalculate after checkout failed:", err);
+            });
+
+            // 8. EPIC 6.2 — auto-WhatsApp confirmation commande (no-op safe en dev)
+            const hasInstant = enrichedCart.some((item) => {
+                const v = variantMap.get(item.id);
+                return !!v?.loadbrainSlug;
+            });
+            const totalItems = cart.reduce((acc, c) => acc + (c.quantity || 0), 0);
+            ResellerNotifications.notifyOrderConfirmed({
+                companyName: reseller.companyName,
+                contactPhone: reseller.contactPhone,
+                orderNumber: res.orderNumber,
+                totalAmount,
+                itemCount: totalItems,
+                hasInstantDelivery: hasInstant,
+            }).catch((err) => {
+                console.warn("[checkout] notification failed (non-bloquant):", err);
             });
 
             return { success: true, orderNumber: res.orderNumber };

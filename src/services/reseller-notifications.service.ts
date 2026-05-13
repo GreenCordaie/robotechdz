@@ -121,4 +121,60 @@ export const ResellerNotifications = {
             `_FLEXBOX DIRECT_`;
         return safeSend(ctx.contactPhone, message);
     },
+
+    /**
+     * Confirmation de commande B2B post-checkout.
+     * Indique le numéro, le total débité, et invite à voir les credentials
+     * dans le dashboard.
+     */
+    async notifyOrderConfirmed(
+        ctx: ResellerNotificationContext & {
+            orderNumber: string;
+            totalAmount: number;
+            itemCount: number;
+            hasInstantDelivery: boolean;
+        }
+    ) {
+        const lines = [
+            `🛒 *${ctx.companyName}* — Commande confirmée`,
+            ``,
+            `N° de commande : *${ctx.orderNumber}*`,
+            `Articles : ${ctx.itemCount}`,
+            `Total débité : *${formatCurrencyDzd(ctx.totalAmount)}*`,
+            ``,
+            ctx.hasInstantDelivery
+                ? `⚡ Provisioning en cours — vous recevrez les credentials sous 1-2 min.`
+                : `📦 Préparation en cours.`,
+            ``,
+            `Consulter sur le portail : /reseller/orders`,
+            `_FLEXBOX DIRECT — partenaire B2B_`,
+        ];
+        return safeSend(ctx.contactPhone, lines.join("\n"));
+    },
+
+    /**
+     * Credentials prêtes après provisioning LoadBrain.
+     * On envoie un message court qui pointe vers le dashboard plutôt que
+     * de balancer les credentials en clair sur WhatsApp (le reseller peut
+     * les copier dans une fenêtre de chat client si besoin).
+     */
+    async notifyOrderCredentialsReady(
+        ctx: ResellerNotificationContext & {
+            orderNumber: string;
+            credentialSummary?: string;
+        }
+    ) {
+        const lines = [
+            `✅ *${ctx.companyName}* — Credentials prêtes`,
+            ``,
+            `Commande : *${ctx.orderNumber}*`,
+            ctx.credentialSummary ? `Aperçu : ${ctx.credentialSummary}` : ``,
+            ``,
+            `Accès complets sur le portail : /reseller/orders`,
+            `Bouton "Envoyer au client" disponible.`,
+            ``,
+            `_FLEXBOX DIRECT — partenaire B2B_`,
+        ].filter((l) => l !== "");
+        return safeSend(ctx.contactPhone, lines.join("\n"));
+    },
 };
