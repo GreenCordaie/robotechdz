@@ -4,6 +4,7 @@ import { db } from "@/db";
 import { pushSubscriptions, shopSettings, users } from "@/db/schema";
 import { eq, and, sql, inArray } from "drizzle-orm";
 import { withAuth } from "@/lib/security";
+import { UserRole } from "@/lib/constants";
 import { z } from "zod";
 import webpush from "web-push";
 import { revalidatePath } from "next/cache";
@@ -39,7 +40,7 @@ async function ensureKeys() {
 }
 
 export const getPushPublicKeyAction = withAuth(
-    { roles: ["ADMIN", "CAISSIER", "TRAITEUR"] },
+    { roles: [UserRole.ADMIN, UserRole.CAISSIER, UserRole.TRAITEUR] },
     async () => {
         const settings = await ensureKeys();
         return { success: true, publicKey: settings.vapidPublicKey };
@@ -48,7 +49,7 @@ export const getPushPublicKeyAction = withAuth(
 
 export const subscribeToPushAction = withAuth(
     {
-        roles: ["ADMIN", "CAISSIER", "TRAITEUR"],
+        roles: [UserRole.ADMIN, UserRole.CAISSIER, UserRole.TRAITEUR],
         schema: z.object({
             subscription: z.any() // standard PushSubscription JSON
         })

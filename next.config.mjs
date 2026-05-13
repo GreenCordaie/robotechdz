@@ -36,10 +36,14 @@ const nextConfig = {
     },
     output: 'standalone',
     eslint: {
+        // ESLint cleanup planifié EPIC 11 — laissé désactivé pour ne pas bloquer
+        // sur des warnings pré-existants. À flipper après nettoyage progressif.
         ignoreDuringBuilds: true,
     },
     typescript: {
-        ignoreBuildErrors: true,
+        // EPIC 0 : 0 erreurs TS atteintes — le build crashe désormais sur toute
+        // régression de typage. Ne PAS remettre à `true` sans corriger d'abord.
+        ignoreBuildErrors: false,
     },
     experimental: {
         instrumentationHook: true,

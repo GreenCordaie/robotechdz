@@ -73,7 +73,7 @@ export default function PushNotificationManager() {
                 });
 
                 const subRes = await subscribeToPushAction({ subscription });
-                if (subRes.success) {
+                if (subRes && (subRes as { success?: boolean }).success) {
                     setIsSubscribed(true);
                     toast.success("Notifications activées !");
                 }

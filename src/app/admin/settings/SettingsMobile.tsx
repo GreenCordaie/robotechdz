@@ -171,12 +171,15 @@ export default function SettingsMobile() {
     };
 
     const handleDisableMfa = async () => {
-        if (confirm("Désactiver le 2FA ?")) {
-            const res = await disableMfaAction({});
-            if (res.success) {
-                toast.success("2FA désactivé");
-                loadShopSettings();
-            }
+        if (!confirm("Désactiver le 2FA ?")) return;
+        const password = prompt("Confirmez votre mot de passe pour désactiver le 2FA :");
+        if (!password) return;
+        const res = await disableMfaAction({ password });
+        if (res.success) {
+            toast.success("2FA désactivé");
+            loadShopSettings();
+        } else {
+            toast.error(res.error || "Échec désactivation 2FA");
         }
     };
 

@@ -16,7 +16,7 @@ export class RateLimitService {
     static async checkLimit(key: string, maxAttempts = DEFAULT_MAX_ATTEMPTS) {
         try {
             const raw = await redis.get(key);
-            const count = raw !== null ? parseInt(raw, 10) : 0;
+            const count = raw !== null && raw !== undefined ? parseInt(String(raw), 10) || 0 : 0;
             const isBlocked = count >= maxAttempts;
 
             let blockedUntil: Date | undefined;
