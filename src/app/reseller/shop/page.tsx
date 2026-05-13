@@ -183,10 +183,11 @@ export default function ResellerShop() {
         }
     };
 
-    const tierPctLabel =
-        pricing && pricing.totalDiscountPct > 0
+    const tierPctLabel = pricing
+        ? pricing.totalDiscountPct > 0
             ? `−${pricing.totalDiscountPct.toFixed(0)}%`
-            : null;
+            : "Tarif standard"
+        : null;
 
     return (
         <div className="flex flex-col h-full space-y-8 animate-in fade-in duration-500">
