@@ -26,11 +26,22 @@ interface ResellerWalletData {
     updatedAt: Date | null;
 }
 
+interface ResellerTier {
+    id: number;
+    name: string;
+    discountPct: string;
+    minMonthlyVolumeDzd: string;
+    color: string | null;
+    rank: number;
+}
+
 interface ResellerData {
     id: number;
     userId: number;
     companyName: string;
     wallet?: ResellerWalletData | null;
+    tier?: ResellerTier | null;
+    monthlyVolume?: number;
 }
 
 interface ResellerTransaction {
@@ -111,6 +122,12 @@ export default function ResellerWallet() {
         ? `WLT-${reseller.id.toString().padStart(4, "0")}`
         : "WLT-0000";
 
+    const tier = reseller?.tier;
+    const tierColor = tier?.color || "#94a3b8";
+    const tierDiscountPct = tier ? parseFloat(tier.discountPct) : 0;
+    const monthlyVolume = reseller?.monthlyVolume ?? 0;
+    const nextTierThreshold = tier ? parseFloat(tier.minMonthlyVolumeDzd) : 0;
+
     return (
         <div className="space-y-10 animate-in fade-in duration-500 max-w-7xl">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
@@ -151,6 +168,33 @@ export default function ResellerWallet() {
                                     </h2>
                                 </div>
 
+                                {tier && (
+                                    <div
+                                        className="flex items-center justify-between p-3 rounded-2xl border"
+                                        style={{
+                                            backgroundColor: `${tierColor}15`,
+                                            borderColor: `${tierColor}40`,
+                                        }}
+                                    >
+                                        <div className="flex items-center gap-2">
+                                            <span
+                                                className="w-2 h-2 rounded-full"
+                                                style={{ backgroundColor: tierColor }}
+                                                aria-hidden
+                                            />
+                                            <span
+                                                className="text-xs font-black uppercase tracking-widest"
+                                                style={{ color: tierColor }}
+                                            >
+                                                Palier {tier.name}
+                                            </span>
+                                        </div>
+                                        <span className="text-xs font-bold text-white">
+                                            -{tierDiscountPct.toFixed(0)}%
+                                        </span>
+                                    </div>
+                                )}
+
                                 <div className="space-y-4">
                                     <div className="flex items-center justify-between p-4 bg-black/40 rounded-2xl border border-white/5">
                                         <div className="flex flex-col">
@@ -186,13 +230,30 @@ export default function ResellerWallet() {
                                 <div className="flex justify-between items-center text-sm font-bold">
                                     <span className="text-slate-500">Volume d&apos;achat</span>
                                     <span className="text-white">
-                                        {formatCurrency(monthlyStats.monthlyVolume, "DZD")}
+                                        {formatCurrency(Math.max(monthlyStats.monthlyVolume, monthlyVolume), "DZD")}
                                     </span>
                                 </div>
                                 <div className="flex justify-between items-center text-sm font-bold">
                                     <span className="text-slate-500">Nb transactions</span>
                                     <span className="text-emerald-500">{monthlyStats.monthlyCount}</span>
                                 </div>
+                                {tier && nextTierThreshold > 0 && monthlyVolume < nextTierThreshold && (
+                                    <div className="pt-4 border-t border-white/5">
+                                        <div className="flex justify-between text-[10px] uppercase font-black text-slate-600 mb-2">
+                                            <span>Vers palier suivant</span>
+                                            <span>{Math.min(100, Math.round((monthlyVolume / nextTierThreshold) * 100))}%</span>
+                                        </div>
+                                        <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
+                                            <div
+                                                className="h-full transition-all"
+                                                style={{
+                                                    width: `${Math.min(100, (monthlyVolume / nextTierThreshold) * 100)}%`,
+                                                    backgroundColor: tierColor,
+                                                }}
+                                            />
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </div>

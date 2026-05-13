@@ -25,11 +25,24 @@ export const getCurrentResellerAction = withAuth(
         try {
             const reseller = await db.query.resellers.findFirst({
                 where: eq(resellers.userId, user.id),
-                with: { wallet: true }
+                with: { wallet: true, tier: true }
             });
 
             if (!reseller) return { success: false, error: "Compte revendeur introuvable" };
-            return { success: true, data: reseller };
+
+            // EPIC 1 — fallback gracieux : si pas de tier assigné, retourner le tier par défaut
+            // (utile pour les resellers créés AVANT la migration 0005)
+            const effectiveTier = reseller.tier ?? (await TierService.getDefaultTier());
+            const monthlyVolume = await TierService.getMonthlyPurchaseVolume(reseller.id);
+
+            return {
+                success: true,
+                data: {
+                    ...reseller,
+                    tier: effectiveTier,
+                    monthlyVolume,
+                },
+            };
         } catch (error) {
             return { success: false, error: "Erreur serveur" };
         }
