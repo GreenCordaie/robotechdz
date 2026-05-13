@@ -364,7 +364,7 @@ export default function AnalyticsContent({ initialOverview, initialRankings }: A
                                         <div className="flex-1 text-center md:text-left">
                                             <h3 className="text-xl font-bold text-orange-600 mb-2">Relances Cross-Selling</h3>
                                             <p className="text-default-600">
-                                                L'IA analyse vos meilleurs clients et produits pour suggérer des campagnes de fidélisation ciblées.
+                                                L&apos;IA analyse vos meilleurs clients et produits pour suggérer des campagnes de fidélisation ciblées.
                                             </p>
                                         </div>
                                         <Button
@@ -386,7 +386,7 @@ export default function AnalyticsContent({ initialOverview, initialRankings }: A
                                     <CardHeader className="px-6 pt-6">
                                         <div className="flex items-center gap-2">
                                             <div className="w-2 h-8 bg-orange-500 rounded-full" />
-                                            <h3 className="text-lg font-bold uppercase tracking-wider text-default-500">Recommandations de l'IA</h3>
+                                            <h3 className="text-lg font-bold uppercase tracking-wider text-default-500">Recommandations de l&apos;IA</h3>
                                         </div>
                                     </CardHeader>
                                     <CardBody className="px-6 pb-6 whitespace-pre-wrap text-default-700 leading-relaxed">
@@ -397,7 +397,7 @@ export default function AnalyticsContent({ initialOverview, initialRankings }: A
                                 !isGeneratingIA && (
                                     <div className="flex flex-col items-center justify-center p-12 text-default-400 border-2 border-dashed border-default-200 rounded-3xl">
                                         <Sparkles size={48} className="mb-4 opacity-20" />
-                                        <p>Cliquez sur le bouton ci-dessus pour lancer l'analyse IA.</p>
+                                        <p>Cliquez sur le bouton ci-dessus pour lancer l&apos;analyse IA.</p>
                                     </div>
                                 )
                             )}

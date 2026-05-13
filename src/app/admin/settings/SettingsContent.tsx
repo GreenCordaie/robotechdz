@@ -1210,7 +1210,7 @@ export default function SettingsContent() {
                                             <div className="flex items-center gap-4 text-white">
                                                 <AlertTriangle className="text-orange-400" size={20} />
                                                 <div>
-                                                    <span className="text-sm font-black uppercase block tracking-widest">Seuil d'alerte stock bas</span>
+                                                    <span className="text-sm font-black uppercase block tracking-widest">Seuil d&apos;alerte stock bas</span>
                                                     <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Alerte Telegram envoyée sous ce nombre</span>
                                                 </div>
                                             </div>

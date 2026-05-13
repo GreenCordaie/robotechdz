@@ -125,7 +125,7 @@ export function FaqBotSettings() {
                         Fiches Problèmes & Solutions
                     </h3>
                     <p className="text-xs text-slate-500 mt-0.5">
-                        L'IA consulte ces fiches en priorité quand un client décrit un problème similaire.
+                        L&apos;IA consulte ces fiches en priorité quand un client décrit un problème similaire.
                     </p>
                 </div>
                 <span className="text-xs bg-white/5 text-slate-400 px-2 py-1 rounded-full shrink-0">{faqs.length} fiche{faqs.length !== 1 ? "s" : ""}</span>
@@ -172,7 +172,7 @@ export function FaqBotSettings() {
                                         placeholder="ex: code netflix ne fonctionne pas, code invalide"
                                         className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-[var(--primary)]/50"
                                     />
-                                    <p className="text-[10px] text-slate-600 mt-1">Séparez plusieurs variantes par des virgules. L'IA cherche par mots-clés.</p>
+                                    <p className="text-[10px] text-slate-600 mt-1">Séparez plusieurs variantes par des virgules. L&apos;IA cherche par mots-clés.</p>
                                 </div>
                                 <div>
                                     <label className="text-[10px] text-slate-500 uppercase tracking-widest font-bold mb-1 block">

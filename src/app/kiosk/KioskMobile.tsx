@@ -314,7 +314,7 @@ function CatalogueView({ products, categories, selectedCategory, setSelectedCate
                         <div className="size-20 bg-slate-50 rounded-full flex items-center justify-center text-slate-200">
                             <span className="material-symbols-outlined !text-4xl">search_off</span>
                         </div>
-                        <p className="text-slate-400 font-bold">Aucun produit trouvé pour "{searchQuery}"</p>
+                        <p className="text-slate-400 font-bold">Aucun produit trouvé pour &laquo;{searchQuery}&raquo;</p>
                     </div>
                 )}
             </section>
@@ -354,7 +354,7 @@ function SuccessView({ lastOrderNumber, onReset }: { lastOrderNumber: string, on
 
             <div className="space-y-4 max-w-xs mb-12">
                 <h2 className="text-3xl font-black text-[#0c121e] uppercase tracking-tighter leading-tight">Commande<br />Réussie !</h2>
-                <p className="text-slate-400 font-medium text-sm">Votre commande a été transmise avec succès à l'équipe ROBOTECH.</p>
+                <p className="text-slate-400 font-medium text-sm">Votre commande a été transmise avec succès à l&apos;équipe ROBOTECH.</p>
             </div>
 
             <div className="w-full max-w-xs bg-slate-50 border-2 border-dashed border-slate-200 rounded-[32px] p-8 mb-12 space-y-3 relative overflow-hidden">
@@ -373,7 +373,7 @@ function SuccessView({ lastOrderNumber, onReset }: { lastOrderNumber: string, on
                     onClick={onReset}
                     className="w-full bg-[#0c121e] text-white py-5 rounded-[26px] font-black uppercase tracking-widest active:scale-95 transition-all shadow-xl shadow-slate-900/10"
                 >
-                    Retour à l'accueil
+                    Retour à l&apos;accueil
                 </button>
             </div>
         </div>

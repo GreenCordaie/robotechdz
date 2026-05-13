@@ -349,7 +349,7 @@ export default function CaisseContent() {
                                     <div className="px-6 pt-4">
                                         <div className="bg-yellow-50 dark:bg-yellow-900/10 border border-yellow-200 dark:border-yellow-700/30 rounded-xl p-4">
                                             <h3 className="text-xs font-black uppercase tracking-wider text-yellow-700 dark:text-yellow-400 mb-3">
-                                                🔔 Retours en attente d'approbation
+                                                🔔 Retours en attente d&apos;approbation
                                             </h3>
                                             <div className="space-y-2">
                                                 {allTodayOrders

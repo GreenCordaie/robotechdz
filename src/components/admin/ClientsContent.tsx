@@ -99,6 +99,54 @@ export default function ClientsContent({ initialStats, initialClients }: Clients
     const [repaymentAmount, setRepaymentAmount] = React.useState("");
     const [isSubmitting, setIsSubmitting] = React.useState(false);
 
+    // EPIC 11 — useMemo hoisted au top (était inline dans le JSX = rules-of-hooks violation)
+    const journalEntries = React.useMemo(() => {
+        const entries: any[] = [
+            ...history.payments.map(p => ({
+                id: `pay-${p.id}`,
+                date: p.createdAt,
+                type: 'PAYMENT',
+                amount: p.montantDzd || "0",
+                label: p.typeAction === 'REMBOURSEMENT' ? 'Remboursement (Retour)' : 'Règlement de dette',
+                icon: Wallet,
+                color: 'text-emerald-500',
+                bgColor: 'bg-emerald-500/10',
+                oldBalance: p.oldBalanceDzd,
+                newBalance: p.newBalanceDzd,
+                receiptNumber: p.receiptNumber
+            })),
+            ...history.orders.map(o => ({
+                id: `order-${o.id}`,
+                date: o.createdAt,
+                type: 'ORDER',
+                amount: o.totalAmount || "0",
+                resteAPayer: o.resteAPayer || "0",
+                label: `Achat Commande #${o.orderNumber}`,
+                icon: ShoppingCart,
+                color: 'text-red-500',
+                bgColor: 'bg-red-500/10',
+                items: (o as any).items || []
+            })),
+            ...clientReturns.filter(r => r.returnRequest && r.returnRequest.status !== 'APPROUVE').map(r => ({
+                id: `return-${r.orderId}`,
+                date: new Date(r.returnRequest.initiatedAt),
+                type: 'RETURN',
+                amount: r.returnRequest.montant,
+                status: r.returnRequest.status,
+                label: `Retour Commande #${r.orderNumber}`,
+                icon: X,
+                color: r.returnRequest.status === 'REJETE' ? 'text-slate-400' : 'text-yellow-500',
+                bgColor: r.returnRequest.status === 'REJETE' ? 'bg-slate-500/10' : 'bg-yellow-500/10',
+                motifRejet: r.returnRequest.motifRejet
+            }))
+        ];
+        return entries.sort((a, b) => {
+            const dateA = a.date instanceof Date ? a.date.getTime() : new Date(a.date).getTime();
+            const dateB = b.date instanceof Date ? b.date.getTime() : new Date(b.date).getTime();
+            return dateB - dateA;
+        });
+    }, [history, clientReturns]);
+
     // New Client Modal State
     const [newName, setNewName] = React.useState("");
     const [newTel, setNewTel] = React.useState("");
@@ -568,52 +616,7 @@ export default function ClientsContent({ initialStats, initialClients }: Clients
                                     <h4 className="text-slate-700 dark:text-slate-100 font-semibold text-sm uppercase tracking-wider">Journal des Flux</h4>
 
                                     <div className="space-y-4">
-                                        {React.useMemo(() => {
-                                            const entries: any[] = [
-                                                ...history.payments.map(p => ({
-                                                    id: `pay-${p.id}`,
-                                                    date: p.createdAt,
-                                                    type: 'PAYMENT',
-                                                    amount: p.montantDzd || "0",
-                                                    label: p.typeAction === 'REMBOURSEMENT' ? 'Remboursement (Retour)' : 'Règlement de dette',
-                                                    icon: Wallet,
-                                                    color: 'text-emerald-500',
-                                                    bgColor: 'bg-emerald-500/10',
-                                                    oldBalance: p.oldBalanceDzd,
-                                                    newBalance: p.newBalanceDzd,
-                                                    receiptNumber: p.receiptNumber
-                                                })),
-                                                ...history.orders.map(o => ({
-                                                    id: `order-${o.id}`,
-                                                    date: o.createdAt,
-                                                    type: 'ORDER',
-                                                    amount: o.totalAmount || "0",
-                                                    resteAPayer: o.resteAPayer || "0",
-                                                    label: `Achat Commande #${o.orderNumber}`,
-                                                    icon: ShoppingCart,
-                                                    color: 'text-red-500',
-                                                    bgColor: 'bg-red-500/10',
-                                                    items: (o as any).items || []
-                                                })),
-                                                ...clientReturns.filter(r => r.returnRequest && r.returnRequest.status !== 'APPROUVE').map(r => ({
-                                                    id: `return-${r.orderId}`,
-                                                    date: new Date(r.returnRequest.initiatedAt),
-                                                    type: 'RETURN',
-                                                    amount: r.returnRequest.montant,
-                                                    status: r.returnRequest.status,
-                                                    label: `Retour Commande #${r.orderNumber}`,
-                                                    icon: X,
-                                                    color: r.returnRequest.status === 'REJETE' ? 'text-slate-400' : 'text-yellow-500',
-                                                    bgColor: r.returnRequest.status === 'REJETE' ? 'bg-slate-500/10' : 'bg-yellow-500/10',
-                                                    motifRejet: r.returnRequest.motifRejet
-                                                }))
-                                            ];
-                                            return entries.sort((a, b) => {
-                                                const dateA = a.date instanceof Date ? a.date.getTime() : new Date(a.date).getTime();
-                                                const dateB = b.date instanceof Date ? b.date.getTime() : new Date(b.date).getTime();
-                                                return dateB - dateA;
-                                            });
-                                        }, [history, clientReturns]).map((entry: any) => {
+                                        {journalEntries.map((entry: any) => {
                                             const Icon = entry.icon;
                                             return (
                                                 <div key={entry.id} className="group border-b border-slate-100 dark:border-slate-800/50 pb-4 last:border-0 last:pb-0">

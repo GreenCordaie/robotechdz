@@ -22,12 +22,6 @@ export default defineConfig({
             use: { ...devices["Desktop Chrome"] },
         },
     ],
-    webServer: {
-        // Le dev server est démarré par scripts/test-e2e.sh AVANT playwright,
-        // ici on dit juste à Playwright qu'il doit déjà être up.
-        command: "echo 'dev server should be already running on :3000'",
-        url: "http://localhost:4555",
-        reuseExistingServer: true,
-        timeout: 120_000,
-    },
+    // Note : pas de playwright.webServer — on assume que le dev server est
+    // déjà démarré externellement (par CI workflow ou en local manuel).
 });

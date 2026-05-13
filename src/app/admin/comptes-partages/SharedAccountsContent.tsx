@@ -588,7 +588,7 @@ export default function SharedAccountsContent() {
                                             )}
 
                                             <div className="space-y-1.5">
-                                                <label className="text-[10px] text-slate-500 uppercase font-black">Prix d'achat (Total Compte)</label>
+                                                <label className="text-[10px] text-slate-500 uppercase font-black">Prix d&apos;achat (Total Compte)</label>
                                                 <div className="flex gap-2">
                                                     <Input
                                                         placeholder="0.00"
@@ -1405,7 +1405,7 @@ export default function SharedAccountsContent() {
                                         />
                                     </div>
                                     <div className="space-y-2">
-                                        <label className="text-[10px] text-slate-500 uppercase font-black ml-1">Prix d'achat</label>
+                                        <label className="text-[10px] text-slate-500 uppercase font-black ml-1">Prix d&apos;achat</label>
                                         <div className="flex gap-2">
                                             <Input
                                                 placeholder="0.00"

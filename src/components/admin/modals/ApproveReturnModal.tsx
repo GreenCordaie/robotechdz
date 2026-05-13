@@ -91,7 +91,7 @@ export function ApproveReturnModal({ isOpen, onClose, order }: ApproveReturnModa
 
                     {/* Irreversible warning */}
                     <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                        ⚠️ Cette action est <strong>irréversible</strong>. L'approbation déclenchera le remboursement et la remise en stock des codes.
+                        ⚠️ Cette action est <strong>irréversible</strong>. L&apos;approbation déclenchera le remboursement et la remise en stock des codes.
                     </p>
 
                     {/* Reject reason */}

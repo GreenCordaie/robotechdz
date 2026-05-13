@@ -365,7 +365,7 @@ function LinkServiceModal({ isOpen, onClose, service, categories, onLinked }: Li
                     <div className="flex items-center gap-2 text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-xl p-3">
                         <ExternalLink size={14} />
                         <span>
-                            Stock virtuel — provisioning à la demande via LoadBrain. Le variant restera "instant delivery" pour les revendeurs.
+                            Stock virtuel — provisioning à la demande via LoadBrain. Le variant restera &laquo;instant delivery&raquo; pour les revendeurs.
                         </span>
                     </div>
                 </ModalBody>

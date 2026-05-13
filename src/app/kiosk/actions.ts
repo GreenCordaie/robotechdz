@@ -116,8 +116,7 @@ export async function getKioskData() {
     // Instead, we fetch products and join with a count of available codes.
 
     // Cache-aside: try to serve from Redis first
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const cached = await cacheGet<{ products: any[]; categories: any[] }>(CACHE_KEYS.KIOSK_CATALOGUE);
+    const cached = await cacheGet<{ products: unknown[]; categories: unknown[] }>(CACHE_KEYS.KIOSK_CATALOGUE);
     if (cached) return cached;
 
     // We fetch products and their variants
