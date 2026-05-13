@@ -211,13 +211,16 @@ export async function processCompletedTask(event: LoadBrainTaskEvent): Promise<v
     eventBus.publish(SystemEvent.ORDER_DELIVERED, { orderId: order.id });
 
     // EPIC 6.2 — auto-WhatsApp credentials ready si l'order est B2B (reseller)
-    // Fire-and-forget, no-op safe si WhatsApp non configuré ou pas de reseller.
-    if ((order as { resellerId?: number | null }).resellerId) {
+    // + EPIC 1 / Phase G — dispatch outbound webhook credentials.ready
+    // Fire-and-forget, no-op safe si WhatsApp/webhook non configurés.
+    const resellerIdMaybe = (order as { resellerId?: number | null }).resellerId;
+    if (resellerIdMaybe) {
         try {
             const { ResellerNotifications } = await import("@/services/reseller-notifications.service");
+            const { dispatchResellerEvent } = await import("@/services/webhook-dispatcher.service");
             const { resellers } = await import("@/db/schema");
             const reseller = await db.query.resellers.findFirst({
-                where: eq(resellers.id, (order as { resellerId: number }).resellerId),
+                where: eq(resellers.id, resellerIdMaybe),
             });
             if (reseller) {
                 const summary = ibosolMode
@@ -233,9 +236,19 @@ export async function processCompletedTask(event: LoadBrainTaskEvent): Promise<v
                 }).catch((err) => {
                     console.warn("[loadbrain] reseller notif failed (non-bloquant):", err);
                 });
+
+                dispatchResellerEvent(resellerIdMaybe, "credentials.ready", {
+                    orderNumber: order.orderNumber,
+                    orderId: order.id,
+                    deliveryMode: ibosolMode ? "ibosol" : "iptv",
+                    summary,
+                    partial,
+                }).catch((err) => {
+                    console.warn("[loadbrain] webhook dispatch failed (non-bloquant):", err);
+                });
             }
         } catch (err) {
-            console.warn("[loadbrain] reseller notif lookup failed:", err);
+            console.warn("[loadbrain] reseller notif/webhook lookup failed:", err);
         }
     }
 

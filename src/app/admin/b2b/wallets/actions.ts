@@ -201,6 +201,19 @@ export const adminRechargeWalletAction = withAuth(
                 });
             }
 
+            // EPIC 1 / Phase G — dispatch outbound webhook wallet.recharged
+            const { dispatchResellerEvent } = await import("@/services/webhook-dispatcher.service");
+            dispatchResellerEvent(input.resellerId, "wallet.recharged", {
+                amount: result.amount,
+                method: input.method,
+                referenceNumber: input.referenceNumber ?? null,
+                previousBalance: result.previousBalance,
+                newBalance: result.newBalance,
+                transactionId: result.transactionId,
+            }).catch((err) => {
+                console.warn("[recharge] webhook dispatch failed (non-bloquant):", err);
+            });
+
             return { success: true as const, data: result };
         } catch (err) {
             const message = err instanceof Error ? err.message : "Erreur recharge";

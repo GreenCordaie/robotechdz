@@ -332,6 +332,29 @@ export const resellers = pgTable("resellers", {
     createdAt: timestamp("created_at", { mode: 'date' }).defaultNow(),
 });
 
+// EPIC 1 / Phase G — Outbound webhooks reseller.
+// Permet aux revendeurs d'avoir leur propre app/bot qui écoute les events
+// (order.paid, credentials.ready, wallet.recharged). HMAC-SHA256 signé.
+export const resellerWebhooks = pgTable("reseller_webhooks", {
+    id: serial("id").primaryKey(),
+    resellerId: integer("reseller_id").references(() => resellers.id, { onDelete: "cascade" }).notNull(),
+    url: text("url").notNull(),
+    events: text("events").notNull(), // CSV : "order.paid,credentials.ready,wallet.recharged"
+    secret: text("secret").notNull(), // signature HMAC-SHA256
+    isActive: boolean("is_active").notNull().default(true),
+    lastFiredAt: timestamp("last_fired_at", { mode: "date" }),
+    lastStatusCode: integer("last_status_code"),
+    lastError: text("last_error"),
+    deliveriesOk: integer("deliveries_ok").notNull().default(0),
+    deliveriesFailed: integer("deliveries_failed").notNull().default(0),
+    createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
+}, (table) => {
+    return {
+        resellerIdIdx: index("rw_reseller_id_idx").on(table.resellerId),
+        isActiveIdx: index("rw_is_active_idx").on(table.isActive),
+    };
+});
+
 // EPIC 1 / Phase E — Reseller signup public.
 // Status PENDING (créé), APPROVED (user RESELLER + reseller + wallet créés),
 // REJECTED (motif obligatoire). L'admin valide manuellement (Phase J UI).

@@ -445,6 +445,18 @@ export const checkoutResellerAction = withAuth(
                 console.warn("[checkout] notification failed (non-bloquant):", err);
             });
 
+            // 9. EPIC 1 / Phase G — dispatch outbound webhooks (no-op si pas d'abonnement)
+            const { dispatchResellerEvent } = await import("@/services/webhook-dispatcher.service");
+            dispatchResellerEvent(reseller.id, "order.paid", {
+                orderNumber: res.orderNumber,
+                orderId: res.id,
+                totalAmount,
+                itemCount: totalItems,
+                hasInstantDelivery: hasInstant,
+            }).catch((err) => {
+                console.warn("[checkout] webhook dispatch failed (non-bloquant):", err);
+            });
+
             return { success: true, orderNumber: res.orderNumber };
         } catch (error) {
             console.error("Checkout error:", error);
