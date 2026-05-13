@@ -44,6 +44,12 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      - name: Pack LoadBrain stubs into expected tgz paths
+        # Le package.json référence ../LoadBrain/dist-packages/*.tgz (privés, non
+        # commités). En CI on remplace par des stubs no-op du repo qui satisfont
+        # juste les imports statiques. Le code applicatif n'appelle JAMAIS ces
+        # SDK quand LOADBRAIN_API_KEY est vide (cas du CI).
+        run: bash scripts/ci-pack-loadbrain-stubs.sh
       - name: Install deps
         run: npm ci --legacy-peer-deps
       - name: TypeScript strict (NO ignoreBuildErrors)
@@ -133,6 +139,9 @@ jobs:
         with:
           node-version: 22
           cache: npm
+
+      - name: Pack LoadBrain stubs into expected tgz paths
+        run: bash scripts/ci-pack-loadbrain-stubs.sh
 
       - name: Install deps
         run: npm ci --legacy-peer-deps
