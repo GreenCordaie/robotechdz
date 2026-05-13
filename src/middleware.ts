@@ -34,19 +34,22 @@ export async function middleware(request: NextRequest) {
         response.headers.set(key, value);
     });
 
-    // Login page logic (already implemented but kept for flow)
-    if (path === "/admin/login" || path === "/reseller/login") {
+    // Pages publiques sous /admin/* ou /reseller/* (login + signup public B2B)
+    const PUBLIC_RESELLER_PATHS = ["/admin/login", "/reseller/login", "/reseller/signup"];
+    if (PUBLIC_RESELLER_PATHS.includes(path)) {
         const session = request.cookies.get("session")?.value;
         if (session) {
             try {
                 const parsed = await decrypt(session);
                 const role = parsed.userRole;
+                // Login pages : redirect vers dashboard si déjà loggé
                 if (path === "/admin/login" && role !== UserRole.RESELLER) {
                     return NextResponse.redirect(new URL("/admin/dashboard", request.url));
                 }
                 if (path === "/reseller/login" && role === UserRole.RESELLER) {
                     return NextResponse.redirect(new URL("/reseller/dashboard", request.url));
                 }
+                // /reseller/signup : reste accessible même loggé (lien depuis B2B page)
             } catch (e) { }
         }
         return response;

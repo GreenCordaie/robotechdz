@@ -332,6 +332,33 @@ export const resellers = pgTable("resellers", {
     createdAt: timestamp("created_at", { mode: 'date' }).defaultNow(),
 });
 
+// EPIC 1 / Phase E — Reseller signup public.
+// Status PENDING (créé), APPROVED (user RESELLER + reseller + wallet créés),
+// REJECTED (motif obligatoire). L'admin valide manuellement (Phase J UI).
+export const resellerSignupRequests = pgTable("reseller_signup_requests", {
+    id: serial("id").primaryKey(),
+    email: text("email").notNull(),
+    companyName: text("company_name").notNull(),
+    contactPhone: text("contact_phone").notNull(),
+    nif: text("nif"), // Numéro d'identification fiscale (optionnel)
+    rcNumber: text("rc_number"), // Registre du Commerce (optionnel)
+    message: text("message"), // pourquoi devenir reseller (optionnel)
+    status: text("status").notNull().default("PENDING"), // 'PENDING' | 'APPROVED' | 'REJECTED'
+    rejectedReason: text("rejected_reason"),
+    processedAt: timestamp("processed_at", { mode: "date" }),
+    processedByUserId: integer("processed_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    createdResellerId: integer("created_reseller_id").references(() => resellers.id, { onDelete: "set null" }),
+    ipAddress: text("ip_address"),
+    userAgent: text("user_agent"),
+    createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
+}, (table) => {
+    return {
+        statusIdx: index("rsr_status_idx").on(table.status),
+        emailIdx: index("rsr_email_idx").on(table.email),
+        createdAtIdx: index("rsr_created_at_idx").on(table.createdAt),
+    };
+});
+
 export const resellerWallets = pgTable("reseller_wallets", {
     id: serial("id").primaryKey(),
     resellerId: integer("reseller_id").references(() => resellers.id, { onDelete: "cascade" }).notNull(),
