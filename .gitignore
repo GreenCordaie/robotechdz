@@ -21,6 +21,8 @@ public/uploads/*
 # Ignored SQL dumps and tmp scripts with secrets
 tmp/
 *.sql
+# Mais les migrations Drizzle officielles doivent être trackées
+!drizzle/*.sql
 
 # TypeScript incremental build cache (artefact, ne doit jamais être tracké)
 tsconfig.tsbuildinfo

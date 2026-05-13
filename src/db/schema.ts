@@ -45,6 +45,9 @@ export const productVariants = pgTable("product_variants", {
     totalSlots: integer("total_slots").default(1).notNull(),
     loadbrainSlug: text("loadbrain_slug"), // ex: "iptv-12m" → mappe vers plan LoadBrain
     kioskVisible: boolean("kiosk_visible").notNull().default(true),
+    // EPIC 1 — Marketplace B2B
+    resellerVisible: boolean("reseller_visible").notNull().default(true),
+    resellerPriceOverrideDzd: numeric("reseller_price_override_dzd", { precision: 10, scale: 2 }),
 }, (table) => {
     return {
         productIdIdx: index("product_id_idx").on(table.productId),
@@ -303,6 +306,20 @@ export const supplierTransactions = pgTable("supplier_transactions", {
     };
 });
 
+// EPIC 1 — Tier System (Bronze / Silver / Gold etc.)
+// Discount appliqué EN PLUS du customDiscount éventuel sur reseller.
+// minMonthlyVolumeDzd = volume d'achat mensuel requis pour atteindre ce tier.
+export const resellerTiers = pgTable("reseller_tiers", {
+    id: serial("id").primaryKey(),
+    name: text("name").notNull().unique(), // 'BRONZE', 'SILVER', 'GOLD', ...
+    discountPct: numeric("discount_pct", { precision: 5, scale: 2 }).notNull().default("0"),
+    minMonthlyVolumeDzd: numeric("min_monthly_volume_dzd", { precision: 12, scale: 2 }).notNull().default("0"),
+    color: text("color").default("#94a3b8"), // hex pour badge UI
+    isDefault: boolean("is_default").notNull().default(false), // tier auto-assigné aux nouveaux reseller
+    rank: integer("rank").notNull().default(0), // ordre d'affichage / progression
+    createdAt: timestamp("created_at", { mode: 'date' }).defaultNow(),
+});
+
 export const resellers = pgTable("resellers", {
     id: serial("id").primaryKey(),
     userId: integer("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
@@ -310,6 +327,8 @@ export const resellers = pgTable("resellers", {
     contactPhone: text("contact_phone"),
     customDiscount: numeric("custom_discount", { precision: 5, scale: 2 }), // Override global discount
     status: text("status").default("ACTIVE").notNull(), // 'ACTIVE', 'SUSPENDED'
+    // EPIC 1 — Tier system. NULL = tier par défaut (résolu côté service).
+    tierId: integer("tier_id").references(() => resellerTiers.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at", { mode: 'date' }).defaultNow(),
 });
 
@@ -586,7 +605,15 @@ export const resellersRelations = relations(resellers, ({ one, many }) => ({
         fields: [resellers.id],
         references: [resellerWallets.resellerId],
     }),
+    tier: one(resellerTiers, {
+        fields: [resellers.tierId],
+        references: [resellerTiers.id],
+    }),
     orders: many(orders),
+}));
+
+export const resellerTiersRelations = relations(resellerTiers, ({ many }) => ({
+    resellers: many(resellers),
 }));
 
 export const resellerWalletsRelations = relations(resellerWallets, ({ one, many }) => ({
