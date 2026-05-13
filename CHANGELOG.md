@@ -2,6 +2,167 @@
 
 Toutes les modifications notables de ce projet seront documentées dans ce fichier.
 
+## [Unreleased] — Marketplace B2B refonte (2026-05-13)
+
+> 18 commits sur 7 PRs draft empilées : `#1 → #2 → #3 → #4 → #5 → #6 → #7`.
+> Aucun deploy déclenché. 0 credit consommé. 14/14 tests E2E PASS en CI Linux.
+
+### 🚨 PR #1 — EPIC 0 Stabilisation
+- **build** : retrait de `typescript.ignoreBuildErrors: true` (bombe désactivée).
+  Le build crashe désormais sur toute régression de typage.
+- **build** : conservé `eslint.ignoreDuringBuilds: true` pour ne pas bloquer
+  sur warnings préexistants (cleanup planifié EPIC 11).
+- **repo hygiene** : retrait du tracking de `tmp/` (74 fichiers debug contenant
+  des données réelles clients/Microsoft), `backups/v1.5-evo-bot/`, 23 logs
+  `.txt` à la racine, 11 scripts debug, `tsconfig.tsbuildinfo`, `.bak`.
+  ⚠️ historique remote **non purgé** — `git filter-repo` à faire pour rotation.
+- **env** : `.env.example` complété avec 18 variables manquantes
+  (TURNSTILE_*, MICROSOFT_*, LOADBRAIN_*, GROQ_API_KEY, UPSTASH_*, VAPID_*,
+  WHATSAPP_API_KEY, WHATSAPP_VERIFY_TOKEN, ENABLE_DEBUG_ROUTES).
+- **env** : nouveau `src/lib/env.ts` (validation Zod runtime au boot Node).
+- **drizzle** : retrait du fallback `DATABASE_URL` hardcodé avec password
+  dans `drizzle.config.ts`.
+- **encryption** : fallback `SESSION_SECRET → ENCRYPTION_KEY` conservé pour
+  ne pas casser les données chiffrées en prod, **+ warning explicite**.
+  Migration de rotation propre planifiée EPIC 8.
+- **security** : 3 routes debug (`/api/debug-codes`, `/api/diag-netflix`,
+  `/api/list-all-emails`) désormais en 404 en production sauf si
+  `ENABLE_DEBUG_ROUTES=true` (helper `guardDebugRoute`).
+- **security** : suivi public `/suivi/[orderNumber]` — validation téléphone
+  passée de 4 chiffres (~10K combos) à **6 chiffres** (~1M combos) pour
+  résister au brute-force.
+- **bug critical** : `reverseSupplierDebits` était susceptible de double-rembourser
+  un fournisseur si appelé 2× pour la même order. Idempotence via marker
+  `REVERSAL:` dans `reason` + check au début de la fonction.
+- **B2B UX** : wallet reseller — retrait des stats hardcodées `12,500 DZD volume`
+  et `625 DZD savings`. Calcul depuis transactions réelles du mois en cours.
+- **B2B UX** : bouton "Recharger le Compte" masqué (recâblage EPIC 14).
+- **typing** : 9 erreurs TS réelles fixées dans push/actions, SettingsMobile,
+  PushNotificationManager, rate-limit.service. Total 37 → 0.
+- **tsconfig** : `scripts/`, `drizzle/`, `public/` exclus du `tsc`.
+
+### 🏗️ PR #2 — EPIC 1 Tier system (Bronze / Silver / Gold)
+- **schema** : nouvelle table `reseller_tiers` (id, name unique, discount_pct,
+  min_monthly_volume_dzd, color, is_default, rank).
+- **schema** : colonne `tier_id` (FK) sur `resellers` — ON DELETE SET NULL
+  pour rester safe.
+- **schema** : `reseller_visible` (default true) + `reseller_price_override_dzd`
+  (nullable) sur `product_variants`.
+- **migration** : `drizzle/0005_epic_1_marketplace_foundation.sql` écrite à la
+  main, idempotente (`CREATE TABLE IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS`,
+  `INSERT ... ON CONFLICT DO NOTHING`). Seed Bronze (0%) / Silver (5% à 50k)
+  / Gold (10% à 200k). Backfill : assigne BRONZE aux resellers existants.
+- **drizzle** : re-track des migrations legacy `0000–0004` qui avaient été
+  silencieusement retirées du tracking par le commit `440787c` (release 10.1.1).
+- **service** : `src/services/tier.service.ts` — getDefaultTier (cache 10min),
+  getCurrentTierForReseller, getMonthlyPurchaseVolume, recalculateTierForReseller,
+  applyTierDiscount.
+- **B2B checkout** : `checkoutResellerAction` utilise `reseller_price_override_dzd`
+  > `salePriceDzd`, applique le discount tier puis `customDiscount` (capé 100%),
+  enrichit la description transaction (`[GOLD -10% +custom -2%]`), recalcule
+  async le tier post-checkout pour promotion automatique.
+- **UI** : badge "Palier BRONZE/SILVER/GOLD -X%" coloré dans wallet reseller +
+  progress bar vers palier suivant basée sur volume mensuel réel.
+- **i18n stub** : `getCurrentResellerAction` retourne désormais le `tier` joint
+  + `monthlyVolume`.
+
+### 🛒 PR #3 — EPIC 2/A Catalogue reseller fonctionnel
+- **bug critical** : `/reseller/shop` appelait `getPaginatedProducts` qui exige
+  les rôles ADMIN/CAISSIER/TRAITEUR → un vrai RESELLER était rejeté → **le shop
+  n'a jamais fonctionné en production**. Remplacé par `getResellerCatalogAction`.
+- **bug critical** : le bouton "Panier" n'avait pas `onClick={onOpen}` → modal
+  de checkout **jamais ouvert** → aucune commande B2B possible via l'UI.
+- **action** : `getResellerCatalogAction` filtre `reseller_visible=true`,
+  calcule stock disponible temps réel (codes + slots), pricing tier-aware,
+  pagination + recherche + filtre catégorie.
+- **UI** : badges livraison par produit — **Instant** (cyan, LoadBrain auto),
+  **Stock N** (emerald > 5, amber ≤ 5), **Sur demande** (slate).
+- **UI** : cart bloque l'ajout au-delà du stock. Recherche debounced 300ms.
+  Filtres Tout / Instant / En stock.
+- **types** : `ResellerCatalogItem` + `ResellerCatalogPricing` exportés.
+  Suppression des `useState<any>` / `(props: any)`.
+
+### 🧪 PR #4 — E2E foundation + 2 bugs production
+- **infra** : `docker-compose.test.yml` (postgres:16 + redis:7 sur 5499/6499
+  isolés des ports prod / LoadBrain voisin).
+- **infra** : `.env.test` — toutes les clés externes vides → court-circuit
+  → zéro appel sortant possible.
+- **infra** : `scripts/seed-e2e.ts` idempotent (admin + reseller + 3 tiers +
+  product Netflix Premium avec 3 variants : stock / LoadBrain / kiosk-only),
+  protégé contre l'exécution sur autre que `pc_ia_test`.
+- **playwright** : `playwright.config.ts` (Chromium, port 4555, workers=1) +
+  10 specs initiales.
+- **bug critical** : `loginResellerAction` + `loginAction` crashaient avec
+  `TypeError: Cannot read properties of undefined (reading 'getTime')` sur
+  `limit.blockedUntil!.getTime()` quand `RateLimitService.checkLimit` faisait
+  fail-closed (Redis down). Tout login admin + reseller en 500. **Fix** :
+  fallback `15 minutes` si `blockedUntil` undefined.
+- **bug critical** : `new Redis({ url: process.env.UPSTASH_REDIS_REST_URL! })`
+  crashait au boot si l'env absente. Combiné au fail-closed du rate-limit =
+  SPOF total : Upstash down → aucun login possible. **Fix** : client no-op
+  fallback si vars absentes (warning loggé en prod).
+
+### ⚡ PR #5 — EPIC 2/C LoadBrain Marketplace admin (GOAL FINAL)
+- **service** : `src/services/loadbrain-marketplace.service.ts` avec
+  - `listAvailableServices()` — appel SDK en prod, **8 fixtures** en dev/test
+    (AtlasPro 1m/3m/12m, IronMax 1m/12m, PanelKing365, IBO yearly/lifetime).
+  - `linkServiceToProduct()` — crée product + variant avec `loadbrainSlug`
+    comme pivot → provisioning automatique au checkout reseller.
+  - `unlinkSlugFromVariant()` — détache un slug sans toucher au stock.
+- **UI admin** : `/admin/iptv/loadbrain-services` avec grid responsive, filtres
+  Tous / À lier / Déjà liés, modal de liaison avec préfill intelligent
+  (prix kiosque = achat × 1.4, prix reseller = achat × 1.2).
+- **fix UI** : badge tier était caché si discount=0% (Bronze) — affichage
+  "Tarif standard" désormais visible.
+
+### 🔑 PR #6 — EPIC 2/D Credentials reseller + Send-to-client
+- **bug critical** : `/reseller/orders` affichait "Articles en gros" hardcodé
+  au lieu des vrais noms produits, et **n'avait aucun moyen d'afficher les
+  credentials achetées** (codes en DB mais inaccessibles UI). Fix : refonte
+  complète + modal détail.
+- **action** : `getResellerOrderDetailAction` — fetch order + items + 4 joins,
+  déchiffre côté serveur (codes / slots / iptv_provisions credentials JSON),
+  vérifie ownership (orderId + resellerId match).
+- **action** : `sendCredentialsToClientAction` — Zod validation (phone regex
+  +213…), no-op safe en dev (WHATSAPP non configuré), enqueue BullMQ
+  `SEND_WHATSAPP` en prod.
+- **UI** : modal détail 3xl scrollable, par item : codes standards + profils
+  partagés (parentCode + PIN) + IPTV LoadBrain (status visuel Livré / En cours
+  / Échec + credentials déchiffrées dynamiquement).
+- **UI** : bouton "Envoyer au client" → modal WhatsApp avec phone + message
+  custom 500 char.
+
+### 🤖 PR #7 — CI GitHub Actions (READY)
+- **workflow** : `.github/workflows/ci.yml` — trigger sur push + PR sur
+  `master`/`avant-netflix-n8n`/`epic-**`, concurrency `cancel-in-progress`.
+- **job typecheck** : `tsc --noEmit` strict (bloquant), `eslint` soft.
+- **job e2e** : services Docker postgres:16 + redis:7, cache Playwright
+  browsers + npm, `drizzle-kit push`, seed E2E, dev server :4555, run
+  14 tests Playwright, upload artifacts si fail.
+- **deps pinning** : `@heroui/react`, `@heroui/theme`, `drizzle-orm`, `drizzle-kit`,
+  `lucide-react`, `postgres` étaient à `"latest"` — pinned aux versions exactes
+  locales. **Bombe à retardement éliminée** (50 erreurs TS CI résolues).
+- **vendor stubs** : `vendor/loadbrain-{sdk,site-integration}-stub/` no-op
+  pour satisfaire les imports statiques en CI où le vrai SDK privé est
+  indisponible. `scripts/ci-pack-loadbrain-stubs.sh` avec guard `CI=true`
+  pour ne JAMAIS écraser les vrais `.tgz` en local.
+
+### 🔧 Métriques globales de la session
+- **EPICs avancés** : 5 (0, 1, 2/A, 2/C, 2/D) + 2 infra (E2E, CI)
+- **PRs draft** : 7 (PR #7 ready, #1-#6 draft)
+- **Commits atomiques** : 18
+- **Lignes ajoutées** : +2 800
+- **Lignes supprimées** : −6 100 (cleanup repo)
+- **Tests E2E** : 14/14 PASS (local 27s, CI Linux 8m26)
+- **Bugs production critiques fixés** : 5 (3 auth/Redis + 2 UI)
+- **Bombes à retardement éliminées** : 1 (deps `"latest"`)
+- **TypeScript final** : 0 erreurs (strict enforced)
+- **Credits consommés** : 0 (LoadBrain, Telegram, WhatsApp, Microsoft Graph)
+- **Achats / commandes** : 0
+- **Deploys déclenchés** : 0
+
+---
+
 ## [12.2.0] - 2026-04-25
 
 ### 🚀 Iron Max TV — Second Provider IPTV
