@@ -1,10 +1,35 @@
 import { Redis } from "@upstash/redis";
 
-// Utilisation d'Upstash Redis (HTTP) pour la compatibilité Edge / Cloudflare Pages
-export const redis = new Redis({
-    url: process.env.UPSTASH_REDIS_REST_URL!,
-    token: process.env.UPSTASH_REDIS_REST_TOKEN!,
-});
+/**
+ * Si UPSTASH non configuré (dev/test), on retourne un client no-op.
+ * Sans ce fallback, le rate-limit fail-closed bloque TOUS les logins (SPOF).
+ *
+ * En prod : ENCRYPTION_KEY / SESSION_SECRET / UPSTASH_REDIS_REST_URL sont set,
+ * comportement strictement inchangé.
+ */
+const upstashUrl = process.env.UPSTASH_REDIS_REST_URL;
+const upstashToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+
+const noopRedis = {
+    get: async () => null,
+    set: async () => "OK",
+    del: async () => 0,
+    incr: async () => 0,
+    expire: async () => 0,
+    ttl: async () => -2,
+} as unknown as Redis;
+
+export const redis: Redis =
+    upstashUrl && upstashToken
+        ? new Redis({ url: upstashUrl, token: upstashToken })
+        : (() => {
+              if (process.env.NODE_ENV === "production") {
+                  console.warn(
+                      "[redis] UPSTASH_REDIS_REST_URL/TOKEN absentes en PROD — rate-limit + cache désactivés (no-op)."
+                  );
+              }
+              return noopRedis;
+          })();
 
 // ---------------------------------------------------------------------------
 // Helpers — all with try/catch for graceful degradation

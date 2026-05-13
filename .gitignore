@@ -57,3 +57,5 @@ definitive_lint.txt
 
 # E2E orphelins (à formaliser ou supprimer)
 scripts/noop.js
+/test-results/
+/playwright-report/

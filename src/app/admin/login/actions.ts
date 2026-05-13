@@ -67,7 +67,10 @@ export async function loginAction(formData: FormData) {
         // 0. Rate Limit Check
         const limit = await checkRateLimit(email);
         if (limit.isBlocked) {
-            return { success: false, error: `Trop de tentatives. Réessayez dans ${Math.ceil((limit.blockedUntil!.getTime() - Date.now()) / 60000)} minutes.` };
+            const minutes = limit.blockedUntil
+                ? Math.ceil((limit.blockedUntil.getTime() - Date.now()) / 60000)
+                : 15;
+            return { success: false, error: `Trop de tentatives. Réessayez dans ${minutes} minutes.` };
         }
 
         const userList = await db.select().from(users).where(eq(users.email, email)).limit(1);

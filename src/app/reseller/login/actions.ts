@@ -57,7 +57,10 @@ export async function loginResellerAction(email: string, pin: string, honeypot?:
         // 0. Rate Limit Check
         const limit = await checkRateLimit(email);
         if (limit.isBlocked) {
-            return { success: false, error: `Trop de tentatives. Réessayez dans ${Math.ceil((limit.blockedUntil!.getTime() - Date.now()) / 60000)} minutes.` };
+            const minutes = limit.blockedUntil
+                ? Math.ceil((limit.blockedUntil.getTime() - Date.now()) / 60000)
+                : 15;
+            return { success: false, error: `Trop de tentatives. Réessayez dans ${minutes} minutes.` };
         }
 
         // Find user by email and role RESELLER

@@ -1,0 +1,40 @@
+# Stack isolée pour tests E2E sans toucher la prod ni consommer de credits.
+# Ports exposés volontairement DIFFÉRENTS de prod (5433 / 6380) pour éviter
+# tout conflit accidentel avec un postgres/redis local éventuel.
+
+name: pc-ia-test
+
+services:
+  postgres-test:
+    image: postgres:16-alpine
+    container_name: pc-ia-test-postgres
+    restart: "no"
+    environment:
+      POSTGRES_USER: testuser
+      POSTGRES_PASSWORD: testpass
+      POSTGRES_DB: pc_ia_test
+    ports:
+      - "5499:5432"
+    volumes:
+      - pc-ia-test-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U testuser -d pc_ia_test"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+  redis-test:
+    image: redis:7-alpine
+    container_name: pc-ia-test-redis
+    restart: "no"
+    ports:
+      - "6499:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pc-ia-test-pgdata:
+    name: pc-ia-test-pgdata
