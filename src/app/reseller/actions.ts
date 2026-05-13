@@ -59,11 +59,202 @@ export const getResellerOrdersAction = withAuth(
             const list = await db.query.orders.findMany({
                 where: eq(orders.resellerId, reseller.id),
                 orderBy: [desc(orders.createdAt)],
-                with: { items: true }
+                with: {
+                    items: {
+                        with: {
+                            variant: { with: { product: true } },
+                        },
+                    },
+                },
             });
-            return { success: true, data: list };
+            // Compte des items pour affichage liste rapide
+            const enriched = list.map((o) => ({
+                ...o,
+                itemCount: o.items.reduce((acc, it) => acc + (it.quantity ?? 0), 0),
+                productNames: o.items
+                    .map((it) => (it.variant as { product?: { name?: string } } | null)?.product?.name ?? it.name)
+                    .filter(Boolean)
+                    .slice(0, 3),
+            }));
+            return { success: true, data: enriched };
         } catch (error) {
             return { success: false, error: "Erreur lors de la récupération des commandes" };
+        }
+    }
+);
+
+export const getResellerOrderDetailAction = withAuth(
+    {
+        roles: [UserRole.RESELLER],
+        schema: z.object({ orderId: z.number().int().positive() }),
+    },
+    async ({ orderId }, user) => {
+        try {
+            const reseller = await db.query.resellers.findFirst({ where: eq(resellers.userId, user.id) });
+            if (!reseller) return { success: false as const, error: "Compte revendeur introuvable" };
+
+            const { decrypt } = await import("@/lib/encryption");
+            const { digitalCodes, digitalCodeSlots, iptvProvisions } = await import("@/db/schema");
+
+            const order = await db.query.orders.findFirst({
+                where: and(eq(orders.id, orderId), eq(orders.resellerId, reseller.id)),
+                with: {
+                    items: {
+                        with: {
+                            variant: { with: { product: true } },
+                            codes: true,
+                            slots: { with: { digitalCode: true } },
+                        },
+                    },
+                },
+            });
+
+            if (!order) return { success: false as const, error: "Commande introuvable ou accès refusé" };
+
+            const iptv = await db.query.iptvProvisions.findMany({
+                where: eq(iptvProvisions.orderId, order.id),
+            });
+
+            const itemsWithCredentials = order.items.map((item) => {
+                const itemIptv = iptv.filter((p) => p.orderItemId === item.id);
+                const codes = (item as { codes?: Array<{ code: string }> }).codes ?? [];
+                const slots = (item as { slots?: Array<{ slotNumber: number; code: string | null; digitalCode?: { code: string } | null }> }).slots ?? [];
+                const variant = (item as { variant?: { product?: { name?: string } } }).variant;
+
+                return {
+                    id: item.id,
+                    name: item.name,
+                    productName: variant?.product?.name ?? item.name,
+                    quantity: item.quantity,
+                    price: item.price,
+                    standardCodes: codes
+                        .map((c) => {
+                            try {
+                                return decrypt(c.code);
+                            } catch {
+                                return null;
+                            }
+                        })
+                        .filter((v): v is string => !!v),
+                    sharedSlots: slots.map((s) => {
+                        let parentCode: string | null = null;
+                        let slotPin: string | null = null;
+                        try {
+                            parentCode = s.digitalCode ? decrypt(s.digitalCode.code) : null;
+                        } catch {
+                            parentCode = null;
+                        }
+                        try {
+                            slotPin = s.code ? decrypt(s.code) : null;
+                        } catch {
+                            slotPin = null;
+                        }
+                        return {
+                            slotNumber: s.slotNumber,
+                            parentCode,
+                            pin: slotPin,
+                        };
+                    }),
+                    iptvProvisions: itemIptv.map((p) => {
+                        let credentials: unknown = null;
+                        if (p.credentialsEncrypted) {
+                            try {
+                                const dec = decrypt(p.credentialsEncrypted);
+                                credentials = dec ? JSON.parse(dec) : null;
+                            } catch {
+                                credentials = null;
+                            }
+                        }
+                        return {
+                            id: p.id,
+                            status: p.status,
+                            error: p.error,
+                            loadbrainSlug: p.loadbrainSlug,
+                            credentials,
+                            completedAt: p.completedAt,
+                        };
+                    }),
+                };
+            });
+
+            return {
+                success: true as const,
+                data: {
+                    id: order.id,
+                    orderNumber: order.orderNumber,
+                    status: order.status,
+                    totalAmount: order.totalAmount,
+                    createdAt: order.createdAt,
+                    items: itemsWithCredentials,
+                },
+            };
+        } catch (error) {
+            console.error("[reseller] getOrderDetail failed:", error);
+            return { success: false as const, error: "Erreur serveur" };
+        }
+    }
+);
+
+export const sendCredentialsToClientAction = withAuth(
+    {
+        roles: [UserRole.RESELLER],
+        schema: z.object({
+            orderId: z.number().int().positive(),
+            customerPhone: z
+                .string()
+                .min(8)
+                .max(20)
+                .regex(/^\+?[0-9\s]+$/, "Numéro de téléphone invalide"),
+            customMessage: z.string().max(500).optional(),
+        }),
+    },
+    async ({ orderId, customerPhone, customMessage }, user) => {
+        const reseller = await db.query.resellers.findFirst({ where: eq(resellers.userId, user.id) });
+        if (!reseller) return { success: false as const, error: "Compte revendeur introuvable" };
+
+        const order = await db.query.orders.findFirst({
+            where: and(eq(orders.id, orderId), eq(orders.resellerId, reseller.id)),
+        });
+        if (!order) return { success: false as const, error: "Commande introuvable" };
+        if (order.status !== "PAYE" && order.status !== "LIVRE" && order.status !== "TERMINE") {
+            return { success: false as const, error: "Commande pas encore livrée" };
+        }
+
+        // Mode test / dev / WhatsApp non configuré : no-op success.
+        // En prod la WhatsApp API sera appelée via le worker (à câbler en Phase D2).
+        const whatsappConfigured = !!process.env.WHATSAPP_API_URL && !!process.env.WHATSAPP_API_KEY;
+
+        if (!whatsappConfigured) {
+            return {
+                success: true as const,
+                data: {
+                    delivered: false,
+                    queuedForLater: false,
+                    reason: "WhatsApp non configuré sur le serveur (mode dev). Aucun envoi effectué.",
+                },
+            };
+        }
+
+        // En prod, on délègue au worker BullMQ (existant) pour ne pas bloquer la response.
+        try {
+            const { addNotificationJob, NotificationJobType } = await import("@/lib/queue");
+            await addNotificationJob(NotificationJobType.SEND_WHATSAPP, {
+                phone: customerPhone,
+                orderNumber: order.orderNumber,
+                customMessage: customMessage ?? null,
+                source: "reseller-resend",
+                resellerId: reseller.id,
+            });
+            return {
+                success: true as const,
+                data: {
+                    delivered: false,
+                    queuedForLater: true,
+                    reason: "Envoi WhatsApp mis en queue. Status visible dans la prochaine version du dashboard.",
+                },
+            };
+        } catch (err) {
+            return { success: false as const, error: "Échec de mise en queue WhatsApp" };
         }
     }
 );
