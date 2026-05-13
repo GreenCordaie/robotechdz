@@ -4,6 +4,13 @@ import React, { useState, useEffect, useMemo } from "react";
 import {
     Card,
     Spinner,
+    Button,
+    Modal,
+    ModalContent,
+    ModalHeader,
+    ModalBody,
+    ModalFooter,
+    useDisclosure,
 } from "@heroui/react";
 import {
     Wallet,
@@ -13,11 +20,17 @@ import {
     TrendingUp,
     ShieldCheck,
     Copy,
-    Building2
+    Building2,
+    Plus,
+    MessageCircle,
+    HandCoins,
+    CreditCard,
+    Landmark,
 } from "lucide-react";
 import { getCurrentResellerAction, getResellerTransactionsAction } from "../actions";
 import { formatCurrency, formatDate } from "@/lib/formatters";
 import { toast } from "react-hot-toast";
+import { useSettingsStore } from "@/store/useSettingsStore";
 
 interface ResellerWalletData {
     id: number;
@@ -56,6 +69,10 @@ export default function ResellerWallet() {
     const [reseller, setReseller] = useState<ResellerData | null>(null);
     const [transactions, setTransactions] = useState<ResellerTransaction[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const rechargeInfoModal = useDisclosure();
+    const shopName = useSettingsStore((s) => s.shopName);
+    const shopTel = useSettingsStore((s) => s.shopTel);
+    const shopAddress = useSettingsStore((s) => s.shopAddress);
 
     useEffect(() => {
         const loadData = async () => {
@@ -138,11 +155,14 @@ export default function ResellerWallet() {
                     </h1>
                     <p className="text-slate-500 font-medium mt-1 uppercase tracking-widest text-[10px]">Gérez votre crédit et vos transactions</p>
                 </div>
-                {/*
-                    Bouton "Recharger le Compte" temporairement masqué.
-                    À recâbler en EPIC 14 (intégration paiement CIB / Edahabia / virement / espèces admin).
-                    Voir docs/superpowers/plans/2026-05-13-epic-0-stabilization.md.
-                */}
+                <Button
+                    onPress={rechargeInfoModal.onOpen}
+                    className="bg-[var(--primary)] text-white font-black px-6 h-14 rounded-2xl shadow-xl shadow-orange-950/20"
+                    startContent={<Plus size={18} />}
+                    data-testid="recharge-info-btn"
+                >
+                    Recharger le compte
+                </Button>
             </div>
 
             {isLoading ? (
@@ -298,6 +318,107 @@ export default function ResellerWallet() {
                     </div>
                 </div>
             )}
+
+            {/* Modal d'instructions pour recharge manuelle */}
+            <Modal
+                isOpen={rechargeInfoModal.isOpen}
+                onClose={rechargeInfoModal.onClose}
+                size="lg"
+                classNames={{
+                    base: "bg-[#0f0d0c] border border-[#2d2622] rounded-[32px]",
+                    header: "border-b border-[#2d2622]",
+                    footer: "border-t border-[#2d2622]",
+                }}
+            >
+                <ModalContent>
+                    {(close) => (
+                        <>
+                            <ModalHeader>
+                                <div className="flex items-center gap-3">
+                                    <Plus className="text-[var(--primary)]" />
+                                    <div>
+                                        <h2 className="text-xl font-black text-white">Recharger votre wallet</h2>
+                                        <p className="text-xs text-slate-500 font-medium mt-0.5">
+                                            La recharge se fait directement avec {shopName || "l'admin"}.
+                                        </p>
+                                    </div>
+                                </div>
+                            </ModalHeader>
+                            <ModalBody className="space-y-5">
+                                <div className="space-y-3">
+                                    <p className="text-sm text-slate-300 leading-relaxed">
+                                        Pour créditer votre wallet, contactez l&apos;équipe avec le montant souhaité et
+                                        le moyen de paiement parmi :
+                                    </p>
+                                    <ul className="space-y-2 pl-1">
+                                        <PaymentMethodRow icon={<HandCoins size={16} />} label="Espèces en boutique" />
+                                        <PaymentMethodRow icon={<CreditCard size={16} />} label="Carte CIB" />
+                                        <PaymentMethodRow icon={<CreditCard size={16} />} label="Carte Edahabia" />
+                                        <PaymentMethodRow icon={<Landmark size={16} />} label="Virement bancaire" />
+                                    </ul>
+                                </div>
+
+                                {(shopTel || shopAddress) && (
+                                    <div className="pt-4 border-t border-white/5 space-y-2">
+                                        <h3 className="text-[10px] uppercase font-black tracking-widest text-slate-500">
+                                            Coordonnées
+                                        </h3>
+                                        {shopTel && (
+                                            <div className="bg-[#161616] border border-[#262626] rounded-xl p-3 flex items-center justify-between">
+                                                <div>
+                                                    <p className="text-[9px] text-slate-500 font-black uppercase tracking-widest">
+                                                        Téléphone / WhatsApp
+                                                    </p>
+                                                    <p className="text-white font-bold">{shopTel}</p>
+                                                </div>
+                                                <a
+                                                    href={`https://wa.me/${shopTel.replace(/\D/g, "")}`}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25 font-bold text-xs px-3 py-2 rounded-lg border border-emerald-500/30 flex items-center gap-1.5 transition-colors"
+                                                    data-testid="recharge-wa-link"
+                                                >
+                                                    <MessageCircle size={14} />
+                                                    WhatsApp
+                                                </a>
+                                            </div>
+                                        )}
+                                        {shopAddress && (
+                                            <div className="bg-[#161616] border border-[#262626] rounded-xl p-3">
+                                                <p className="text-[9px] text-slate-500 font-black uppercase tracking-widest">
+                                                    Adresse boutique
+                                                </p>
+                                                <p className="text-white font-bold text-sm leading-snug">
+                                                    {shopAddress}
+                                                </p>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
+                                <p className="text-[11px] text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-xl p-3 italic">
+                                    📌 Une fois le paiement reçu, votre wallet sera crédité instantanément
+                                    et vous recevrez une confirmation WhatsApp.
+                                </p>
+                            </ModalBody>
+                            <ModalFooter>
+                                <Button onPress={close} className="bg-[var(--primary)] text-white font-black">
+                                    Compris
+                                </Button>
+                            </ModalFooter>
+                        </>
+                    )}
+                </ModalContent>
+            </Modal>
         </div>
+    );
+}
+
+function PaymentMethodRow({ icon, label }: { icon: React.ReactNode; label: string }) {
+    return (
+        <li className="flex items-center gap-3 bg-[#161616] border border-[#262626] rounded-xl px-3 py-2">
+            <span className="text-[var(--primary)]">{icon}</span>
+            <span className="text-sm text-slate-200 font-medium">{label}</span>
+        </li>
     );
 }

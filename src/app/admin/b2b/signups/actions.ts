@@ -14,6 +14,7 @@ import { UserRole } from "@/lib/constants";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { revalidatePath } from "next/cache";
+import { ResellerNotifications } from "@/services/reseller-notifications.service";
 
 /**
  * Liste les demandes (filtrables par statut). Tri : PENDING en haut, puis date desc.
@@ -137,9 +138,18 @@ export const approveSignupRequestAction = withAuth(
             revalidatePath("/admin/b2b/signups");
             revalidatePath("/admin/b2b");
 
-            // Les credentials sont retournées une seule fois — l'admin doit les
-            // copier et les communiquer au reseller manuellement (ou via WhatsApp
-            // depuis l'UI). Aucun envoi automatique en attendant EPIC 6.
+            // EPIC 6 — Envoi auto WhatsApp des credentials (no-op safe si non configuré).
+            // Le modal post-approve les affiche aussi à l'admin en backup.
+            ResellerNotifications.notifySignupApproved({
+                companyName: request.companyName,
+                contactPhone: request.contactPhone,
+                email: request.email,
+                password: result.generatedPassword,
+                pin: result.generatedPin,
+            }).catch((err) => {
+                console.warn("[signup-approve] notification failed (non-bloquant):", err);
+            });
+
             return {
                 success: true as const,
                 data: result,
@@ -177,6 +187,16 @@ export const rejectSignupRequestAction = withAuth(
                 processedByUserId: user.id,
             })
             .where(eq(resellerSignupRequests.id, requestId));
+
+        // EPIC 6 — Notification WhatsApp polie du rejet (no-op safe si non configuré).
+        ResellerNotifications.notifySignupRejected({
+            companyName: request.companyName,
+            contactPhone: request.contactPhone,
+            email: request.email,
+            reason,
+        }).catch((err) => {
+            console.warn("[signup-reject] notification failed (non-bloquant):", err);
+        });
 
         revalidatePath("/admin/b2b/signups");
         return { success: true as const };

@@ -14,6 +14,7 @@ import { withAuth } from "@/lib/security";
 import { UserRole } from "@/lib/constants";
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
+import { ResellerNotifications } from "@/services/reseller-notifications.service";
 
 /**
  * Vue admin de tous les wallets reseller : balance + tier + dernière activité.
@@ -180,6 +181,25 @@ export const adminRechargeWalletAction = withAuth(
 
             revalidatePath("/admin/b2b/wallets");
             revalidatePath("/admin/b2b");
+
+            // EPIC 6 — Auto-notify reseller via WhatsApp (no-op safe si non configuré).
+            // Lookup reseller info pour le message (companyName + contactPhone).
+            // Fire-and-forget — l'échec d'envoi ne doit pas faire échouer la recharge.
+            const resellerInfo = await db.query.resellers.findFirst({
+                where: eq(resellers.id, input.resellerId),
+            });
+            if (resellerInfo) {
+                ResellerNotifications.notifyWalletRecharged({
+                    companyName: resellerInfo.companyName,
+                    contactPhone: resellerInfo.contactPhone,
+                    previousBalance: result.previousBalance,
+                    newBalance: result.newBalance,
+                    amount: result.amount,
+                    method: input.method,
+                }).catch((err) => {
+                    console.warn("[recharge] notification failed (non-bloquant):", err);
+                });
+            }
 
             return { success: true as const, data: result };
         } catch (err) {

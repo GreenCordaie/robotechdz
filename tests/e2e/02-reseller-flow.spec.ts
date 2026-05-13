@@ -33,22 +33,30 @@ test.describe("Reseller end-to-end flow", () => {
         await page.waitForURL(/\/reseller\/(dashboard|wallet|shop|orders|support)/, { timeout: 15_000 });
     });
 
-    test("Wallet : badge tier BRONZE visible + bouton Recharger CACHÉ", async ({ page }) => {
+    test("Wallet : badge tier BRONZE + CTA Recharger ouvre modal instructions", async ({ page }) => {
         await page.goto("/reseller/wallet");
         await page.waitForLoadState("domcontentloaded");
 
         // Solde affiché (100,000 DZD seedé)
         await expect(page.getByText(/100[\s,.]?000/).first()).toBeVisible({ timeout: 10_000 });
 
-        // Badge tier BRONZE visible (case insensitive)
+        // Badge tier BRONZE visible
         await expect(page.getByText(/Palier BRONZE/i)).toBeVisible();
 
-        // Stats hardcodées NE doivent PAS apparaître (l'ancien bug)
+        // Stats hardcodées anti-régression
         await expect(page.getByText("12,500 DZD")).toHaveCount(0);
         await expect(page.getByText("625 DZD")).toHaveCount(0);
 
-        // Bouton "Recharger le Compte" doit être MASQUÉ (corrigé EPIC 0)
-        await expect(page.getByRole("button", { name: /recharger le compte/i })).toHaveCount(0);
+        // EPIC 6 — bouton "Recharger le compte" maintenant VISIBLE (ouvre modal instructions admin)
+        const rechargeBtn = page.getByTestId("recharge-info-btn");
+        await expect(rechargeBtn).toBeVisible();
+
+        await rechargeBtn.click();
+        await expect(page.getByText(/Espèces en boutique/i)).toBeVisible({ timeout: 5_000 });
+        await expect(page.getByText(/Carte CIB/i)).toBeVisible();
+        await expect(page.getByText(/Virement bancaire/i)).toBeVisible();
+
+        await page.getByRole("button", { name: /Compris/i }).click();
     });
 
     test("Shop : catalogue charge + tier badge en header + badges livraison", async ({ page }) => {
