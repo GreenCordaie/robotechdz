@@ -50,8 +50,13 @@ jobs:
         # juste les imports statiques. Le code applicatif n'appelle JAMAIS ces
         # SDK quand LOADBRAIN_API_KEY est vide (cas du CI).
         run: bash scripts/ci-pack-loadbrain-stubs.sh
-      - name: Install deps
-        run: npm ci --legacy-peer-deps
+      - name: Install deps (no lock — stubs have different sha than real LoadBrain tgz)
+        # On retire package-lock.json en CI car les stubs LoadBrain ont un hash
+        # différent du vrai SDK référencé dans le lock. npm ci ferait fail avec
+        # EINTEGRITY. npm install régénère un lock éphémère sans toucher au commit.
+        run: |
+          rm -f package-lock.json
+          npm install --legacy-peer-deps --no-audit --no-fund
       - name: TypeScript strict (NO ignoreBuildErrors)
         run: npx tsc --noEmit
       - name: ESLint (warnings allowed, errors fail)
@@ -143,8 +148,13 @@ jobs:
       - name: Pack LoadBrain stubs into expected tgz paths
         run: bash scripts/ci-pack-loadbrain-stubs.sh
 
-      - name: Install deps
-        run: npm ci --legacy-peer-deps
+      - name: Install deps (no lock — stubs have different sha than real LoadBrain tgz)
+        # On retire package-lock.json en CI car les stubs LoadBrain ont un hash
+        # différent du vrai SDK référencé dans le lock. npm ci ferait fail avec
+        # EINTEGRITY. npm install régénère un lock éphémère sans toucher au commit.
+        run: |
+          rm -f package-lock.json
+          npm install --legacy-peer-deps --no-audit --no-fund
 
       - name: Cache Playwright browsers
         id: pw-cache
