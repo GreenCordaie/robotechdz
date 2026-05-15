@@ -359,6 +359,17 @@ export const resellerWebhooks = pgTable("reseller_webhooks", {
     };
 });
 
+// EPIC 1 / Phase L — Templates de notifications configurables par l'admin.
+// PK = eventKey (clé du catalogue RESELLER_NOTIF_EVENTS, etc.). Si row absente,
+// le service utilise le template par défaut hardcodé en fallback.
+// Variables : `{{key}}` remplacé par la valeur du contexte au runtime.
+export const notificationTemplates = pgTable("notification_templates", {
+    eventKey: text("event_key").primaryKey(),
+    body: text("body").notNull(),
+    updatedAt: timestamp("updated_at", { mode: "date" }).defaultNow().notNull(),
+    updatedByUserId: integer("updated_by_user_id").references(() => users.id, { onDelete: "set null" }),
+});
+
 // EPIC 1 / Phase G3 — Webhook DLQ.
 // Retries persisted en DB (pas BullMQ) pour rester portable Node + Edge.
 // Status flow : RETRYING (attempt < 5) → DEAD (attempt = 5, abandon) → RESOLVED (replay manuel admin OK).
