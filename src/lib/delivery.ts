@@ -304,7 +304,10 @@ function buildWhatsAppMessage(order: any, shopName: string, appUrl: string, tota
 
 // ─── Main trigger ─────────────────────────────────────────────────────────────
 
-export async function triggerOrderDelivery(orderId: number): Promise<{ success: boolean; error?: string; skipped?: boolean }> {
+export async function triggerOrderDelivery(
+    orderId: number,
+    options: { forceManual?: boolean } = {}
+): Promise<{ success: boolean; error?: string; skipped?: boolean }> {
     const order = await db.query.orders.findFirst({
         where: (orders, { eq }) => eq(orders.id, orderId),
         with: {
@@ -349,6 +352,15 @@ export async function triggerOrderDelivery(orderId: number): Promise<{ success: 
     if (customerPhone && (order as any).deliveryMethod === 'WHATSAPP') {
         try {
             const settings = await db.query.shopSettings.findFirst();
+
+            // EPIC 2 / Phase A — Si l'admin a coupé l'auto-send, on skip ici.
+            // Le caissier peut toujours cliquer "Renvoyer WhatsApp" depuis le modal
+            // commande pour déclencher manuellement (resendWhatsAppAction passe forceManual=true).
+            if (!options.forceManual && settings && settings.autoSendWhatsapp === false) {
+                console.log(`[DELIVERY] Order #${orderId} — auto-send WhatsApp désactivé (settings)`);
+                return { success: true, skipped: true };
+            }
+
             const shopName = settings?.shopName || 'Ma Boutique';
             const totalDebt = parseFloat((order as any).client?.totalDetteDzd || "0");
             const message = buildWhatsAppMessage(order, shopName, appUrl, totalDebt);

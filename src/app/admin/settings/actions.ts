@@ -79,6 +79,8 @@ export const saveShopSettingsAction = withAuth(
             whatsappApiUrl: z.string().nullable().optional(),
             whatsappApiKey: z.string().nullable().optional(),
             whatsappInstanceName: z.string().nullable().optional(),
+            // EPIC 2 / Phase A — toggle global auto-send WhatsApp post-paiement kiosk
+            autoSendWhatsapp: z.boolean().optional(),
             n8nWebhookUrl: z.string().nullable().optional(),
             usdExchangeRate: z.string().optional(),
             stockAlertThreshold: z.number().int().min(1).max(9999).optional(),

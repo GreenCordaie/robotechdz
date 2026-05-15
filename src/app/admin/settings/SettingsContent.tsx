@@ -111,6 +111,8 @@ export default function SettingsContent() {
     const [error, setError] = useState<string | null>(null);
 
     const [isMaintenanceMode, setIsMaintenanceMode] = useState(false);
+    // EPIC 2 / Phase A — Toggle global auto-send WhatsApp post-paiement kiosk
+    const [autoSendWhatsapp, setAutoSendWhatsapp] = useState(true);
     const [allowedIps, setAllowedIps] = useState("");
     const [stockAlertThreshold, setStockAlertThreshold] = useState(5);
 
@@ -171,6 +173,7 @@ export default function SettingsContent() {
                 setDefaultResellerDiscount(s.defaultResellerDiscount || "5.00");
                 setMinResellerRecharge(s.minResellerRecharge || "1000.00");
                 setIsMaintenanceMode(s.isMaintenanceMode ?? false);
+                setAutoSendWhatsapp(s.autoSendWhatsapp ?? true);
                 setAllowedIps(s.allowedIps || "");
                 setStockAlertThreshold(s.stockAlertThreshold ?? 5);
                 setPrinterPaperWidth(s.printerPaperWidth ?? 80);
@@ -217,6 +220,7 @@ export default function SettingsContent() {
                 defaultResellerDiscount,
                 minResellerRecharge,
                 isMaintenanceMode,
+                autoSendWhatsapp,
                 allowedIps,
                 stockAlertThreshold,
                 printerPaperWidth: printerPaperWidth as 58 | 80,
@@ -1208,6 +1212,25 @@ export default function SettingsContent() {
 
                                         <div className="flex items-center justify-between p-6 bg-black/40 rounded-3xl border border-white/5">
                                             <div className="flex items-center gap-4 text-white">
+                                                <Power className={autoSendWhatsapp ? "text-emerald-500" : "text-slate-400"} size={20} />
+                                                <div>
+                                                    <span className="text-sm font-black uppercase block tracking-widest">Auto-envoi WhatsApp kiosk</span>
+                                                    <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">
+                                                        Envoi automatique des codes au client après paiement caisse. Si désactivé : le caissier doit cliquer &laquo; Renvoyer WhatsApp &raquo; dans le modal commande.
+                                                    </span>
+                                                </div>
+                                            </div>
+                                            <button
+                                                data-testid="auto-send-whatsapp-toggle"
+                                                onClick={() => setAutoSendWhatsapp(!autoSendWhatsapp)}
+                                                className={`w-14 h-7 rounded-full transition-all relative ${autoSendWhatsapp ? "bg-emerald-500" : "bg-white/10"}`}
+                                            >
+                                                <div className={`absolute top-1 w-5 h-5 bg-white rounded-full transition-all ${autoSendWhatsapp ? "left-8" : "left-1"}`} />
+                                            </button>
+                                        </div>
+
+                                        <div className="flex items-center justify-between p-6 bg-black/40 rounded-3xl border border-white/5">
+                                            <div className="flex items-center gap-4 text-white">
                                                 <AlertTriangle className="text-orange-400" size={20} />
                                                 <div>
                                                     <span className="text-sm font-black uppercase block tracking-widest">Seuil d&apos;alerte stock bas</span>
@@ -1243,6 +1266,18 @@ export default function SettingsContent() {
                                     </div>
                                 </CardBody>
                             </Card>
+
+                            <div className="flex justify-end">
+                                <button
+                                    onClick={handleSave}
+                                    disabled={isSaving}
+                                    data-testid="security-save-btn"
+                                    className="bg-[var(--primary)] hover:bg-orange-600 text-white px-8 py-4 rounded-xl font-bold text-base shadow-lg shadow-[var(--primary)]/40 transition-all flex items-center gap-3 disabled:opacity-50"
+                                >
+                                    {isSaving ? <Loader2 className="animate-spin size-5" /> : <Save className="size-5" />}
+                                    {isSaving ? "Sauvegarde..." : "Sauvegarder les modifications"}
+                                </button>
+                            </div>
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 {/* MFA Configuration */}

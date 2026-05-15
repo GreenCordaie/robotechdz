@@ -258,6 +258,10 @@ export const shopSettings = pgTable("shop_settings", {
     whatsappApiUrl: text("whatsapp_api_url").default("http://localhost:3001"),
     whatsappApiKey: text("whatsapp_api_key"),
     whatsappInstanceName: text("whatsapp_instance_name").default("FLEXBOX_BOT"),
+    // EPIC 2 / Phase A — Toggle global pour l'envoi auto WhatsApp post-paiement kiosk.
+    // Default true = comportement historique préservé. False = le caissier doit
+    // cliquer manuellement "Renvoyer WhatsApp" depuis le modal commande.
+    autoSendWhatsapp: boolean("auto_send_whatsapp").notNull().default(true),
     whatsappSenderNumber: text("whatsapp_sender_number"),
     whatsappMessageTemplate: text("whatsapp_message_template"),
     chatbotEnabled: boolean("chatbot_enabled").default(false).notNull(),

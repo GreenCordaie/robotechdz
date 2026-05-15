@@ -446,7 +446,8 @@ export const resendWhatsAppAction = withAuth(
     },
     async ({ orderId }) => {
         try {
-            await triggerOrderDelivery(orderId);
+            // Manuel : bypass l'auto-send toggle (le caissier a explicitement cliqué).
+            await triggerOrderDelivery(orderId, { forceManual: true });
             return { success: true };
         } catch (error) {
             return { success: false, error: (error as Error).message };
