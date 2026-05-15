@@ -190,6 +190,7 @@ export const adminRechargeWalletAction = withAuth(
             });
             if (resellerInfo) {
                 ResellerNotifications.notifyWalletRecharged({
+                    resellerId: resellerInfo.id,
                     companyName: resellerInfo.companyName,
                     contactPhone: resellerInfo.contactPhone,
                     previousBalance: result.previousBalance,

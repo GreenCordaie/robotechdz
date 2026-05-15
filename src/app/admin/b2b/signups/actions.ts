@@ -141,6 +141,7 @@ export const approveSignupRequestAction = withAuth(
             // EPIC 6 — Envoi auto WhatsApp des credentials (no-op safe si non configuré).
             // Le modal post-approve les affiche aussi à l'admin en backup.
             ResellerNotifications.notifySignupApproved({
+                resellerId: result.resellerId,
                 companyName: request.companyName,
                 contactPhone: request.contactPhone,
                 email: request.email,

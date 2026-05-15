@@ -229,6 +229,7 @@ export async function processCompletedTask(event: LoadBrainTaskEvent): Promise<v
                         ? `User ${screens[0].username}`
                         : (screens[0]?.code ? `Code ${screens[0].code.slice(0, 4)}…` : undefined));
                 ResellerNotifications.notifyOrderCredentialsReady({
+                    resellerId: reseller.id,
                     companyName: reseller.companyName,
                     contactPhone: reseller.contactPhone,
                     orderNumber: order.orderNumber,

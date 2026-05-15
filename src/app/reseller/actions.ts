@@ -435,6 +435,7 @@ export const checkoutResellerAction = withAuth(
             });
             const totalItems = cart.reduce((acc, c) => acc + (c.quantity || 0), 0);
             ResellerNotifications.notifyOrderConfirmed({
+                resellerId: reseller.id,
                 companyName: reseller.companyName,
                 contactPhone: reseller.contactPhone,
                 orderNumber: res.orderNumber,

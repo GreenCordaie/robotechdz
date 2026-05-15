@@ -13,7 +13,8 @@ import {
     ChevronRight,
     UserCircle,
     Webhook,
-    BookOpen
+    BookOpen,
+    Bell
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -29,6 +30,7 @@ const MENU_ITEMS = [
 
 const SECONDARY_ITEMS = [
     { icon: MessageSquare, label: "Support Technique", href: "/reseller/support" },
+    { icon: Bell, label: "Notifications", href: "/reseller/settings/notifications" },
 ];
 
 const INTEGRATIONS_ITEMS: Array<{ icon: typeof Webhook; label: string; href: string; external?: boolean }> = [

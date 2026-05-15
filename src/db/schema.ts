@@ -329,6 +329,10 @@ export const resellers = pgTable("resellers", {
     status: text("status").default("ACTIVE").notNull(), // 'ACTIVE', 'SUSPENDED'
     // EPIC 1 — Tier system. NULL = tier par défaut (résolu côté service).
     tierId: integer("tier_id").references(() => resellerTiers.id, { onDelete: "set null" }),
+    // EPIC 1 / Phase K — Préférences notif WhatsApp (opt-in/opt-out par event).
+    // Shape : { "wallet.recharged": false, "order.confirmed": true, ... }
+    // Si une clé manque → opt-in par défaut (true). Webhooks gèrent leurs events séparément.
+    notificationPreferences: jsonb("notification_preferences").$type<Record<string, boolean>>().notNull().default({}),
     createdAt: timestamp("created_at", { mode: 'date' }).defaultNow(),
 });
 
