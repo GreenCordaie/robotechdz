@@ -1,0 +1,448 @@
+openapi: 3.1.0
+info:
+  title: FLEXBOX DIRECT — API Partenaires
+  version: 1.0.0
+  description: |
+    API HTTP pour intégrer FLEXBOX DIRECT dans votre boutique, bot, ou
+    automation. Authentification par clé API (header `X-API-Key`).
+
+    ## Authentification
+
+    Demandez votre clé API à votre contact admin. Elle est associée à un
+    permission scope :
+    - `READ_ONLY` : lecture catalogue + consultation commandes
+    - `READ_WRITE` : création de commandes (débite votre wallet)
+
+    Mettez votre clé dans le header `X-API-Key` de chaque requête.
+
+    ## Rate limiting
+
+    100 req/min par clé API. Réponse `429 Too Many Requests` avec header
+    `Retry-After: 60` quand dépassé.
+
+    ## Webhooks sortants
+
+    Vous pouvez vous abonner à des événements via le portail revendeur
+    (`/reseller/webhooks`). Les events sont envoyés en POST signé HMAC-SHA256.
+    Voir la section "webhooks" en bas pour le détail.
+  contact:
+    name: Support FLEXBOX DIRECT
+    url: https://flexbox.dz/contact
+  license:
+    name: Propriétaire
+servers:
+  - url: https://yourdomain.com
+    description: Production
+  - url: http://localhost:4555
+    description: Local dev (E2E)
+
+tags:
+  - name: public
+    description: Endpoints publics (pas d'auth requise, cachés CDN)
+  - name: orders
+    description: Commandes (auth API key requise)
+  - name: products
+    description: Catalogue produits (auth API key requise)
+
+paths:
+  /api/v1/public/catalog:
+    get:
+      tags: [public]
+      summary: Catalogue kiosque public
+      description: |
+        Retourne la liste des produits + variants visibles au kiosque.
+        Caché par CDN 60s + stale-while-revalidate 300s.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CatalogData"
+        "500":
+          description: Erreur serveur
+          $ref: "#/components/responses/Error"
+
+  /api/v1/public/settings:
+    get:
+      tags: [public]
+      summary: Paramètres publics du shop
+      description: Nom, logo, favicon, accent color (sanitisés — pas de secrets).
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicSettings"
+
+  /api/v1/products:
+    get:
+      tags: [products]
+      summary: Liste les produits + variants
+      description: |
+        Retourne tous les produits actifs avec leurs variants et stock
+        disponible en temps réel.
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - in: query
+          name: categoryId
+          schema:
+            type: integer
+          description: Filtrer par catégorie
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  products:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Product"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /api/v1/products/{id}:
+    get:
+      tags: [products]
+      summary: Détail d'un produit
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+        "404":
+          description: Produit introuvable
+
+  /api/v1/orders:
+    post:
+      tags: [orders]
+      summary: Créer une commande (débite wallet)
+      description: |
+        Crée une nouvelle commande pour 1 variant. Stock est alloué
+        immédiatement, codes/credentials sont retournés dans la réponse.
+
+        ⚠️ Requiert `READ_WRITE` sur la clé API. Le wallet partenaire associé
+        à la clé est débité du montant total.
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [variantId, quantity]
+              properties:
+                variantId:
+                  type: integer
+                  description: ID du variant à commander
+                  example: 42
+                quantity:
+                  type: integer
+                  minimum: 1
+                  maximum: 10
+                  example: 1
+                partnerReference:
+                  type: string
+                  maxLength: 100
+                  description: Référence interne à votre système (visible dans vos exports)
+                  example: "ORDER-2026-001"
+      responses:
+        "201":
+          description: Commande créée
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderResponse"
+        "400":
+          description: Bad Request — body invalide
+        "403":
+          description: Forbidden — clé API en READ_ONLY
+        "404":
+          description: Variant introuvable ou inactif
+        "422":
+          description: Stock insuffisant
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error: { type: string }
+                  details: { type: string }
+                  availableStock: { type: integer }
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /api/v1/orders/{id}:
+    get:
+      tags: [orders]
+      summary: Détail d'une commande créée par votre clé
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderResponse"
+        "403":
+          description: Forbidden — la commande n'a pas été créée par votre clé
+        "404":
+          description: Commande introuvable
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: Clé API fournie par votre contact admin
+
+  responses:
+    Unauthorized:
+      description: Clé API absente, invalide ou révoquée
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error: { type: string, example: "Unauthorized" }
+              details: { type: string, example: "Invalid or revoked API key" }
+    RateLimited:
+      description: Trop de requêtes (100/min/clé)
+      headers:
+        Retry-After:
+          schema: { type: integer, example: 60 }
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error: { type: string, example: "Too Many Requests" }
+    Error:
+      description: Erreur serveur
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error: { type: string }
+              details: { type: string }
+
+  schemas:
+    Product:
+      type: object
+      properties:
+        id: { type: integer, example: 1 }
+        name: { type: string, example: "Netflix Premium" }
+        description: { type: string, nullable: true }
+        imageUrl: { type: string, nullable: true }
+        category:
+          type: object
+          nullable: true
+          properties:
+            id: { type: integer }
+            name: { type: string }
+        variants:
+          type: array
+          items:
+            $ref: "#/components/schemas/Variant"
+
+    Variant:
+      type: object
+      properties:
+        id: { type: integer, example: 42 }
+        name: { type: string, example: "1 mois" }
+        salePriceDzd: { type: string, example: "2000.00" }
+        isSharing: { type: boolean }
+        availableStock: { type: integer, example: 12 }
+
+    CatalogData:
+      type: object
+      properties:
+        categories:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: integer }
+              name: { type: string }
+        products:
+          type: array
+          items:
+            $ref: "#/components/schemas/Product"
+
+    PublicSettings:
+      type: object
+      properties:
+        shopName: { type: string, example: "FLEXBOX DIRECT" }
+        accentColor: { type: string, example: "#ec5b13" }
+        logoUrl: { type: string, nullable: true }
+        usdExchangeRate: { type: string, example: "245.00" }
+
+    OutboundEvent:
+      type: object
+      description: |
+        Format commun de tous les webhooks sortants.
+
+        **Headers envoyés** :
+        - `X-Robotech-Event` : nom de l'event (ex: `order.paid`)
+        - `X-Robotech-Delivery` : ID unique de cette livraison
+        - `X-Robotech-Signature` : `sha256=<hex hmac of body using your secret>`
+        - `X-Robotech-Timestamp` : unix timestamp en millisecondes
+
+        **Validation côté receiver (Node.js exemple)** :
+        ```js
+        const expected = "sha256=" + crypto.createHmac("sha256", secret)
+          .update(rawBody).digest("hex");
+        if (!crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(req.header("X-Robotech-Signature")))) {
+          return res.status(401).end();
+        }
+        ```
+      properties:
+        event:
+          type: string
+          enum: [order.paid, credentials.ready, wallet.recharged]
+        timestamp:
+          type: string
+          format: date-time
+          description: ISO 8601 du moment où l'event est généré côté FLEXBOX
+        resellerId:
+          type: integer
+          description: ID du reseller concerné
+        data:
+          type: object
+          description: Payload spécifique à chaque type d'event (voir exemples)
+
+    OrderResponse:
+      type: object
+      properties:
+        orderId: { type: integer, example: 123 }
+        orderNumber: { type: string, example: "API-1700000000-1234" }
+        status:
+          type: string
+          enum: [EN_ATTENTE, PAYE, LIVRE, TERMINE, ANNULE, REMBOURSE]
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: integer }
+              name: { type: string }
+              quantity: { type: integer }
+              price: { type: string }
+              codes:
+                type: array
+                description: Codes digitaux livrés (déjà déchiffrés)
+                items:
+                  type: object
+                  properties:
+                    id: { type: integer }
+                    code: { type: string }
+                    status: { type: string }
+              slots:
+                type: array
+                description: Profils partagés (Netflix-style)
+                items:
+                  type: object
+                  properties:
+                    id: { type: integer }
+                    slotNumber: { type: integer }
+                    profileName: { type: string, nullable: true }
+                    code: { type: string, nullable: true, description: "PIN du profil" }
+                    status: { type: string }
+
+webhooks:
+  order.paid:
+    post:
+      summary: Commande B2B payée
+      description: |
+        Déclenché quand un reseller fait un checkout B2B sur le portail
+        (PR #2 EPIC 1 + #3 EPIC 2/A).
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OutboundEvent"
+            example:
+              event: "order.paid"
+              timestamp: "2026-05-15T10:00:00Z"
+              resellerId: 1
+              data:
+                orderNumber: "B2B-1700000000-1234"
+                orderId: 456
+                totalAmount: 9500.00
+                itemCount: 2
+                hasInstantDelivery: true
+      responses:
+        "2xx":
+          description: Webhook reçu (réponse 2xx attendue)
+
+  credentials.ready:
+    post:
+      summary: Credentials LoadBrain prêtes
+      description: |
+        Déclenché après que LoadBrain a terminé le provisioning d'un service
+        IPTV/IBO/Netflix pour un order reseller.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OutboundEvent"
+            example:
+              event: "credentials.ready"
+              timestamp: "2026-05-15T10:01:30Z"
+              resellerId: 1
+              data:
+                orderNumber: "B2B-1700000000-1234"
+                orderId: 456
+                deliveryMode: "iptv"
+                summary: "User abc…"
+                partial: false
+
+  wallet.recharged:
+    post:
+      summary: Wallet reseller crédité par admin
+      description: |
+        Déclenché quand l'admin recharge manuellement le wallet d'un reseller
+        (paiement boutique).
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OutboundEvent"
+            example:
+              event: "wallet.recharged"
+              timestamp: "2026-05-15T10:05:00Z"
+              resellerId: 1
+              data:
+                amount: 10000
+                method: "CIB"
+                referenceNumber: "TXN-9876"
+                previousBalance: 5000
+                newBalance: 15000
+                transactionId: 789
