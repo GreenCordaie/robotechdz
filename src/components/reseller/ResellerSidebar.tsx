@@ -11,7 +11,9 @@ import {
     Store,
     LayoutGrid,
     ChevronRight,
-    UserCircle
+    UserCircle,
+    Webhook,
+    BookOpen
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -27,6 +29,11 @@ const MENU_ITEMS = [
 
 const SECONDARY_ITEMS = [
     { icon: MessageSquare, label: "Support Technique", href: "/reseller/support" },
+];
+
+const INTEGRATIONS_ITEMS: Array<{ icon: typeof Webhook; label: string; href: string; external?: boolean }> = [
+    { icon: Webhook, label: "Mes Webhooks", href: "/reseller/webhooks" },
+    { icon: BookOpen, label: "API & Docs", href: "/api-docs", external: true },
 ];
 
 export const ResellerSidebar = () => {
@@ -88,6 +95,30 @@ export const ResellerSidebar = () => {
                             <Link
                                 key={item.href}
                                 href={item.href}
+                                className={`flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all group ${isActive
+                                        ? "bg-[var(--primary)]/10 text-[var(--primary)]"
+                                        : "text-slate-500 hover:bg-white/5 hover:text-slate-200"
+                                    }`}
+                            >
+                                <item.icon className={`size-5 ${isActive ? "text-[var(--primary)]" : "text-slate-500 group-hover:text-slate-300"}`} />
+                                <span className="text-sm font-bold tracking-tight">{item.label}</span>
+                            </Link>
+                        );
+                    })}
+                </div>
+
+                <div className="space-y-1.5 pt-4 border-t border-[#2d2622]/50">
+                    <p className="px-4 text-[10px] font-black text-slate-600 uppercase tracking-[0.2em] mb-4">Intégrations</p>
+                    {INTEGRATIONS_ITEMS.map((item) => {
+                        const isActive = pathname === item.href;
+                        const linkProps = item.external
+                            ? { href: item.href, target: "_blank", rel: "noopener noreferrer" }
+                            : { href: item.href };
+                        return (
+                            <Link
+                                key={item.href}
+                                {...linkProps}
+                                data-testid={item.external ? "reseller-api-docs-link" : undefined}
                                 className={`flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all group ${isActive
                                         ? "bg-[var(--primary)]/10 text-[var(--primary)]"
                                         : "text-slate-500 hover:bg-white/5 hover:text-slate-200"
