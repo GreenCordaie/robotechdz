@@ -355,6 +355,29 @@ export const resellerWebhooks = pgTable("reseller_webhooks", {
     };
 });
 
+// EPIC 1 / Phase G3 — Webhook DLQ.
+// Retries persisted en DB (pas BullMQ) pour rester portable Node + Edge.
+// Status flow : RETRYING (attempt < 5) → DEAD (attempt = 5, abandon) → RESOLVED (replay manuel admin OK).
+// Le cron job /api/cron/webhook-retries pick les RETRYING dont nextAttemptAt <= now.
+export const webhookDeliveryAttempts = pgTable("webhook_delivery_attempts", {
+    id: serial("id").primaryKey(),
+    webhookId: integer("webhook_id").references(() => resellerWebhooks.id, { onDelete: "cascade" }).notNull(),
+    event: text("event").notNull(),
+    payload: jsonb("payload").$type<Record<string, unknown>>().notNull(),
+    attempts: integer("attempts").notNull().default(0),
+    nextAttemptAt: timestamp("next_attempt_at", { mode: "date" }),
+    status: text("status").notNull().default("RETRYING"), // RETRYING | DEAD | RESOLVED
+    lastError: text("last_error"),
+    lastStatusCode: integer("last_status_code"),
+    createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { mode: "date" }).defaultNow().notNull(),
+}, (table) => {
+    return {
+        webhookIdIdx: index("wda_webhook_id_idx").on(table.webhookId),
+        statusNextIdx: index("wda_status_next_idx").on(table.status, table.nextAttemptAt),
+    };
+});
+
 // EPIC 1 / Phase E — Reseller signup public.
 // Status PENDING (créé), APPROVED (user RESELLER + reseller + wallet créés),
 // REJECTED (motif obligatoire). L'admin valide manuellement (Phase J UI).

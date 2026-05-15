@@ -137,6 +137,13 @@ export default function AdminWebhooksContent() {
                     <p className="text-sm text-slate-500 font-medium mt-1">
                         Vue globale tous resellers — surveillance + désactivation forcée pour SAV.
                     </p>
+                    <a
+                        href="/admin/b2b/webhooks/dlq"
+                        data-testid="dlq-link"
+                        className="inline-block mt-2 text-xs font-medium text-[var(--primary)] hover:underline"
+                    >
+                        → Voir la file de retry (DLQ)
+                    </a>
                 </div>
 
                 <div className="relative w-full md:w-80">

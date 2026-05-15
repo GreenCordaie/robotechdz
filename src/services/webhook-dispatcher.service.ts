@@ -1,7 +1,7 @@
 import "server-only";
 import crypto from "crypto";
 import { db } from "@/db";
-import { resellerWebhooks } from "@/db/schema";
+import { resellerWebhooks, webhookDeliveryAttempts } from "@/db/schema";
 import { eq, and, sql } from "drizzle-orm";
 
 /**
@@ -21,8 +21,7 @@ import { eq, and, sql } from "drizzle-orm";
  *   - Fire-and-forget (le caller ne doit JAMAIS attendre, exceptions catch)
  *   - Timeout 10s par delivery
  *   - Stats persistées (lastFiredAt, lastStatusCode, deliveriesOk/Failed)
- *   - Pas de retry pour cette PR — l'admin peut désactiver le webhook
- *     si trop d'échecs (futur : DLQ BullMQ EPIC 13)
+ *   - Retry exp backoff via DLQ table — voir webhook-retry.service.ts
  */
 
 export type ResellerEventName =
@@ -38,6 +37,17 @@ export interface ResellerEventPayload {
 }
 
 const DELIVERY_TIMEOUT_MS = 10_000;
+
+// Backoff schedule (ms from now) for attempts 1..5.
+// First retry +60s, last +6h. After attempt 5 → status DEAD.
+export const RETRY_BACKOFF_MS = [
+    60_000,        // 1m
+    5 * 60_000,    // 5m
+    30 * 60_000,   // 30m
+    2 * 3600_000,  // 2h
+    6 * 3600_000,  // 6h
+];
+export const MAX_DELIVERY_ATTEMPTS = RETRY_BACKOFF_MS.length;
 
 function computeSignature(body: string, secret: string): string {
     return "sha256=" + crypto.createHmac("sha256", secret).update(body).digest("hex");
@@ -81,19 +91,25 @@ export async function dispatchResellerEvent(
             resellerId,
             data,
         };
-        const body = JSON.stringify(payload);
 
-        await Promise.all(matching.map((hook) => deliverOne(hook, body, event)));
+        await Promise.all(
+            matching.map((hook) => deliverOne(hook, payload, event))
+        );
     } catch (err) {
         console.warn("[webhook-dispatcher] error (non-bloquant):", err);
     }
 }
 
-async function deliverOne(
+/**
+ * Tentative de livraison HTTP unitaire. Met à jour les stats du webhook.
+ * Retourne {ok, statusCode, errorMessage} pour que le caller décide
+ * s'il faut enqueuer un retry DLQ.
+ */
+export async function attemptDelivery(
     hook: typeof resellerWebhooks.$inferSelect,
     body: string,
-    event: ResellerEventName
-): Promise<void> {
+    event: string
+): Promise<{ ok: boolean; statusCode: number | null; errorMessage: string | null }> {
     const deliveryId = generateDeliveryId();
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), DELIVERY_TIMEOUT_MS);
@@ -142,5 +158,33 @@ async function deliverOne(
             .where(eq(resellerWebhooks.id, hook.id));
     } catch (err) {
         console.warn("[webhook-dispatcher] stats update failed:", err);
+    }
+
+    return { ok, statusCode, errorMessage };
+}
+
+async function deliverOne(
+    hook: typeof resellerWebhooks.$inferSelect,
+    payload: ResellerEventPayload,
+    event: ResellerEventName
+): Promise<void> {
+    const body = JSON.stringify(payload);
+    const result = await attemptDelivery(hook, body, event);
+    if (result.ok) return;
+
+    // Enqueue retry attempt — never throw.
+    try {
+        await db.insert(webhookDeliveryAttempts).values({
+            webhookId: hook.id,
+            event,
+            payload: payload as unknown as Record<string, unknown>,
+            attempts: 1,
+            nextAttemptAt: new Date(Date.now() + RETRY_BACKOFF_MS[0]),
+            status: "RETRYING",
+            lastError: result.errorMessage,
+            lastStatusCode: result.statusCode,
+        });
+    } catch (err) {
+        console.warn("[webhook-dispatcher] DLQ enqueue failed:", err);
     }
 }
