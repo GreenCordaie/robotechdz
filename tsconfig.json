@@ -37,6 +37,7 @@
         "node_modules",
         "scripts/**/*",
         "drizzle/**/*",
-        "public/**/*"
+        "public/**/*",
+        "backups/**/*"
     ]
 }

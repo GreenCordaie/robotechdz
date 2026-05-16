@@ -2,10 +2,126 @@
 
 Toutes les modifications notables de ce projet seront documentées dans ce fichier.
 
-## [Unreleased] — Marketplace B2B refonte (2026-05-13)
+## [13.0.0] — Marketplace B2B + Webhooks + Notifications (2026-05-16)
 
-> 18 commits sur 7 PRs draft empilées : `#1 → #2 → #3 → #4 → #5 → #6 → #7`.
-> Aucun deploy déclenché. 0 credit consommé. 14/14 tests E2E PASS en CI Linux.
+> Merge cascade des **20 PRs** (`#1 → #20`) dans master via commit `a1df514`.
+> 85 commits, +12 800 / −7 100 lignes. 0 credit consommé. 45 tests E2E
+> (41/45 en suite full, 45/45 en isolation — 4 flaky cold-compile).
+>
+> **Migrations à lancer prod en ordre** : `0005` → `0011` (toutes idempotentes).
+> **ENV à set prod** : `CRON_SECRET`, `LOADBRAIN_*`, `WHATSAPP_*`.
+> **Cron à configurer** : `GET /api/admin/cron/webhook-retries` toutes les
+> minutes avec `Authorization: Bearer $CRON_SECRET`.
+
+### 🔔 PR #20 — EPIC 2/A Toggle auto-WhatsApp kiosk
+- **schema** : colonne `shop_settings.auto_send_whatsapp` (default TRUE, préserve historique).
+- **delivery** : guard dans `triggerOrderDelivery` — skip si désactivé. Param
+  `forceManual` (bypass guard) utilisé par `resendWhatsAppAction` côté caisse.
+- **UI** : toggle dans onglet Sécurité & God Mode + save button dédié à la section.
+- **tests** : 1 spec E2E (toggle persiste après reload).
+
+### 📝 PR #19 — EPIC 1/L Templates notifications configurables admin
+- **schema** : table `notification_templates` (PK event_key, body, updated_at, updated_by_user_id).
+- **service** : `notification-templates.service` avec `loadTemplate` (DB → fallback
+  default hardcodé) + helper `renderTemplate({{key}}` → `vars[key]`).
+- **refactor** : `reseller-notifications.service` — 5 méthodes utilisent désormais
+  `loadAndRender` (fini les templates inline dans le code).
+- **UI admin** : `/admin/settings/notifications` — liste, edit textarea, preview
+  server-side avec sample vars, save UPSERT, reset au défaut.
+- **safety** : si row DB body vide → fallback default au render.
+- **tests** : 3 specs E2E.
+
+### 🎚️ PR #18 — EPIC 1/K Préférences notif WhatsApp par event reseller
+- **schema** : colonne JSONB `resellers.notification_preferences` (opt-in par défaut).
+- **service** : `isResellerNotifEnabled(resellerId, eventKey)` — clé manquante
+  = `true`. `safeSend` respecte la préf, retourne `{delivered:false, reason:"Désactivé par le reseller"}`.
+- **catalog** : 5 events (`wallet.recharged`, `signup.approved`, `signup.rejected`,
+  `order.confirmed`, `order.credentials.ready`).
+- **UI reseller** : `/reseller/settings/notifications` — toggles persistants avec
+  optimistic update + rollback en cas d'erreur.
+- **sidebar** : lien "Notifications" dans section Assistance.
+- **tests** : 3 specs E2E.
+
+### 🔗 PR #17 — EPIC 1/I2 Sidebar reseller : section Intégrations
+- **UI** : nouvelle sous-section "Intégrations" en bas du menu reseller —
+  "Mes Webhooks" + "API & Docs" (ouvre `/api-docs` dans nouvel onglet).
+- **tests** : 2 specs E2E (présence + navigation).
+
+### 💀 PR #16 — EPIC 1/G3 Webhook DLQ retry + admin UI
+- **schema** : table `webhook_delivery_attempts` (RETRYING/DEAD/RESOLVED).
+- **dispatcher** : enqueue retry-row si livraison échoue.
+  Backoff exp **1m / 5m / 30m / 2h / 6h** (max 5 attempts).
+- **service** : `webhook-retry.service` — `processWebhookRetries()` +
+  `replayDeadAttempt()` + `getDlqStats()`.
+- **cron route** : `/api/admin/cron/webhook-retries` (Bearer `CRON_SECRET`
+  timing-safe via `crypto.timingSafeEqual`).
+- **UI admin** : `/admin/b2b/webhooks/dlq` — KPIs (Retrying / Dead / Resolved),
+  filtres status, actions Replay (DEAD → RETRYING) / Dismiss (delete).
+- **architecture** : DB-only DLQ (pas BullMQ) pour rester portable Edge/Node.
+- **tests** : 6 specs E2E (page + filtres + lien depuis vue webhooks + cron 401/200).
+
+### 🛠️ PR #15 — EPIC 1/G2 Admin webhooks overview (SAV)
+- **UI admin** : `/admin/b2b/webhooks` — vue globale TOUS resellers,
+  filtres ALL/ACTIVE/INACTIVE/FAILING (failing = actif + ratio échec > 30%).
+- **KPIs** : Total / Actifs / Inactifs / Failing / Livraisons OK+KO.
+- **actions** : force désactivation avec raison obligatoire (audit log
+  `WEBHOOK_FORCE_DISABLED`) + réactivation avec reset compteurs (audit log
+  `WEBHOOK_REACTIVATED`).
+- **tests** : 2 specs E2E.
+
+### 📖 PR #14 — EPIC 1/I Doc OpenAPI publique
+- **public/openapi.yaml** : spec OpenAPI 3.1 avec 6 endpoints + 3 webhooks documentés.
+- **UI** : `/api-docs` — Stoplight Elements via CDN (zéro npm dep ajoutée),
+  layout sidebar avec hash routing.
+- **tests** : 1 spec E2E.
+
+### 🧹 PR #13 — EPIC 11 ESLint strict 0 erreurs
+- **fix** : 2 vraies React bugs détectés (`React.useMemo` inline en JSX,
+  rules-of-hooks dans `ClientsContent.tsx` + `ClientsMobile.tsx`).
+- **fix** : 15 `react/no-unescaped-entities` (apostrophes / guillemets).
+- **build** : `next.config.mjs` — `eslint.ignoreDuringBuilds: false`
+  (le build crashe désormais sur toute régression lint).
+
+### 📡 PR #12 — EPIC 1/G Outbound webhooks reseller (HMAC-SHA256)
+- **schema** : table `reseller_webhooks` (CSV events, secret HMAC, stats).
+- **service** : `webhook-dispatcher.service` — `dispatchResellerEvent` async
+  fire-and-forget, timeout 10s, SSRF protection, signature HMAC-SHA256 dans
+  header `X-Robotech-Signature`, delivery ID unique.
+- **integration** : 3 events câblés (`order.paid` post-checkout,
+  `wallet.recharged` post-recharge, `credentials.ready` post-provisioning LoadBrain).
+- **UI reseller** : `/reseller/webhooks` — CRUD avec secret affiché 1× à la
+  création, validation URL HTTPS, SSRF protection côté action.
+
+### 🤖 PR #11 — EPIC 6/2 Auto-WhatsApp post-checkout B2B + provisioning
+- **wallet.actions** : `checkoutResellerAction` → `notifyOrderConfirmed`
+  (no-op safe si WAHA non configuré).
+- **iptv-webhook-processor** : `notifyOrderCredentialsReady` post-provisioning
+  LoadBrain réussi (avec aperçu credentials).
+
+### 💸 PR #10 — EPIC 6 Auto-WhatsApp post-recharge / signup-approve / signup-reject
+- **service** : `src/services/reseller-notifications.service.ts` — 5 méthodes
+  avec templates centralisés + `safeSend` no-op safe.
+- **integration** : 3 events câblés (`notifyWalletRecharged`,
+  `notifySignupApproved`, `notifySignupRejected`).
+- **UI** : polish wallet — bouton "Recharger" ouvre modal instructions
+  (contact boutique + WhatsApp deep-link), pas paiement en ligne.
+
+### 💰 PR #9 — EPIC 1/H Recharge wallet manuelle admin (cash boutique)
+- **UI admin** : `/admin/b2b/wallets` — liste resellers + KPIs + modal recharge
+  avec méthode (CASH/CIB/EDAHABIA/BANK_TRANSFER/OTHER) + référence + audit log.
+- **action** : `adminRechargeWalletAction` — Zod validation, transaction atomique,
+  trigger notif WhatsApp post-recharge.
+
+### 📝 PR #8 — EPIC 1/E+J Signup reseller public + queue admin
+- **schema** : table `reseller_signup_requests` (PENDING/APPROVED/REJECTED).
+- **UI public** : `/reseller/signup` — form Zod, honeypot anti-bot,
+  rate-limit IP 3/h.
+- **middleware** : `/reseller/signup` ajouté aux public paths.
+- **UI admin** : `/admin/b2b/signups` — queue avec filtres, modal d'approbation
+  qui crée user + reseller + wallet + tier en transaction, affiche credentials
+  générés en backup si l'envoi WhatsApp échoue.
+
+
 
 ### 🚨 PR #1 — EPIC 0 Stabilisation
 - **build** : retrait de `typescript.ignoreBuildErrors: true` (bombe désactivée).
