@@ -63,9 +63,11 @@ export async function sendWhatsAppMessage(
         chatId = `${digits}@c.us`;
     }
 
-    // host.docker.internal n'est résolvable que depuis Docker → remplacer par localhost
-    const apiUrl = (settings.whatsappApiUrl || '').replace('host.docker.internal', 'localhost');
+    // In production (Cloudflare Edge), we use the public URL provided in settings.
+    // We no longer force replacements here to allow tunnel domains (e.g., waha.nexusbox.tech).
+    const apiUrl = (settings.whatsappApiUrl || '').replace(/\/$/, '');
     const url = `${apiUrl}/api/sendText`;
+
 
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     if (settings.whatsappApiKey) headers['X-Api-Key'] = settings.whatsappApiKey;
@@ -106,8 +108,9 @@ export async function getWhatsAppContact(
 ) {
     if (!settings.whatsappApiUrl || !settings.whatsappInstanceName) return null;
 
-    const apiUrl = (settings.whatsappApiUrl || '').replace('host.docker.internal', 'localhost');
+    const apiUrl = (settings.whatsappApiUrl || '').replace(/\/$/, '');
     const url = `${apiUrl}/api/contacts?contactId=${chatId}&session=${settings.whatsappInstanceName}`;
+
 
     const headers: Record<string, string> = {};
     if (settings.whatsappApiKey) headers['X-Api-Key'] = settings.whatsappApiKey;
@@ -132,8 +135,9 @@ export async function sendWhatsAppSeen(
 ) {
     if (!settings.whatsappApiUrl || !settings.whatsappInstanceName) return { success: false };
 
-    const apiUrl = (settings.whatsappApiUrl || '').replace('host.docker.internal', 'localhost');
+    const apiUrl = (settings.whatsappApiUrl || '').replace(/\/$/, '');
     const url = `${apiUrl}/api/sendSeen`;
+
 
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     if (settings.whatsappApiKey) headers['X-Api-Key'] = settings.whatsappApiKey;
@@ -150,5 +154,76 @@ export async function sendWhatsAppSeen(
         return { success: true };
     } catch (error) {
         return { success: false };
+    }
+}
+
+/**
+ * Send an interactive buttons message via WAHA.
+ * @param buttons Array of { id: string, text: string } (max 3 buttons)
+ */
+export async function sendWhatsAppButtons(
+    recipientPhone: string,
+    body: string,
+    buttons: { id: string; text: string }[],
+    settings: {
+        whatsappApiUrl?: string,
+        whatsappApiKey?: string,
+        whatsappInstanceName?: string
+    },
+    footer?: string
+) {
+    if (!settings.whatsappApiUrl || !settings.whatsappInstanceName) {
+        return { success: false, error: "Settings incomplete" };
+    }
+
+    let chatId: string;
+    if (recipientPhone.includes('@')) {
+        chatId = recipientPhone;
+    } else {
+        let digits = recipientPhone.replace(/\D/g, '');
+        if (digits.startsWith('0') && digits.length === 10) {
+            digits = '213' + digits.slice(1);
+        } else if (digits.length === 9) {
+            digits = '213' + digits;
+        }
+        chatId = `${digits}@c.us`;
+    }
+
+    const apiUrl = (settings.whatsappApiUrl || '').replace(/\/$/, '');
+    const url = `${apiUrl}/api/sendButtons`;
+
+
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (settings.whatsappApiKey) headers['X-Api-Key'] = settings.whatsappApiKey;
+
+    try {
+        const response = await fetch(url, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({
+                session: settings.whatsappInstanceName,
+                chatId,
+                body,
+                footer: footer || undefined,
+                buttons: buttons.map(b => ({
+                    id: b.id,
+                    text: b.text
+                }))
+            }),
+            signal: AbortSignal.timeout(30_000)
+        });
+
+        if (!response.ok) {
+            const err = await response.text().catch(() => '');
+            return { success: false, error: `Buttons API Error (${response.status}): ${err.slice(0, 100)}` };
+        }
+
+        const result = await response.json().catch(() => ({}));
+        return { success: true, id: result.id };
+    } catch (error: any) {
+        if (error.name === 'TimeoutError' || error.name === 'AbortError') {
+            return { success: false, error: "Timeout envoi boutons (30s)" };
+        }
+        return { success: false, error: `Erreur boutons : ${error.message}` };
     }
 }

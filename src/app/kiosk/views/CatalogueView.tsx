@@ -84,7 +84,7 @@ export default function CatalogueView({ products, categories }: CatalogueViewPro
                 price: i.price,
                 quantity: i.quantity,
                 customData: i.customData,
-                playerNickname: i.playerNickname
+                playerNickname: i.playerNickname,
             }));
             const order = await createKioskOrder(formattedItems, totalAmount.toFixed(2), deliveryMethod, phone);
 
@@ -127,7 +127,7 @@ export default function CatalogueView({ products, categories }: CatalogueViewPro
     // ─── Render ─────────────────────────────────────────────────────────────
     return (
         // T005 — Root : flex layout full-screen
-        <div className="flex h-screen w-screen overflow-hidden bg-[#F5F5F7] select-none touch-none">
+        <div className="flex h-screen w-screen overflow-hidden bg-[#F5F5F7] select-none">
 
             {/* ══════════════════════════════════════════════════════════════
                 MAIN — zone gauche (~75%)
@@ -159,12 +159,12 @@ export default function CatalogueView({ products, categories }: CatalogueViewPro
                         {/* Chip "Tout" */}
                         <button
                             onClick={() => setSelectedCategoryId(null)}
-                            className={`flex items-center gap-2 px-6 py-3 rounded-full font-semibold text-sm whitespace-nowrap transition-colors ${selectedCategoryId === null
-                                ? "bg-[#FF8000] text-white shadow-lg shadow-[#FF8000]/20"
+                            className={`flex items-center gap-3 px-6 h-11 rounded-full font-bold text-sm whitespace-nowrap transition-all shadow-sm ${selectedCategoryId === null
+                                ? "bg-[var(--primary)] text-white shadow-lg shadow-primary/20"
                                 : "bg-white text-gray-800 border border-gray-200 hover:bg-gray-50"
                                 }`}
                         >
-                            <span className="material-symbols-outlined !text-[18px] leading-none">apps</span>
+                            <span className="material-symbols-outlined !text-[20px] leading-none">apps</span>
                             Tout
                         </button>
 
@@ -173,12 +173,12 @@ export default function CatalogueView({ products, categories }: CatalogueViewPro
                             <button
                                 key={cat.id}
                                 onClick={() => setSelectedCategoryId(cat.id)}
-                                className={`flex items-center gap-2 px-6 py-3 rounded-full font-semibold text-sm whitespace-nowrap transition-colors ${selectedCategoryId === cat.id
-                                    ? "bg-[#FF8000] text-white shadow-lg shadow-[#FF8000]/20"
+                                className={`flex items-center gap-3 px-6 h-11 rounded-full font-bold text-sm whitespace-nowrap transition-all shadow-sm ${selectedCategoryId === cat.id
+                                    ? "bg-[var(--primary)] text-white shadow-lg shadow-primary/20"
                                     : "bg-white text-gray-800 border border-gray-200 hover:bg-gray-50"
                                     }`}
                             >
-                                <span className="material-symbols-outlined !text-[18px] leading-none">
+                                <span className="material-symbols-outlined !text-[20px] leading-none">
                                     {getCategoryIcon(cat.name)}
                                 </span>
                                 {cat.name}
@@ -216,8 +216,9 @@ export default function CatalogueView({ products, categories }: CatalogueViewPro
                                     // Nouveau : Un produit n'est en rupture QUE s'il n'est pas manuel ET n'a pas de stock
                                     // Si isManualDelivery est true, on n'est jamais en rupture
                                     // Si totalStock === 0 mais que c'est un produit auto, il bascule en manuel (donc pas de blocage)
-                                    const isAutoAndOutOfStock = !product.isManualDelivery && totalStock === 0 && variants.length > 0;
-                                    const isManual = product.isManualDelivery || totalStock === 0;
+                                    const hasIptvVariant = variants.some((v: any) => v.loadbrainSlug);
+                                    const isAutoAndOutOfStock = !product.isManualDelivery && !hasIptvVariant && totalStock === 0 && variants.length > 0;
+                                    const isManual = !hasIptvVariant && (product.isManualDelivery || totalStock === 0);
 
                                     const minPrice = variants.length > 0
                                         ? Math.min(...variants.map((v: any) => Number(v.salePriceDzd) || 0))
@@ -241,7 +242,12 @@ export default function CatalogueView({ products, categories }: CatalogueViewPro
 
                                                 {/* Badge type de livraison sur l'image */}
                                                 <div className="absolute top-4 left-4 flex flex-col gap-2">
-                                                    {isManual ? (
+                                                    {hasIptvVariant ? (
+                                                        <div className="flex items-center gap-1 px-3 py-1.5 bg-cyan-500/90 backdrop-blur-md text-white rounded-full text-[10px] font-black uppercase tracking-wider shadow-lg">
+                                                            <span className="material-symbols-outlined !text-[14px]">live_tv</span>
+                                                            Auto
+                                                        </div>
+                                                    ) : isManual ? (
                                                         <div className="flex items-center gap-1 px-3 py-1.5 bg-blue-600/90 backdrop-blur-md text-white rounded-full text-[10px] font-black uppercase tracking-wider shadow-lg">
                                                             <span className="material-symbols-outlined !text-[14px]">person</span>
                                                             Manuel
@@ -273,7 +279,7 @@ export default function CatalogueView({ products, categories }: CatalogueViewPro
                                                             </div>
                                                             <button
                                                                 onClick={(e) => { e.stopPropagation(); setSelectedProduct(product); }}
-                                                                className="bg-[#FF8000] hover:bg-[#E67300] text-white w-8 h-8 rounded-full shadow transition-colors flex items-center justify-center active:scale-95 shrink-0"
+                                                                className="bg-[#FF8000] hover:bg-[#E67300] text-white size-11 rounded-full shadow transition-colors flex items-center justify-center active:scale-95 shrink-0"
                                                             >
                                                                 <span className="material-symbols-outlined !text-sm leading-none">add</span>
                                                             </button>
@@ -351,16 +357,16 @@ export default function CatalogueView({ products, categories }: CatalogueViewPro
                                                     ? removeFromCart(item.variantId, item.customData, item.playerNickname)
                                                     : updateQuantity(item.variantId, -1, item.customData, item.playerNickname)
                                             }
-                                            className="w-10 h-10 flex items-center justify-center rounded-xl bg-[#F5F5F7] text-gray-700 font-bold text-lg hover:bg-gray-200 transition-colors"
+                                            className="w-11 h-11 flex items-center justify-center rounded-xl bg-white text-gray-900 font-bold text-lg hover:bg-slate-100 transition-all border border-gray-200"
                                         >
                                             −
                                         </button>
-                                        <span className="text-base font-bold text-gray-900 w-5 text-center">
+                                        <span className="text-base font-black text-gray-900 w-6 text-center">
                                             {item.quantity}
                                         </span>
                                         <button
                                             onClick={() => updateQuantity(item.variantId, 1, item.customData, item.playerNickname)}
-                                            className="w-10 h-10 flex items-center justify-center rounded-xl bg-[#F5F5F7] text-gray-700 font-bold text-lg hover:bg-gray-200 transition-colors"
+                                            className="w-11 h-11 flex items-center justify-center rounded-xl bg-white text-gray-900 font-bold text-lg hover:bg-slate-100 transition-all border border-gray-200"
                                         >
                                             +
                                         </button>
@@ -392,7 +398,7 @@ export default function CatalogueView({ products, categories }: CatalogueViewPro
             {/* ══════════════════════════════════════════════════════════════
                 MOBILE — FAB panier (md:hidden)
             ══════════════════════════════════════════════════════════════ */}
-            <div className="md:hidden fixed bottom-28 right-6 z-40">
+            <div className="md:hidden fixed bottom-28 left-1/2 -translate-x-1/2 z-40">
                 <button
                     onClick={onCheckoutOpen}
                     className="w-16 h-16 bg-gray-900 rounded-full shadow-2xl flex items-center justify-center relative active:scale-90 transition-all duration-300"

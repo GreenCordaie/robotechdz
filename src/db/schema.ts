@@ -43,6 +43,11 @@ export const productVariants = pgTable("product_variants", {
     stockStatus: boolean("stock_status").default(true),
     isSharing: boolean("is_sharing").default(false).notNull(),
     totalSlots: integer("total_slots").default(1).notNull(),
+    loadbrainSlug: text("loadbrain_slug"), // ex: "iptv-12m" → mappe vers plan LoadBrain
+    kioskVisible: boolean("kiosk_visible").notNull().default(true),
+    // EPIC 1 — Marketplace B2B
+    resellerVisible: boolean("reseller_visible").notNull().default(true),
+    resellerPriceOverrideDzd: numeric("reseller_price_override_dzd", { precision: 10, scale: 2 }),
 }, (table) => {
     return {
         productIdIdx: index("product_id_idx").on(table.productId),
@@ -120,6 +125,8 @@ export const digitalCodes = pgTable("digital_codes", {
     id: serial("id").primaryKey(),
     variantId: integer("variant_id").references(() => productVariants.id, { onDelete: "cascade" }).notNull(),
     code: text("code").notNull(),
+    outlookPassword: text("outlook_password"), // Encrypted outlook password
+    isRelayed: boolean("is_relayed").default(false).notNull(),
     status: digitalCodeStatusEnum("status").default("DISPONIBLE").notNull(),
     purchasePrice: numeric("purchase_price", { precision: 12, scale: 2 }), // Cost of the account
     purchaseCurrency: text("purchase_currency").default("DZD"),
@@ -127,6 +134,14 @@ export const digitalCodes = pgTable("digital_codes", {
     orderItemId: integer("order_item_id").references(() => orderItems.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at", { mode: 'date' }).defaultNow(),
     expiresAt: timestamp("expires_at", { mode: 'date' }),
+
+    // Microsoft Graph Integration
+    msRefreshToken: text("ms_refresh_token"), // Encrypted refresh token
+    msStatus: text("ms_status").default("NONE"), // CONNECTED, EXPIRED, NONE
+    msAccountEmail: text("ms_account_email"), // The Outlook/Hotmail email that authorized the app
+    msClientId: text("ms_client_id"), // The Specific Azure Client ID used for this account
+    msLastSync: timestamp("ms_last_sync", { mode: 'date' }),
+
 }, (table) => {
     return {
         variantIdIdx: index("dc_variant_id_idx").on(table.variantId),
@@ -152,6 +167,26 @@ export const digitalCodeSlots = pgTable("digital_code_slots", {
         orderItemIdIdx: index("dcs_order_item_id_idx").on(table.orderItemId),
     };
 });
+
+// ─── IPTV Provisioning (LoadBrain) ──────────────────────────────────────────
+export const iptvProvisions = pgTable("iptv_provisions", {
+    id: serial("id").primaryKey(),
+    orderId: integer("order_id").references(() => orders.id, { onDelete: "cascade" }).notNull(),
+    orderItemId: integer("order_item_id").references(() => orderItems.id, { onDelete: "cascade" }).notNull(),
+    variantId: integer("variant_id").references(() => productVariants.id, { onDelete: "set null" }),
+    taskId: text("task_id").notNull(),
+    loadbrainSlug: text("loadbrain_slug").notNull(),
+    status: text("status").default("queued").notNull(), // queued | processing | completed | failed
+    error: text("error"),
+    errorCode: text("error_code"),
+    credentialsEncrypted: text("credentials_encrypted"),
+    completedAt: timestamp("completed_at", { mode: 'date' }),
+    createdAt: timestamp("created_at", { mode: 'date' }).defaultNow(),
+}, (table) => ({
+    orderIdIdx: index("ip_order_id_idx").on(table.orderId),
+    taskIdIdx: index("ip_task_id_idx").on(table.taskId),
+    statusIdx: index("ip_status_idx").on(table.status),
+}));
 
 export const clientPayments = pgTable("client_payments", {
     id: serial("id").primaryKey(),
@@ -199,6 +234,10 @@ export const shopSettings = pgTable("shop_settings", {
     showDateTimeOnReceipt: boolean("show_date_time_on_receipt").default(true),
     showLogoOnReceipt: boolean("show_logo_on_receipt").default(false),
     showTrackQrOnReceipt: boolean("show_track_qr_on_receipt").default(true),
+    // Printer (USB ESC/POS)
+    printerPaperWidth: integer("printer_paper_width").notNull().default(80),
+    printerAutoCut: boolean("printer_auto_cut").notNull().default(true),
+    printerAutoPrintPaid: boolean("printer_auto_print_paid").notNull().default(false),
     accentColor: text("accent_color").default("#ec5b13"),
     logoUrl: text("logo_url"),
     dashboardLogoUrl: text("dashboard_logo_url"),
@@ -219,12 +258,16 @@ export const shopSettings = pgTable("shop_settings", {
     whatsappApiUrl: text("whatsapp_api_url").default("http://localhost:3001"),
     whatsappApiKey: text("whatsapp_api_key"),
     whatsappInstanceName: text("whatsapp_instance_name").default("FLEXBOX_BOT"),
+    // EPIC 2 / Phase A — Toggle global pour l'envoi auto WhatsApp post-paiement kiosk.
+    // Default true = comportement historique préservé. False = le caissier doit
+    // cliquer manuellement "Renvoyer WhatsApp" depuis le modal commande.
+    autoSendWhatsapp: boolean("auto_send_whatsapp").notNull().default(true),
     whatsappSenderNumber: text("whatsapp_sender_number"),
     whatsappMessageTemplate: text("whatsapp_message_template"),
     chatbotEnabled: boolean("chatbot_enabled").default(false).notNull(),
     chatbotGreeting: text("chatbot_greeting"),
     whatsappWebhookUrl: text("whatsapp_webhook_url"),
-    whatsappVerifyToken: text("whatsapp_verify_token").default("flexbox_direct_webhook_secret"),
+    whatsappVerifyToken: text("whatsapp_verify_token"),
     geminiApiKey: text("gemini_api_key"),
     chatbotRole: text("chatbot_role"),
     n8nWebhookUrl: text("n8n_webhook_url"),
@@ -232,6 +275,12 @@ export const shopSettings = pgTable("shop_settings", {
     vapidPublicKey: text("vapid_public_key"),
     vapidPrivateKey: text("vapid_private_key"),
     stockAlertThreshold: integer("stock_alert_threshold").default(5).notNull(),
+    netflixResolverEmail: text("netflix_resolver_email"),
+    netflixResolverPassword: text("netflix_resolver_password"),
+    microsoftClientId: text("microsoft_client_id"),
+    microsoftTenantId: text("microsoft_tenant_id"),
+    microsoftClientSecret: text("microsoft_client_secret"),
+    microsoftRedirectUri: text("microsoft_redirect_uri"),
 });
 
 export const whatsappFaqs = pgTable("whatsapp_faqs", {
@@ -261,6 +310,20 @@ export const supplierTransactions = pgTable("supplier_transactions", {
     };
 });
 
+// EPIC 1 — Tier System (Bronze / Silver / Gold etc.)
+// Discount appliqué EN PLUS du customDiscount éventuel sur reseller.
+// minMonthlyVolumeDzd = volume d'achat mensuel requis pour atteindre ce tier.
+export const resellerTiers = pgTable("reseller_tiers", {
+    id: serial("id").primaryKey(),
+    name: text("name").notNull().unique(), // 'BRONZE', 'SILVER', 'GOLD', ...
+    discountPct: numeric("discount_pct", { precision: 5, scale: 2 }).notNull().default("0"),
+    minMonthlyVolumeDzd: numeric("min_monthly_volume_dzd", { precision: 12, scale: 2 }).notNull().default("0"),
+    color: text("color").default("#94a3b8"), // hex pour badge UI
+    isDefault: boolean("is_default").notNull().default(false), // tier auto-assigné aux nouveaux reseller
+    rank: integer("rank").notNull().default(0), // ordre d'affichage / progression
+    createdAt: timestamp("created_at", { mode: 'date' }).defaultNow(),
+});
+
 export const resellers = pgTable("resellers", {
     id: serial("id").primaryKey(),
     userId: integer("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
@@ -268,7 +331,97 @@ export const resellers = pgTable("resellers", {
     contactPhone: text("contact_phone"),
     customDiscount: numeric("custom_discount", { precision: 5, scale: 2 }), // Override global discount
     status: text("status").default("ACTIVE").notNull(), // 'ACTIVE', 'SUSPENDED'
+    // EPIC 1 — Tier system. NULL = tier par défaut (résolu côté service).
+    tierId: integer("tier_id").references(() => resellerTiers.id, { onDelete: "set null" }),
+    // EPIC 1 / Phase K — Préférences notif WhatsApp (opt-in/opt-out par event).
+    // Shape : { "wallet.recharged": false, "order.confirmed": true, ... }
+    // Si une clé manque → opt-in par défaut (true). Webhooks gèrent leurs events séparément.
+    notificationPreferences: jsonb("notification_preferences").$type<Record<string, boolean>>().notNull().default({}),
     createdAt: timestamp("created_at", { mode: 'date' }).defaultNow(),
+});
+
+// EPIC 1 / Phase G — Outbound webhooks reseller.
+// Permet aux revendeurs d'avoir leur propre app/bot qui écoute les events
+// (order.paid, credentials.ready, wallet.recharged). HMAC-SHA256 signé.
+export const resellerWebhooks = pgTable("reseller_webhooks", {
+    id: serial("id").primaryKey(),
+    resellerId: integer("reseller_id").references(() => resellers.id, { onDelete: "cascade" }).notNull(),
+    url: text("url").notNull(),
+    events: text("events").notNull(), // CSV : "order.paid,credentials.ready,wallet.recharged"
+    secret: text("secret").notNull(), // signature HMAC-SHA256
+    isActive: boolean("is_active").notNull().default(true),
+    lastFiredAt: timestamp("last_fired_at", { mode: "date" }),
+    lastStatusCode: integer("last_status_code"),
+    lastError: text("last_error"),
+    deliveriesOk: integer("deliveries_ok").notNull().default(0),
+    deliveriesFailed: integer("deliveries_failed").notNull().default(0),
+    createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
+}, (table) => {
+    return {
+        resellerIdIdx: index("rw_reseller_id_idx").on(table.resellerId),
+        isActiveIdx: index("rw_is_active_idx").on(table.isActive),
+    };
+});
+
+// EPIC 1 / Phase L — Templates de notifications configurables par l'admin.
+// PK = eventKey (clé du catalogue RESELLER_NOTIF_EVENTS, etc.). Si row absente,
+// le service utilise le template par défaut hardcodé en fallback.
+// Variables : `{{key}}` remplacé par la valeur du contexte au runtime.
+export const notificationTemplates = pgTable("notification_templates", {
+    eventKey: text("event_key").primaryKey(),
+    body: text("body").notNull(),
+    updatedAt: timestamp("updated_at", { mode: "date" }).defaultNow().notNull(),
+    updatedByUserId: integer("updated_by_user_id").references(() => users.id, { onDelete: "set null" }),
+});
+
+// EPIC 1 / Phase G3 — Webhook DLQ.
+// Retries persisted en DB (pas BullMQ) pour rester portable Node + Edge.
+// Status flow : RETRYING (attempt < 5) → DEAD (attempt = 5, abandon) → RESOLVED (replay manuel admin OK).
+// Le cron job /api/cron/webhook-retries pick les RETRYING dont nextAttemptAt <= now.
+export const webhookDeliveryAttempts = pgTable("webhook_delivery_attempts", {
+    id: serial("id").primaryKey(),
+    webhookId: integer("webhook_id").references(() => resellerWebhooks.id, { onDelete: "cascade" }).notNull(),
+    event: text("event").notNull(),
+    payload: jsonb("payload").$type<Record<string, unknown>>().notNull(),
+    attempts: integer("attempts").notNull().default(0),
+    nextAttemptAt: timestamp("next_attempt_at", { mode: "date" }),
+    status: text("status").notNull().default("RETRYING"), // RETRYING | DEAD | RESOLVED
+    lastError: text("last_error"),
+    lastStatusCode: integer("last_status_code"),
+    createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { mode: "date" }).defaultNow().notNull(),
+}, (table) => {
+    return {
+        webhookIdIdx: index("wda_webhook_id_idx").on(table.webhookId),
+        statusNextIdx: index("wda_status_next_idx").on(table.status, table.nextAttemptAt),
+    };
+});
+
+// EPIC 1 / Phase E — Reseller signup public.
+// Status PENDING (créé), APPROVED (user RESELLER + reseller + wallet créés),
+// REJECTED (motif obligatoire). L'admin valide manuellement (Phase J UI).
+export const resellerSignupRequests = pgTable("reseller_signup_requests", {
+    id: serial("id").primaryKey(),
+    email: text("email").notNull(),
+    companyName: text("company_name").notNull(),
+    contactPhone: text("contact_phone").notNull(),
+    nif: text("nif"), // Numéro d'identification fiscale (optionnel)
+    rcNumber: text("rc_number"), // Registre du Commerce (optionnel)
+    message: text("message"), // pourquoi devenir reseller (optionnel)
+    status: text("status").notNull().default("PENDING"), // 'PENDING' | 'APPROVED' | 'REJECTED'
+    rejectedReason: text("rejected_reason"),
+    processedAt: timestamp("processed_at", { mode: "date" }),
+    processedByUserId: integer("processed_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    createdResellerId: integer("created_reseller_id").references(() => resellers.id, { onDelete: "set null" }),
+    ipAddress: text("ip_address"),
+    userAgent: text("user_agent"),
+    createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
+}, (table) => {
+    return {
+        statusIdx: index("rsr_status_idx").on(table.status),
+        emailIdx: index("rsr_email_idx").on(table.email),
+        createdAtIdx: index("rsr_created_at_idx").on(table.createdAt),
+    };
 });
 
 export const resellerWallets = pgTable("reseller_wallets", {
@@ -461,6 +614,7 @@ export const ordersRelations = relations(orders, ({ one, many }) => ({
     items: many(orderItems),
     payments: many(clientPayments),
     tickets: many(supportTickets),
+    iptvProvisions: many(iptvProvisions),
 }));
 
 export const supportTicketsRelations = relations(supportTickets, ({ one }) => ({
@@ -543,7 +697,15 @@ export const resellersRelations = relations(resellers, ({ one, many }) => ({
         fields: [resellers.id],
         references: [resellerWallets.resellerId],
     }),
+    tier: one(resellerTiers, {
+        fields: [resellers.tierId],
+        references: [resellerTiers.id],
+    }),
     orders: many(orders),
+}));
+
+export const resellerTiersRelations = relations(resellerTiers, ({ many }) => ({
+    resellers: many(resellers),
 }));
 
 export const resellerWalletsRelations = relations(resellerWallets, ({ one, many }) => ({
@@ -566,6 +728,21 @@ export const resellerTransactionsRelations = relations(resellerTransactions, ({ 
 }));
 
 // Removed split ordersRelationsB2b to merge with ordersRelations
+
+export const iptvProvisionsRelations = relations(iptvProvisions, ({ one }) => ({
+    order: one(orders, {
+        fields: [iptvProvisions.orderId],
+        references: [orders.id],
+    }),
+    orderItem: one(orderItems, {
+        fields: [iptvProvisions.orderItemId],
+        references: [orderItems.id],
+    }),
+    variant: one(productVariants, {
+        fields: [iptvProvisions.variantId],
+        references: [productVariants.id],
+    }),
+}));
 
 export const auditLogsRelations = relations(auditLogs, ({ one }) => ({
     user: one(users, {

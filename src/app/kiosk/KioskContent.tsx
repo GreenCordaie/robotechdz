@@ -6,7 +6,7 @@ import { useSettingsStore } from "@/store/useSettingsStore";
 import IdleView from "./views/IdleView";
 import CatalogueView from "./views/CatalogueView";
 import ConfirmationView from "./views/ConfirmationView";
-import { getKioskData } from "./actions";
+// getKioskData removed in favor of fetch
 import { useIsMobile } from "@/hooks/useIsMobile";
 import KioskMobile from "./KioskMobile";
 
@@ -15,12 +15,22 @@ export default function KioskContent() {
     const { step, resetKiosk } = useKioskStore();
     const [data, setData] = useState<{ products: any[], categories: any[] } | null>(null);
 
-    const { fetchSettings } = useSettingsStore();
+    const { fetchSettings, accentColor } = useSettingsStore();
 
     const refreshData = React.useCallback(() => {
-        getKioskData().then(setData).catch(console.error);
+        fetch("/api/v1/public/catalog")
+            .then((res) => res.json())
+            .then(setData)
+            .catch(console.error);
         fetchSettings();
     }, [fetchSettings]);
+
+    // Apply primary color CSS variable for kiosk theming
+    useEffect(() => {
+        if (typeof document !== "undefined") {
+            document.documentElement.style.setProperty("--primary", accentColor || "#ec5b13");
+        }
+    }, [accentColor]);
 
     // Initial and conditional fetch
     useEffect(() => {

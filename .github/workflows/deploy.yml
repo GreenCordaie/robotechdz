@@ -1,0 +1,73 @@
+name: Deploy to VPS
+
+on:
+  push:
+    branches:
+      - master
+      - avant-netflix-n8n
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Branch, tag, or full SHA to deploy. Empty = current ref."
+        required: false
+        default: ""
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: SSH deploy with backup
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Resolve target ref
+        id: ref
+        run: |
+          REF="${{ github.event.inputs.ref }}"
+          if [ -z "$REF" ]; then
+            REF="${{ github.sha }}"
+          fi
+          echo "ref=$REF" >> "$GITHUB_OUTPUT"
+          echo "Deploying ref: $REF"
+
+      - name: SSH deploy
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT || 22 }}
+          command_timeout: 20m
+          script_stop: true
+          script: |
+            set -euo pipefail
+            cd /opt/robotech
+            # Bootstrap: pull only deploy.sh first so we can use new subcommands
+            git fetch origin --tags
+            git checkout ${{ steps.ref.outputs.ref }} -- deploy.sh
+            chmod +x deploy.sh
+            ./deploy.sh deploy-with-backup ${{ steps.ref.outputs.ref }}
+
+      - name: Notify Telegram on success
+        if: success() && env.TELEGRAM_BOT_TOKEN != ''
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_ADMIN_CHAT_ID }}
+        run: |
+          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            -d chat_id="${TELEGRAM_CHAT_ID}" \
+            -d parse_mode=Markdown \
+            -d text="✅ *Deploy OK* — \`${{ steps.ref.outputs.ref }}\`%0Apar @${{ github.actor }}"
+
+      - name: Notify Telegram on failure
+        if: failure() && env.TELEGRAM_BOT_TOKEN != ''
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_ADMIN_CHAT_ID }}
+        run: |
+          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            -d chat_id="${TELEGRAM_CHAT_ID}" \
+            -d parse_mode=Markdown \
+            -d text="❌ *Deploy FAILED* — \`${{ steps.ref.outputs.ref }}\`%0Aauto-rollback exécuté côté VPS si applicable.%0A%0Avoir: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"

@@ -2,6 +2,7 @@
 
 import React from "react";
 import { Button, Card, CardBody } from "@heroui/react";
+import { useSettingsStore } from "@/store/useSettingsStore";
 import {
     Store,
     ArrowRight,
@@ -16,12 +17,13 @@ import {
 import Link from "next/link";
 
 export default function B2BLandingPage() {
+    const { shopName } = useSettingsStore();
     return (
-        <div className="min-h-screen bg-[#0a0a0a] text-white selection:bg-[#ec5b13]/30">
+        <div className="min-h-screen bg-[#0a0a0a] text-white selection:bg-[var(--primary)]/30">
             {/* Background Effects */}
             <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden">
-                <div className="absolute top-[-10%] right-[-10%] w-[60%] h-[60%] bg-[#ec5b13]/5 blur-[120px] rounded-full animate-pulse"></div>
-                <div className="absolute bottom-[-10%] left-[-10%] w-[60%] h-[60%] bg-[#ec5b13]/5 blur-[120px] rounded-full animate-pulse" style={{ animationDelay: '2s' }}></div>
+                <div className="absolute top-[-10%] right-[-10%] w-[60%] h-[60%] bg-[var(--primary)]/5 blur-[120px] rounded-full animate-pulse"></div>
+                <div className="absolute bottom-[-10%] left-[-10%] w-[60%] h-[60%] bg-[var(--primary)]/5 blur-[120px] rounded-full animate-pulse" style={{ animationDelay: '2s' }}></div>
             </div>
 
             {/* Content Wrapper */}
@@ -29,24 +31,24 @@ export default function B2BLandingPage() {
                 {/* Hero Section */}
                 <header className="pt-24 pb-16 px-6 max-w-7xl mx-auto text-center">
                     <div className="inline-flex items-center gap-2.5 px-4 py-2 rounded-full bg-[#161616] border border-[#262626] mb-8 animate-in fade-in slide-in-from-top-4 duration-700">
-                        <span className="flex h-2 w-2 rounded-full bg-[#ec5b13] animate-ping"></span>
-                        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-[#ec5b13]">Programme Partenaire 2026</span>
+                        <span className="flex h-2 w-2 rounded-full bg-[var(--primary)] animate-ping"></span>
+                        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-[var(--primary)]">Programme Partenaire 2026</span>
                     </div>
 
                     <h1 className="text-5xl md:text-7xl font-black tracking-tighter mb-6 leading-[0.9] uppercase animate-in fade-in slide-in-from-top-6 duration-1000 delay-100 italic">
                         Boostez votre <br />
-                        <span className="text-[#ec5b13]">Business Digital</span>
+                        <span className="text-[var(--primary)]">Business Digital</span>
                     </h1>
 
                     <p className="max-w-2xl mx-auto text-slate-400 text-lg md:text-xl font-medium leading-relaxed mb-12 animate-in fade-in slide-in-from-top-8 duration-1000 delay-200">
-                        Accédez aux tarifs grossistes, gérez votre propre stock virtuel et développez votre clientèle avec la solution B2B de <b>FLEXBOX DIRECT</b>.
+                        Accédez aux tarifs grossistes, gérez votre propre stock virtuel et développez votre clientèle avec la solution B2B de <b>{shopName}</b>.
                     </p>
 
                     <div className="flex flex-col sm:flex-row items-center justify-center gap-4 animate-in fade-in slide-in-from-top-10 duration-1000 delay-300">
                         <Button
                             as={Link}
                             href="/reseller/login"
-                            className="h-16 px-10 bg-[#ec5b13] text-white font-black text-lg rounded-2xl shadow-2xl shadow-orange-950/40 hover:scale-105 active:scale-95 transition-all uppercase tracking-tight"
+                            className="h-16 px-10 bg-[var(--primary)] text-white font-black text-lg rounded-2xl shadow-2xl shadow-orange-950/40 hover:scale-105 active:scale-95 transition-all uppercase tracking-tight"
                             endContent={<ArrowRight size={20} />}
                         >
                             Accéder au Portail
@@ -82,12 +84,12 @@ export default function B2BLandingPage() {
                                 desc: "Analysez vos ventes, vos transactions et l'historique complet de vos activités partenaires."
                             }
                         ].map((feat, i) => (
-                            <Card key={i} className="bg-[#161616] border border-[#262626] rounded-[32px] overflow-hidden group hover:border-[#ec5b13]/50 transition-all duration-500">
+                            <Card key={i} className="bg-[#161616] border border-[#262626] rounded-[32px] overflow-hidden group hover:border-[var(--primary)]/50 transition-all duration-500">
                                 <CardBody className="p-10">
-                                    <div className="size-16 rounded-2xl bg-[#0a0a0a] border border-[#262626] flex items-center justify-center mb-8 group-hover:scale-110 group-hover:bg-[#ec5b13] transition-all duration-500">
-                                        <feat.icon className="size-8 text-[#ec5b13] group-hover:text-white transition-colors" />
+                                    <div className="size-16 rounded-2xl bg-[#0a0a0a] border border-[#262626] flex items-center justify-center mb-8 group-hover:scale-110 group-hover:bg-[var(--primary)] transition-all duration-500">
+                                        <feat.icon className="size-8 text-[var(--primary)] group-hover:text-white transition-colors" />
                                     </div>
-                                    <h3 className="text-2xl font-black uppercase tracking-tight mb-4 group-hover:text-[#ec5b13] transition-colors">{feat.title}</h3>
+                                    <h3 className="text-2xl font-black uppercase tracking-tight mb-4 group-hover:text-[var(--primary)] transition-colors">{feat.title}</h3>
                                     <p className="text-slate-500 font-medium leading-relaxed">{feat.desc}</p>
                                 </CardBody>
                             </Card>
@@ -101,7 +103,7 @@ export default function B2BLandingPage() {
                         <div className="space-y-8">
                             <h2 className="text-4xl md:text-5xl font-black uppercase tracking-tighter leading-none italic">
                                 Pourquoi choisir <br />
-                                <span className="text-[#ec5b13]">FLEXBOX B2B ?</span>
+                                <span className="text-[var(--primary)]">{shopName} B2B ?</span>
                             </h2>
                             <div className="space-y-6">
                                 {[
@@ -122,12 +124,12 @@ export default function B2BLandingPage() {
                             </div>
                         </div>
                         <div className="relative">
-                            <div className="absolute inset-0 bg-[#ec5b13]/20 blur-[80px] rounded-full"></div>
+                            <div className="absolute inset-0 bg-[var(--primary)]/20 blur-[80px] rounded-full"></div>
                             <Card className="bg-[#111] border border-[#262626] rounded-[40px] shadow-2xl relative z-10 overflow-hidden transform lg:rotate-2">
                                 <CardBody className="p-0">
                                     <div className="bg-[#1a1614] border-b border-[#2d2622] p-6 flex justify-between items-center">
                                         <div className="flex items-center gap-3">
-                                            <div className="size-10 rounded-xl bg-[#ec5b13] flex items-center justify-center shadow-lg">
+                                            <div className="size-10 rounded-xl bg-[var(--primary)] flex items-center justify-center shadow-lg">
                                                 <Store className="text-white size-6" />
                                             </div>
                                             <div className="flex flex-col">
@@ -145,7 +147,7 @@ export default function B2BLandingPage() {
                                         <div className="grid grid-cols-2 gap-4">
                                             <div className="h-20 rounded-2xl bg-[#0a0a0a] border border-[#262626] p-4 flex flex-col justify-center">
                                                 <span className="text-[9px] font-black text-slate-600 uppercase">Remise Or</span>
-                                                <span className="text-xl font-black text-[#ec5b13]">-15%</span>
+                                                <span className="text-xl font-black text-[var(--primary)]">-15%</span>
                                             </div>
                                             <div className="h-20 rounded-2xl bg-[#0a0a0a] border border-[#262626] p-4 flex flex-col justify-center">
                                                 <span className="text-[9px] font-black text-slate-600 uppercase">Ventes</span>
@@ -176,7 +178,7 @@ export default function B2BLandingPage() {
                             <Button
                                 as={Link}
                                 href="/reseller/login"
-                                className="h-16 px-12 bg-white text-black font-black text-lg rounded-2xl hover:bg-[#ec5b13] hover:text-white transition-all uppercase tracking-tight"
+                                className="h-16 px-12 bg-white text-black font-black text-lg rounded-2xl hover:bg-[var(--primary)] hover:text-white transition-all uppercase tracking-tight"
                             >
                                 Commencer maintenant
                             </Button>
@@ -188,7 +190,7 @@ export default function B2BLandingPage() {
                 <footer className="px-6 py-12 border-t border-white/5 text-center text-slate-600">
                     <div className="flex items-center justify-center gap-3 mb-6">
                         <Store className="size-5" />
-                        <span className="font-black tracking-widest text-xs uppercase">FLEXBOX BUSINESS SOLUTION</span>
+                        <span className="font-black tracking-widest text-xs uppercase">{shopName} BUSINESS SOLUTION</span>
                     </div>
                     <p className="text-[10px] font-bold uppercase tracking-[0.4em]">© 2026 Tous droits réservés • ALGERIA</p>
                 </footer>

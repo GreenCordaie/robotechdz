@@ -14,10 +14,11 @@ import {
 import { useRouter } from "next/navigation";
 import { Banknote, Search, Plus, Landmark, AlertTriangle, Settings, History, LayoutDashboard, ArrowUpCircle, ArrowDownCircle, Download, DollarSign, RefreshCcw } from "lucide-react";
 import { formatCurrency } from "@/lib/formatters";
-import { AddSupplierModal } from "@/components/admin/modals/AddSupplierModal";
-import { RechargeBalanceModal } from "@/components/admin/modals/RechargeBalanceModal";
-import { PaySupplierModal } from "@/components/admin/modals/PaySupplierModal";
-import { SupplierSettingsModal } from "@/components/admin/modals/SupplierSettingsModal";
+import dynamic from "next/dynamic";
+const AddSupplierModal = dynamic(() => import("@/components/admin/modals/AddSupplierModal").then(m => m.AddSupplierModal), { ssr: false });
+const RechargeBalanceModal = dynamic(() => import("@/components/admin/modals/RechargeBalanceModal").then(m => m.RechargeBalanceModal), { ssr: false });
+const PaySupplierModal = dynamic(() => import("@/components/admin/modals/PaySupplierModal").then(m => m.PaySupplierModal), { ssr: false });
+const SupplierSettingsModal = dynamic(() => import("@/components/admin/modals/SupplierSettingsModal").then(m => m.SupplierSettingsModal), { ssr: false });
 
 import { markTransactionAsPaidAction } from "./actions";
 import toast from "react-hot-toast";
@@ -171,9 +172,9 @@ export default function SuppliersMobile({ initialSuppliers, initialHistory, init
                     <p className="text-[8px] font-black uppercase text-slate-500 tracking-widest">Valeur Stock</p>
                     <p className="text-base font-black truncate">{formatCurrency(totalValeurDzd, 'DZD')}</p>
                 </div>
-                <div className="p-4 bg-[#ec5b13]/10 border border-[#ec5b13]/20 rounded-[2rem] space-y-1 shadow-[0_0_15px_rgba(236,91,19,0.05)]">
-                    <p className="text-[8px] font-black uppercase text-[#ec5b13] tracking-widest">Profit Net</p>
-                    <p className="text-base font-black text-[#ec5b13] truncate">{formatCurrency(stats.netProfit, 'DZD')}</p>
+                <div className="p-4 bg-[var(--primary)]/10 border border-[var(--primary)]/20 rounded-[2rem] space-y-1 shadow-[0_0_15px_rgba(236,91,19,0.05)]">
+                    <p className="text-[8px] font-black uppercase text-[var(--primary)] tracking-widest">Profit Net</p>
+                    <p className="text-base font-black text-[var(--primary)] truncate">{formatCurrency(stats.netProfit, 'DZD')}</p>
                 </div>
                 <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-[2rem] space-y-1">
                     <p className="text-[8px] font-black uppercase text-emerald-500 tracking-widest">Total Payé</p>
@@ -244,7 +245,7 @@ export default function SuppliersMobile({ initialSuppliers, initialHistory, init
 
                                         <div className="flex gap-2 mt-4 pt-4 border-t border-white/5">
                                             <Button
-                                                className="flex-1 bg-white/5 hover:bg-[#ec5b13] hover:text-white transition-all font-black text-[10px] uppercase rounded-2xl h-11"
+                                                className="flex-1 bg-white/5 hover:bg-[var(--primary)] hover:text-white transition-all font-black text-[10px] uppercase rounded-2xl h-11"
                                                 onPress={() => handleOpenRecharge(s)}
                                             >
                                                 Plus de Fonds

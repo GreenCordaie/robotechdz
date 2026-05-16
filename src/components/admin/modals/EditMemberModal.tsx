@@ -181,7 +181,7 @@ export const EditMemberModal = ({ isOpen, onOpenChange, member, onSuccess }: Edi
                                     <div className="space-y-2">
                                         <label className="block text-sm font-medium text-slate-400">Nom complet</label>
                                         <input
-                                            className="w-full bg-[#0a0a0a] border border-[#262626] rounded-xl text-slate-100 placeholder:text-slate-600 focus:ring-[#ec5b13] focus:border-[#ec5b13] transition-all p-3 outline-none"
+                                            className="w-full bg-[#0a0a0a] border border-[#262626] rounded-xl text-slate-100 placeholder:text-slate-600 focus:ring-[var(--primary)] focus:border-[var(--primary)] transition-all p-3 outline-none"
                                             placeholder="Ex: Amine Caissier"
                                             type="text"
                                             value={fullName}
@@ -192,7 +192,7 @@ export const EditMemberModal = ({ isOpen, onOpenChange, member, onSuccess }: Edi
                                     <div className="space-y-2">
                                         <label className="block text-sm font-medium text-slate-400">Adresse Email</label>
                                         <input
-                                            className="w-full bg-[#0a0a0a] border border-[#262626] rounded-xl text-slate-100 placeholder:text-slate-600 focus:ring-[#ec5b13] focus:border-[#ec5b13] transition-all p-3 outline-none"
+                                            className="w-full bg-[#0a0a0a] border border-[#262626] rounded-xl text-slate-100 placeholder:text-slate-600 focus:ring-[var(--primary)] focus:border-[var(--primary)] transition-all p-3 outline-none"
                                             placeholder="amine@flexbox-direct.com"
                                             type="email"
                                             value={email}
@@ -208,7 +208,7 @@ export const EditMemberModal = ({ isOpen, onOpenChange, member, onSuccess }: Edi
                                         <label className="block text-sm font-medium text-slate-400">Nouveau mot de passe (optionnel)</label>
                                         <div className="relative">
                                             <input
-                                                className="w-full bg-[#0a0a0a] border border-[#262626] rounded-xl text-slate-100 placeholder:text-slate-600 focus:ring-[#ec5b13] focus:border-[#ec5b13] transition-all pl-10 p-3 outline-none"
+                                                className="w-full bg-[#0a0a0a] border border-[#262626] rounded-xl text-slate-100 placeholder:text-slate-600 focus:ring-[var(--primary)] focus:border-[var(--primary)] transition-all pl-10 p-3 outline-none"
                                                 placeholder="Laisser vide pour ne pas changer"
                                                 type="password"
                                                 value={password}
@@ -221,7 +221,7 @@ export const EditMemberModal = ({ isOpen, onOpenChange, member, onSuccess }: Edi
                                         <label className="block text-sm font-medium text-slate-400">Code PIN Rapide</label>
                                         <div className="relative">
                                             <input
-                                                className="w-full bg-[#0a0a0a] border border-[#262626] rounded-xl text-slate-100 placeholder:text-slate-600 focus:ring-[#ec5b13] focus:border-[#ec5b13] transition-all pl-10 p-3 outline-none tracking-[0.5em]"
+                                                className="w-full bg-[#0a0a0a] border border-[#262626] rounded-xl text-slate-100 placeholder:text-slate-600 focus:ring-[var(--primary)] focus:border-[var(--primary)] transition-all pl-10 p-3 outline-none tracking-[0.5em]"
                                                 maxLength={4}
                                                 placeholder="0000"
                                                 type="text"
@@ -241,14 +241,14 @@ export const EditMemberModal = ({ isOpen, onOpenChange, member, onSuccess }: Edi
                                         <button
                                             type="button"
                                             onClick={() => setRole("cashier")}
-                                            className={`relative flex flex-col p-4 text-left rounded-xl transition-all border-2 ${role === "cashier" ? "border-[#ec5b13] bg-[#ec5b13]/10" : "border-[#262626] bg-[#0a0a0a] hover:border-slate-700"}`}
+                                            className={`relative flex flex-col p-4 text-left rounded-xl transition-all border-2 ${role === "cashier" ? "border-[var(--primary)] bg-[var(--primary)]/10" : "border-[#262626] bg-[#0a0a0a] hover:border-slate-700"}`}
                                         >
                                             <div className="flex items-center justify-between mb-3 w-full">
-                                                <div className={`p-2 rounded-lg ${role === "cashier" ? "bg-[#ec5b13]/20 text-[#ec5b13]" : "bg-zinc-800 text-slate-400"}`}>
+                                                <div className={`p-2 rounded-lg ${role === "cashier" ? "bg-[var(--primary)]/20 text-[var(--primary)]" : "bg-zinc-800 text-slate-400"}`}>
                                                     <Store className="w-6 h-6" />
                                                 </div>
-                                                <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${role === "cashier" ? "border-[#ec5b13]" : "border-slate-700"}`}>
-                                                    {role === "cashier" && <div className="w-2 h-2 rounded-full bg-[#ec5b13]"></div>}
+                                                <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${role === "cashier" ? "border-[var(--primary)]" : "border-slate-700"}`}>
+                                                    {role === "cashier" && <div className="w-2 h-2 rounded-full bg-[var(--primary)]"></div>}
                                                 </div>
                                             </div>
                                             <span className="text-slate-100 font-bold block">Caissier</span>
@@ -257,14 +257,14 @@ export const EditMemberModal = ({ isOpen, onOpenChange, member, onSuccess }: Edi
                                         <button
                                             type="button"
                                             onClick={() => setRole("traiteur")}
-                                            className={`relative flex flex-col p-4 text-left rounded-xl transition-all border-2 ${role === "traiteur" ? "border-[#ec5b13] bg-[#ec5b13]/10" : "border-[#262626] bg-[#0a0a0a] hover:border-slate-700"}`}
+                                            className={`relative flex flex-col p-4 text-left rounded-xl transition-all border-2 ${role === "traiteur" ? "border-[var(--primary)] bg-[var(--primary)]/10" : "border-[#262626] bg-[#0a0a0a] hover:border-slate-700"}`}
                                         >
                                             <div className="flex items-center justify-between mb-3 w-full">
-                                                <div className={`p-2 rounded-lg ${role === "traiteur" ? "bg-[#ec5b13]/20 text-[#ec5b13]" : "bg-zinc-800 text-slate-400"}`}>
+                                                <div className={`p-2 rounded-lg ${role === "traiteur" ? "bg-[var(--primary)]/20 text-[var(--primary)]" : "bg-zinc-800 text-slate-400"}`}>
                                                     <Package className="w-6 h-6" />
                                                 </div>
-                                                <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${role === "traiteur" ? "border-[#ec5b13]" : "border-slate-700"}`}>
-                                                    {role === "traiteur" && <div className="w-2 h-2 rounded-full bg-[#ec5b13]"></div>}
+                                                <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${role === "traiteur" ? "border-[var(--primary)]" : "border-slate-700"}`}>
+                                                    {role === "traiteur" && <div className="w-2 h-2 rounded-full bg-[var(--primary)]"></div>}
                                                 </div>
                                             </div>
                                             <span className="text-slate-100 font-bold block">Traiteur</span>
@@ -273,14 +273,14 @@ export const EditMemberModal = ({ isOpen, onOpenChange, member, onSuccess }: Edi
                                         <button
                                             type="button"
                                             onClick={() => setRole("admin")}
-                                            className={`relative flex flex-col p-4 text-left rounded-xl transition-all border-2 ${role === "admin" ? "border-[#ec5b13] bg-[#ec5b13]/10" : "border-[#262626] bg-[#0a0a0a] hover:border-slate-700"}`}
+                                            className={`relative flex flex-col p-4 text-left rounded-xl transition-all border-2 ${role === "admin" ? "border-[var(--primary)] bg-[var(--primary)]/10" : "border-[#262626] bg-[#0a0a0a] hover:border-slate-700"}`}
                                         >
                                             <div className="flex items-center justify-between mb-3 w-full">
-                                                <div className={`p-2 rounded-lg ${role === "admin" ? "bg-[#ec5b13]/20 text-[#ec5b13]" : "bg-zinc-800 text-slate-400"}`}>
+                                                <div className={`p-2 rounded-lg ${role === "admin" ? "bg-[var(--primary)]/20 text-[var(--primary)]" : "bg-zinc-800 text-slate-400"}`}>
                                                     <ShieldCheck className="w-6 h-6" />
                                                 </div>
-                                                <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${role === "admin" ? "border-[#ec5b13]" : "border-slate-700"}`}>
-                                                    {role === "admin" && <div className="w-2 h-2 rounded-full bg-[#ec5b13]"></div>}
+                                                <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${role === "admin" ? "border-[var(--primary)]" : "border-slate-700"}`}>
+                                                    {role === "admin" && <div className="w-2 h-2 rounded-full bg-[var(--primary)]"></div>}
                                                 </div>
                                             </div>
                                             <span className="text-slate-100 font-bold block">Admin</span>
@@ -291,7 +291,7 @@ export const EditMemberModal = ({ isOpen, onOpenChange, member, onSuccess }: Edi
                             <ModalFooter>
                                 <Button variant="light" onPress={onClose} className="text-slate-400">Annuler</Button>
                                 <Button
-                                    className="bg-[#ec5b13] text-white px-8 rounded-xl font-bold shadow-lg shadow-orange-900/20"
+                                    className="bg-[var(--primary)] text-white px-8 rounded-xl font-bold shadow-lg shadow-orange-900/20"
                                     type="submit"
                                     isLoading={isLoading}
                                     startContent={!isLoading && <Save className="w-5 h-5" />}

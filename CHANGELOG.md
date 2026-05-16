@@ -2,6 +2,420 @@
 
 Toutes les modifications notables de ce projet seront documentées dans ce fichier.
 
+## [Unreleased] — Marketplace B2B refonte (2026-05-13)
+
+> 18 commits sur 7 PRs draft empilées : `#1 → #2 → #3 → #4 → #5 → #6 → #7`.
+> Aucun deploy déclenché. 0 credit consommé. 14/14 tests E2E PASS en CI Linux.
+
+### 🚨 PR #1 — EPIC 0 Stabilisation
+- **build** : retrait de `typescript.ignoreBuildErrors: true` (bombe désactivée).
+  Le build crashe désormais sur toute régression de typage.
+- **build** : conservé `eslint.ignoreDuringBuilds: true` pour ne pas bloquer
+  sur warnings préexistants (cleanup planifié EPIC 11).
+- **repo hygiene** : retrait du tracking de `tmp/` (74 fichiers debug contenant
+  des données réelles clients/Microsoft), `backups/v1.5-evo-bot/`, 23 logs
+  `.txt` à la racine, 11 scripts debug, `tsconfig.tsbuildinfo`, `.bak`.
+  ⚠️ historique remote **non purgé** — `git filter-repo` à faire pour rotation.
+- **env** : `.env.example` complété avec 18 variables manquantes
+  (TURNSTILE_*, MICROSOFT_*, LOADBRAIN_*, GROQ_API_KEY, UPSTASH_*, VAPID_*,
+  WHATSAPP_API_KEY, WHATSAPP_VERIFY_TOKEN, ENABLE_DEBUG_ROUTES).
+- **env** : nouveau `src/lib/env.ts` (validation Zod runtime au boot Node).
+- **drizzle** : retrait du fallback `DATABASE_URL` hardcodé avec password
+  dans `drizzle.config.ts`.
+- **encryption** : fallback `SESSION_SECRET → ENCRYPTION_KEY` conservé pour
+  ne pas casser les données chiffrées en prod, **+ warning explicite**.
+  Migration de rotation propre planifiée EPIC 8.
+- **security** : 3 routes debug (`/api/debug-codes`, `/api/diag-netflix`,
+  `/api/list-all-emails`) désormais en 404 en production sauf si
+  `ENABLE_DEBUG_ROUTES=true` (helper `guardDebugRoute`).
+- **security** : suivi public `/suivi/[orderNumber]` — validation téléphone
+  passée de 4 chiffres (~10K combos) à **6 chiffres** (~1M combos) pour
+  résister au brute-force.
+- **bug critical** : `reverseSupplierDebits` était susceptible de double-rembourser
+  un fournisseur si appelé 2× pour la même order. Idempotence via marker
+  `REVERSAL:` dans `reason` + check au début de la fonction.
+- **B2B UX** : wallet reseller — retrait des stats hardcodées `12,500 DZD volume`
+  et `625 DZD savings`. Calcul depuis transactions réelles du mois en cours.
+- **B2B UX** : bouton "Recharger le Compte" masqué (recâblage EPIC 14).
+- **typing** : 9 erreurs TS réelles fixées dans push/actions, SettingsMobile,
+  PushNotificationManager, rate-limit.service. Total 37 → 0.
+- **tsconfig** : `scripts/`, `drizzle/`, `public/` exclus du `tsc`.
+
+### 🏗️ PR #2 — EPIC 1 Tier system (Bronze / Silver / Gold)
+- **schema** : nouvelle table `reseller_tiers` (id, name unique, discount_pct,
+  min_monthly_volume_dzd, color, is_default, rank).
+- **schema** : colonne `tier_id` (FK) sur `resellers` — ON DELETE SET NULL
+  pour rester safe.
+- **schema** : `reseller_visible` (default true) + `reseller_price_override_dzd`
+  (nullable) sur `product_variants`.
+- **migration** : `drizzle/0005_epic_1_marketplace_foundation.sql` écrite à la
+  main, idempotente (`CREATE TABLE IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS`,
+  `INSERT ... ON CONFLICT DO NOTHING`). Seed Bronze (0%) / Silver (5% à 50k)
+  / Gold (10% à 200k). Backfill : assigne BRONZE aux resellers existants.
+- **drizzle** : re-track des migrations legacy `0000–0004` qui avaient été
+  silencieusement retirées du tracking par le commit `440787c` (release 10.1.1).
+- **service** : `src/services/tier.service.ts` — getDefaultTier (cache 10min),
+  getCurrentTierForReseller, getMonthlyPurchaseVolume, recalculateTierForReseller,
+  applyTierDiscount.
+- **B2B checkout** : `checkoutResellerAction` utilise `reseller_price_override_dzd`
+  > `salePriceDzd`, applique le discount tier puis `customDiscount` (capé 100%),
+  enrichit la description transaction (`[GOLD -10% +custom -2%]`), recalcule
+  async le tier post-checkout pour promotion automatique.
+- **UI** : badge "Palier BRONZE/SILVER/GOLD -X%" coloré dans wallet reseller +
+  progress bar vers palier suivant basée sur volume mensuel réel.
+- **i18n stub** : `getCurrentResellerAction` retourne désormais le `tier` joint
+  + `monthlyVolume`.
+
+### 🛒 PR #3 — EPIC 2/A Catalogue reseller fonctionnel
+- **bug critical** : `/reseller/shop` appelait `getPaginatedProducts` qui exige
+  les rôles ADMIN/CAISSIER/TRAITEUR → un vrai RESELLER était rejeté → **le shop
+  n'a jamais fonctionné en production**. Remplacé par `getResellerCatalogAction`.
+- **bug critical** : le bouton "Panier" n'avait pas `onClick={onOpen}` → modal
+  de checkout **jamais ouvert** → aucune commande B2B possible via l'UI.
+- **action** : `getResellerCatalogAction` filtre `reseller_visible=true`,
+  calcule stock disponible temps réel (codes + slots), pricing tier-aware,
+  pagination + recherche + filtre catégorie.
+- **UI** : badges livraison par produit — **Instant** (cyan, LoadBrain auto),
+  **Stock N** (emerald > 5, amber ≤ 5), **Sur demande** (slate).
+- **UI** : cart bloque l'ajout au-delà du stock. Recherche debounced 300ms.
+  Filtres Tout / Instant / En stock.
+- **types** : `ResellerCatalogItem` + `ResellerCatalogPricing` exportés.
+  Suppression des `useState<any>` / `(props: any)`.
+
+### 🧪 PR #4 — E2E foundation + 2 bugs production
+- **infra** : `docker-compose.test.yml` (postgres:16 + redis:7 sur 5499/6499
+  isolés des ports prod / LoadBrain voisin).
+- **infra** : `.env.test` — toutes les clés externes vides → court-circuit
+  → zéro appel sortant possible.
+- **infra** : `scripts/seed-e2e.ts` idempotent (admin + reseller + 3 tiers +
+  product Netflix Premium avec 3 variants : stock / LoadBrain / kiosk-only),
+  protégé contre l'exécution sur autre que `pc_ia_test`.
+- **playwright** : `playwright.config.ts` (Chromium, port 4555, workers=1) +
+  10 specs initiales.
+- **bug critical** : `loginResellerAction` + `loginAction` crashaient avec
+  `TypeError: Cannot read properties of undefined (reading 'getTime')` sur
+  `limit.blockedUntil!.getTime()` quand `RateLimitService.checkLimit` faisait
+  fail-closed (Redis down). Tout login admin + reseller en 500. **Fix** :
+  fallback `15 minutes` si `blockedUntil` undefined.
+- **bug critical** : `new Redis({ url: process.env.UPSTASH_REDIS_REST_URL! })`
+  crashait au boot si l'env absente. Combiné au fail-closed du rate-limit =
+  SPOF total : Upstash down → aucun login possible. **Fix** : client no-op
+  fallback si vars absentes (warning loggé en prod).
+
+### ⚡ PR #5 — EPIC 2/C LoadBrain Marketplace admin (GOAL FINAL)
+- **service** : `src/services/loadbrain-marketplace.service.ts` avec
+  - `listAvailableServices()` — appel SDK en prod, **8 fixtures** en dev/test
+    (AtlasPro 1m/3m/12m, IronMax 1m/12m, PanelKing365, IBO yearly/lifetime).
+  - `linkServiceToProduct()` — crée product + variant avec `loadbrainSlug`
+    comme pivot → provisioning automatique au checkout reseller.
+  - `unlinkSlugFromVariant()` — détache un slug sans toucher au stock.
+- **UI admin** : `/admin/iptv/loadbrain-services` avec grid responsive, filtres
+  Tous / À lier / Déjà liés, modal de liaison avec préfill intelligent
+  (prix kiosque = achat × 1.4, prix reseller = achat × 1.2).
+- **fix UI** : badge tier était caché si discount=0% (Bronze) — affichage
+  "Tarif standard" désormais visible.
+
+### 🔑 PR #6 — EPIC 2/D Credentials reseller + Send-to-client
+- **bug critical** : `/reseller/orders` affichait "Articles en gros" hardcodé
+  au lieu des vrais noms produits, et **n'avait aucun moyen d'afficher les
+  credentials achetées** (codes en DB mais inaccessibles UI). Fix : refonte
+  complète + modal détail.
+- **action** : `getResellerOrderDetailAction` — fetch order + items + 4 joins,
+  déchiffre côté serveur (codes / slots / iptv_provisions credentials JSON),
+  vérifie ownership (orderId + resellerId match).
+- **action** : `sendCredentialsToClientAction` — Zod validation (phone regex
+  +213…), no-op safe en dev (WHATSAPP non configuré), enqueue BullMQ
+  `SEND_WHATSAPP` en prod.
+- **UI** : modal détail 3xl scrollable, par item : codes standards + profils
+  partagés (parentCode + PIN) + IPTV LoadBrain (status visuel Livré / En cours
+  / Échec + credentials déchiffrées dynamiquement).
+- **UI** : bouton "Envoyer au client" → modal WhatsApp avec phone + message
+  custom 500 char.
+
+### 🤖 PR #7 — CI GitHub Actions (READY)
+- **workflow** : `.github/workflows/ci.yml` — trigger sur push + PR sur
+  `master`/`avant-netflix-n8n`/`epic-**`, concurrency `cancel-in-progress`.
+- **job typecheck** : `tsc --noEmit` strict (bloquant), `eslint` soft.
+- **job e2e** : services Docker postgres:16 + redis:7, cache Playwright
+  browsers + npm, `drizzle-kit push`, seed E2E, dev server :4555, run
+  14 tests Playwright, upload artifacts si fail.
+- **deps pinning** : `@heroui/react`, `@heroui/theme`, `drizzle-orm`, `drizzle-kit`,
+  `lucide-react`, `postgres` étaient à `"latest"` — pinned aux versions exactes
+  locales. **Bombe à retardement éliminée** (50 erreurs TS CI résolues).
+- **vendor stubs** : `vendor/loadbrain-{sdk,site-integration}-stub/` no-op
+  pour satisfaire les imports statiques en CI où le vrai SDK privé est
+  indisponible. `scripts/ci-pack-loadbrain-stubs.sh` avec guard `CI=true`
+  pour ne JAMAIS écraser les vrais `.tgz` en local.
+
+### 🔧 Métriques globales de la session
+- **EPICs avancés** : 5 (0, 1, 2/A, 2/C, 2/D) + 2 infra (E2E, CI)
+- **PRs draft** : 7 (PR #7 ready, #1-#6 draft)
+- **Commits atomiques** : 18
+- **Lignes ajoutées** : +2 800
+- **Lignes supprimées** : −6 100 (cleanup repo)
+- **Tests E2E** : 14/14 PASS (local 27s, CI Linux 8m26)
+- **Bugs production critiques fixés** : 5 (3 auth/Redis + 2 UI)
+- **Bombes à retardement éliminées** : 1 (deps `"latest"`)
+- **TypeScript final** : 0 erreurs (strict enforced)
+- **Credits consommés** : 0 (LoadBrain, Telegram, WhatsApp, Microsoft Graph)
+- **Achats / commandes** : 0
+- **Deploys déclenchés** : 0
+
+---
+
+## [12.2.0] - 2026-04-25
+
+### 🚀 Iron Max TV — Second Provider IPTV
+
+#### Multi-Provider IPTV
+- **Iron Max TV** ajouté comme second provider IPTV aux côtés de King365TV
+- 5 variantes : 12 Mois, 6 Mois, 3 Mois, 1 Mois, Trial 2 Jours
+- Slugs : `ironmax-12m`, `ironmax-6m`, `ironmax-3m`, `ironmax-1m`, `ironmax-trial`
+- Mappings LoadBrain créés — provisioning automatique (~25s)
+- Webhook Iron Max → credentials en clair (username, password, M3U, EPG)
+- Architecture multi-provider validée — aucun code modifié, tout fonctionne par configuration
+
+#### Corrections additionnelles
+- Nettoyage DB : suppression produits test "karim test king365"
+- Nettoyage LoadBrain : doublons de mappings identifiés (à supprimer côté LoadBrain)
+- Commandes orphelines nettoyées (8 tests supprimés, 2 annulées)
+- SDK LoadBrain v3.1.0 — `createNextWebhookHandler` + `expiresAt` DD-MM-YYYY parsing
+
+## [12.1.0] - 2026-04-25
+
+### 🔒 Audit de Sécurité & Corrections — 21 fixes
+
+#### CRITIQUES (9 corrigés)
+- **HMAC constant-time** — `timingSafeEqual` au lieu de `!==` dans webhook LoadBrain
+- **Idempotency TOCTOU** — check déplacé dans la transaction DB
+- **Rate-limit atomique** — EXPIRE toujours appelé + try/catch anti-lockout permanent
+- **Telegram fallback hardcodé** — `"flexbox_secure_token_2026"` supprimé, fail si absent
+- **IPTV credentials masquées** — password `••••••••` dans Telegram (plus de plaintext)
+- **PIN verification** — `session.user.id` → `session.userId` (écran PIN fonctionnel)
+- **Settings publics** — `/api/v1/public/settings` filtre les tokens/secrets/clés API
+- **require() client** — remplacé par `fetch()` dans la page Modules
+- **deliveryMethod case** — `"whatsapp"` → `"WHATSAPP"` (bouton resend visible)
+
+#### HIGH (10 corrigés)
+- **decrypt null-check** — guard `s.digitalCode?.code` avant décryptage (2 endroits)
+- **/api/health** — détails protégés par CRON_SECRET (public = juste "ok")
+- **IPTV retry** — provisions `queued` bloquées maintenant retryable
+- **OrderStatus.TERMINE** — enum au lieu de string hardcodé
+- **JSON.parse** — try/catch retourne 400 au lieu de 500
+- **checkExpiringProvisions** — utilise `expiresAt` avec threshold réel
+- **Turnstile** — token requis si configuré (plus de bypass)
+- **CredentialCard** — `screen.expiresAt` au lieu de `completedAt`
+- **n8n event** — `ORDER_PAID` au lieu de `ORDER_PRINTED`
+- **Dashboard mobile** — +/- pourcentage avec couleur conditionnelle
+
+#### MEDIUM (2 corrigés)
+- **useSettingsStore** — appel unique au lieu de double souscription
+- **expiresAt date format** — parsing DD-MM-YYYY (format LoadBrain)
+
+## [12.0.0] - 2026-04-24
+
+### 🚀 Release v12.0.0 — LoadBrain IPTV Integration
+
+Intégration complète du module LoadBrain pour le provisionnement automatique IPTV (King365).
+
+#### 📦 Module LoadBrain SDK v3.0.1
+- `@loadbrain/sdk@3.0.1` + `@loadbrain/site-integration@3.0.1` installés
+- Proxy sécurisé via `createNextRouteHandler()` — API key jamais exposée au navigateur
+- `ProductManager` avec `apiBasePath` — mapping produits → plans LoadBrain
+- Config `siteUrl` pour les webhooks automatiques
+
+#### 🗄️ Schema DB
+- `loadbrainSlug` sur `product_variants` — liaison variante → plan LoadBrain
+- Table `iptv_provisions` — suivi provisioning (taskId, status, credentials encryptées)
+
+#### ⚡ Pipeline Commande IPTV
+- `allocateOrderStock()` skip les items IPTV (provisionnés via LoadBrain)
+- `payOrder()` dispatch automatique `provisionIptvOrder()` après paiement
+- **Polling automatique** — vérifie le task LoadBrain toutes les 5s pendant 60s
+- Si le task est `completed`, injecte les credentials en DB + marque TERMINE + envoie WhatsApp
+- Guard `ORDER_DELIVERED` — empêche l'envoi WhatsApp prématuré pour les commandes IPTV
+
+#### 📡 Webhook Handler
+- `/api/loadbrain/webhook` — vérifie signature HMAC, crée `digital_codes`, complète la commande
+- Fallback HMAC avec 3 variantes de body (raw, trimmed, re-stringified)
+- Validation idempotency — skip si credentials déjà existantes
+- Events `IPTV_PROVISION_COMPLETED` et `IPTV_PROVISION_FAILED` publiés
+
+#### 📱 WhatsApp IPTV
+- Message formaté : username, mot de passe, M3U URL, EPG URL
+- M3U construit automatiquement si LoadBrain retourne vide
+- Instructions IPTV (Smarters, TiviMate) envoyées après les credentials
+
+#### 🖥️ Pages Admin
+- **`/admin/iptv`** — liste des lignes provisionnées avec credentials, filtres, statuts
+- Boutons : Relancer, Renvoyer webhook, Annuler, Renouveler, Saisie manuelle
+- Statut "cancelled" ajouté
+- **`/admin/modules`** — ProductManager LoadBrain v3.0.0, exports listés
+- **Dashboard** — carte IPTV sur desktop + mobile
+- **Traitement** — items IPTV affichent "IPTV LoadBrain — Provisionnement automatique" au lieu des champs code
+- **Commandes** — statut IPTV dans le détail commande
+
+#### 🛒 Kiosk
+- Produits IPTV visibles avec badge cyan "Auto"
+- Stock IPTV = "Disponible — Instant" (pas de compteur)
+- `loadbrainSlug` exposé au frontend pour détection
+
+#### 📋 Catalogue Admin
+- Champ "LoadBrain Slug (IPTV)" dans le formulaire variante
+- Validation slug — vérifie que le slug existe dans LoadBrain avant création
+- Visible uniquement quand "Livraison manuelle" est désactivé
+
+#### 🔒 Sécurité
+- Proxy `/api/loadbrain/[...path]` avec path allowlist
+- `/api/loadbrain/provision-status` avec auth session
+- `/admin/iptv` dans le middleware RBAC whitelist (ADMIN, SUPER_ADMIN, CAISSIER, TRAITEUR)
+
+#### ⏰ Cron Expiration
+- `/api/admin/cron/iptv-expiry` — alerte Telegram pour lignes expirant dans 3 jours
+
+## [11.1.0] - 2026-04-11
+
+### 🔔 Notifications Push & PWA + Netflix Multi-Compte
+
+#### Notifications Push (Badge icône)
+- **Badge compteur** sur l'icône de l'app (comme WhatsApp/Facebook) via Badging API
+- **Push automatiques** : nouvelle commande payée → notification ADMIN + CAISSIER
+- **Auto-subscribe** au login si permission déjà accordée
+- **Clear badge** à l'ouverture de l'app
+- **Toggle dans Paramètres** : switch ON/OFF avec liste des événements notifiés
+
+#### PWA Double Manifest (Admin + Kiosk)
+- **2 manifests séparés** : `/api/admin-manifest` (scope `/admin`) et `/api/kiosk-manifest` (scope `/kiosk`)
+- Installables **indépendamment** — installer le kiosk ne bloque pas l'installation admin
+- Chaque manifest a son propre `id`, `scope`, `start_url`
+- Suppression du `manifest.ts` racine (remplacé par les routes API)
+
+#### Icônes PWA
+- **4 icônes générées** via Sharp : 192px + 512px, versions `maskable` (padding 20%) et `any`
+- **Badge notification** : `badge-96.png` pour la barre des tâches du téléphone
+- Logo correctement dimensionné, plus de rognage
+
+#### Bandeau Installation Kiosk
+- Bannière orange "Installez [nom boutique] sur votre appareil" avec bouton Installer
+- Disparaît si déjà installé ou fermé
+
+#### Netflix Multi-Compte (Disambiguation)
+- **Sélection par index** : client répond "1", "2" pour choisir le bon compte
+- **Match partiel email** : client tape "john" → match `john@outlook.com` (min 4 chars)
+- **Message amélioré** : liste numérotée claire avec instructions
+- Conserve aussi le match par n° commande et profil
+
+## [11.0.1] - 2026-04-11
+
+### 🐛 Fix: Livraison WhatsApp automatique
+
+**Problème** : Les messages WhatsApp ne partaient pas automatiquement après paiement/validation d'une commande, mais le bouton "Renvoyer" fonctionnait.
+
+**Cause racine** (2 bugs) :
+1. **EventBus double instance** : En production, `AppEventBus.instance` (variable statique) et `globalThis.__eventBus` créaient 2 instances séparées. L'événement `ORDER_DELIVERED` était émis sur une instance, le worker écoutait sur l'autre.
+2. **BullMQ inaccessible** : Le bundle standalone Next.js n'inclut pas `ioredis`/`bullmq` — la queue échouait silencieusement sans jamais exécuter le job de livraison.
+
+**Corrections** :
+- **`src/lib/events.ts`** : EventBus utilise `globalThis` en production aussi (plus de double instance)
+- **`src/workers/notification.worker.ts`** : `ORDER_DELIVERED` appelle `triggerOrderDelivery()` directement (bypass BullMQ). Idem pour `ORDER_PAID` et `ORDER_PRINTED` → appels directs à `N8nService`
+
+## [11.0.0] - 2026-04-10
+
+### 🚀 Release v11.0.0 — Production VPS
+
+Migration complète de l'infrastructure locale vers un VPS dédié (Ubuntu 24.04, 8 Go RAM). L'application tourne désormais 24/7 sans dépendance au PC local.
+
+#### 🏗️ Infrastructure & Déploiement
+- **VPS Production** : Déploiement Docker complet sur serveur dédié (187.124.191.30)
+- **Docker Compose Production** : `docker-compose.prod.yml` avec 6 services (App, PostgreSQL, Redis, n8n, WAHA, MongoDB)
+- **Dockerfile optimisé** : Build multi-stage Next.js standalone, user non-root (`nextjs`)
+- **Cloudflare Tunnel** : Installé en service systemd sur le VPS (plus besoin de cloudflared local)
+- **Tailscale VPN** : Réseau privé entre VPS et PC caisse pour l'impression thermique
+- **Script de déploiement** : `deploy.sh` (setup, deploy, update, status, logs, backup, restore)
+- **`.env.production.example`** : Template documenté pour toutes les variables d'environnement
+
+#### 🔒 Audit de Sécurité & Corrections
+- **CRITICAL** : Endpoints debug (`/api/debug-codes`, `/api/diag-netflix`, `/api/list-all-emails`) protégés par `CRON_SECRET`
+- **CRITICAL** : Validation `SESSION_SECRET` ≥ 32 caractères au démarrage (`jwt.ts`)
+- **HIGH** : SSH durci — `PasswordAuthentication no`, clé SSH uniquement
+- **HIGH** : Fail2ban configuré — 3 tentatives max, ban 1h
+- **HIGH** : Rate-limit fail-closed — bloque quand Redis est indisponible (au lieu de laisser passer)
+- **HIGH** : Healthchecks Docker sur tous les services (app, db, redis, n8n)
+- **HIGH** : Limites CPU/RAM par container (prévention DoS)
+- **HIGH** : WAHA `WHATSAPP_API_KEY` sans valeur par défaut (crash si non configuré)
+- **MEDIUM** : Port PostgreSQL exposé uniquement en `127.0.0.1` (+ Tailscale pour le build)
+- **MEDIUM** : Firewall UFW — ports 22, 80, 443 uniquement
+
+#### 🖨️ Impression Thermique via Tailscale
+- **`printer.ts`** : `PRINT_SERVICE_URL` configurable via variable d'environnement (plus de `127.0.0.1` en dur)
+- **`print-service/server.js`** : Écoute sur `0.0.0.0`, autorise le réseau Tailscale (`100.x.x.x`)
+- **`print-service/config.json`** : `serverUrl` pointe vers le VPS via Tailscale (`http://100.97.177.62:3000`)
+
+#### 📱 Corrections UI
+- **MobileNavbar** : Texte qui dépasse corrigé — `"Validation"` → `"Traiter"`, `flex-1` + `truncate` sur les labels
+
+#### ⚙️ Configuration Next.js
+- **`next.config.mjs`** : Ajout `output: 'standalone'` pour le build Docker
+- **`.dockerignore`** : Exclusion node_modules, .git, backups, tmp
+
+#### 📝 Fichiers modifiés
+- `docker-compose.prod.yml` (nouveau)
+- `deploy.sh` (nouveau)
+- `.env.production.example` (nouveau)
+- `.dockerignore` (nouveau)
+- `next.config.mjs`
+- `Dockerfile`
+- `start.bat`
+- `src/app/api/debug-codes/route.ts`
+- `src/app/api/diag-netflix/route.ts`
+- `src/app/api/list-all-emails/route.ts`
+- `src/lib/jwt.ts`
+- `src/lib/printer.ts`
+- `src/services/rate-limit.service.ts`
+- `src/components/admin/MobileNavbar.tsx`
+- `print-service/config.json`
+- `print-service/server.js`
+
+## [10.1.1] - 2026-04-06
+
+### 🚀 Release v10.1.1 (Stable)
+- **Sauvegarde Stable** : Snapshot global de la version de production 10.1.1.
+- **Automatisation & Netflix** : Intégration complète de la livraison automatisée des codes via WhatsApp et Node.js.
+- **Corrections Frontend** : Résolution des avertissements pour les balises méta, les images et les erreurs Service Worker (Cloudflare beacon).
+- **Core SaaS** : Déploiement et finalisation de l'infrastructure Aurum Terminal.
+
+## [9.0.1] - 2026-03-30
+
+### ⚡ Performance & Optimisation (Stable)
+Implémentation complète — build OK, zéro régression.
+
+**Phase 1 — Skeletons (13 fichiers créés)**
+- `src/components/admin/PageSkeleton.tsx` : composants réutilisables (`SkeletonBlock`, `SkeletonStat`, `SkeletonRow`, `SkeletonCard`, `SkeletonPageHeader`).
+- Ajout de `loading.tsx` sur toutes les routes : `admin/`, `dashboard`, `analytics`, `catalogue`, `clients`, `commandes`, `support`, `fournisseurs`, `traitement`, `b2b`, `comptes-partages`, `monitoring`, `settings`.
+
+**Phase 2 — Lazy loading (10 fichiers modifiés)**
+- Les 17 modals sont maintenant des chunks séparés, chargés uniquement à l'ouverture : `CommandesContent`, `ClientsContent`, `CatalogueMobile`, `SuppliersContent`, `SuppliersMobile`, `TraitementContent`, `TraitementMobile`, `B2bMobile`, `CaisseContent`, `CaisseMobile`.
+
+**Phase 3 — Incremental Static Regeneration (ISR) (7 pages modifiées)**
+- `dashboard` : revalidate=300 (au lieu de rien)
+- `analytics` : revalidate=300 (au lieu de rien)
+- `catalogue` : revalidate=60 (au lieu de force-dynamic)
+- `clients` : revalidate=60 (au lieu de force-dynamic)
+- `fournisseurs` : revalidate=60 (au lieu de force-dynamic)
+- `b2b` : revalidate=60 (au lieu de force-dynamic)
+- `commandes` : revalidate=120 (au lieu de rien)
+
+**Résultat attendu** : Navigation < 300ms, zéro écran blanc, bundle JS réduit de ~35–40% sur les pages avec modals.
+
+## [9.0.0] - 2026-03-29
+
+### 🚀 Release Majeure v9.0.0 (Stable)
+- **UI & Clients** : Améliorations majeures de l'interface utilisateur et gestion complète CRUD pour les clients.
+- **Automatisation** : Implémentation des mécanismes d'automatisation (webhook, tunnels).
+- **Achats & Commandes** : Implémentation complète de la gestion des achats.
+- **Base de données** : Nouvelles actions et résolveurs de données.
+- **Stabilisation** : Préparation de la version finale v9.
+
 ## [8.0.1] - 2026-03-28
 
 ### 🛡️ Architecture & Synchronisation (Stable Release)

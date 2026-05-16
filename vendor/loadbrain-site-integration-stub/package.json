@@ -1,0 +1,25 @@
+{
+  "name": "@loadbrain/site-integration",
+  "version": "3.2.0-stub",
+  "description": "Stub package for CI environments where the real LoadBrain SDK is not available. Methods are no-ops returning safe defaults. Used ONLY in CI when LOADBRAIN_API_KEY is empty (already gated in src/lib/loadbrain.ts).",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    },
+    "./react": {
+      "types": "./react.d.ts",
+      "default": "./react.js"
+    }
+  },
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "react.js",
+    "react.d.ts"
+  ],
+  "license": "UNLICENSED",
+  "private": true
+}

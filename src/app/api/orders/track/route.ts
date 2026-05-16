@@ -51,13 +51,15 @@ export async function GET(request: Request) {
         }
 
         // Determine the phone number to check against
+        // Sécurité : 6 derniers chiffres (1M combos vs 10K avec 4) — protège
+        // contre le brute-force sur les ID séquentiels d'order (#C0-..., #C1-...).
         const fullPhone = order.client?.telephone || order.reseller?.contactPhone;
-        const last4 = fullPhone ? fullPhone.slice(-4) : null;
+        const phoneSuffix = fullPhone ? fullPhone.replace(/\D/g, "").slice(-6) : null;
 
-        const isPhoneValidated = !!(phoneDigits && last4 && phoneDigits === last4);
+        const isPhoneValidated = !!(phoneDigits && phoneSuffix && phoneDigits === phoneSuffix);
 
         // If phone required but not yet validated, return minimal info only
-        if (last4 && !isPhoneValidated) {
+        if (phoneSuffix && !isPhoneValidated) {
             if (phoneDigits) {
                 await RateLimitService.recordFailure(rlKey);
             }
@@ -65,7 +67,8 @@ export async function GET(request: Request) {
                 orderNumber: order.orderNumber,
                 status: order.status,
                 isPhoneValidated: false,
-                phoneRequired: true
+                phoneRequired: true,
+                phoneDigitsLength: 6
             });
         }
 
@@ -78,7 +81,7 @@ export async function GET(request: Request) {
             deliveryMethod: order.deliveryMethod,
             customerName: order.client?.nomComplet || order.reseller?.companyName || 'Client',
             isPhoneValidated,
-            phoneRequired: !!last4,
+            phoneRequired: !!phoneSuffix,
             items: order.items.map(item => {
                 const itemData: any = {
                     id: item.id,

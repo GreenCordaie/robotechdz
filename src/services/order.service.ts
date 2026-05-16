@@ -54,9 +54,8 @@ export class OrderService {
                 }
             });
 
-            const hasManualProducts = enrichedOrder?.items.some((item: any) => item.variant?.product?.isManualDelivery) || false;
             const isWhatsApp = enrichedOrder?.deliveryMethod === DeliveryMethod.WHATSAPP;
-            const printStatus = (hasManualProducts || isWhatsApp) ? "idle" : "print_pending";
+            const printStatus = isWhatsApp ? "idle" : "print_pending";
 
             // 5. Update Order Status and Print Status
             await tx.update(orders)
@@ -136,7 +135,8 @@ export class OrderService {
         if (!result) return null;
 
         const hasManualProducts = (result as any).items?.some((item: any) => item.variant?.product?.isManualDelivery) || false;
-        const isFullyAuto = result.status === OrderStatus.TERMINE || (!hasManualProducts && result.status === OrderStatus.PAYE);
+        const hasIptvProducts = (result as any).items?.some((item: any) => item.variant?.loadbrainSlug) || false;
+        const isFullyAuto = result.status === OrderStatus.TERMINE || (!hasManualProducts && !hasIptvProducts && result.status === OrderStatus.PAYE);
 
         // Post-payment triggers via Event Bus
         if (result.status === OrderStatus.PAYE || result.status === OrderStatus.TERMINE || result.status === OrderStatus.PARTIEL) {
@@ -150,12 +150,33 @@ export class OrderService {
             (item.codes && item.codes.length > 0) || (item.slots && item.slots.length > 0)
         );
 
-        // Also fire for WhatsApp delivery on paid/complete orders even if no codes yet
-        const isWhatsAppPaid = (result as any).deliveryMethod === DeliveryMethod.WHATSAPP
-            && (result.status === OrderStatus.PAYE || result.status === OrderStatus.TERMINE);
-
-        if (isFullyAuto || hasCodesOrSlots || isWhatsAppPaid) {
+        // Only fire ORDER_DELIVERED when codes are actually available — skip IPTV (webhook completes)
+        if ((isFullyAuto || hasCodesOrSlots) && !hasIptvProducts) {
             eventBus.publish(SystemEvent.ORDER_DELIVERED, { orderId: result.id });
+        }
+
+        // Dispatch IPTV provisioning — webhook handles completion
+        if (hasIptvProducts && (result.status === OrderStatus.PAYE || result.status === OrderStatus.TERMINE)) {
+            import("@/lib/iptv").then(async ({ provisionIptvOrder }) => {
+                try {
+                    const iptvResult = await provisionIptvOrder(result.id);
+                    if (iptvResult.provisioned === 0) {
+                        console.error(`[IPTV] Zero items provisioned for order #${result.id}`);
+                        const { sendTelegramNotification } = await import("@/lib/telegram");
+                        sendTelegramNotification(
+                            `⚠️ *IPTV — 0 items provisionnés*\n\nCommande: \`${(result as any).orderNumber}\`\nVérifiez LoadBrain et les slugs produits.`,
+                            ["ADMIN"]
+                        ).catch(() => {});
+                    }
+                } catch (err: any) {
+                    console.error(`[IPTV] Fatal dispatch error for order #${result.id}:`, err.message);
+                    const { sendTelegramNotification } = await import("@/lib/telegram");
+                    sendTelegramNotification(
+                        `🔴 *IPTV — Erreur fatale provisioning*\n\nCommande: \`${(result as any).orderNumber}\`\nErreur: ${err.message}`,
+                        ["ADMIN"]
+                    ).catch(() => {});
+                }
+            });
         }
 
         return result;
@@ -204,7 +225,8 @@ export class OrderService {
         });
 
         if (result?.status === OrderStatus.TERMINE) {
-            await db.update(orders).set({ printStatus: "print_pending" }).where(eq(orders.id, id));
+            const isWhatsApp = (result as any).deliveryMethod === DeliveryMethod.WHATSAPP;
+            await db.update(orders).set({ printStatus: isWhatsApp ? "idle" : "print_pending" }).where(eq(orders.id, id));
             eventBus.publish(SystemEvent.ORDER_PRINTED, { orderId: id });
             eventBus.publish(SystemEvent.ORDER_DELIVERED, { orderId: id });
         }
@@ -247,11 +269,12 @@ export class OrderService {
 
             if (insertedCount > 0) {
                 const nextStatus = order.status === OrderStatus.PAYE ? OrderStatus.TERMINE : order.status;
+                const isWhatsApp = (order as any).deliveryMethod === DeliveryMethod.WHATSAPP;
                 await tx.update(orders)
                     .set({
                         status: nextStatus,
                         isDelivered: true,
-                        printStatus: "print_pending"
+                        printStatus: isWhatsApp ? "idle" : "print_pending"
                     })
                     .where(eq(orders.id, order.id));
 

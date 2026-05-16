@@ -1,0 +1,154 @@
+services:
+  # ─── Next.js App (Production) ──────────────────────────────────────────────
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      network: host
+      args:
+        - DATABASE_URL=postgresql://flexbox_user:${DB_PASSWORD}@127.0.0.1:5432/flexbox
+        - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL}
+        - NEXT_PUBLIC_TURNSTILE_SITE_KEY=${NEXT_PUBLIC_TURNSTILE_SITE_KEY}
+    image: robotech-app:latest
+    container_name: robotech-app
+    restart: always
+    ports:
+      - "127.0.0.1:3000:3000"
+      - "100.97.177.62:3000:3000"
+    env_file:
+      - .env.production
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://flexbox_user:${DB_PASSWORD}@db:5432/flexbox
+      - REDIS_URL=redis://redis:6379
+      - WHATSAPP_API_URL=http://robotech-whatsapp:3000
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:3000/api/health').then(r=>{process.exit(r.ok?0:1)}).catch(()=>process.exit(1))\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 1536M
+
+  # ─── PostgreSQL ────────────────────────────────────────────────────────────
+  db:
+    image: postgres:15-alpine
+    container_name: robotech-db
+    restart: always
+    environment:
+      - POSTGRES_USER=flexbox_user
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - POSTGRES_DB=flexbox
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U flexbox_user -d flexbox"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1024M
+
+  # ─── Redis ─────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: robotech-redis
+    restart: always
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+
+  # ─── n8n (Automation) ──────────────────────────────────────────────────────
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: robotech-n8n
+    restart: always
+    ports:
+      - "127.0.0.1:5678:5678"
+    environment:
+      - N8N_HOST=0.0.0.0
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=https
+      - WEBHOOK_URL=${N8N_PUBLIC_URL}/
+      - GENERIC_TIMEZONE=Africa/Algiers
+      - TZ=Africa/Algiers
+    volumes:
+      - n8n_data:/home/node/.n8n
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:5678/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+
+  # ─── MongoDB (WAHA sessions) ───────────────────────────────────────────────
+  mongo:
+    image: mongo:6
+    container_name: robotech-mongo
+    restart: always
+    volumes:
+      - mongo_data:/data/db
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+
+  # ─── WAHA (WhatsApp) ───────────────────────────────────────────────────────
+  whatsapp:
+    image: devlikeapro/waha:latest
+    container_name: robotech-whatsapp
+    restart: always
+    ports:
+      - "127.0.0.1:3001:3000"
+    environment:
+      - WHATSAPP_DEFAULT_ENGINE=WEBJS
+      - WHATSAPP_API_KEY=${WAHA_API_KEY}
+      - WHATSAPP_HOOK_EVENTS=message
+      - WHATSAPP_HOOK_URL=http://robotech-app:3000/api/webhooks/whatsapp
+      - WAHA_LOG_LEVEL=info
+    volumes:
+      - waha_data:/app/.sessions
+    depends_on:
+      - app
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1024M
+
+  # Cloudflare Tunnel runs via systemd (cloudflared service), not Docker
+
+volumes:
+  postgres_data:
+  n8n_data:
+  waha_data:
+  redis_data:
+  mongo_data:

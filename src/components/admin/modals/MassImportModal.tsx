@@ -165,7 +165,7 @@ export const MassImportModal = ({ isOpen, onClose, product }: MassImportModalPro
                     <>
                         <ModalHeader>
                             <div className="flex items-center gap-3">
-                                <span className="material-symbols-outlined text-[#ec5b13] text-2xl">database_upload</span>
+                                <span className="material-symbols-outlined text-[var(--primary)] text-2xl">database_upload</span>
                                 <div>
                                     <h2 className="text-slate-100 text-lg font-bold leading-tight">Importation de Stock</h2>
                                     <p className="text-slate-500 text-xs font-medium uppercase tracking-wider">{product?.name}</p>
@@ -185,7 +185,7 @@ export const MassImportModal = ({ isOpen, onClose, product }: MassImportModalPro
                                         <select
                                             value={selectedVariantId}
                                             onChange={(e) => setSelectedVariantId(e.target.value)}
-                                            className="w-full bg-black/40 border border-[#262626] rounded-xl px-4 py-3 text-slate-100 appearance-none focus:ring-1 focus:ring-[#ec5b13] outline-none"
+                                            className="w-full bg-black/40 border border-[#262626] rounded-xl px-4 py-3 text-slate-100 appearance-none focus:ring-1 focus:ring-[var(--primary)] outline-none"
                                         >
                                             <option value="" disabled>Sélectionner une variante</option>
                                             {product.variants.map((v: any) => (
@@ -240,7 +240,7 @@ export const MassImportModal = ({ isOpen, onClose, product }: MassImportModalPro
                                                     <div className="grid grid-cols-1 gap-2 max-h-[200px] overflow-y-auto pr-2 custom-scrollbar">
                                                         {account.slots.map((slot, slotIndex) => (
                                                             <div key={slotIndex} className="flex items-center gap-3 p-2 bg-black/20 border border-[#262626] rounded-xl">
-                                                                <div className="size-6 rounded bg-orange-500/10 text-[#ec5b13] flex items-center justify-center text-[10px] font-black shrink-0">
+                                                                <div className="size-6 rounded bg-orange-500/10 text-[var(--primary)] flex items-center justify-center text-[10px] font-black shrink-0">
                                                                     {slotIndex + 1}
                                                                 </div>
                                                                 <Input
@@ -268,7 +268,7 @@ export const MassImportModal = ({ isOpen, onClose, product }: MassImportModalPro
 
                                         <Button
                                             variant="bordered"
-                                            className="w-full border-2 border-dashed border-[#262626] text-slate-400 font-bold py-8 hover:border-[#ec5b13]/40 hover:text-[#ec5b13] transition-all bg-transparent"
+                                            className="w-full border-2 border-dashed border-[#262626] text-slate-400 font-bold py-8 hover:border-[var(--primary)]/40 hover:text-[var(--primary)] transition-all bg-transparent"
                                             onClick={addAccount}
                                             startContent={<span className="material-symbols-outlined">person_add</span>}
                                         >
@@ -288,7 +288,7 @@ export const MassImportModal = ({ isOpen, onClose, product }: MassImportModalPro
                                             onValueChange={setCodesInput}
                                             classNames={{
                                                 input: "font-mono text-sm tracking-widest",
-                                                inputWrapper: "bg-black/40 border-[#262626] hover:border-[#ec5b13]/50 focus-within:!border-[#ec5b13]"
+                                                inputWrapper: "bg-black/40 border-[#262626] hover:border-[var(--primary)]/50 focus-within:!border-[var(--primary)]"
                                             }}
                                         />
                                     </div>
@@ -313,7 +313,7 @@ export const MassImportModal = ({ isOpen, onClose, product }: MassImportModalPro
                             </Button>
                             <Button
                                 color="primary"
-                                className="bg-[#ec5b13] font-bold shadow-lg shadow-[#ec5b13]/20"
+                                className="bg-[var(--primary)] font-bold shadow-lg shadow-[var(--primary)]/20"
                                 onPress={handleSave}
                                 isLoading={isSaving}
                                 startContent={!isSaving && <Save className="size-4" />}

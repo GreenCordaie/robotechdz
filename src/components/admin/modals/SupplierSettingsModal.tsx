@@ -157,7 +157,7 @@ export const SupplierSettingsModal = ({
                         <header className="p-6 flex items-center justify-between border-b border-[#262626]">
                             <div className="flex flex-col">
                                 <h1 className="text-xl font-semibold text-slate-100">Paramètres du Fournisseur</h1>
-                                <span className="text-sm font-medium text-[#ec5b13]/80 uppercase tracking-wide">{supplier.name}</span>
+                                <span className="text-sm font-medium text-[var(--primary)]/80 uppercase tracking-wide">{supplier.name}</span>
                                 {error && (
                                     <p className="mt-1 text-red-500 text-[10px] font-bold uppercase tracking-wider">{error}</p>
                                 )}
@@ -196,12 +196,12 @@ export const SupplierSettingsModal = ({
                             {/* Section 2 - Sensitive Zone (Balance Adjustment) */}
                             <div className="bg-[#0a0a0a] border border-[#262626] rounded-2xl p-5 space-y-4">
                                 <div className="flex items-center gap-2 mb-2">
-                                    <Settings className="text-[#ec5b13] w-4 h-4" />
+                                    <Settings className="text-[var(--primary)] w-4 h-4" />
                                     <h2 className="text-sm font-bold text-slate-100">Correction du Solde</h2>
                                 </div>
                                 <div className="flex justify-between items-center py-2 border-b border-[#262626]/50">
                                     <span className="text-sm text-slate-400">Solde actuel</span>
-                                    <span className="text-lg font-mono font-medium text-[#ec5b13] whitespace-nowrap">
+                                    <span className="text-lg font-mono font-medium text-[var(--primary)] whitespace-nowrap">
                                         {formatCurrency(supplier.balance, supplier.currency)}
                                     </span>
                                 </div>
@@ -281,7 +281,7 @@ export const SupplierSettingsModal = ({
                                 Annuler
                             </Button>
                             <Button
-                                className="bg-[#ec5b13] text-white font-bold h-12 px-8 rounded-xl shadow-lg shadow-[#ec5b13]/20"
+                                className="bg-[var(--primary)] text-white font-bold h-12 px-8 rounded-xl shadow-lg shadow-[var(--primary)]/20"
                                 isLoading={isSaving}
                                 startContent={!isSaving && <Save className="w-4 h-4" />}
                                 onPress={handleSave}

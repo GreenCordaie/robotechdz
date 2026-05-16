@@ -28,6 +28,16 @@ export const getPaginatedProducts = withAuth(
     }
 );
 
+export const getCategoriesAction = withAuth(
+    {
+        roles: [UserRole.ADMIN, UserRole.CAISSIER, UserRole.TRAITEUR],
+        schema: z.object({})
+    },
+    async () => {
+        return await ProductQueries.getCategories();
+    }
+);
+
 export const createProductAction = withAuth(
     {
         roles: [UserRole.ADMIN],
@@ -43,6 +53,7 @@ export const createProductAction = withAuth(
                 salePriceDzd: z.string(),
                 isSharing: z.boolean().optional(),
                 totalSlots: z.number().optional(),
+                loadbrainSlug: z.string().nullable().optional(),
                 linkedSuppliers: z.array(z.object({
                     supplierId: z.number(),
                     purchasePrice: z.string(),
@@ -53,6 +64,16 @@ export const createProductAction = withAuth(
     },
     async (formData) => {
         try {
+            // 0. Validate LoadBrain slugs if any
+            const slugsToValidate = formData.variants.map(v => v.loadbrainSlug).filter((s): s is string => !!s);
+            if (slugsToValidate.length > 0) {
+                const { validateLoadBrainSlug } = await import("@/lib/iptv");
+                for (const slug of slugsToValidate) {
+                    const valid = await validateLoadBrainSlug(slug);
+                    if (!valid) return { success: false, error: `LoadBrain slug "${slug}" introuvable. Mappez-le d'abord dans Modules → Configurer.` };
+                }
+            }
+
             // 1. Create the product
             const [newProduct] = await db.insert(products).values({
                 name: formData.name,
@@ -71,6 +92,7 @@ export const createProductAction = withAuth(
                     salePriceDzd: v.salePriceDzd,
                     isSharing: v.isSharing ?? false,
                     totalSlots: v.totalSlots ?? 1,
+                    loadbrainSlug: v.loadbrainSlug || null,
                 }).returning();
 
                 if (v.linkedSuppliers.length > 0) {
@@ -113,6 +135,7 @@ export const updateProductAction = withAuth(
                     salePriceDzd: z.string(),
                     isSharing: z.boolean().optional(),
                     totalSlots: z.number().optional(),
+                    loadbrainSlug: z.string().nullable().optional(),
                     linkedSuppliers: z.array(z.object({
                         supplierId: z.number(),
                         purchasePrice: z.string(),
@@ -176,6 +199,7 @@ export const updateProductAction = withAuth(
                         salePriceDzd: v.salePriceDzd,
                         isSharing: v.isSharing ?? false,
                         totalSlots: v.totalSlots ?? 1,
+                        loadbrainSlug: v.loadbrainSlug || null,
                     }).where(eq(productVariants.id, v.id));
                     finalVariantId = v.id;
                 } else {
@@ -185,6 +209,7 @@ export const updateProductAction = withAuth(
                         salePriceDzd: v.salePriceDzd,
                         isSharing: v.isSharing ?? false,
                         totalSlots: v.totalSlots ?? 1,
+                        loadbrainSlug: v.loadbrainSlug || null,
                     }).returning();
                     finalVariantId = newV.id;
                 }

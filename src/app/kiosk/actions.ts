@@ -7,9 +7,16 @@ import { sql, eq, and, count, exists } from "drizzle-orm";
 import { sendTelegramNotification } from "@/lib/telegram";
 import { sendPushToRoleAction } from "../admin/push/actions";
 import { cacheGet, cacheSet, cacheDel, CACHE_KEYS, CACHE_TTL } from "@/lib/redis";
+interface KioskOrderItemInput {
+    variantId: number;
+    quantity: number;
+    name: string;
+    customData?: string;
+    playerNickname?: string;
+}
 
 export async function createKioskOrder(
-    items: { variantId: number; quantity: number; name: string; customData?: string; playerNickname?: string }[],
+    items: KioskOrderItemInput[],
     clientTotalAmount: string,
     deliveryMethod: "TICKET" | "WHATSAPP" = "TICKET",
     customerPhone?: string
@@ -52,7 +59,17 @@ export async function createKioskOrder(
                     supplierId: supplierInfo?.supplierId || null,
                     purchasePrice: supplierInfo?.purchasePrice || null,
                     purchaseCurrency: supplierInfo?.currency || null,
-                    customData: item.customData,
+                    // Ibosol items carry their own JSON customData (mac+appId) — keep it.
+                    // Non-IPTV items keep their original customData (player ID, etc.).
+                    // Other IPTV items always use the "credentials" path (Telegram bot
+                    // extraction). The "code" deliveryMethod was rolled back on 2026-05-07
+                    // due to LoadBrain getCodeCredentials lookup failures.
+                    customData: (() => {
+                        const slug = (variant as any).loadbrainSlug;
+                        if (slug?.startsWith("ibo-")) return item.customData;
+                        if (slug) return "credentials";
+                        return item.customData;
+                    })(),
                     playerNickname: item.playerNickname
                 });
             }
@@ -99,8 +116,7 @@ export async function getKioskData() {
     // Instead, we fetch products and join with a count of available codes.
 
     // Cache-aside: try to serve from Redis first
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const cached = await cacheGet<{ products: any[]; categories: any[] }>(CACHE_KEYS.KIOSK_CATALOGUE);
+    const cached = await cacheGet<{ products: unknown[]; categories: unknown[] }>(CACHE_KEYS.KIOSK_CATALOGUE);
     if (cached) return cached;
 
     // We fetch products and their variants
@@ -108,7 +124,9 @@ export async function getKioskData() {
         where: eq(products.status, "ACTIVE"),
         with: {
             category: true,
-            variants: true
+            variants: {
+                where: eq(productVariants.kioskVisible, true),
+            }
         }
     });
 
@@ -151,15 +169,19 @@ export async function getKioskData() {
     // Reassemble safe data
     const safeProducts = productsList.map(p => ({
         ...p,
-        variants: p.variants.map(v => ({
-            id: v.id,
-            name: v.name,
-            salePriceDzd: v.salePriceDzd,
-            isSharing: v.isSharing,
-            totalSlots: v.totalSlots,
-            stockCount: v.isSharing ? (sharingMap.get(v.id) || 0) : (standardMap.get(v.id) || 0)
-        })),
-        // On s'assure que isManualDelivery est explicitement passé
+        variants: p.variants.map(v => {
+            const isIptv = !!(v as any).loadbrainSlug;
+            return {
+                id: v.id,
+                name: v.name,
+                salePriceDzd: v.salePriceDzd,
+                isSharing: v.isSharing,
+                totalSlots: v.totalSlots,
+                loadbrainSlug: (v as any).loadbrainSlug || null,
+                // IPTV products always show as "in stock" — provisioned on demand
+                stockCount: isIptv ? 999 : (v.isSharing ? (sharingMap.get(v.id) || 0) : (standardMap.get(v.id) || 0)),
+            };
+        }),
         isManualDelivery: !!p.isManualDelivery
     }));
 

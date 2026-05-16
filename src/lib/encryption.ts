@@ -1,10 +1,21 @@
 import "server-only";
 import crypto from "crypto";
 
+// Note historique : avant l'EPIC 0, ENCRYPTION_KEY pouvait tomber sur SESSION_SECRET
+// silencieusement. Le fallback est CONSERVÉ pour ne pas rendre illisibles les données
+// déjà chiffrées en prod (refresh tokens MS, MFA backup codes, codes digitaux).
+// À régulariser via une migration de re-chiffrement (planifiée P1 / EPIC 8).
 const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || process.env.SESSION_SECRET;
 if (!ENCRYPTION_KEY) {
     console.error("CRITICAL: ENCRYPTION_KEY or SESSION_SECRET must be set.");
     process.exit(1);
+}
+if (!process.env.ENCRYPTION_KEY) {
+    console.warn(
+        "[encryption] ENCRYPTION_KEY non définie — fallback sur SESSION_SECRET. " +
+        "Définir ENCRYPTION_KEY (= valeur courante de SESSION_SECRET pour préserver " +
+        "le décryptage) puis planifier une rotation."
+    );
 }
 const ALGORITHM = "aes-256-gcm";
 const IV_LENGTH = 12; // Standard for GCM

@@ -16,7 +16,7 @@ export class RateLimitService {
     static async checkLimit(key: string, maxAttempts = DEFAULT_MAX_ATTEMPTS) {
         try {
             const raw = await redis.get(key);
-            const count = raw !== null ? parseInt(raw, 10) : 0;
+            const count = raw !== null && raw !== undefined ? parseInt(String(raw), 10) || 0 : 0;
             const isBlocked = count >= maxAttempts;
 
             let blockedUntil: Date | undefined;
@@ -36,7 +36,8 @@ export class RateLimitService {
                 blockedUntil,
             };
         } catch {
-            return { isBlocked: false, remaining: maxAttempts };
+            // Fail-closed: block requests when Redis is unavailable
+            return { isBlocked: true, remaining: 0 };
         }
     }
 
@@ -45,9 +46,12 @@ export class RateLimitService {
      * On the first increment, sets the TTL window.
      */
     static async recordFailure(key: string) {
-        const count = await cacheIncr(key);
-        if (count === 1) {
+        try {
+            const count = await cacheIncr(key);
+            // Always set TTL to prevent permanent lockout if EXPIRE fails separately
             await cacheExpire(key, CACHE_TTL.RATE_LIMIT);
+        } catch {
+            // Fail silently — rate limit is best-effort
         }
     }
 

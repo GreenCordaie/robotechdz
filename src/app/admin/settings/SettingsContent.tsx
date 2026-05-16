@@ -60,10 +60,11 @@ import { ReceiptSettings } from "@/components/admin/settings/ReceiptSettings";
 import { ApiBotSettings } from "@/components/admin/settings/ApiBotSettings";
 import { FaqBotSettings } from "@/components/admin/settings/FaqBotSettings";
 import ApiKeysSection from "@/app/admin/settings/ApiKeysSection";
+import { PrinterSettings } from "@/components/admin/settings/PrinterSettings";
 import { useAuthStore } from "@/store/useAuthStore";
 
 export default function SettingsContent() {
-    const [activeTab, setActiveTab] = useState<"general" | "team" | "api" | "faq" | "b2b" | "appearance" | "receipt" | "security">("general");
+    const [activeTab, setActiveTab] = useState<"general" | "team" | "api" | "faq" | "b2b" | "appearance" | "receipt" | "security" | "printer">("general");
     const { isOpen, onOpen, onOpenChange } = useDisclosure();
     const updateGlobalSettings = useSettingsStore((state) => state.updateSettings);
     const currentUser = useAuthStore((state) => state.user);
@@ -110,8 +111,15 @@ export default function SettingsContent() {
     const [error, setError] = useState<string | null>(null);
 
     const [isMaintenanceMode, setIsMaintenanceMode] = useState(false);
+    // EPIC 2 / Phase A — Toggle global auto-send WhatsApp post-paiement kiosk
+    const [autoSendWhatsapp, setAutoSendWhatsapp] = useState(true);
     const [allowedIps, setAllowedIps] = useState("");
     const [stockAlertThreshold, setStockAlertThreshold] = useState(5);
+
+    // Printer
+    const [printerPaperWidth, setPrinterPaperWidth] = useState(80);
+    const [printerAutoCut, setPrinterAutoCut] = useState(true);
+    const [printerAutoPrintPaid, setPrinterAutoPrintPaid] = useState(false);
 
     // MFA States
     const [mfaSecret, setMfaSecret] = useState<string | null>(null);
@@ -165,8 +173,12 @@ export default function SettingsContent() {
                 setDefaultResellerDiscount(s.defaultResellerDiscount || "5.00");
                 setMinResellerRecharge(s.minResellerRecharge || "1000.00");
                 setIsMaintenanceMode(s.isMaintenanceMode ?? false);
+                setAutoSendWhatsapp(s.autoSendWhatsapp ?? true);
                 setAllowedIps(s.allowedIps || "");
                 setStockAlertThreshold(s.stockAlertThreshold ?? 5);
+                setPrinterPaperWidth(s.printerPaperWidth ?? 80);
+                setPrinterAutoCut(s.printerAutoCut ?? true);
+                setPrinterAutoPrintPaid(s.printerAutoPrintPaid ?? false);
             }
 
             if (teamRes.success) {
@@ -208,8 +220,12 @@ export default function SettingsContent() {
                 defaultResellerDiscount,
                 minResellerRecharge,
                 isMaintenanceMode,
+                autoSendWhatsapp,
                 allowedIps,
                 stockAlertThreshold,
+                printerPaperWidth: printerPaperWidth as 58 | 80,
+                printerAutoCut,
+                printerAutoPrintPaid,
             });
 
             if (!res.success) {
@@ -473,7 +489,7 @@ export default function SettingsContent() {
                     transition: .4s;
                     border-radius: 50%;
                 }
-                input:checked + .slider { background-color: #ec5b13; }
+                input:checked + .slider { background-color: var(--primary); }
                 input:checked + .slider:before { transform: translateX(20px); }
 
                 /* Ticket Jagged Edges */
@@ -513,65 +529,72 @@ export default function SettingsContent() {
                         <div className="flex gap-8 min-w-max">
                             <button
                                 onClick={() => setActiveTab("general")}
-                                className={`pb-4 border-b-2 text-sm transition-all relative whitespace-nowrap ${activeTab === "general" ? "text-[#ec5b13] font-bold" : "text-slate-500 hover:text-slate-200 font-medium"}`}
+                                className={`pb-4 border-b-2 text-sm transition-all relative whitespace-nowrap ${activeTab === "general" ? "text-[var(--primary)] font-bold" : "text-slate-500 hover:text-slate-200 font-medium"}`}
                             >
                                 Général
-                                {activeTab === "general" && <span className="absolute bottom-0 left-0 w-full h-0.5 bg-[#ec5b13] rounded-full"></span>}
+                                {activeTab === "general" && <span className="absolute bottom-0 left-0 w-full h-0.5 bg-[var(--primary)] rounded-full"></span>}
                             </button>
                             <button
                                 onClick={() => setActiveTab("team")}
-                                className={`pb-4 border-b-2 text-sm transition-all relative whitespace-nowrap ${activeTab === "team" ? "text-[#ec5b13] font-bold" : "text-slate-500 hover:text-slate-200 font-medium"}`}
+                                className={`pb-4 border-b-2 text-sm transition-all relative whitespace-nowrap ${activeTab === "team" ? "text-[var(--primary)] font-bold" : "text-slate-500 hover:text-slate-200 font-medium"}`}
                             >
                                 Équipe
-                                {activeTab === "team" && <span className="absolute bottom-0 left-0 w-full h-0.5 bg-[#ec5b13] rounded-full"></span>}
+                                {activeTab === "team" && <span className="absolute bottom-0 left-0 w-full h-0.5 bg-[var(--primary)] rounded-full"></span>}
                             </button>
                             <button
                                 onClick={() => setActiveTab("api")}
-                                className={`pb-4 border-b-2 text-sm transition-all relative whitespace-nowrap ${activeTab === "api" ? "text-[#ec5b13] font-bold" : "text-slate-500 hover:text-slate-200 font-medium"}`}
+                                className={`pb-4 border-b-2 text-sm transition-all relative whitespace-nowrap ${activeTab === "api" ? "text-[var(--primary)] font-bold" : "text-slate-500 hover:text-slate-200 font-medium"}`}
                             >
                                 API & Bot
-                                {activeTab === "api" && <span className="absolute bottom-0 left-0 w-full h-0.5 bg-[#ec5b13] rounded-full"></span>}
+                                {activeTab === "api" && <span className="absolute bottom-0 left-0 w-full h-0.5 bg-[var(--primary)] rounded-full"></span>}
                             </button>
                             <button
                                 onClick={() => setActiveTab("faq")}
-                                className={`pb-4 border-b-2 text-sm transition-all relative whitespace-nowrap ${activeTab === "faq" ? "text-[#ec5b13] font-bold" : "text-slate-500 hover:text-slate-200 font-medium"}`}
+                                className={`pb-4 border-b-2 text-sm transition-all relative whitespace-nowrap ${activeTab === "faq" ? "text-[var(--primary)] font-bold" : "text-slate-500 hover:text-slate-200 font-medium"}`}
                             >
                                 FAQ Bot
-                                {activeTab === "faq" && <span className="absolute bottom-0 left-0 w-full h-0.5 bg-[#ec5b13] rounded-full"></span>}
+                                {activeTab === "faq" && <span className="absolute bottom-0 left-0 w-full h-0.5 bg-[var(--primary)] rounded-full"></span>}
                             </button>
                             <button
                                 onClick={() => setActiveTab("receipt")}
-                                className={`pb-4 border-b-2 text-sm transition-all relative whitespace-nowrap ${activeTab === "receipt" ? "text-[#ec5b13] font-bold" : "text-slate-500 hover:text-slate-200 font-medium"}`}
+                                className={`pb-4 border-b-2 text-sm transition-all relative whitespace-nowrap ${activeTab === "receipt" ? "text-[var(--primary)] font-bold" : "text-slate-500 hover:text-slate-200 font-medium"}`}
                             >
                                 Ticket de Caisse
-                                {activeTab === "receipt" && <span className="absolute bottom-0 left-0 w-full h-0.5 bg-[#ec5b13] rounded-full"></span>}
+                                {activeTab === "receipt" && <span className="absolute bottom-0 left-0 w-full h-0.5 bg-[var(--primary)] rounded-full"></span>}
+                            </button>
+                            <button
+                                onClick={() => setActiveTab("printer")}
+                                className={`pb-4 border-b-2 text-sm transition-all relative whitespace-nowrap ${activeTab === "printer" ? "text-[var(--primary)] font-bold" : "text-slate-500 hover:text-slate-200 font-medium"}`}
+                            >
+                                Imprimante USB
+                                {activeTab === "printer" && <span className="absolute bottom-0 left-0 w-full h-0.5 bg-[var(--primary)] rounded-full"></span>}
                             </button>
                             <button
                                 onClick={() => setActiveTab("b2b")}
-                                className={`pb-4 border-b-2 text-sm transition-all relative whitespace-nowrap ${activeTab === "b2b" ? "text-[#ec5b13] font-bold" : "text-slate-500 hover:text-slate-200 font-medium"}`}
+                                className={`pb-4 border-b-2 text-sm transition-all relative whitespace-nowrap ${activeTab === "b2b" ? "text-[var(--primary)] font-bold" : "text-slate-500 hover:text-slate-200 font-medium"}`}
                             >
                                 <span className="flex items-center gap-2">
                                     <Store className="size-4" />
                                     B2B & Revendeurs
                                 </span>
-                                {activeTab === "b2b" && <span className="absolute bottom-0 left-0 w-full h-0.5 bg-[#ec5b13] rounded-full"></span>}
+                                {activeTab === "b2b" && <span className="absolute bottom-0 left-0 w-full h-0.5 bg-[var(--primary)] rounded-full"></span>}
                             </button>
                             <button
                                 onClick={() => setActiveTab("appearance")}
-                                className={`pb-4 border-b-2 text-sm transition-all relative whitespace-nowrap ${activeTab === "appearance" ? "text-[#ec5b13] font-bold" : "text-slate-500 hover:text-slate-200 font-medium"}`}
+                                className={`pb-4 border-b-2 text-sm transition-all relative whitespace-nowrap ${activeTab === "appearance" ? "text-[var(--primary)] font-bold" : "text-slate-500 hover:text-slate-200 font-medium"}`}
                             >
                                 Apparence & Personnalisation
-                                {activeTab === "appearance" && <span className="absolute bottom-0 left-0 w-full h-0.5 bg-[#ec5b13] rounded-full"></span>}
+                                {activeTab === "appearance" && <span className="absolute bottom-0 left-0 w-full h-0.5 bg-[var(--primary)] rounded-full"></span>}
                             </button>
                             <button
                                 onClick={() => setActiveTab("security")}
-                                className={`pb-4 border-b-2 text-sm transition-all relative whitespace-nowrap ${activeTab === "security" ? "text-[#ec5b13] font-bold" : "text-slate-500 hover:text-slate-200 font-medium"}`}
+                                className={`pb-4 border-b-2 text-sm transition-all relative whitespace-nowrap ${activeTab === "security" ? "text-[var(--primary)] font-bold" : "text-slate-500 hover:text-slate-200 font-medium"}`}
                             >
                                 <span className="flex items-center gap-2">
                                     <Lock size={16} />
                                     Sécurité & God Mode
                                 </span>
-                                {activeTab === "security" && <span className="absolute bottom-0 left-0 w-full h-0.5 bg-[#ec5b13] rounded-full"></span>}
+                                {activeTab === "security" && <span className="absolute bottom-0 left-0 w-full h-0.5 bg-[var(--primary)] rounded-full"></span>}
                             </button>
                         </div>
                     </div>
@@ -633,7 +656,7 @@ export default function SettingsContent() {
                                     <div className="space-y-2">
                                         <label className="text-sm font-medium text-slate-400">Nom de la boutique</label>
                                         <input
-                                            className="w-full bg-[#1a1614] border border-[#2d2622] rounded-xl px-4 py-3 focus:ring-1 focus:ring-[#ec5b13] focus:border-transparent transition-all outline-none text-slate-100"
+                                            className="w-full bg-[#1a1614] border border-[#2d2622] rounded-xl px-4 py-3 focus:ring-1 focus:ring-[var(--primary)] focus:border-transparent transition-all outline-none text-slate-100"
                                             type="text"
                                             value={shopName}
                                             onChange={(e) => setShopName(e.target.value)}
@@ -642,7 +665,7 @@ export default function SettingsContent() {
                                     <div className="space-y-2">
                                         <label className="text-sm font-medium text-slate-400">Raison sociale</label>
                                         <input
-                                            className="w-full bg-[#1a1614] border border-[#2d2622] rounded-xl px-4 py-3 focus:ring-1 focus:ring-[#ec5b13] focus:border-transparent transition-all outline-none text-slate-100"
+                                            className="w-full bg-[#1a1614] border border-[#2d2622] rounded-xl px-4 py-3 focus:ring-1 focus:ring-[var(--primary)] focus:border-transparent transition-all outline-none text-slate-100"
                                             type="text"
                                             value={raisonSociale}
                                             onChange={(e) => setRaisonSociale(e.target.value)}
@@ -651,7 +674,7 @@ export default function SettingsContent() {
                                     <div className="space-y-2">
                                         <label className="text-sm font-medium text-slate-400">Adresse légale</label>
                                         <input
-                                            className="w-full bg-[#1a1614] border border-[#2d2622] rounded-xl px-4 py-3 focus:ring-1 focus:ring-[#ec5b13] focus:border-transparent transition-all outline-none text-slate-100"
+                                            className="w-full bg-[#1a1614] border border-[#2d2622] rounded-xl px-4 py-3 focus:ring-1 focus:ring-[var(--primary)] focus:border-transparent transition-all outline-none text-slate-100"
                                             type="text"
                                             value={shopAddress}
                                             onChange={(e) => setShopAddress(e.target.value)}
@@ -661,7 +684,7 @@ export default function SettingsContent() {
                                         <label className="text-sm font-medium text-slate-400">Numéro d&apos;identification fiscal / EIN</label>
 
                                         <input
-                                            className="w-full bg-[#1a1614] border border-[#2d2622] rounded-xl px-4 py-3 focus:ring-1 focus:ring-[#ec5b13] focus:border-transparent transition-all outline-none text-slate-100"
+                                            className="w-full bg-[#1a1614] border border-[#2d2622] rounded-xl px-4 py-3 focus:ring-1 focus:ring-[var(--primary)] focus:border-transparent transition-all outline-none text-slate-100"
                                             placeholder="XX-XXXXXXX"
                                             type="text"
                                             value={ein}
@@ -675,7 +698,7 @@ export default function SettingsContent() {
                                 <button
                                     onClick={handleSave}
                                     disabled={isSaving}
-                                    className="bg-[#ec5b13] hover:bg-orange-600 text-white px-8 py-4 rounded-xl font-bold text-base shadow-lg shadow-[#ec5b13]/40 transition-all flex items-center gap-3 disabled:opacity-50"
+                                    className="bg-[var(--primary)] hover:bg-orange-600 text-white px-8 py-4 rounded-xl font-bold text-base shadow-lg shadow-[var(--primary)]/40 transition-all flex items-center gap-3 disabled:opacity-50"
                                 >
                                     {isSaving ? <Loader2 className="animate-spin size-5" /> : <Save className="size-5" />}
                                     {isSaving ? "Sauvegarde..." : "Sauvegarder les modifications"}
@@ -694,7 +717,7 @@ export default function SettingsContent() {
                                 </div>
                                 <button
                                     onClick={onOpen}
-                                    className="bg-[#ec5b13] hover:bg-orange-600 transition-all text-white px-6 py-3 rounded-xl font-semibold flex items-center justify-center gap-2 w-fit shadow-lg shadow-[#ec5b13]/20"
+                                    className="bg-[var(--primary)] hover:bg-orange-600 transition-all text-white px-6 py-3 rounded-xl font-semibold flex items-center justify-center gap-2 w-fit shadow-lg shadow-[var(--primary)]/20"
                                 >
                                     <Plus className="w-5 h-5" />
                                     Ajouter un membre
@@ -705,7 +728,7 @@ export default function SettingsContent() {
                             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                                 {isTeamsLoading ? (
                                     <div className="col-span-2 py-20 flex flex-col items-center justify-center space-y-4">
-                                        <Loader2 className="animate-spin text-[#ec5b13] size-12" />
+                                        <Loader2 className="animate-spin text-[var(--primary)] size-12" />
                                         <p className="text-slate-500 font-medium">Chargement de l&apos;équipe...</p>
 
                                     </div>
@@ -716,10 +739,10 @@ export default function SettingsContent() {
 
                                     </div>
                                 ) : team.map((member) => (
-                                    <section key={member.id} className={`bg-[#161616] border border-[#262626] rounded-2xl p-6 flex flex-col justify-between hover:border-[#ec5b13]/30 transition-colors group`}>
+                                    <section key={member.id} className={`bg-[#161616] border border-[#262626] rounded-2xl p-6 flex flex-col justify-between hover:border-[var(--primary)]/30 transition-colors group`}>
                                         <div className="flex items-start justify-between mb-6">
                                             <div className="flex items-center gap-4">
-                                                <div className={`w-14 h-14 rounded-full flex items-center justify-center font-bold text-xl border overflow-hidden ${member.role === 'ADMIN' ? 'bg-[#ec5b13]/20 text-[#ec5b13] border-[#ec5b13]/30' : 'bg-zinc-800 text-slate-400 border-[#262626]'}`}>
+                                                <div className={`w-14 h-14 rounded-full flex items-center justify-center font-bold text-xl border overflow-hidden ${member.role === 'ADMIN' ? 'bg-[var(--primary)]/20 text-[var(--primary)] border-[var(--primary)]/30' : 'bg-zinc-800 text-slate-400 border-[#262626]'}`}>
                                                     {member.avatarUrl ? (
                                                         <NextImage src={member.avatarUrl} className="object-cover" alt={member.nom} fill />
 
@@ -736,7 +759,7 @@ export default function SettingsContent() {
                                                     </div>
                                                 </div>
                                             </div>
-                                            <span className={`px-3 py-1 text-xs font-bold rounded-full border uppercase tracking-wider ${member.role === 'ADMIN' ? 'bg-[#ec5b13]/10 text-[#ec5b13] border-[#ec5b13]/20' : 'bg-zinc-800 text-slate-200 border-zinc-700'}`}>
+                                            <span className={`px-3 py-1 text-xs font-bold rounded-full border uppercase tracking-wider ${member.role === 'ADMIN' ? 'bg-[var(--primary)]/10 text-[var(--primary)] border-[var(--primary)]/20' : 'bg-zinc-800 text-slate-200 border-zinc-700'}`}>
                                                 {member.role === 'ADMIN' ? 'Administrateur' : member.role === 'CAISSIER' ? 'Caissier' : 'Traiteur'}
                                             </span>
                                         </div>
@@ -744,7 +767,7 @@ export default function SettingsContent() {
                                             <div className="flex items-center gap-2 text-sm text-slate-300 font-medium">
                                                 {member.role === 'ADMIN' ? (
                                                     <>
-                                                        <ShieldCheck className="w-4 h-4 text-[#ec5b13]" />
+                                                        <ShieldCheck className="w-4 h-4 text-[var(--primary)]" />
                                                         <span>Tous les accès</span>
                                                     </>
                                                 ) : (
@@ -777,7 +800,7 @@ export default function SettingsContent() {
 
                             {/* BEGIN: Role Permissions Guide */}
                             <div className="mt-12 p-8 bg-[#1a1614] border border-[#2d2622] rounded-[2rem] space-y-6">
-                                <div className="flex items-center gap-3 text-[#ec5b13]">
+                                <div className="flex items-center gap-3 text-[var(--primary)]">
                                     <ShieldCheck className="size-6" />
                                     <h3 className="text-xl font-bold italic tracking-tight uppercase">Guide des Rôles & Permissions</h3>
                                 </div>
@@ -785,7 +808,7 @@ export default function SettingsContent() {
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                                     <div className="p-5 bg-black/40 rounded-2xl border border-white/5 space-y-3">
                                         <div className="flex items-center gap-2">
-                                            <span className="size-2 rounded-full bg-[#ec5b13]"></span>
+                                            <span className="size-2 rounded-full bg-[var(--primary)]"></span>
                                             <h4 className="font-bold text-sm text-white uppercase tracking-wider">Administrateur</h4>
                                         </div>
                                         <p className="text-xs text-slate-400 leading-relaxed font-medium">
@@ -831,6 +854,26 @@ export default function SettingsContent() {
                         <ReceiptSettings />
                     )}
 
+                    {activeTab === "printer" && (
+                        <div className="max-w-3xl animate-in fade-in slide-in-from-bottom-2 duration-300">
+                            <div className="mb-6">
+                                <h2 className="text-xl font-bold text-white mb-1">Imprimante USB</h2>
+                                <p className="text-sm text-slate-400">Connectez et configurez votre imprimante thermique ESC/POS pour les tickets de caisse.</p>
+                            </div>
+                            <PrinterSettings
+                                initialPaperWidth={printerPaperWidth}
+                                initialAutoCut={printerAutoCut}
+                                initialAutoPrintPaid={printerAutoPrintPaid}
+                                shopName={shopName}
+                                onChange={(c) => {
+                                    if (c.printerPaperWidth !== undefined) setPrinterPaperWidth(c.printerPaperWidth);
+                                    if (c.printerAutoCut !== undefined) setPrinterAutoCut(c.printerAutoCut);
+                                    if (c.printerAutoPrintPaid !== undefined) setPrinterAutoPrintPaid(c.printerAutoPrintPaid);
+                                }}
+                            />
+                        </div>
+                    )}
+
                     {activeTab === "appearance" && (
                         <div className="max-w-4xl space-y-12 animate-in fade-in slide-in-from-bottom-2 duration-300">
                             {/* Section: Couleur d'accentuation */}
@@ -842,7 +885,7 @@ export default function SettingsContent() {
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
                                     <div className="space-y-6">
                                         <div className="flex flex-wrap gap-4 items-center">
-                                            <button onClick={() => setAccentColor("#ec5b13")} className={`w-10 h-10 rounded-full bg-[#ec5b13] transition-all hover:scale-110 shrink-0 ${accentColor === "#ec5b13" ? "border-4 border-white/20 ring-2 ring-[#ec5b13] ring-offset-4 ring-offset-[#0f0d0c]" : ""}`}></button>
+                                            <button onClick={() => setAccentColor("#ec5b13")} className={`w-10 h-10 rounded-full bg-[var(--primary)] transition-all hover:scale-110 shrink-0 ${accentColor === "#ec5b13" ? "border-4 border-white/20 ring-2 ring-[var(--primary)] ring-offset-4 ring-offset-[#0f0d0c]" : ""}`}></button>
                                             <button onClick={() => setAccentColor("#4169e1")} className={`w-10 h-10 rounded-full bg-[#4169e1] transition-all hover:scale-110 shrink-0 ${accentColor === "#4169e1" ? "border-4 border-white/20 ring-2 ring-[#4169e1] ring-offset-4 ring-offset-[#0f0d0c]" : ""}`}></button>
                                             <button onClick={() => setAccentColor("#10b981")} className={`w-10 h-10 rounded-full bg-[#10b981] transition-all hover:scale-110 shrink-0 ${accentColor === "#10b981" ? "border-4 border-white/20 ring-2 ring-[#10b981] ring-offset-4 ring-offset-[#0f0d0c]" : ""}`}></button>
                                             <button onClick={() => setAccentColor("#8b5cf6")} className={`w-10 h-10 rounded-full bg-[#8b5cf6] transition-all hover:scale-110 shrink-0 ${accentColor === "#8b5cf6" ? "border-4 border-white/20 ring-2 ring-[#8b5cf6] ring-offset-4 ring-offset-[#0f0d0c]" : ""}`}></button>
@@ -851,9 +894,9 @@ export default function SettingsContent() {
                                         <div className="max-w-xs">
                                             <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Code Hexadécimal</label>
                                             <div className="relative flex items-center group">
-                                                <span className="absolute left-3 text-slate-400 group-focus-within:text-[#ec5b13] transition-colors">#</span>
+                                                <span className="absolute left-3 text-slate-400 group-focus-within:text-[var(--primary)] transition-colors">#</span>
                                                 <input
-                                                    className="w-full bg-[#1a1614] border border-[#2d2622] rounded-xl pl-7 pr-12 py-3 text-white focus:ring-1 focus:ring-[#ec5b13] focus:border-[#ec5b13] outline-none transition-all"
+                                                    className="w-full bg-[#1a1614] border border-[#2d2622] rounded-xl pl-7 pr-12 py-3 text-white focus:ring-1 focus:ring-[var(--primary)] focus:border-[var(--primary)] outline-none transition-all"
                                                     type="text"
                                                     value={accentColor.replace('#', '')}
                                                     onChange={(e) => setAccentColor('#' + e.target.value)}
@@ -866,10 +909,10 @@ export default function SettingsContent() {
                                     <div className="p-6 bg-[#1a1614]/50 border border-[#2d2622] rounded-2xl flex flex-col items-center justify-center gap-6">
                                         <span className="text-xs font-bold uppercase tracking-widest text-slate-500">Aperçu en direct</span>
                                         <div className="flex flex-col items-center gap-4">
-                                            <button className="bg-[#ec5b13] hover:bg-[#ec5b13]/90 text-white px-6 py-2.5 rounded-xl font-bold shadow-lg shadow-[#ec5b13]/20 transition-all shrink-0">
+                                            <button className="bg-[var(--primary)] hover:bg-[var(--primary)]/90 text-white px-6 py-2.5 rounded-xl font-bold shadow-lg shadow-[var(--primary)]/20 transition-all shrink-0">
                                                 Bouton Primaire
                                             </button>
-                                            <span className="px-3 py-1 bg-[#ec5b13]/20 text-[#ec5b13] text-xs font-bold rounded-full border border-[#ec5b13]/30 shrink-0">
+                                            <span className="px-3 py-1 bg-[var(--primary)]/20 text-[var(--primary)] text-xs font-bold rounded-full border border-[var(--primary)]/30 shrink-0">
                                                 Badge Actif
                                             </span>
                                         </div>
@@ -889,7 +932,7 @@ export default function SettingsContent() {
                                     {/* Dark Dashboard Logo */}
                                     <div
                                         onClick={() => dashboardLogoInputRef.current?.click()}
-                                        className="group relative flex flex-col items-center justify-center p-6 bg-[#1a1614] border-2 border-dashed border-[#2d2622] hover:border-[#ec5b13]/50 rounded-2xl transition-all cursor-pointer overflow-hidden"
+                                        className="group relative flex flex-col items-center justify-center p-6 bg-[#1a1614] border-2 border-dashed border-[#2d2622] hover:border-[var(--primary)]/50 rounded-2xl transition-all cursor-pointer overflow-hidden"
                                     >
                                         <input
                                             type="file"
@@ -899,13 +942,13 @@ export default function SettingsContent() {
                                             onChange={(e) => handleLogoFileChange(e, 'dashboard')}
                                         />
                                         {isUploadingDashboardLogo ? (
-                                            <Loader2 className="animate-spin text-[#ec5b13] size-8 mb-3" />
+                                            <Loader2 className="animate-spin text-[var(--primary)] size-8 mb-3" />
                                         ) : dashboardLogoUrl ? (
                                             <div className="mb-3 h-12 flex items-center justify-center w-full">
                                                 <NextImage src={dashboardLogoUrl} className="object-contain" alt="Dashboard Logo" width={120} height={48} />
                                             </div>
                                         ) : (
-                                            <span className="material-symbols-outlined text-3xl text-slate-500 group-hover:text-[#ec5b13] mb-3">upload_file</span>
+                                            <span className="material-symbols-outlined text-3xl text-slate-500 group-hover:text-[var(--primary)] mb-3">upload_file</span>
                                         )}
                                         <span className="text-xs font-bold text-center text-slate-300">Logo Dashboard (Dark)</span>
                                         <span className="text-[10px] text-slate-500 mt-1 uppercase">SVG, PNG (Max 2MB)</span>
@@ -914,16 +957,16 @@ export default function SettingsContent() {
                                     {/* Light Terminal Logo */}
                                     <div
                                         onClick={() => logoInputRef.current?.click()}
-                                        className="group relative flex flex-col items-center justify-center p-6 bg-white/5 border-2 border-dashed border-[#2d2622] hover:border-[#ec5b13]/50 rounded-2xl transition-all cursor-pointer overflow-hidden"
+                                        className="group relative flex flex-col items-center justify-center p-6 bg-white/5 border-2 border-dashed border-[#2d2622] hover:border-[var(--primary)]/50 rounded-2xl transition-all cursor-pointer overflow-hidden"
                                     >
                                         {isUploadingLogo ? (
-                                            <Loader2 className="animate-spin text-[#ec5b13] size-8 mb-3" />
+                                            <Loader2 className="animate-spin text-[var(--primary)] size-8 mb-3" />
                                         ) : logoUrl ? (
                                             <div className="mb-3 h-12 flex items-center justify-center w-full">
                                                 <NextImage src={logoUrl} className="object-contain" alt="Terminal Logo" width={120} height={48} />
                                             </div>
                                         ) : (
-                                            <span className="material-symbols-outlined text-3xl text-slate-500 group-hover:text-[#ec5b13] mb-3">upload_file</span>
+                                            <span className="material-symbols-outlined text-3xl text-slate-500 group-hover:text-[var(--primary)] mb-3">upload_file</span>
                                         )}
                                         <span className="text-xs font-bold text-center text-slate-300">Logo Borne Client (Light)</span>
                                         <span className="text-[10px] text-slate-500 mt-1 uppercase">SVG, PNG (Max 2MB)</span>
@@ -932,7 +975,7 @@ export default function SettingsContent() {
                                     {/* Favicon */}
                                     <div
                                         onClick={() => faviconInputRef.current?.click()}
-                                        className="group relative flex flex-col items-center justify-center p-6 bg-[#1a1614] border-2 border-dashed border-[#2d2622] hover:border-[#ec5b13]/50 rounded-2xl transition-all cursor-pointer overflow-hidden"
+                                        className="group relative flex flex-col items-center justify-center p-6 bg-[#1a1614] border-2 border-dashed border-[#2d2622] hover:border-[var(--primary)]/50 rounded-2xl transition-all cursor-pointer overflow-hidden"
                                     >
                                         <input
                                             type="file"
@@ -942,13 +985,13 @@ export default function SettingsContent() {
                                             onChange={(e) => handleLogoFileChange(e, 'favicon')}
                                         />
                                         {isUploadingFavicon ? (
-                                            <Loader2 className="animate-spin text-[#ec5b13] size-8 mb-3" />
+                                            <Loader2 className="animate-spin text-[var(--primary)] size-8 mb-3" />
                                         ) : faviconUrl ? (
                                             <div className="mb-3 size-10 flex items-center justify-center">
                                                 <NextImage src={faviconUrl} className="object-contain" alt="Favicon" width={40} height={40} />
                                             </div>
                                         ) : (
-                                            <span className="material-symbols-outlined text-3xl text-slate-500 group-hover:text-[#ec5b13] mb-3">branding_watermark</span>
+                                            <span className="material-symbols-outlined text-3xl text-slate-500 group-hover:text-[var(--primary)] mb-3">branding_watermark</span>
                                         )}
                                         <span className="text-xs font-bold text-center text-slate-300">Favicon</span>
                                         <span className="text-[10px] text-slate-500 mt-1 uppercase">ICO, PNG (32x32px)</span>
@@ -968,7 +1011,7 @@ export default function SettingsContent() {
                                     <div className="space-y-2">
                                         <label className="text-sm font-medium text-slate-400">Message de remerciement</label>
                                         <textarea
-                                            className="w-full bg-[#1a1614] border border-[#2d2622] rounded-xl px-4 py-3 focus:ring-1 focus:ring-[#ec5b13] focus:border-transparent transition-all outline-none text-slate-100"
+                                            className="w-full bg-[#1a1614] border border-[#2d2622] rounded-xl px-4 py-3 focus:ring-1 focus:ring-[var(--primary)] focus:border-transparent transition-all outline-none text-slate-100"
                                             rows={2}
                                             value={footerMessage}
                                             onChange={(e) => setFooterMessage(e.target.value)}
@@ -994,7 +1037,7 @@ export default function SettingsContent() {
                                 <button
                                     onClick={handleSave}
                                     disabled={isSaving}
-                                    className="bg-[#ec5b13] hover:bg-orange-600 text-white px-8 py-4 rounded-xl font-bold text-base shadow-lg shadow-[#ec5b13]/40 transition-all flex items-center gap-3 disabled:opacity-50"
+                                    className="bg-[var(--primary)] hover:bg-orange-600 text-white px-8 py-4 rounded-xl font-bold text-base shadow-lg shadow-[var(--primary)]/40 transition-all flex items-center gap-3 disabled:opacity-50"
                                 >
                                     {isSaving ? <Loader2 className="animate-spin size-5" /> : <Save className="size-5" />}
                                     {isSaving ? "Sauvegarde..." : "Sauvegarder les modifications"}
@@ -1008,13 +1051,13 @@ export default function SettingsContent() {
                             <div className="flex gap-4 p-1 bg-[#1a1614] w-fit rounded-xl border border-[#2d2622]">
                                 <button
                                     onClick={() => setB2bSubTab("config")}
-                                    className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${b2bSubTab === "config" ? "bg-[#ec5b13] text-white" : "text-slate-400 hover:text-white"}`}
+                                    className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${b2bSubTab === "config" ? "bg-[var(--primary)] text-white" : "text-slate-400 hover:text-white"}`}
                                 >
                                     Configuration
                                 </button>
                                 <button
                                     onClick={() => setB2bSubTab("manage")}
-                                    className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${b2bSubTab === "manage" ? "bg-[#ec5b13] text-white" : "text-slate-400 hover:text-white"}`}
+                                    className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${b2bSubTab === "manage" ? "bg-[var(--primary)] text-white" : "text-slate-400 hover:text-white"}`}
                                 >
                                     Gestion des Revendeurs
                                 </button>
@@ -1026,7 +1069,7 @@ export default function SettingsContent() {
                                         <div className="flex items-center justify-between p-4 bg-orange-500/5 border border-orange-500/10 rounded-xl">
                                             <div className="flex items-center gap-4">
                                                 <div className="size-12 rounded-full bg-orange-500/20 flex items-center justify-center">
-                                                    <Store className="size-6 text-[#ec5b13]" />
+                                                    <Store className="size-6 text-[var(--primary)]" />
                                                 </div>
                                                 <div className="flex flex-col">
                                                     <span className="text-base font-bold text-white">Activer le Portail B2B</span>
@@ -1089,7 +1132,7 @@ export default function SettingsContent() {
                                         <button
                                             onClick={handleSave}
                                             disabled={isSaving}
-                                            className="bg-[#ec5b13] hover:bg-orange-600 text-white px-8 py-4 rounded-xl font-bold text-base shadow-lg shadow-[#ec5b13]/40 transition-all flex items-center gap-3 disabled:opacity-50"
+                                            className="bg-[var(--primary)] hover:bg-orange-600 text-white px-8 py-4 rounded-xl font-bold text-base shadow-lg shadow-[var(--primary)]/40 transition-all flex items-center gap-3 disabled:opacity-50"
                                         >
                                             {isSaving ? <Loader2 className="animate-spin size-5" /> : <Save className="size-5" />}
                                             Sauvegarder la configuration B2B
@@ -1105,7 +1148,7 @@ export default function SettingsContent() {
                                         </div>
                                         <Link
                                             href="/admin/b2b"
-                                            className="bg-[#ec5b13] hover:bg-orange-600 text-white px-6 py-3 rounded-xl font-bold text-sm shadow-lg shadow-orange-950/20 transition-all flex items-center gap-2"
+                                            className="bg-[var(--primary)] hover:bg-orange-600 text-white px-6 py-3 rounded-xl font-bold text-sm shadow-lg shadow-orange-950/20 transition-all flex items-center gap-2"
                                         >
                                             <Building2 className="size-4" />
                                             Accéder à la Gestion B2B
@@ -1114,7 +1157,7 @@ export default function SettingsContent() {
 
                                     <div className="bg-[#1a1614] border border-[#2d2622] rounded-3xl p-8 flex flex-col items-center justify-center gap-6 text-center">
                                         <div className="size-20 rounded-2xl bg-[#0a0a0a] border border-[#2d2622] flex items-center justify-center">
-                                            <Users className="size-10 text-[#ec5b13]" />
+                                            <Users className="size-10 text-[var(--primary)]" />
                                         </div>
                                         <div className="space-y-2">
                                             <h4 className="text-xl font-bold text-white">Module Partenaires Déporté</h4>
@@ -1169,9 +1212,28 @@ export default function SettingsContent() {
 
                                         <div className="flex items-center justify-between p-6 bg-black/40 rounded-3xl border border-white/5">
                                             <div className="flex items-center gap-4 text-white">
+                                                <Power className={autoSendWhatsapp ? "text-emerald-500" : "text-slate-400"} size={20} />
+                                                <div>
+                                                    <span className="text-sm font-black uppercase block tracking-widest">Auto-envoi WhatsApp kiosk</span>
+                                                    <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">
+                                                        Envoi automatique des codes au client après paiement caisse. Si désactivé : le caissier doit cliquer &laquo; Renvoyer WhatsApp &raquo; dans le modal commande.
+                                                    </span>
+                                                </div>
+                                            </div>
+                                            <button
+                                                data-testid="auto-send-whatsapp-toggle"
+                                                onClick={() => setAutoSendWhatsapp(!autoSendWhatsapp)}
+                                                className={`w-14 h-7 rounded-full transition-all relative ${autoSendWhatsapp ? "bg-emerald-500" : "bg-white/10"}`}
+                                            >
+                                                <div className={`absolute top-1 w-5 h-5 bg-white rounded-full transition-all ${autoSendWhatsapp ? "left-8" : "left-1"}`} />
+                                            </button>
+                                        </div>
+
+                                        <div className="flex items-center justify-between p-6 bg-black/40 rounded-3xl border border-white/5">
+                                            <div className="flex items-center gap-4 text-white">
                                                 <AlertTriangle className="text-orange-400" size={20} />
                                                 <div>
-                                                    <span className="text-sm font-black uppercase block tracking-widest">Seuil d'alerte stock bas</span>
+                                                    <span className="text-sm font-black uppercase block tracking-widest">Seuil d&apos;alerte stock bas</span>
                                                     <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Alerte Telegram envoyée sous ce nombre</span>
                                                 </div>
                                             </div>
@@ -1182,7 +1244,7 @@ export default function SettingsContent() {
                                                     max={9999}
                                                     value={stockAlertThreshold}
                                                     onChange={(e) => setStockAlertThreshold(Math.max(1, parseInt(e.target.value) || 1))}
-                                                    className="w-20 bg-black/60 border border-white/10 rounded-xl px-3 py-2 text-white font-black text-center text-sm outline-none focus:border-[#ec5b13]/50"
+                                                    className="w-20 bg-black/60 border border-white/10 rounded-xl px-3 py-2 text-white font-black text-center text-sm outline-none focus:border-[var(--primary)]/50"
                                                 />
                                                 <span className="text-[10px] text-slate-500 font-bold uppercase">unités</span>
                                             </div>
@@ -1190,11 +1252,11 @@ export default function SettingsContent() {
 
                                         <div className="space-y-3">
                                             <div className="flex items-center gap-2 text-white ml-1">
-                                                <Globe size={14} className="text-[#ec5b13]" />
+                                                <Globe size={14} className="text-[var(--primary)]" />
                                                 <span className="text-[10px] font-black uppercase tracking-widest">IP Whitelisting (Séparez par virgule)</span>
                                             </div>
                                             <textarea
-                                                className="w-full bg-black/40 border border-white/5 rounded-3xl p-6 text-sm text-white placeholder:text-slate-700 outline-none focus:border-[#ec5b13]/50 transition-all min-h-[100px] font-mono leading-relaxed"
+                                                className="w-full bg-black/40 border border-white/5 rounded-3xl p-6 text-sm text-white placeholder:text-slate-700 outline-none focus:border-[var(--primary)]/50 transition-all min-h-[100px] font-mono leading-relaxed"
                                                 placeholder="ex: 123.456.78.90, 89.0.1.2"
                                                 value={allowedIps}
                                                 onChange={(e) => setAllowedIps(e.target.value)}
@@ -1205,13 +1267,25 @@ export default function SettingsContent() {
                                 </CardBody>
                             </Card>
 
+                            <div className="flex justify-end">
+                                <button
+                                    onClick={handleSave}
+                                    disabled={isSaving}
+                                    data-testid="security-save-btn"
+                                    className="bg-[var(--primary)] hover:bg-orange-600 text-white px-8 py-4 rounded-xl font-bold text-base shadow-lg shadow-[var(--primary)]/40 transition-all flex items-center gap-3 disabled:opacity-50"
+                                >
+                                    {isSaving ? <Loader2 className="animate-spin size-5" /> : <Save className="size-5" />}
+                                    {isSaving ? "Sauvegarde..." : "Sauvegarder les modifications"}
+                                </button>
+                            </div>
+
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 {/* MFA Configuration */}
                                 <Card className="bg-[#1a1614] border border-white/5 rounded-[32px] overflow-hidden shadow-2xl">
                                     <CardBody className="p-8">
                                         <div className="flex items-center gap-4 mb-8">
-                                            <div className="p-3 bg-[#ec5b13]/10 rounded-2xl">
-                                                <Smartphone className="text-[#ec5b13] w-6 h-6" />
+                                            <div className="p-3 bg-[var(--primary)]/10 rounded-2xl">
+                                                <Smartphone className="text-[var(--primary)] w-6 h-6" />
                                             </div>
                                             <div>
                                                 <h3 className="text-lg font-black text-white uppercase tracking-tight">Authentification Forte</h3>
@@ -1275,7 +1349,7 @@ export default function SettingsContent() {
                                                     <p className="text-slate-400 text-sm italic mb-6">&quot;L&apos;authentification à deux facteurs ajoute une couche de sécurité supplémentaire en demandant un code depuis votre téléphone.&quot;</p>
                                                     <Button
                                                         onPress={handleGenerateMfa}
-                                                        className="bg-[#ec5b13] text-white font-black uppercase tracking-widest text-[10px] py-6 px-10 rounded-2xl shadow-xl shadow-[#ec5b13]/20"
+                                                        className="bg-[var(--primary)] text-white font-black uppercase tracking-widest text-[10px] py-6 px-10 rounded-2xl shadow-xl shadow-[var(--primary)]/20"
                                                     >
                                                         Activer le 2FA
                                                     </Button>
@@ -1293,7 +1367,7 @@ export default function SettingsContent() {
                                                     <input
                                                         type="text"
                                                         placeholder="Code de vérification (6 chiffres)"
-                                                        className="w-full bg-black/40 border border-white/5 rounded-2xl py-4 px-6 text-center text-lg font-black tracking-[0.5em] text-[#ec5b13] outline-none"
+                                                        className="w-full bg-black/40 border border-white/5 rounded-2xl py-4 px-6 text-center text-lg font-black tracking-[0.5em] text-[var(--primary)] outline-none"
                                                         maxLength={6}
                                                         value={mfaInputCode}
                                                         onChange={(e) => setMfaInputCode(e.target.value)}
@@ -1321,7 +1395,7 @@ export default function SettingsContent() {
                                             </button>
 
                                             {backupCodes && (
-                                                <div className="mt-4 p-4 bg-black/40 border border-white/5 rounded-2xl grid grid-cols-2 gap-2 font-mono text-[10px] text-[#ec5b13]">
+                                                <div className="mt-4 p-4 bg-black/40 border border-white/5 rounded-2xl grid grid-cols-2 gap-2 font-mono text-[10px] text-[var(--primary)]">
                                                     {backupCodes.map((code, idx) => (
                                                         <div key={idx} className="flex items-center gap-2">
                                                             <span className="text-slate-700">{idx + 1}.</span> {code}
@@ -1375,7 +1449,7 @@ export default function SettingsContent() {
                                                 <div className="text-center py-10 text-slate-600 text-[10px] uppercase font-black tracking-widest">Aucun log récent</div>
                                             ) : (
                                                 auditLogs.map((log: any) => (
-                                                    <div key={log.id} className="p-4 bg-black/40 border border-white/5 rounded-2xl space-y-2 group hover:border-[#ec5b13]/20 transition-colors">
+                                                    <div key={log.id} className="p-4 bg-black/40 border border-white/5 rounded-2xl space-y-2 group hover:border-[var(--primary)]/20 transition-colors">
                                                         <div className="flex justify-between items-start">
                                                             <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${log.action.includes('ERROR') || log.action.includes('BLOCKED') ? 'bg-red-500/10 text-red-500' : 'bg-blue-500/10 text-blue-500'}`}>
                                                                 {log.action.replace(/_/g, ' ')}

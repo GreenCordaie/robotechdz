@@ -16,18 +16,11 @@ class AppEventBus extends EventEmitter {
     }
 
     public static getInstance(): AppEventBus {
-        if (process.env.NODE_ENV === "development") {
-            const globalAny = globalThis as any;
-            if (!globalAny.__eventBus) {
-                globalAny.__eventBus = new AppEventBus();
-            }
-            return globalAny.__eventBus;
+        const globalAny = globalThis as any;
+        if (!globalAny.__eventBus) {
+            globalAny.__eventBus = new AppEventBus();
         }
-
-        if (!AppEventBus.instance) {
-            AppEventBus.instance = new AppEventBus();
-        }
-        return AppEventBus.instance;
+        return globalAny.__eventBus;
     }
 
     /**
@@ -60,7 +53,11 @@ export enum SystemEvent {
     STOCK_LOW = "inventory.stock_low",
 
     // CRM
-    CUSTOMER_UPDATED = "customer.updated"
+    CUSTOMER_UPDATED = "customer.updated",
+
+    // IPTV Provisioning
+    IPTV_PROVISION_COMPLETED = "iptv.provision.completed",
+    IPTV_PROVISION_FAILED = "iptv.provision.failed"
 }
 
 export const eventBus = AppEventBus.getInstance();

@@ -12,6 +12,7 @@ interface CartItem {
     imageUrl?: string;
     customData?: string;
     playerNickname?: string;
+    loadbrainSlug?: string | null;
 }
 
 interface KioskState {

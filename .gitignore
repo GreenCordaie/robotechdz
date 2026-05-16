@@ -17,3 +17,45 @@ yarn-error.log*
 public/uploads/*
 !public/uploads/.gitkeep
 .claude/
+
+# Ignored SQL dumps and tmp scripts with secrets
+tmp/
+*.sql
+# Mais les migrations Drizzle officielles doivent être trackées
+!drizzle/*.sql
+
+# TypeScript incremental build cache (artefact, ne doit jamais être tracké)
+tsconfig.tsbuildinfo
+*.tsbuildinfo
+
+# Backups locaux (jamais en repo)
+backups/
+
+# Logs / debug / build artefacts à la racine
+/*.txt
+!/CHANGELOG.txt
+cf_*.txt
+build_log.txt
+eslint_*.txt
+lint_*.txt
+delegation_debug.txt
+diag_atlas*.txt
+balance_trace.txt
+body*.txt
+definitive_lint.txt
+
+# Scripts debug racine ad-hoc
+/check_db*.js
+/check_db*.ts
+/check_settings*.{js,ts}
+/tmp_test_*.{js,ts,mjs}
+/test_*.{js,ts,mjs}
+/cf_*.txt
+
+# Fichiers .bak (utiliser git history)
+*.bak
+
+# E2E orphelins (à formaliser ou supprimer)
+scripts/noop.js
+/test-results/
+/playwright-report/

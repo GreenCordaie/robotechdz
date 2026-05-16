@@ -23,6 +23,51 @@ export default function ClientsMobile({ initialStats, initialClients }: any) {
     const [newTel, setNewTel] = useState("");
     const [isCreatingNew, setIsCreatingNew] = useState(false);
 
+    // EPIC 11 — useMemo hoisted au top (rules-of-hooks)
+    const journalEntries = React.useMemo(() => {
+        const entries: any[] = [
+            ...history.payments.map((p: any) => ({
+                id: `pay-${p.id}`,
+                date: p.createdAt,
+                type: 'PAYMENT',
+                amount: p.montantDzd,
+                label: p.typeAction === 'REMBOURSEMENT' ? 'Remboursement (Retour)' : 'Encaissement',
+                icon: WalletIcon,
+                color: 'text-emerald-500',
+                bgColor: 'bg-emerald-500/10'
+            })),
+            ...history.orders.map((o: any) => ({
+                id: `order-${o.id}`,
+                date: o.createdAt,
+                type: 'ORDER',
+                amount: o.totalAmount,
+                resteAPayer: o.resteAPayer,
+                label: `Achat #${o.orderNumber}`,
+                icon: ShoppingCart,
+                color: 'text-red-500',
+                bgColor: 'bg-red-500/10',
+                items: o.items || []
+            })),
+            ...history.returns.filter((r: any) => r.returnRequest.status !== 'APPROUVE').map((r: any) => ({
+                id: `return-${r.orderId}`,
+                date: new Date(r.returnRequest.initiatedAt),
+                type: 'RETURN',
+                amount: r.returnRequest.montant,
+                status: r.returnRequest.status,
+                label: `Retour #${r.orderNumber}`,
+                icon: X,
+                color: r.returnRequest.status === 'REJETE' ? 'text-slate-400' : 'text-yellow-500',
+                bgColor: r.returnRequest.status === 'REJETE' ? 'bg-slate-500/10' : 'bg-yellow-500/10',
+                motifRejet: r.returnRequest.motifRejet
+            }))
+        ];
+        return entries.sort((a, b) => {
+            const dateA = a.date instanceof Date ? a.date.getTime() : new Date(a.date).getTime();
+            const dateB = b.date instanceof Date ? b.date.getTime() : new Date(b.date).getTime();
+            return dateB - dateA;
+        });
+    }, [history]);
+
     const { isOpen, onOpen, onClose } = useDisclosure();
     const { isOpen: isNewOpen, onOpen: onNewOpen, onClose: onNewClose } = useDisclosure();
     const { isOpen: isEditOpen, onOpen: onEditOpen, onClose: onEditClose } = useDisclosure();
@@ -148,9 +193,9 @@ export default function ClientsMobile({ initialStats, initialClients }: any) {
                         <CheckCircle size={12} className="text-emerald-500" />
                         <span className="text-[10px] font-black text-emerald-500 uppercase">{initialStats.indebtedCount} Actifs</span>
                     </div>
-                    <div className="px-4 py-2 bg-[#ec5b13]/10 border border-[#ec5b13]/20 rounded-2xl flex items-center gap-2 shrink-0">
-                        <TrendingUp size={12} className="text-[#ec5b13]" />
-                        <span className="text-[10px] font-black text-[#ec5b13] uppercase">Récupéré: {formatCurrency(initialStats.recoveredThisMonth, 'DZD')}</span>
+                    <div className="px-4 py-2 bg-[var(--primary)]/10 border border-[var(--primary)]/20 rounded-2xl flex items-center gap-2 shrink-0">
+                        <TrendingUp size={12} className="text-[var(--primary)]" />
+                        <span className="text-[10px] font-black text-[var(--primary)] uppercase">Récupéré: {formatCurrency(initialStats.recoveredThisMonth, 'DZD')}</span>
                     </div>
                 </div>
             </header>
@@ -244,49 +289,7 @@ export default function ClientsMobile({ initialStats, initialClients }: any) {
                                     <div className="space-y-4">
                                         <h4 className="text-[10px] font-black uppercase text-slate-500">Journal des Flux</h4>
                                         <div className="space-y-3">
-                                            {React.useMemo(() => {
-                                                const entries: any[] = [
-                                                    ...history.payments.map(p => ({
-                                                        id: `pay-${p.id}`,
-                                                        date: p.createdAt,
-                                                        type: 'PAYMENT',
-                                                        amount: p.montantDzd,
-                                                        label: p.typeAction === 'REMBOURSEMENT' ? 'Remboursement (Retour)' : 'Encaissement',
-                                                        icon: WalletIcon,
-                                                        color: 'text-emerald-500',
-                                                        bgColor: 'bg-emerald-500/10'
-                                                    })),
-                                                    ...history.orders.map(o => ({
-                                                        id: `order-${o.id}`,
-                                                        date: o.createdAt,
-                                                        type: 'ORDER',
-                                                        amount: o.totalAmount,
-                                                        resteAPayer: o.resteAPayer,
-                                                        label: `Achat #${o.orderNumber}`,
-                                                        icon: ShoppingCart,
-                                                        color: 'text-red-500',
-                                                        bgColor: 'bg-red-500/10',
-                                                        items: o.items || []
-                                                    })),
-                                                    ...history.returns.filter(r => r.returnRequest.status !== 'APPROUVE').map(r => ({
-                                                        id: `return-${r.orderId}`,
-                                                        date: new Date(r.returnRequest.initiatedAt),
-                                                        type: 'RETURN',
-                                                        amount: r.returnRequest.montant,
-                                                        status: r.returnRequest.status,
-                                                        label: `Retour #${r.orderNumber}`,
-                                                        icon: X,
-                                                        color: r.returnRequest.status === 'REJETE' ? 'text-slate-400' : 'text-yellow-500',
-                                                        bgColor: r.returnRequest.status === 'REJETE' ? 'bg-slate-500/10' : 'bg-yellow-500/10',
-                                                        motifRejet: r.returnRequest.motifRejet
-                                                    }))
-                                                ];
-                                                return entries.sort((a, b) => {
-                                                    const dateA = a.date instanceof Date ? a.date.getTime() : new Date(a.date).getTime();
-                                                    const dateB = b.date instanceof Date ? b.date.getTime() : new Date(b.date).getTime();
-                                                    return dateB - dateA;
-                                                });
-                                            }, [history]).map((entry: any) => {
+                                            {journalEntries.map((entry: any) => {
                                                 const Icon = entry.icon;
                                                 return (
                                                     <div key={entry.id} className="p-4 bg-white/5 rounded-2xl border border-white/5 space-y-3">

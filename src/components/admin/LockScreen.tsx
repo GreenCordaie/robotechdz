@@ -54,7 +54,7 @@ export const LockScreen = () => {
                 {/* Header Profile */}
                 <div className="flex flex-col items-center mb-12">
                     <div className="w-24 h-24 rounded-full bg-[#161616] border border-[#262626] flex items-center justify-center mb-4 relative">
-                        <div className="w-20 h-20 rounded-full overflow-hidden bg-gradient-to-tr from-[#ec5b13]/20 to-transparent flex items-center justify-center relative">
+                        <div className="w-20 h-20 rounded-full overflow-hidden bg-gradient-to-tr from-[var(--primary)]/20 to-transparent flex items-center justify-center relative">
                             <Image
                                 src="https://lh3.googleusercontent.com/aida-public/AB6AXuCZzSogzgSYWL4sV8cYS-i9sYM5fwva6Q0n4I55293IQmD03umRiums_O9xTBdasBU1_angHiWiAckgyWwn6UB9MBLipWMhFehIUd_Qc0NUCfkXrUB7xtX-66jetAhnxQNxVTRztumuzjGfV4latkz0g53wc7eiJUn89bYwLuPezAenuEtVe-t4k1298Xg1AQqPP6l314oAlSj3m3UMutiTNXAv4ywmJUO7cWO3xprkiMgliBjEdbhP9gqPQREeem3Jv00wZuEZHdbM"
                                 alt="Admin"
@@ -63,7 +63,7 @@ export const LockScreen = () => {
                                 sizes="64px"
                             />
                         </div>
-                        <div className="absolute -bottom-1 -right-1 bg-[#ec5b13] p-1.5 rounded-full shadow-lg">
+                        <div className="absolute -bottom-1 -right-1 bg-[var(--primary)] p-1.5 rounded-full shadow-lg">
                             <Lock className="w-3 h-3 text-white" />
                         </div>
                     </div>
@@ -77,7 +77,7 @@ export const LockScreen = () => {
                         <div
                             key={i}
                             className={`w-4 h-4 rounded-full border-2 transition-all duration-200 ${pin[i]
-                                ? "bg-[#ec5b13] border-[#ec5b13] scale-110 shadow-[0_0_15px_rgba(236,91,19,0.5)]"
+                                ? "bg-[var(--primary)] border-[var(--primary)] scale-110 shadow-[0_0_15px_rgba(236,91,19,0.5)]"
                                 : "border-[#262626]"
                                 } ${error ? "animate-shake bg-red-500 border-red-500" : ""}`}
                         />
@@ -113,7 +113,7 @@ export const LockScreen = () => {
                 {/* Bottom Action */}
                 <button
                     onClick={() => window.location.href = "/admin/login"}
-                    className="mt-12 text-slate-500 hover:text-[#ec5b13] text-sm font-medium transition-colors flex items-center gap-2"
+                    className="mt-12 text-slate-500 hover:text-[var(--primary)] text-sm font-medium transition-colors flex items-center gap-2"
                 >
                     Changer de compte <ArrowRight className="w-4 h-4" />
                 </button>

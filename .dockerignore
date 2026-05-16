@@ -1,0 +1,11 @@
+node_modules
+.next
+.git
+backups
+tmp
+scripts
+tests
+*.bat
+*.md
+.env*
+!.env.production

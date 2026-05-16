@@ -17,6 +17,7 @@ interface Variant {
     salePriceDzd: number;
     stockCount: number;
     isSharing?: boolean;
+    loadbrainSlug?: string | null;
 }
 
 interface Product {
@@ -57,7 +58,7 @@ export default function KioskMobile({ products: initialProducts, categories: ini
                 price: i.price,
                 quantity: i.quantity,
                 customData: i.customData,
-                playerNickname: i.playerNickname
+                playerNickname: i.playerNickname,
             }));
 
             const order = await createKioskOrder(formattedItems, total.toFixed(2), method, phone);
@@ -82,7 +83,7 @@ export default function KioskMobile({ products: initialProducts, categories: ini
                         <div className="relative group cursor-pointer transition-transform duration-500 hover:scale-105 active:scale-95">
                             <div className="absolute -inset-4 bg-primary/20 rounded-full blur-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-700"></div>
                             <div className="relative w-56 h-56 mb-12 drop-shadow-2xl">
-                                <Image src="/logo.png" alt="Robotech" fill className="object-contain" priority />
+                                <Image src="/logo.png" alt="Robotech" fill sizes="224px" className="object-contain" priority />
                             </div>
                         </div>
 
@@ -127,7 +128,7 @@ export default function KioskMobile({ products: initialProducts, categories: ini
             {(step === "IDLE" || step === "CATALOGUE") && cart.length > 0 && (
                 <button
                     onClick={() => setIsDeliveryModalOpen(true)}
-                    className="fixed bottom-10 right-6 bg-primary text-white size-16 rounded-full shadow-2xl shadow-primary/30 flex items-center justify-center hover:scale-110 active:scale-95 transition-all z-40 group"
+                    className="fixed bottom-10 left-1/2 -translate-x-1/2 bg-primary text-white size-16 rounded-full shadow-2xl shadow-primary/30 flex items-center justify-center hover:scale-110 active:scale-95 transition-all z-40 group"
                 >
                     <div className="absolute -top-1 -right-1 size-7 bg-white text-primary rounded-full flex items-center justify-center text-xs font-black shadow-lg border-2 border-primary">
                         {cart.length}
@@ -215,7 +216,7 @@ function CatalogueView({ products, categories, selectedCategory, setSelectedCate
             </header>
 
             {/* Categories Scroll Horizontal */}
-            <div className="flex overflow-x-auto gap-2 pb-4 no-scrollbar -mx-4 px-4 sticky top-0 bg-[#F4F7FE] z-10 pt-2">
+            <div className="flex overflow-x-auto gap-2 pb-4 hide-scrollbar -mx-4 px-4 sticky top-0 bg-[#F8F9FA] z-10 pt-2">
                 <button
                     onClick={() => setSelectedCategory("all")}
                     className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all border whitespace-nowrap shrink-0 ${selectedCategory === "all"
@@ -265,16 +266,21 @@ function CatalogueView({ products, categories, selectedCategory, setSelectedCate
                                             src={product.imageUrl}
                                             alt={product.name}
                                             fill
+                                            sizes="96px"
                                             className="object-cover group-hover:scale-110 transition-transform duration-500"
                                         />
                                     ) : (
                                         <span className="material-symbols-outlined text-slate-200 !text-3xl">image_not_supported</span>
                                     )}
-                                    {product.isManualDelivery && (
+                                    {product.variants?.some((v: any) => v.loadbrainSlug) ? (
+                                        <div className="absolute top-1 left-1 px-1.5 py-0.5 bg-cyan-500/80 backdrop-blur-md rounded-md text-[7px] font-black uppercase text-white tracking-tighter">
+                                            Auto
+                                        </div>
+                                    ) : product.isManualDelivery ? (
                                         <div className="absolute top-1 left-1 px-1.5 py-0.5 bg-blue-500/80 backdrop-blur-md rounded-md text-[7px] font-black uppercase text-white tracking-tighter">
                                             Manuel
                                         </div>
-                                    )}
+                                    ) : null}
                                 </div>
 
                                 {/* Contenu à droite */}
@@ -293,7 +299,7 @@ function CatalogueView({ products, categories, selectedCategory, setSelectedCate
                                                 <span className="text-[10px] text-slate-400 font-bold uppercase mt-1">Multi-variantes</span>
                                             )}
                                         </div>
-                                        <div className="size-10 bg-primary rounded-xl flex items-center justify-center text-white shadow-lg shadow-primary/20">
+                                        <div className="size-11 bg-primary rounded-xl flex items-center justify-center text-white shadow-lg shadow-primary/20">
                                             <span className="material-symbols-outlined">add_shopping_cart</span>
                                         </div>
                                     </div>
@@ -308,7 +314,7 @@ function CatalogueView({ products, categories, selectedCategory, setSelectedCate
                         <div className="size-20 bg-slate-50 rounded-full flex items-center justify-center text-slate-200">
                             <span className="material-symbols-outlined !text-4xl">search_off</span>
                         </div>
-                        <p className="text-slate-400 font-bold">Aucun produit trouvé pour "{searchQuery}"</p>
+                        <p className="text-slate-400 font-bold">Aucun produit trouvé pour &laquo;{searchQuery}&raquo;</p>
                     </div>
                 )}
             </section>
@@ -348,7 +354,7 @@ function SuccessView({ lastOrderNumber, onReset }: { lastOrderNumber: string, on
 
             <div className="space-y-4 max-w-xs mb-12">
                 <h2 className="text-3xl font-black text-[#0c121e] uppercase tracking-tighter leading-tight">Commande<br />Réussie !</h2>
-                <p className="text-slate-400 font-medium text-sm">Votre commande a été transmise avec succès à l'équipe ROBOTECH.</p>
+                <p className="text-slate-400 font-medium text-sm">Votre commande a été transmise avec succès à l&apos;équipe ROBOTECH.</p>
             </div>
 
             <div className="w-full max-w-xs bg-slate-50 border-2 border-dashed border-slate-200 rounded-[32px] p-8 mb-12 space-y-3 relative overflow-hidden">
@@ -367,7 +373,7 @@ function SuccessView({ lastOrderNumber, onReset }: { lastOrderNumber: string, on
                     onClick={onReset}
                     className="w-full bg-[#0c121e] text-white py-5 rounded-[26px] font-black uppercase tracking-widest active:scale-95 transition-all shadow-xl shadow-slate-900/10"
                 >
-                    Retour à l'accueil
+                    Retour à l&apos;accueil
                 </button>
             </div>
         </div>

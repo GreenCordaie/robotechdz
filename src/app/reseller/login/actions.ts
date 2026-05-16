@@ -10,7 +10,34 @@ import { verify } from "otplib";
 import { encrypt, decrypt } from "@/lib/encryption";
 import { checkRateLimit, recordFailure, resetRateLimit } from "@/lib/rate-limit";
 
-export async function loginResellerAction(email: string, pin: string, honeypot?: string) {
+async function verifyTurnstile(token: string, secret: string) {
+    try {
+        const res = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", {
+            method: "POST",
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: `secret=${encodeURIComponent(secret)}&response=${encodeURIComponent(token)}`,
+        });
+        const data = await res.json();
+        return data.success;
+    } catch (e) {
+        console.error("Turnstile error:", e);
+        return false;
+    }
+}
+
+export async function loginResellerAction(email: string, pin: string, honeypot?: string, turnstileToken?: string) {
+    const turnstileSecret = process.env.TURNSTILE_SECRET_KEY;
+
+    // 0. Turnstile check
+    if (turnstileSecret) {
+        if (!turnstileToken) {
+            return { success: false, error: "Veuillez valider le CAPTCHA" };
+        }
+        const isValid = await verifyTurnstile(turnstileToken, turnstileSecret);
+        if (!isValid) {
+            return { success: false, error: "Vérification de sécurité échouée" };
+        }
+    }
     // 1. Honeypot check
     if (honeypot) {
         await logSecurityAction({
@@ -30,7 +57,10 @@ export async function loginResellerAction(email: string, pin: string, honeypot?:
         // 0. Rate Limit Check
         const limit = await checkRateLimit(email);
         if (limit.isBlocked) {
-            return { success: false, error: `Trop de tentatives. Réessayez dans ${Math.ceil((limit.blockedUntil!.getTime() - Date.now()) / 60000)} minutes.` };
+            const minutes = limit.blockedUntil
+                ? Math.ceil((limit.blockedUntil.getTime() - Date.now()) / 60000)
+                : 15;
+            return { success: false, error: `Trop de tentatives. Réessayez dans ${minutes} minutes.` };
         }
 
         // Find user by email and role RESELLER

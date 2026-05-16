@@ -45,6 +45,12 @@ export async function allocateOrderStock(
     for (const item of items) {
         let currentItemSlots: any[] = [];
 
+        // Skip IPTV items — provisioned asynchronously via LoadBrain webhook
+        if (item.variant?.loadbrainSlug) {
+            hasManualDelivery = true;
+            continue;
+        }
+
         // 1. Digital Stock Allocation
         if (item.variant?.product?.isManualDelivery === false) {
             if (item.variant.isSharing) {
@@ -247,38 +253,72 @@ export async function allocateOrderStock(
 /**
  * Utility to reverse supplier debits for a specific order or order item.
  * Typically called during refund or cancellation processes.
+ *
+ * Idempotence : avant l'EPIC 0 cette fonction pouvait double-rembourser un fournisseur
+ * si elle était appelée deux fois pour la même order (ex: refund article puis refund total).
+ * On vérifie maintenant qu'aucune RECHARGE de remboursement n'existe déjà pour la
+ * combinaison (supplierId, orderId, type=RECHARGE) avec un reason marqueur "REVERSAL:".
+ *
+ * NOTE long-terme : ajouter une colonne `reversed_at` sur supplier_transactions et un
+ * lien `reversed_by_id` est planifié en EPIC 1 (sortir du marqueur dans la string).
  */
+const REVERSAL_MARKER = "REVERSAL:";
+
 export async function reverseSupplierDebits(
     tx: Transaction,
     { orderId, orderItemId }: { orderId?: number, orderItemId?: number },
     reason: string = "Remboursement"
 ) {
-    // Determine which transactions to reverse
+    if (!orderId && !orderItemId) return;
+
+    // Determine which ACHAT_STOCK transactions belong to this order
     const relatedTransactions = await tx.query.supplierTransactions.findMany({
         where: (table: any, { and, eq }: any) => {
             const conditions = [eq(table.type, SupplierTransactionType.ACHAT_STOCK)];
             if (orderId) conditions.push(eq(table.orderId, orderId));
-            if (orderItemId) {
-                // Here we might need a more granular check if orderItemId is recorded in transaction metadata
-                // or if we rely on the orderId. Currently supplierTransactions has orderId but not orderItemId.
-                // However, allocateOrderStock creates transactions linked to orderId.
-                conditions.push(eq(table.orderId, orderId));
-            }
+            // Note : la colonne orderItemId n'existe pas sur supplierTransactions,
+            // on retombe donc sur orderId même quand orderItemId est fourni.
             return and(...conditions);
         }
     });
 
     if (relatedTransactions.length === 0) return;
 
+    // Idempotence : récupérer les RECHARGE déjà inscrites comme reversal pour cette order
+    const existingReversals = orderId
+        ? await tx.query.supplierTransactions.findMany({
+            where: (table: any, { and, eq, like }: any) => and(
+                eq(table.type, SupplierTransactionType.RECHARGE),
+                eq(table.orderId, orderId),
+                like(table.reason, `${REVERSAL_MARKER}%`)
+            )
+        })
+        : [];
+
+    // Indexe par supplierId pour O(1) check
+    const reversedSupplierIds = new Set<number>(
+        existingReversals.map((r: any) => r.supplierId)
+    );
+
     await Promise.all(relatedTransactions.map(async (st: any) => {
-        // Double check: Avoid double reversal if already reversed (implementation detail: maybe track reversedTransactions)
+        // Skip si déjà reversé pour ce fournisseur
+        if (reversedSupplierIds.has(st.supplierId)) {
+            await logSecurityAction({
+                userId: null,
+                action: "SUPPLIER_REVERSAL_SKIPPED_DUPLICATE",
+                entityType: "SUPPLIER",
+                entityId: st.supplierId.toString(),
+                newData: { orderId: st.orderId, reason, achatStockId: st.id }
+            });
+            return;
+        }
 
         // 1. Credit supplier balance
         await tx.update(suppliers)
             .set({ balance: sql`${suppliers.balance} + ${sql.param(st.amount)}` })
             .where(eq(suppliers.id, st.supplierId));
 
-        // 2. Insert RECHARGE (Refund) transaction
+        // 2. Insert RECHARGE (Refund) transaction — marquée avec REVERSAL: pour idempotence
         await tx.insert(supplierTransactions).values({
             supplierId: st.supplierId,
             orderId: st.orderId,
@@ -287,7 +327,7 @@ export async function reverseSupplierDebits(
             paidAt: new Date(),
             amount: st.amount,
             currency: st.currency,
-            reason: `${reason} (#${st.orderId})`
+            reason: `${REVERSAL_MARKER} ${reason} (#${st.orderId})`
         });
 
         // 3. Log security action
@@ -298,5 +338,8 @@ export async function reverseSupplierDebits(
             entityId: st.supplierId.toString(),
             newData: { amount: st.amount, currency: st.currency, orderId: st.orderId, reason }
         });
+
+        // Mémorise pour bloquer un autre ACHAT_STOCK du même fournisseur dans la même boucle
+        reversedSupplierIds.add(st.supplierId);
     }));
 }

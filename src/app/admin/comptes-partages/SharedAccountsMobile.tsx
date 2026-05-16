@@ -43,6 +43,7 @@ import {
     getAvailableVariantsForLinking,
     linkProductToSharing
 } from "./actions";
+import { ConfirmModal } from "@/components/admin/modals/ConfirmModal";
 import { formatCurrency } from "@/lib/formatters";
 import toast from "react-hot-toast";
 import { useRouter } from "next/navigation";
@@ -57,6 +58,7 @@ export default function SharedAccountsMobile() {
     const [modalMode, setModalMode] = useState<"ADD" | "EDIT" | "VIEW">("ADD");
     const [editingAccount, setEditingAccount] = useState<any>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
 
     // Form state
     const [selectedVariantId, setSelectedVariantId] = useState<string>("");
@@ -152,14 +154,20 @@ export default function SharedAccountsMobile() {
         setSlotsData(newData);
     };
 
-    const handleDeleteClick = async (id: number) => {
-        if (confirm("Supprimer ce compte ?")) {
-            const res = await deleteSharedAccount({ id }) as { success: boolean; error?: string };
-            if (res.success) {
-                toast.success("Supprimé");
-                loadInventory();
-            }
+    const handleDeleteClick = (id: number) => {
+        setPendingDeleteId(id);
+    };
+
+    const confirmDelete = async () => {
+        if (pendingDeleteId === null) return;
+        const res = await deleteSharedAccount({ id: pendingDeleteId }) as { success: boolean; error?: string };
+        if (res.success) {
+            toast.success("Supprimé");
+            loadInventory();
+        } else if (res.error) {
+            toast.error(res.error);
         }
+        setPendingDeleteId(null);
     };
 
     const handleLinkClick = async () => {
@@ -197,7 +205,7 @@ export default function SharedAccountsMobile() {
         try {
             let res: { success: boolean; error?: string };
             if (modalMode === "ADD") {
-                res = await addSharedAccount({ variantId: parseInt(selectedVariantId), email, password, slots: slotsData }) as { success: boolean; error?: string };
+                res = await addSharedAccount({ variantId: parseInt(selectedVariantId), email, password, isRelayed: false, purchaseCurrency: "DZD", slots: slotsData }) as { success: boolean; error?: string };
             } else {
                 res = await updateSharedAccount({
                     id: editingAccount.id, email, password,
@@ -385,6 +393,12 @@ export default function SharedAccountsMobile() {
                                             selectedKeys={selectedVariantId ? [selectedVariantId] : []}
                                             onChange={(e) => setSelectedVariantId(e.target.value)}
                                             classNames={{ trigger: "bg-white/5 border border-white/10 rounded-2xl h-14" }}
+                                            popoverProps={{
+                                                classNames: {
+                                                    content: "z-[100000]",
+                                                    base: "z-[100000]",
+                                                },
+                                            }}
                                         >
                                             {sharingVariants.map(v => (
                                                 <SelectItem key={v.id.toString()} textValue={`${v.product.name} - ${v.name}`}>
@@ -493,6 +507,12 @@ export default function SharedAccountsMobile() {
                                         selectedKeys={selectedLinkVariantId ? [selectedLinkVariantId] : []}
                                         onChange={(e) => setSelectedLinkVariantId(e.target.value)}
                                         classNames={{ trigger: "bg-white/5 border border-white/10 rounded-2xl h-14" }}
+                                        popoverProps={{
+                                            classNames: {
+                                                content: "z-[100000]",
+                                                base: "z-[100000]",
+                                            },
+                                        }}
                                     >
                                         {linkableVariants.map(v => (
                                             <SelectItem key={v.id.toString()} textValue={`${v.product.name} - ${v.name}`}>
@@ -530,6 +550,18 @@ export default function SharedAccountsMobile() {
                     )}
                 </ModalContent>
             </Modal>
+
+            {/* Confirm modal — replaces native window.confirm for delete actions */}
+            <ConfirmModal
+                isOpen={pendingDeleteId !== null}
+                onClose={() => setPendingDeleteId(null)}
+                onConfirm={confirmDelete}
+                title="Supprimer ce compte ?"
+                description="Cette action est irréversible. Le compte partagé et tous ses slots associés seront supprimés."
+                confirmLabel="Supprimer"
+                cancelLabel="Annuler"
+                variant="danger"
+            />
         </div>
     );
 }

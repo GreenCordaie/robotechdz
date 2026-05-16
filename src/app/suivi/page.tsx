@@ -20,7 +20,7 @@ export default function TrackOrderPage() {
     return (
         <div className="min-h-screen bg-[#0a0a0a] flex flex-col items-center pt-24 px-4">
             <div className="w-full max-w-md bg-[#161616] rounded-2xl shadow-xl overflow-hidden border border-white/5">
-                <div className="bg-[#ec5b13] px-6 py-8 text-center">
+                <div className="bg-[var(--primary)] px-6 py-8 text-center">
                     <div className="mx-auto bg-white/20 h-16 w-16 rounded-full flex items-center justify-center mb-4 ring-4 ring-white/30">
                         <ShoppingBag className="w-8 h-8 text-white" />
                     </div>
@@ -41,7 +41,7 @@ export default function TrackOrderPage() {
                                 <input
                                     type="text"
                                     id="orderNumber"
-                                    className="block w-full pl-8 pr-12 sm:text-lg border border-white/10 rounded-xl py-3 bg-[#1a1a1a] text-white uppercase placeholder:text-slate-600 placeholder:normal-case font-mono focus:outline-none focus:border-[#ec5b13]/50 transition-all"
+                                    className="block w-full pl-8 pr-12 sm:text-lg border border-white/10 rounded-xl py-3 bg-[#1a1a1a] text-white uppercase placeholder:text-slate-600 placeholder:normal-case font-mono focus:outline-none focus:border-[var(--primary)]/50 transition-all"
                                     placeholder="Ex: C5-842"
                                     value={orderNumber.replace('#', '')}
                                     onChange={(e) => setOrderNumber('#' + e.target.value.replace('#', ''))}
@@ -54,7 +54,7 @@ export default function TrackOrderPage() {
                         <button
                             type="submit"
                             disabled={isLoading || !orderNumber.trim()}
-                            className="w-full flex justify-center py-3 px-4 border border-transparent rounded-xl shadow-sm text-sm font-bold text-white bg-[#ec5b13] hover:bg-[#d44f0f] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#ec5b13] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                            className="w-full flex justify-center py-3 px-4 border border-transparent rounded-xl shadow-sm text-sm font-bold text-white bg-[var(--primary)] hover:bg-[#d44f0f] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[var(--primary)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                         >
                             {isLoading ? (
                                 <span className="flex items-center">

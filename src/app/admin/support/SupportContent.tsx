@@ -90,12 +90,20 @@ export default function SupportContent({ initialTickets = [] }: SupportContentPr
     };
 
     // Memoized ticket list to prevent layout flashes on background updates
+    const [ticketPage, setTicketPage] = useState(1);
+    const TICKETS_PER_PAGE = 10;
+
     const ticketList = useMemo(() => {
         return tickets.filter(t =>
             t.order?.orderNumber?.toLowerCase().includes(searchQuery.toLowerCase()) ||
             t.message?.toLowerCase().includes(searchQuery.toLowerCase())
         );
     }, [tickets, searchQuery]);
+
+    useEffect(() => { setTicketPage(1); }, [searchQuery, statusFilter]);
+
+    const ticketTotalPages = Math.ceil(ticketList.length / TICKETS_PER_PAGE);
+    const paginatedTickets = ticketList.slice((ticketPage - 1) * TICKETS_PER_PAGE, ticketPage * TICKETS_PER_PAGE);
 
     const openCount = useMemo(() => tickets.filter(t => t.status === 'OUVERT').length, [tickets]);
 
@@ -105,8 +113,8 @@ export default function SupportContent({ initialTickets = [] }: SupportContentPr
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div>
                     <h1 className="text-2xl font-black text-white uppercase tracking-tight flex items-center gap-3">
-                        <span className="p-2 bg-[#ec5b13]/10 rounded-xl">
-                            <MessageSquare className="text-[#ec5b13] w-6 h-6" />
+                        <span className="p-2 bg-[var(--primary)]/10 rounded-xl">
+                            <MessageSquare className="text-[var(--primary)] w-6 h-6" />
                         </span>
                         Tickets Support
                     </h1>
@@ -128,7 +136,7 @@ export default function SupportContent({ initialTickets = [] }: SupportContentPr
                         <button
                             onClick={() => setViewMode("CONVERSATIONS")}
                             className={`px-6 py-2 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all ${viewMode === "CONVERSATIONS"
-                                ? "bg-[#ec5b13] text-white shadow-lg shadow-[#ec5b13]/20"
+                                ? "bg-[var(--primary)] text-white shadow-lg shadow-[var(--primary)]/20"
                                 : "text-slate-500 hover:text-white"
                                 }`}
                         >
@@ -137,7 +145,7 @@ export default function SupportContent({ initialTickets = [] }: SupportContentPr
                         <button
                             onClick={() => setViewMode("TICKETS")}
                             className={`px-6 py-2 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all ${viewMode === "TICKETS"
-                                ? "bg-[#ec5b13] text-white shadow-lg shadow-[#ec5b13]/20"
+                                ? "bg-[var(--primary)] text-white shadow-lg shadow-[var(--primary)]/20"
                                 : "text-slate-500 hover:text-white"
                                 }`}
                         >
@@ -158,7 +166,7 @@ export default function SupportContent({ initialTickets = [] }: SupportContentPr
                         <button
                             onClick={() => setStatusFilter("OUVERT")}
                             className={`px-6 py-2 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all ${statusFilter === "OUVERT"
-                                ? "bg-[#ec5b13] text-white shadow-lg shadow-[#ec5b13]/20"
+                                ? "bg-[var(--primary)] text-white shadow-lg shadow-[var(--primary)]/20"
                                 : "text-slate-500 hover:text-white"
                                 }`}
                         >
@@ -167,7 +175,7 @@ export default function SupportContent({ initialTickets = [] }: SupportContentPr
                         <button
                             onClick={() => setStatusFilter("RESOLU")}
                             className={`px-6 py-2 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all ${statusFilter === "RESOLU"
-                                ? "bg-[#ec5b13] text-white shadow-lg shadow-[#ec5b13]/20"
+                                ? "bg-[var(--primary)] text-white shadow-lg shadow-[var(--primary)]/20"
                                 : "text-slate-500 hover:text-white"
                                 }`}
                         >
@@ -182,7 +190,7 @@ export default function SupportContent({ initialTickets = [] }: SupportContentPr
                             <input
                                 type="text"
                                 placeholder="Rechercher par n° de commande ou message..."
-                                className="w-full bg-[#1a1614] border border-white/5 rounded-2xl py-3 pl-12 pr-4 text-sm text-white placeholder:text-slate-600 outline-none focus:border-[#ec5b13]/50 transition-all shadow-xl"
+                                className="w-full bg-[#1a1614] border border-white/5 rounded-2xl py-3 pl-12 pr-4 text-sm text-white placeholder:text-slate-600 outline-none focus:border-[var(--primary)]/50 transition-all shadow-xl"
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
                                 onFocus={() => { isSearchFocused.current = true; }}
@@ -192,7 +200,7 @@ export default function SupportContent({ initialTickets = [] }: SupportContentPr
                         <div className="bg-[#1a1614] border border-white/5 rounded-2xl p-3 flex items-center justify-center gap-4 shadow-xl">
                             <div className="flex flex-col items-center">
                                 <span className="text-[10px] font-black text-slate-500 uppercase">Ouverts</span>
-                                <span className="text-lg font-black text-[#ec5b13]">{openCount}</span>
+                                <span className="text-lg font-black text-[var(--primary)]">{openCount}</span>
                             </div>
                             <div className="w-px h-8 bg-white/5" />
                             <div className="flex flex-col items-center">
@@ -217,7 +225,7 @@ export default function SupportContent({ initialTickets = [] }: SupportContentPr
                                 <p className="text-slate-400 font-bold uppercase tracking-widest text-sm">Aucun ticket trouvé</p>
                             </div>
                         ) : (
-                            ticketList.map((ticket) => (
+                            paginatedTickets.map((ticket) => (
                                 <Card key={ticket.id} className="bg-[#1a1614] border border-white/5 hover:border-white/10 transition-all group overflow-hidden shadow-xl rounded-[24px]">
                                     <CardBody className="p-0">
                                         <div className="flex flex-col md:flex-row divide-y md:divide-y-0 md:divide-x divide-white/5">
@@ -242,7 +250,7 @@ export default function SupportContent({ initialTickets = [] }: SupportContentPr
                                                 {ticket.customerPhone && (
                                                     <div className="flex flex-col">
                                                         <span className="text-[10px] text-slate-500 font-black uppercase tracking-widest leading-none">Contact</span>
-                                                        <span className="text-sm font-black text-[#ec5b13]">{formatWhatsApp(ticket.customerPhone)}</span>
+                                                        <span className="text-sm font-black text-[var(--primary)]">{formatWhatsApp(ticket.customerPhone)}</span>
                                                     </div>
                                                 )}
                                                 <div className="flex items-center gap-2 text-slate-500 text-[10px] font-bold">
@@ -253,7 +261,7 @@ export default function SupportContent({ initialTickets = [] }: SupportContentPr
 
                                             {/* Middle: Message */}
                                             <div className="flex-1 p-6 bg-white/[0.02]">
-                                                <span className="text-[10px] text-[#ec5b13] font-black uppercase tracking-widest mb-1.5 block">Message du client</span>
+                                                <span className="text-[10px] text-[var(--primary)] font-black uppercase tracking-widest mb-1.5 block">Message du client</span>
                                                 <p className="text-slate-300 text-sm leading-relaxed italic">
                                                     &quot;{ticket.message}&quot;
                                                 </p>
@@ -263,7 +271,7 @@ export default function SupportContent({ initialTickets = [] }: SupportContentPr
                                             <div className="p-6 md:w-64 flex flex-col justify-center gap-3 bg-black/20">
                                                 <Button
                                                     size="sm"
-                                                    className="w-full bg-[#ec5b13] text-white font-black text-[11px] uppercase tracking-wider h-10 rounded-xl shadow-lg shadow-[#ec5b13]/20"
+                                                    className="w-full bg-[var(--primary)] text-white font-black text-[11px] uppercase tracking-wider h-10 rounded-xl shadow-lg shadow-[var(--primary)]/20"
                                                     startContent={<MessageSquare size={14} />}
                                                     onPress={() => {
                                                         setSelectedPhone(ticket.customerPhone);
@@ -302,6 +310,35 @@ export default function SupportContent({ initialTickets = [] }: SupportContentPr
                                     </CardBody>
                                 </Card>
                             ))
+                        )}
+
+                        {ticketTotalPages > 1 && (
+                            <div className="flex items-center justify-center gap-3 mt-6">
+                                <button onClick={() => setTicketPage(p => Math.max(1, p - 1))} disabled={ticketPage <= 1}
+                                    className="px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-slate-400 text-sm font-bold hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-all">
+                                    ← Préc.
+                                </button>
+                                {Array.from({ length: ticketTotalPages }, (_, i) => i + 1)
+                                    .filter(p => p === 1 || p === ticketTotalPages || Math.abs(p - ticketPage) <= 1)
+                                    .reduce((acc: (number | string)[], p, idx, arr) => {
+                                        if (idx > 0 && (p as number) - (arr[idx - 1] as number) > 1) acc.push("...");
+                                        acc.push(p);
+                                        return acc;
+                                    }, [])
+                                    .map((p, idx) => p === "..." ? (
+                                        <span key={`d-${idx}`} className="px-1 text-slate-500 text-xs">…</span>
+                                    ) : (
+                                        <button key={p} onClick={() => setTicketPage(p as number)}
+                                            className={`w-9 h-9 rounded-xl text-sm font-black transition-all ${p === ticketPage ? "bg-[var(--primary)] text-white" : "bg-white/5 text-slate-400 hover:bg-white/10 border border-white/10"}`}>
+                                            {p}
+                                        </button>
+                                    ))
+                                }
+                                <button onClick={() => setTicketPage(p => Math.min(ticketTotalPages, p + 1))} disabled={ticketPage >= ticketTotalPages}
+                                    className="px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-slate-400 text-sm font-bold hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-all">
+                                    Suiv. →
+                                </button>
+                            </div>
                         )}
                     </div>
                 </>

@@ -12,7 +12,7 @@ echo.
 
 REM --- 1. Verifier Docker ---
 echo  [1/5] Verification de Docker...
-docker info >/dev/null 2>&1
+docker info >nul 2>nul
 if errorlevel 1 goto docker_ko
 echo  Docker OK.
 goto docker_suite
@@ -38,8 +38,8 @@ echo  Containers lances.
 REM --- 3. Liberer le port 1556 ---
 echo.
 echo  [3/5] Liberation du port 1556...
-for /f "tokens=5" %%a in ('netstat -ano 2^>/dev/null ^| findstr ":1556 "') do (
-    taskkill /F /PID %%a >/dev/null 2>&1
+for /f "tokens=5" %%a in ('netstat -ano 2^>nul ^| findstr ":1556 "') do (
+    taskkill /F /PID %%a >nul 2>nul
 )
 echo  Port 1556 libre.
 

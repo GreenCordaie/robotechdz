@@ -36,12 +36,14 @@ import {
 import { useRouter } from "next/navigation";
 import { getIndebtedClients, recordPayment, getClientHistory, createClient, getReturnsByClient, getAllClients, updateClient, deleteClient, getClientStats } from "@/app/admin/clients/actions";
 import { ReturnRequest } from "@/lib/constants";
-import WhatsAppHistoryModal from "@/components/admin/modals/WhatsAppHistoryModal";
+import dynamic from "next/dynamic";
+const WhatsAppHistoryModal = dynamic(() => import("@/components/admin/modals/WhatsAppHistoryModal"), { ssr: false });
 
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
 import { toast } from "react-hot-toast";
 import { formatCurrency, formatWhatsApp, formatPhoneNatural } from "@/lib/formatters";
+import { useSettingsStore } from "@/store/useSettingsStore";
 
 interface ClientOrder {
     id: number;
@@ -84,15 +86,66 @@ interface ClientsContentProps {
 
 export default function ClientsContent({ initialStats, initialClients }: ClientsContentProps) {
     const router = useRouter();
+    const { shopName } = useSettingsStore();
     const [stats, setStats] = React.useState(initialStats);
     const [clients, setClients] = React.useState<Client[]>(initialClients);
     const [search, setSearch] = React.useState("");
+    const [currentPage, setCurrentPage] = React.useState(1);
+    const ITEMS_PER_PAGE = 20;
     const [selectedClient, setSelectedClient] = React.useState<Client | null>(null);
     const [history, setHistory] = React.useState<{ payments: ClientPayment[], orders: ClientOrder[] }>({ payments: [], orders: [] });
     const [clientReturns, setClientReturns] = React.useState<Array<{ orderId: number; orderNumber: string; totalAmount: string; returnRequest: ReturnRequest; orderCreatedAt: Date | null }>>([]);
 
     const [repaymentAmount, setRepaymentAmount] = React.useState("");
     const [isSubmitting, setIsSubmitting] = React.useState(false);
+
+    // EPIC 11 — useMemo hoisted au top (était inline dans le JSX = rules-of-hooks violation)
+    const journalEntries = React.useMemo(() => {
+        const entries: any[] = [
+            ...history.payments.map(p => ({
+                id: `pay-${p.id}`,
+                date: p.createdAt,
+                type: 'PAYMENT',
+                amount: p.montantDzd || "0",
+                label: p.typeAction === 'REMBOURSEMENT' ? 'Remboursement (Retour)' : 'Règlement de dette',
+                icon: Wallet,
+                color: 'text-emerald-500',
+                bgColor: 'bg-emerald-500/10',
+                oldBalance: p.oldBalanceDzd,
+                newBalance: p.newBalanceDzd,
+                receiptNumber: p.receiptNumber
+            })),
+            ...history.orders.map(o => ({
+                id: `order-${o.id}`,
+                date: o.createdAt,
+                type: 'ORDER',
+                amount: o.totalAmount || "0",
+                resteAPayer: o.resteAPayer || "0",
+                label: `Achat Commande #${o.orderNumber}`,
+                icon: ShoppingCart,
+                color: 'text-red-500',
+                bgColor: 'bg-red-500/10',
+                items: (o as any).items || []
+            })),
+            ...clientReturns.filter(r => r.returnRequest && r.returnRequest.status !== 'APPROUVE').map(r => ({
+                id: `return-${r.orderId}`,
+                date: new Date(r.returnRequest.initiatedAt),
+                type: 'RETURN',
+                amount: r.returnRequest.montant,
+                status: r.returnRequest.status,
+                label: `Retour Commande #${r.orderNumber}`,
+                icon: X,
+                color: r.returnRequest.status === 'REJETE' ? 'text-slate-400' : 'text-yellow-500',
+                bgColor: r.returnRequest.status === 'REJETE' ? 'bg-slate-500/10' : 'bg-yellow-500/10',
+                motifRejet: r.returnRequest.motifRejet
+            }))
+        ];
+        return entries.sort((a, b) => {
+            const dateA = a.date instanceof Date ? a.date.getTime() : new Date(a.date).getTime();
+            const dateB = b.date instanceof Date ? b.date.getTime() : new Date(b.date).getTime();
+            return dateB - dateA;
+        });
+    }, [history, clientReturns]);
 
     // New Client Modal State
     const [newName, setNewName] = React.useState("");
@@ -118,6 +171,20 @@ export default function ClientsContent({ initialStats, initialClients }: Clients
     // WhatsApp history modal state
     const [isWhatsAppOpen, setIsWhatsAppOpen] = React.useState(false);
     const [whatsappClient, setWhatsappClient] = React.useState<Client | null>(null);
+
+    const filteredClients = React.useMemo(() => {
+        if (!search.trim()) return clients;
+        const s = search.toLowerCase();
+        return clients.filter(c =>
+            c.nomComplet.toLowerCase().includes(s) ||
+            (c.telephone || "").toLowerCase().includes(s)
+        );
+    }, [clients, search]);
+
+    const totalPages = Math.ceil(filteredClients.length / ITEMS_PER_PAGE);
+    const paginatedClients = filteredClients.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+
+    React.useEffect(() => { setCurrentPage(1); }, [search]);
 
     // Polling or refresh logic
     const refreshData = React.useCallback(async () => {
@@ -263,7 +330,7 @@ export default function ClientsContent({ initialStats, initialClients }: Clients
 
         const dateStr = payment.date ? format(new Date(payment.date), "dd/MM/yyyy HH:mm", { locale: fr }) : "";
 
-        const message = `*REÇU DE PAIEMENT - FLEXBOX DIRECT*\n\n` +
+        const message = `*REÇU DE PAIEMENT - ${shopName.toUpperCase()}*\n\n` +
             `Client: ${selectedClient.nomComplet}\n` +
             `Date: ${dateStr}\n` +
             `Reçu N°: ${payment.receiptNumber || '---'}\n` +
@@ -289,7 +356,7 @@ export default function ClientsContent({ initialStats, initialClients }: Clients
                 </div>
                 <Button
                     onPress={onNewOpen}
-                    className="flex items-center gap-2 px-5 h-12 bg-[#ec5b13] hover:bg-orange-600 text-white rounded-xl transition-all font-bold shadow-lg shadow-[#ec5b13]/20"
+                    className="flex items-center gap-2 px-5 h-12 bg-[var(--primary)] hover:bg-orange-600 text-white rounded-xl transition-all font-bold shadow-lg shadow-[var(--primary)]/20"
                 >
                     <UserPlus className="w-5 h-5" />
                     <span className="truncate">Nouveau Client / Dette</span>
@@ -362,13 +429,13 @@ export default function ClientsContent({ initialStats, initialClients }: Clients
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 dark:divide-[#262626]">
-                            {clients.map((client) => {
+                            {paginatedClients.map((client) => {
                                 const lastOrder = client.orders?.[0];
                                 return (
                                     <tr key={client.id} className="hover:bg-slate-50 dark:hover:bg-[#262626]/20 transition-colors group">
                                         <td className="px-6 py-4">
                                             <div className="flex items-center gap-3">
-                                                <div className="size-10 rounded-full bg-[#ec5b13]/20 flex items-center justify-center text-[#ec5b13] font-bold">
+                                                <div className="size-10 rounded-full bg-[var(--primary)]/20 flex items-center justify-center text-[var(--primary)] font-bold">
                                                     {client.nomComplet.substring(0, 2).toUpperCase()}
                                                 </div>
                                                 <div className="flex flex-col min-w-0">
@@ -388,7 +455,7 @@ export default function ClientsContent({ initialStats, initialClients }: Clients
                                                 <Chip
                                                     size="sm"
                                                     variant="flat"
-                                                    className="bg-[#ec5b13]/10 text-[#ec5b13] border border-[#ec5b13]/20 font-bold"
+                                                    className="bg-[var(--primary)]/10 text-[var(--primary)] border border-[var(--primary)]/20 font-bold"
                                                 >
                                                     En Dette
                                                 </Chip>
@@ -434,7 +501,7 @@ export default function ClientsContent({ initialStats, initialClients }: Clients
                                                 </button>
                                                 <Button
                                                     variant="light"
-                                                    className="text-[#ec5b13] hover:text-white font-bold text-sm transition-colors"
+                                                    className="text-[var(--primary)] hover:text-white font-bold text-sm transition-colors"
                                                     onPress={() => handleViewClient(client)}
                                                 >
                                                     Voir Dossier
@@ -446,12 +513,56 @@ export default function ClientsContent({ initialStats, initialClients }: Clients
                             })}
                         </tbody>
                     </table>
-                    {clients.length === 0 && (
+                    {filteredClients.length === 0 && (
                         <div className="p-12 text-center text-slate-500 font-medium">
                             Aucun client trouvé.
                         </div>
                     )}
                 </div>
+
+                {/* Pagination */}
+                {totalPages > 1 && (
+                    <div className="flex items-center justify-between px-6 py-4 border-t border-slate-100 dark:border-[#262626]">
+                        <span className="text-xs text-slate-500 font-bold">
+                            {filteredClients.length} client{filteredClients.length > 1 ? "s" : ""} — page {currentPage}/{totalPages}
+                        </span>
+                        <div className="flex items-center gap-2">
+                            <button
+                                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                                disabled={currentPage <= 1}
+                                className="px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-white/5 text-slate-600 dark:text-slate-400 text-xs font-bold hover:bg-slate-200 dark:hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                            >
+                                ← Préc.
+                            </button>
+                            {Array.from({ length: totalPages }, (_, i) => i + 1)
+                                .filter(p => p === 1 || p === totalPages || Math.abs(p - currentPage) <= 1)
+                                .reduce((acc: (number | string)[], p, idx, arr) => {
+                                    if (idx > 0 && (p as number) - (arr[idx - 1] as number) > 1) acc.push("...");
+                                    acc.push(p);
+                                    return acc;
+                                }, [])
+                                .map((p, idx) => p === "..." ? (
+                                    <span key={`d-${idx}`} className="px-1 text-slate-400 text-xs">…</span>
+                                ) : (
+                                    <button
+                                        key={p}
+                                        onClick={() => setCurrentPage(p as number)}
+                                        className={`w-8 h-8 rounded-lg text-xs font-black transition-all ${p === currentPage ? "bg-[var(--primary)] text-white" : "bg-slate-100 dark:bg-white/5 text-slate-500 hover:bg-slate-200 dark:hover:bg-white/10"}`}
+                                    >
+                                        {p}
+                                    </button>
+                                ))
+                            }
+                            <button
+                                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                                disabled={currentPage >= totalPages}
+                                className="px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-white/5 text-slate-600 dark:text-slate-400 text-xs font-bold hover:bg-slate-200 dark:hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                            >
+                                Suiv. →
+                            </button>
+                        </div>
+                    </div>
+                )}
             </div>
 
             {/* Overlaid Modal (Customer Record) */}
@@ -505,52 +616,7 @@ export default function ClientsContent({ initialStats, initialClients }: Clients
                                     <h4 className="text-slate-700 dark:text-slate-100 font-semibold text-sm uppercase tracking-wider">Journal des Flux</h4>
 
                                     <div className="space-y-4">
-                                        {React.useMemo(() => {
-                                            const entries: any[] = [
-                                                ...history.payments.map(p => ({
-                                                    id: `pay-${p.id}`,
-                                                    date: p.createdAt,
-                                                    type: 'PAYMENT',
-                                                    amount: p.montantDzd || "0",
-                                                    label: p.typeAction === 'REMBOURSEMENT' ? 'Remboursement (Retour)' : 'Règlement de dette',
-                                                    icon: Wallet,
-                                                    color: 'text-emerald-500',
-                                                    bgColor: 'bg-emerald-500/10',
-                                                    oldBalance: p.oldBalanceDzd,
-                                                    newBalance: p.newBalanceDzd,
-                                                    receiptNumber: p.receiptNumber
-                                                })),
-                                                ...history.orders.map(o => ({
-                                                    id: `order-${o.id}`,
-                                                    date: o.createdAt,
-                                                    type: 'ORDER',
-                                                    amount: o.totalAmount || "0",
-                                                    resteAPayer: o.resteAPayer || "0",
-                                                    label: `Achat Commande #${o.orderNumber}`,
-                                                    icon: ShoppingCart,
-                                                    color: 'text-red-500',
-                                                    bgColor: 'bg-red-500/10',
-                                                    items: (o as any).items || []
-                                                })),
-                                                ...clientReturns.filter(r => r.returnRequest && r.returnRequest.status !== 'APPROUVE').map(r => ({
-                                                    id: `return-${r.orderId}`,
-                                                    date: new Date(r.returnRequest.initiatedAt),
-                                                    type: 'RETURN',
-                                                    amount: r.returnRequest.montant,
-                                                    status: r.returnRequest.status,
-                                                    label: `Retour Commande #${r.orderNumber}`,
-                                                    icon: X,
-                                                    color: r.returnRequest.status === 'REJETE' ? 'text-slate-400' : 'text-yellow-500',
-                                                    bgColor: r.returnRequest.status === 'REJETE' ? 'bg-slate-500/10' : 'bg-yellow-500/10',
-                                                    motifRejet: r.returnRequest.motifRejet
-                                                }))
-                                            ];
-                                            return entries.sort((a, b) => {
-                                                const dateA = a.date instanceof Date ? a.date.getTime() : new Date(a.date).getTime();
-                                                const dateB = b.date instanceof Date ? b.date.getTime() : new Date(b.date).getTime();
-                                                return dateB - dateA;
-                                            });
-                                        }, [history, clientReturns]).map((entry: any) => {
+                                        {journalEntries.map((entry: any) => {
                                             const Icon = entry.icon;
                                             return (
                                                 <div key={entry.id} className="group border-b border-slate-100 dark:border-slate-800/50 pb-4 last:border-0 last:pb-0">
@@ -676,7 +742,7 @@ export default function ClientsContent({ initialStats, initialClients }: Clients
                                     <Button variant="flat" onPress={onClose} className="text-slate-400">Annuler</Button>
                                     <Button
                                         isLoading={isCreatingNew}
-                                        className="bg-[#ec5b13] text-white font-bold"
+                                        className="bg-[var(--primary)] text-white font-bold"
                                         onPress={handleSave}
                                     >
                                         Créer le Profil
@@ -728,7 +794,7 @@ export default function ClientsContent({ initialStats, initialClients }: Clients
                                 <Button variant="flat" onPress={onClose} className="text-slate-400">Annuler</Button>
                                 <Button
                                     isLoading={isUpdating}
-                                    className="bg-[#ec5b13] text-white font-bold"
+                                    className="bg-[var(--primary)] text-white font-bold"
                                     onPress={handleUpdateClient}
                                 >
                                     Sauvegarder

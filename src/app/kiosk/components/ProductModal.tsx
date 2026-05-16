@@ -8,6 +8,7 @@ import {
 } from "@heroui/react";
 import { useKioskStore } from "@/store/useKioskStore";
 import PlayerIdModal from "./PlayerIdModal";
+import IbosolDeviceModal from "./IbosolDeviceModal";
 import Image from "next/image";
 import { formatCurrency } from "@/lib/formatters";
 
@@ -20,9 +21,9 @@ interface ProductModalProps {
 export default function ProductModal({ isOpen, onClose, product }: ProductModalProps) {
     const { addToCart } = useKioskStore();
 
-    // State for local selection
     const [selectedQuantities, setSelectedQuantities] = useState<Record<number, number>>({});
     const [isPlayerIdModalOpen, setIsPlayerIdModalOpen] = useState(false);
+    const [isIbosolModalOpen, setIsIbosolModalOpen] = useState(false);
 
     // Reset selection when modal opens with a new product
     useEffect(() => {
@@ -45,8 +46,20 @@ export default function ProductModal({ isOpen, onClose, product }: ProductModalP
         });
     };
 
+    // Detect if any selected variant is an Ibosol activation product
+    const hasIbosolSelected = product?.variants?.some((v: any) =>
+        (selectedQuantities[v.id] || 0) > 0 &&
+        typeof v.loadbrainSlug === "string" &&
+        v.loadbrainSlug.startsWith("ibo-")
+    );
+
     const handleAddToCart = () => {
         if (Object.keys(selectedQuantities).length === 0) return;
+
+        if (hasIbosolSelected) {
+            setIsIbosolModalOpen(true);
+            return;
+        }
 
         if (product.requiresPlayerId) {
             setIsPlayerIdModalOpen(true);
@@ -56,7 +69,10 @@ export default function ProductModal({ isOpen, onClose, product }: ProductModalP
         finalizeAddToCart();
     };
 
-    const finalizeAddToCart = (customData?: string, playerNickname?: string) => {
+    const finalizeAddToCart = (
+        customData?: string,
+        playerNickname?: string,
+    ) => {
         product.variants.forEach((variant: any) => {
             const qty = selectedQuantities[variant.id];
             if (qty && qty > 0) {
@@ -69,7 +85,8 @@ export default function ProductModal({ isOpen, onClose, product }: ProductModalP
                     quantity: qty,
                     imageUrl: product.imageUrl,
                     customData,
-                    playerNickname
+                    playerNickname,
+                    loadbrainSlug: variant.loadbrainSlug || null,
                 });
             }
         });
@@ -91,7 +108,7 @@ export default function ProductModal({ isOpen, onClose, product }: ProductModalP
                 backdrop="blur"
                 hideCloseButton
                 classNames={{
-                    base: "bg-white/90 backdrop-blur-xl rounded-t-[32px] sm:rounded-[24px] shadow-2xl p-0 overflow-hidden border border-white/20 m-0",
+                    base: "bg-white rounded-t-[32px] sm:rounded-[24px] shadow-2xl p-0 overflow-hidden m-0",
                     backdrop: "bg-slate-900/40 backdrop-blur-md",
                     body: "p-0"
                 }}
@@ -110,7 +127,7 @@ export default function ProductModal({ isOpen, onClose, product }: ProductModalP
                         {/* Close Button */}
                         <button
                             onClick={onClose}
-                            className="absolute top-4 right-4 size-10 bg-slate-100/50 hover:bg-slate-200/50 backdrop-blur-sm rounded-full flex items-center justify-center text-slate-900 transition-colors z-30"
+                            className="absolute top-4 right-4 size-11 bg-slate-100/50 hover:bg-slate-200/50 backdrop-blur-sm rounded-full flex items-center justify-center text-slate-900 transition-colors z-30"
                         >
                             <span className="material-symbols-outlined">close</span>
                         </button>
@@ -150,21 +167,23 @@ export default function ProductModal({ isOpen, onClose, product }: ProductModalP
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     {product.variants && product.variants.map((variant: any) => {
                                         const qty = selectedQuantities[variant.id] || 0;
-                                        const stockCount = variant.stockCount || 0;
-                                        const isManual = product.isManualDelivery || stockCount === 0;
+                                        const isIptv = !!variant.loadbrainSlug;
+                                        const isIbosolVariant = typeof variant.loadbrainSlug === "string" && variant.loadbrainSlug.startsWith("ibo-");
+                                        const stockCount = isIptv ? 999 : (variant.stockCount || 0);
+                                        const isManual = !isIptv && (product.isManualDelivery || stockCount === 0);
 
                                         return (
                                             <div
                                                 key={variant.id}
                                                 className={`relative rounded-[20px] p-4 flex flex-col justify-between min-h-[120px] transition-all border-2 ${qty > 0
-                                                    ? 'border-[#ec5b13] bg-orange-50/50 shadow-sm'
+                                                    ? 'border-[var(--primary)] bg-orange-50/50 shadow-sm'
                                                     : 'border-slate-100 bg-white/50 hover:bg-white hover:border-slate-200'
                                                     }`}
                                             >
                                                 <div>
                                                     <div className="flex justify-between items-start mb-1">
-                                                        <p className={`text-base font-black ${qty > 0 ? 'text-[#ec5b13]' : 'text-black'}`}>{variant.name}</p>
-                                                        {qty > 0 && <span className="bg-[#ec5b13] text-white text-[10px] font-black px-2 py-0.5 rounded-full">x{qty}</span>}
+                                                        <p className={`text-base font-black ${qty > 0 ? 'text-[var(--primary)]' : 'text-black'}`}>{variant.name}</p>
+                                                        {qty > 0 && <span className="bg-[var(--primary)] text-white text-[10px] font-black px-2 py-0.5 rounded-full">x{qty}</span>}
                                                     </div>
                                                     <p className={`text-sm font-black ${qty > 0 ? 'text-black' : 'text-black/60'}`}>
                                                         {formatCurrency(variant.salePriceDzd, 'DZD')}
@@ -178,6 +197,10 @@ export default function ProductModal({ isOpen, onClose, product }: ProductModalP
                                                                 <span className="material-symbols-outlined !text-[12px]">schedule</span>
                                                                 Délai: ~15min
                                                             </span>
+                                                        ) : isIptv ? (
+                                                            <span className="text-[9px] font-black uppercase tracking-wider text-cyan-600">
+                                                                Disponible — Instant
+                                                            </span>
                                                         ) : (
                                                             <span className={`text-[9px] font-black uppercase tracking-wider ${stockCount > 5 ? 'text-black/30' : 'text-orange-500'}`}>
                                                                 {stockCount} {variant.isSharing ? 'profils' : 'en stock'}
@@ -185,21 +208,50 @@ export default function ProductModal({ isOpen, onClose, product }: ProductModalP
                                                         )}
                                                     </div>
 
-                                                    <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl p-1 shadow-sm">
+                                                    {isIbosolVariant ? (
                                                         <button
-                                                            onClick={(e) => { e.stopPropagation(); updateVariantQuantity(variant.id, -1); }}
-                                                            className="size-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-black hover:bg-slate-50 transition-all active:scale-90"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                setSelectedQuantities(prev => {
+                                                                    const current = prev[variant.id] || 0;
+                                                                    if (current > 0) {
+                                                                        const { [variant.id]: _, ...rest } = prev;
+                                                                        return rest;
+                                                                    }
+                                                                    // Force qty=1 — and unselect any other Ibosol variants of this product
+                                                                    const next: Record<number, number> = { ...prev };
+                                                                    product.variants.forEach((v: any) => {
+                                                                        if (typeof v.loadbrainSlug === "string" && v.loadbrainSlug.startsWith("ibo-")) {
+                                                                            delete next[v.id];
+                                                                        }
+                                                                    });
+                                                                    next[variant.id] = 1;
+                                                                    return next;
+                                                                });
+                                                            }}
+                                                            className={`px-4 h-11 rounded-xl font-black text-xs uppercase transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-600 focus-visible:ring-offset-2 ${qty > 0 ? "bg-cyan-600 text-white" : "bg-slate-100 text-slate-700 hover:bg-slate-200"}`}
                                                         >
-                                                            <span className="material-symbols-outlined !text-lg">remove</span>
+                                                            {qty > 0 ? "✓ Sélectionné" : "Choisir"}
                                                         </button>
-                                                        <span className="text-sm font-black w-4 text-center tabular-nums text-black">{qty}</span>
-                                                        <button
-                                                            onClick={(e) => { e.stopPropagation(); updateVariantQuantity(variant.id, 1); }}
-                                                            className="size-8 rounded-lg flex items-center justify-center text-[#ec5b13] hover:bg-orange-50 transition-all active:scale-90"
-                                                        >
-                                                            <span className="material-symbols-outlined !text-lg">add</span>
-                                                        </button>
-                                                    </div>
+                                                    ) : (
+                                                        <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl p-1 shadow-sm">
+                                                            <button
+                                                                onClick={(e) => { e.stopPropagation(); updateVariantQuantity(variant.id, -1); }}
+                                                                aria-label={`Retirer ${variant.name}`}
+                                                                className="size-11 rounded-lg flex items-center justify-center text-slate-400 hover:text-black hover:bg-slate-50 transition-all active:scale-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] focus-visible:ring-offset-1"
+                                                            >
+                                                                <span className="material-symbols-outlined !text-lg">remove</span>
+                                                            </button>
+                                                            <span className="text-sm font-black w-4 text-center tabular-nums text-black">{qty}</span>
+                                                            <button
+                                                                onClick={(e) => { e.stopPropagation(); updateVariantQuantity(variant.id, 1); }}
+                                                                aria-label={`Ajouter ${variant.name}`}
+                                                                className="size-11 rounded-lg flex items-center justify-center text-[var(--primary)] hover:bg-orange-50 transition-all active:scale-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] focus-visible:ring-offset-1"
+                                                            >
+                                                                <span className="material-symbols-outlined !text-lg">add</span>
+                                                            </button>
+                                                        </div>
+                                                    )}
                                                 </div>
                                             </div>
                                         );
@@ -241,6 +293,15 @@ export default function ProductModal({ isOpen, onClose, product }: ProductModalP
                 onConfirm={(id, pseudo) => finalizeAddToCart(id, pseudo)}
                 productName={product.name}
                 productImage={product.imageUrl}
+            />
+
+            <IbosolDeviceModal
+                isOpen={isIbosolModalOpen}
+                onClose={() => setIsIbosolModalOpen(false)}
+                onConfirm={(mac, appId) => {
+                    finalizeAddToCart(JSON.stringify({ type: "ibosol", mac, appId }));
+                }}
+                productName={product.name}
             />
         </>
     );

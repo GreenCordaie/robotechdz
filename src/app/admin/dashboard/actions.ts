@@ -15,8 +15,7 @@ export const getDashboardStats = withAuth(
     async ({ period }) => {
         try {
             const cacheKey = CACHE_KEYS.DASHBOARD(period);
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const cached = await cacheGet<any>(cacheKey);
+            const cached = await cacheGet<unknown>(cacheKey);
             if (cached) return cached;
 
             const { DashboardQueries } = await import("@/services/queries/dashboard.queries");

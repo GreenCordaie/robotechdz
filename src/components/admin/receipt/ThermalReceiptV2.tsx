@@ -208,8 +208,9 @@ export const ThermalReceiptV2 = ({
                             height={45}
                             unoptimized
                             style={{
-                                height: '12mm',
-                                width: 'auto',
+                                height: 'auto',
+                                width: '100%',
+                                maxWidth: '40mm',
                                 filter: 'grayscale(100%) contrast(200%)'
                             }}
                         />

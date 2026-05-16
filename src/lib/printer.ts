@@ -4,7 +4,7 @@
  * UNIQUEMENT pilotée par les paramètres dans Réglages → Ticket de Caisse.
  */
 
-const PRINT_SERVICE_URL = 'http://127.0.0.1:6543';
+const PRINT_SERVICE_URL = process.env.PRINT_SERVICE_URL || 'http://127.0.0.1:6543';
 const PRINT_SECRET = process.env.PRINT_SECRET || 'robotech-print-secret-change-moi';
 const TIMEOUT_MS = 10_000;
 

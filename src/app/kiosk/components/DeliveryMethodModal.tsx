@@ -1,15 +1,20 @@
-import React, { useState, useEffect } from "react";
-import { Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, Button } from "@heroui/react";
+import React, { useState } from "react";
+import { Modal, ModalContent } from "@heroui/react";
 import { Printer, ChevronRight } from "lucide-react";
+import { useKioskStore } from "@/store/useKioskStore";
+import { formatCurrency } from "@/lib/formatters";
 
 interface DeliveryMethodModalProps {
     isOpen: boolean;
     onClose: () => void;
     onConfirm: (method: "TICKET" | "WHATSAPP", phone?: string) => void;
     isSubmitting?: boolean;
+    /** @deprecated kept for backwards compat with callers — IPTV always uses credentials path */
+    hasIptvProducts?: boolean;
 }
 
 export default function DeliveryMethodModal({ isOpen, onClose, onConfirm, isSubmitting }: DeliveryMethodModalProps) {
+    const { cart, getTotalAmount } = useKioskStore();
     const [method, setMethod] = useState<"TICKET" | "WHATSAPP">("TICKET");
     const [callingCode, setCallingCode] = useState("+213");
     const [phone, setPhone] = useState("");
@@ -33,9 +38,9 @@ export default function DeliveryMethodModal({ isOpen, onClose, onConfirm, isSubm
             size="2xl"
             backdrop="blur"
             classNames={{
-                base: "bg-white text-slate-900 rounded-[32px] p-0 overflow-hidden",
+                base: "bg-white rounded-[32px] p-0 overflow-hidden shadow-2xl",
                 wrapper: "z-[100]",
-                backdrop: "bg-black/40 backdrop-blur-md"
+                backdrop: "bg-slate-900/40 backdrop-blur-xl"
             }}
             hideCloseButton
         >
@@ -43,17 +48,43 @@ export default function DeliveryMethodModal({ isOpen, onClose, onConfirm, isSubm
                 {(onClose) => (
                     <main className="flex flex-col p-8 md:p-12">
                         {/* Header */}
-                        <header className="text-center mb-10">
-                            <h1 className="text-3xl font-bold text-slate-900 mb-3 tracking-tight">
+                        <header className="text-center mb-6 md:mb-10">
+                            <h1 className="text-2xl md:text-3xl font-bold text-slate-900 mb-2 md:mb-3 tracking-tight">
                                 Comment souhaitez-vous récupérer vos codes ?
                             </h1>
-                            <p className="text-xl text-slate-500 font-medium">
+                            <p className="text-base md:text-xl text-slate-500 font-medium">
                                 Choisissez votre méthode de réception préférée.
                             </p>
                         </header>
 
-                        {/* Options */}
-                        <section className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">
+                        {/* Cart Summary — confirmation des items achetés */}
+                        {cart.length > 0 && (
+                            <section className="mb-6 md:mb-8 p-4 bg-slate-50 border border-slate-200 rounded-2xl">
+                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-3">Récapitulatif</p>
+                                <div className="space-y-2">
+                                    {cart.map((it: any) => (
+                                        <div key={`${it.variantId}-${it.customData || ""}`} className="text-sm">
+                                            <div className="flex justify-between font-bold text-slate-800">
+                                                <span>{it.productName ? `${it.productName} — ` : ""}{it.name}{it.quantity > 1 ? ` × ${it.quantity}` : ""}</span>
+                                                <span>{formatCurrency((parseFloat(it.price) + (it.combo ? parseFloat(it.combo.iptvPrice) : 0)) * it.quantity, "DZD")}</span>
+                                            </div>
+                                            {it.combo && (
+                                                <div className="ml-3 mt-0.5 text-xs text-cyan-700">
+                                                    + {it.combo.iptvProductName}
+                                                </div>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                                <div className="mt-3 pt-3 border-t border-slate-200 flex justify-between font-black text-slate-900">
+                                    <span>Total</span>
+                                    <span>{formatCurrency(getTotalAmount(), "DZD")}</span>
+                                </div>
+                            </section>
+                        )}
+
+                        {/* Delivery Method */}
+                        <section className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
                             {/* Ticket */}
                             <button
                                 onClick={() => setMethod("TICKET")}
@@ -107,7 +138,7 @@ export default function DeliveryMethodModal({ isOpen, onClose, onConfirm, isSubm
                                             setPhone(e.target.value);
                                             if (error) setError("");
                                         }}
-                                        className="block w-full h-20 px-6 text-2xl font-medium tracking-widest bg-transparent outline-none placeholder:text-slate-300"
+                                        className="block w-full h-20 px-6 text-2xl font-medium tracking-widest bg-transparent outline-none text-slate-900 placeholder:text-slate-300"
                                         placeholder="00 00 00 00"
                                         autoFocus
                                     />
@@ -132,7 +163,7 @@ export default function DeliveryMethodModal({ isOpen, onClose, onConfirm, isSubm
                         <footer className="mt-8 text-center">
                             <button
                                 onClick={onClose}
-                                className="text-slate-400 font-semibold text-lg hover:text-slate-600 transition-colors py-2 px-4 rounded-xl"
+                                className="text-slate-400 font-semibold text-lg hover:text-slate-600 transition-colors h-11 px-6 rounded-xl flex items-center justify-center mx-auto"
                             >
                                 Annuler et revenir
                             </button>

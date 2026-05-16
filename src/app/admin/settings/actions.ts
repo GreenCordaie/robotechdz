@@ -51,7 +51,7 @@ export const saveShopSettingsAction = withAuth(
             showDateTimeOnReceipt: z.boolean().optional(),
             showLogoOnReceipt: z.boolean().optional(),
             showTrackQrOnReceipt: z.boolean().optional(),
-            accentColor: z.string().optional(),
+            accentColor: z.string().regex(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/, "Couleur invalide (format hexadécimal requis)").optional(),
             logoUrl: z.string().nullable().optional(),
             dashboardLogoUrl: z.string().nullable().optional(),
             faviconUrl: z.string().nullable().optional(),
@@ -79,9 +79,21 @@ export const saveShopSettingsAction = withAuth(
             whatsappApiUrl: z.string().nullable().optional(),
             whatsappApiKey: z.string().nullable().optional(),
             whatsappInstanceName: z.string().nullable().optional(),
+            // EPIC 2 / Phase A — toggle global auto-send WhatsApp post-paiement kiosk
+            autoSendWhatsapp: z.boolean().optional(),
             n8nWebhookUrl: z.string().nullable().optional(),
             usdExchangeRate: z.string().optional(),
             stockAlertThreshold: z.number().int().min(1).max(9999).optional(),
+            netflixResolverEmail: z.string().nullable().optional(),
+            netflixResolverPassword: z.string().nullable().optional(),
+            microsoftClientId: z.string().nullable().optional(),
+            microsoftClientSecret: z.string().nullable().optional(),
+            microsoftTenantId: z.string().nullable().optional(),
+            microsoftRedirectUri: z.string().nullable().optional(),
+            // Printer (USB ESC/POS)
+            printerPaperWidth: z.union([z.literal(58), z.literal(80)]).optional(),
+            printerAutoCut: z.boolean().optional(),
+            printerAutoPrintPaid: z.boolean().optional(),
         })
     },
     async (data, user) => {
@@ -116,7 +128,8 @@ export const activateTelegramWebhookAction = withAuth(
     async ({ token, url }) => {
         try {
             const webhookPath = url.endsWith('/') ? url + 'api/telegram/webhook' : url + '/api/telegram/webhook';
-            const secretToken = process.env.TELEGRAM_SECRET_TOKEN || "flexbox_secure_token_2026";
+            const secretToken = process.env.TELEGRAM_SECRET_TOKEN;
+            if (!secretToken) throw new Error("TELEGRAM_SECRET_TOKEN not configured in environment");
 
             const response = await fetch(`https://api.telegram.org/bot${token}/setWebhook`, {
                 method: "POST",
@@ -339,12 +352,36 @@ export const createResellerAction = withAuth(
     }
 );
 
+export const testNetflixResolverAction = withAuth(
+    { roles: [UserRole.ADMIN] },
+    async () => {
+        try {
+            const { SystemQueries } = await import("@/services/queries/system.queries");
+            const settings = await SystemQueries.getSettings();
+
+            if (!settings.microsoftClientId || !settings.microsoftClientSecret) {
+                return { success: false, error: "Configuration Microsoft Graph (Client ID/Secret) manquante." };
+            }
+
+            return {
+                success: true,
+                message: "Moteur de résolution configuré sur MICROSOFT GRAPH NATIVE. Prêt pour les comptes connectés."
+            };
+        } catch (error: any) {
+            return { success: false, error: `Erreur: ${error.message}` };
+        }
+    }
+);
+
+
 export const testN8nAction = withAuth(
     { roles: [UserRole.ADMIN] },
     async () => {
+        const { SystemQueries } = await import("@/services/queries/system.queries");
+        const settings = await SystemQueries.getPublicSettings();
         const { N8nService } = await import("@/services/n8n.service");
         const success = await N8nService.triggerEvent("INTEGRATION_TEST", {
-            message: "Test depuis l'interface d'administration FLEXBOX DIRECT.",
+            message: `Test depuis l'interface d'administration ${settings.shopName}.`,
             sender: "Admin UI",
         });
 
@@ -397,8 +434,10 @@ export const generateBackupCodesAction = withAuth(
 export const generateMfaSecretAction = withAuth(
     { roles: [UserRole.ADMIN] },
     async (_, user) => {
+        const { SystemQueries } = await import("@/services/queries/system.queries");
+        const settings = await SystemQueries.getPublicSettings();
         const secret = generateSecret();
-        const otpauth = generateURI({ secret, label: user.email, issuer: "FLEXBOX DIRECT" });
+        const otpauth = generateURI({ secret, label: user.email, issuer: settings.shopName });
         return { success: true, data: { secret, otpauth } };
     }
 );
@@ -516,7 +555,8 @@ export const getWhatsAppQrAction = withAuth(
             const { SystemQueries } = await import("@/services/queries/system.queries");
             const settings = await SystemQueries.getSettings();
 
-            const wahaUrl = (settings.whatsappApiUrl || "http://localhost:3001").replace(/\/$/, "");
+            const wahaUrl = (settings.whatsappApiUrl || "https://waha.nexusbox.tech").replace(/\/$/, "");
+
             const wahaKey = settings.whatsappApiKey || "abc";
             const session = settings.whatsappInstanceName || "default";
             const headers = { "X-Api-Key": wahaKey };
@@ -640,5 +680,44 @@ export const listApiKeysAction = withAuth(
         }));
 
         return { success: true, data: safeKeys };
+    }
+);
+
+export const testMicrosoftGraphConfigAction = withAuth(
+    { roles: [UserRole.ADMIN] },
+    async () => {
+        try {
+            const { MicrosoftAuthService } = await import("@/services/microsoft-auth.service");
+            // Test simple: Générer une URL d'auth (vérifie le Client ID et le format)
+            const url = await MicrosoftAuthService.getAuthorizationUrl(0);
+
+            // On peut aussi vérifier si le secret est présent
+            const { SystemQueries } = await import("@/services/queries/system.queries");
+            const settings = await SystemQueries.getSettings();
+
+            if (!settings.microsoftClientId || !settings.microsoftClientSecret) {
+                return { success: false, error: "Client ID ou Secret manquant en base de données." };
+            }
+
+            return {
+                success: true,
+                message: "Configuration Microsoft Graph OK. Prêt pour l'authentification."
+            };
+        } catch (error: any) {
+            return { success: false, error: `Erreur Microsoft Graph: ${error.message}` };
+        }
+    }
+);
+export const loginWithMicrosoftAction = withAuth(
+    { roles: [UserRole.ADMIN] },
+    async () => {
+        try {
+            const { MicrosoftAuthService } = await import("@/services/microsoft-auth.service");
+            // Utilise l'ID de l'admin actuel (ou 0 par défaut pour les réglages globaux)
+            const url = await MicrosoftAuthService.getAuthorizationUrl(0);
+            return { success: true, url };
+        } catch (error: any) {
+            return { success: false, error: error.message };
+        }
     }
 );

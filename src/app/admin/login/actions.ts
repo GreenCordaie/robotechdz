@@ -12,8 +12,24 @@ async function getDeps() {
     const { logSecurityAction } = await import("@/lib/security");
     const { encrypt, decrypt } = await import("@/lib/encryption");
     const { checkRateLimit, recordFailure, resetRateLimit } = await import("@/lib/rate-limit");
+    const turnstileSecret = process.env.TURNSTILE_SECRET_KEY;
 
-    return { db, users, eq, bcrypt, createSession, deleteSession, getSession, logSecurityAction, encrypt, decrypt, checkRateLimit, recordFailure, resetRateLimit };
+    return { db, users, eq, bcrypt, createSession, deleteSession, getSession, logSecurityAction, encrypt, decrypt, checkRateLimit, recordFailure, resetRateLimit, turnstileSecret };
+}
+
+async function verifyTurnstile(token: string, secret: string) {
+    try {
+        const res = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", {
+            method: "POST",
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: `secret=${encodeURIComponent(secret)}&response=${encodeURIComponent(token)}`,
+        });
+        const data = await res.json();
+        return data.success;
+    } catch (e) {
+        console.error("Turnstile error:", e);
+        return false;
+    }
 }
 
 export async function loginAction(formData: FormData) {
@@ -21,7 +37,16 @@ export async function loginAction(formData: FormData) {
     const password = formData.get("password") as string;
     const honeypot = formData.get("website_url") as string;
 
-    const { db, users, eq, bcrypt, createSession, logSecurityAction, checkRateLimit, recordFailure, resetRateLimit } = await getDeps();
+    const { db, users, eq, bcrypt, createSession, logSecurityAction, checkRateLimit, recordFailure, resetRateLimit, turnstileSecret } = await getDeps();
+
+    // 0. Turnstile check — verify if token is provided (skip if widget didn't load)
+    const turnstileToken = formData.get("cf-turnstile-response") as string;
+    if (turnstileSecret && turnstileToken) {
+        const isValid = await verifyTurnstile(turnstileToken, turnstileSecret);
+        if (!isValid) {
+            return { success: false, error: "Vérification de sécurité échouée" };
+        }
+    }
 
     // 1. Honeypot check
     if (honeypot) {
@@ -42,7 +67,10 @@ export async function loginAction(formData: FormData) {
         // 0. Rate Limit Check
         const limit = await checkRateLimit(email);
         if (limit.isBlocked) {
-            return { success: false, error: `Trop de tentatives. Réessayez dans ${Math.ceil((limit.blockedUntil!.getTime() - Date.now()) / 60000)} minutes.` };
+            const minutes = limit.blockedUntil
+                ? Math.ceil((limit.blockedUntil.getTime() - Date.now()) / 60000)
+                : 15;
+            return { success: false, error: `Trop de tentatives. Réessayez dans ${minutes} minutes.` };
         }
 
         const userList = await db.select().from(users).where(eq(users.email, email)).limit(1);
@@ -183,7 +211,7 @@ export async function verifyPinAction(pin: string) {
         const session = await getSession();
         if (!session) return { success: false, error: "Session expirée" };
 
-        const user = await db.select().from(users).where(eq(users.id, session.user.id)).limit(1);
+        const user = await db.select().from(users).where(eq(users.id, (session as any).userId)).limit(1);
 
         if (user.length === 0) return { success: false, error: "Utilisateur introuvable" };
 

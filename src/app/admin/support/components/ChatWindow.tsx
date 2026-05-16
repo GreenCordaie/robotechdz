@@ -149,12 +149,12 @@ const ChatWindow = ({ phone, clientName, messages: propMessages, isLoading, onMe
         <div className="flex-1 flex flex-col bg-[#1a1614] border border-white/5 rounded-[24px] overflow-hidden shadow-2xl">
             {/* Header */}
             <div className="p-4 border-b border-white/5 bg-white/[0.03] flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-[#ec5b13]/20 flex items-center justify-center">
-                    <User size={20} className="text-[#ec5b13]" />
+                <div className="w-10 h-10 rounded-full bg-[var(--primary)]/20 flex items-center justify-center">
+                    <User size={20} className="text-[var(--primary)]" />
                 </div>
                 <div>
                     <h4 className="text-sm font-black text-white">{clientName || formatWhatsApp(phone)}</h4>
-                    <p className="text-[10px] font-bold text-[#ec5b13] uppercase tracking-wider">{formatWhatsApp(phone)}</p>
+                    <p className="text-[10px] font-bold text-[var(--primary)] uppercase tracking-wider">{formatWhatsApp(phone)}</p>
                 </div>
             </div>
 
@@ -165,7 +165,7 @@ const ChatWindow = ({ phone, clientName, messages: propMessages, isLoading, onMe
             >
                 {isLoading && localMessages.length === 0 ? (
                     <div className="flex justify-center py-10">
-                        <Loader2 className="animate-spin text-[#ec5b13]" />
+                        <Loader2 className="animate-spin text-[var(--primary)]" />
                     </div>
                 ) : localMessages.length === 0 ? (
                     <div className="text-center py-10 opacity-30 italic text-xs">
@@ -200,7 +200,7 @@ const ChatWindow = ({ phone, clientName, messages: propMessages, isLoading, onMe
                         variant="flat"
                         className="flex-1"
                         classNames={{
-                            inputWrapper: "bg-white/5 border-white/5 group-data-[focus=true]:border-[#ec5b13]/50 rounded-xl",
+                            inputWrapper: "bg-white/5 border-white/5 group-data-[focus=true]:border-[var(--primary)]/50 rounded-xl",
                             input: "text-sm text-white"
                         }}
                     />
@@ -208,7 +208,7 @@ const ChatWindow = ({ phone, clientName, messages: propMessages, isLoading, onMe
                         isIconOnly
                         type="submit"
                         disabled={!newMessage.trim() || isSending}
-                        className="bg-[#ec5b13] text-white shadow-lg shadow-[#ec5b13]/20 rounded-xl"
+                        className="bg-[var(--primary)] text-white shadow-lg shadow-[var(--primary)]/20 rounded-xl"
                     >
                         {isSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send size={18} />}
                     </Button>

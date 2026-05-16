@@ -14,11 +14,12 @@ export async function middleware(request: NextRequest) {
     const securityHeaders = {
         'Content-Security-Policy': [
             "default-src 'self'",
-            `script-src 'self'${isDev ? " 'unsafe-inline' 'unsafe-eval'" : ""}`,
+            `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""} https://static.cloudflareinsights.com https://challenges.cloudflare.com`,
             "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
             "font-src 'self' https://fonts.gstatic.com",
             "img-src 'self' data: https:",
-            "connect-src 'self' https://api.groq.com https://*.trycloudflare.com",
+            "connect-src 'self' https://api.groq.com https://*.trycloudflare.com https://static.cloudflareinsights.com https://challenges.cloudflare.com",
+            "frame-src https://challenges.cloudflare.com",
             "frame-ancestors 'none'",
             "base-uri 'self'"
         ].join('; '),
@@ -33,19 +34,22 @@ export async function middleware(request: NextRequest) {
         response.headers.set(key, value);
     });
 
-    // Login page logic (already implemented but kept for flow)
-    if (path === "/admin/login" || path === "/reseller/login") {
+    // Pages publiques sous /admin/* ou /reseller/* (login + signup public B2B)
+    const PUBLIC_RESELLER_PATHS = ["/admin/login", "/reseller/login", "/reseller/signup"];
+    if (PUBLIC_RESELLER_PATHS.includes(path)) {
         const session = request.cookies.get("session")?.value;
         if (session) {
             try {
                 const parsed = await decrypt(session);
                 const role = parsed.userRole;
+                // Login pages : redirect vers dashboard si déjà loggé
                 if (path === "/admin/login" && role !== UserRole.RESELLER) {
-                    return NextResponse.redirect(new URL("/admin", request.url));
+                    return NextResponse.redirect(new URL("/admin/dashboard", request.url));
                 }
                 if (path === "/reseller/login" && role === UserRole.RESELLER) {
                     return NextResponse.redirect(new URL("/reseller/dashboard", request.url));
                 }
+                // /reseller/signup : reste accessible même loggé (lien depuis B2B page)
             } catch (e) { }
         }
         return response;
@@ -67,17 +71,20 @@ export async function middleware(request: NextRequest) {
                 return NextResponse.redirect(new URL("/reseller/dashboard", request.url));
             }
             if (path.startsWith("/reseller") && userRole !== UserRole.RESELLER) {
-                return NextResponse.redirect(new URL("/admin", request.url));
+                return NextResponse.redirect(new URL("/admin/dashboard", request.url));
             }
 
             // RBAC for admin (Default Deny - Whitelist approach)
             if (path.startsWith("/admin")) {
                 if (userRole !== UserRole.ADMIN) {
                     const permittedPaths = [
+                        "/admin/dashboard",
                         "/admin/caisse",
                         "/admin/catalogue",
                         "/admin/traitement",
+                        "/admin/commandes",
                         "/admin/support",
+                        "/admin/iptv",
                         "/admin/login"
                     ];
 

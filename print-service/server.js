@@ -40,7 +40,7 @@ function loadConfig() {
 
 const cfg = loadConfig();
 const PORT = cfg.port || 6543;
-const HOST = '127.0.0.1';
+const HOST = cfg.host || '0.0.0.0';
 const PRINT_SECRET = cfg.secret || 'robotech-print-secret-change-moi';
 const PRINTER_IP = cfg.printerIp || null;
 const PRINTER_TCP = cfg.printerPort || 9100;
@@ -63,8 +63,9 @@ app.use((req, res, next) => {
 });
 
 app.use((req, res, next) => {
-    const ip = req.socket.remoteAddress;
-    const ok = ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
+    const ip = req.socket.remoteAddress || '';
+    const raw = ip.replace('::ffff:', '');
+    const ok = raw === '127.0.0.1' || raw === '::1' || raw.startsWith('100.');
     if (!ok) { log(`REJECT IP: ${ip}`); return res.status(403).end(); }
     next();
 });

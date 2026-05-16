@@ -7,10 +7,20 @@ const nextConfig = {
                 headers: [
                     { key: 'X-DNS-Prefetch-Control', value: 'on' },
                     { key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' },
-                    { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
+                    { key: 'X-Frame-Options', value: 'DENY' },
                     { key: 'X-Content-Type-Options', value: 'nosniff' },
-                    { key: 'Referrer-Policy', value: 'origin-when-cross-origin' },
+                    { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
                     { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=()' }
+                ]
+            },
+            {
+                // Service worker MUST never be cached — browsers + intermediaries must always
+                // revalidate. Otherwise an old SW keeps intercepting /_next/ chunks and the
+                // user is stuck on a stale bundle for hours.
+                source: '/sw.js',
+                headers: [
+                    { key: 'Cache-Control', value: 'no-cache, no-store, must-revalidate, max-age=0' },
+                    { key: 'Service-Worker-Allowed', value: '/' }
                 ]
             }
         ];
@@ -22,14 +32,18 @@ const nextConfig = {
             { protocol: 'https', hostname: 'avatars.githubusercontent.com' },
             { protocol: 'https', hostname: 'lh3.googleusercontent.com' },
             { protocol: 'https', hostname: '*.r2.dev' },
-            { protocol: 'http', hostname: 'localhost' },
         ],
     },
+    output: 'standalone',
     eslint: {
-        ignoreDuringBuilds: true,
+        // EPIC 11 — 0 erreur ESLint atteinte (warnings restants non-bloquants).
+        // Le build crashe désormais sur toute régression d'erreur ESLint.
+        ignoreDuringBuilds: false,
     },
     typescript: {
-        ignoreBuildErrors: true,
+        // EPIC 0 : 0 erreurs TS atteintes — le build crashe désormais sur toute
+        // régression de typage. Ne PAS remettre à `true` sans corriger d'abord.
+        ignoreBuildErrors: false,
     },
     experimental: {
         instrumentationHook: true,
