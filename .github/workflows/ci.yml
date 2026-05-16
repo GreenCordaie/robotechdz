@@ -62,6 +62,73 @@ jobs:
       - name: ESLint (warnings allowed, errors fail)
         run: npx eslint "src/**/*.{ts,tsx}" --max-warnings=999 || true
 
+  build-check:
+    name: Production build (next build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: typecheck-and-lint
+    # Pourquoi : tsc strict catche les erreurs de typage MAIS pas les crashs au
+    # "collecting page data" (rendu statique des routes). Sans ce job, des bugs
+    # type "validateConfig au module-load avec env vide" ou "<html> dupliqué dans
+    # une page App Router" cassent le build prod sans qu'on le sache avant deploy.
+    env:
+      # Env figé — toutes clés vides → court-circuit → 0 credit consommé.
+      # Le build doit fonctionner même sans creds (les routes lazy-init au runtime).
+      NODE_ENV: production
+      DATABASE_URL: postgres://noop:noop@localhost:5432/noop
+      REDIS_URL: redis://localhost:6379
+      SESSION_SECRET: ci_build_session_secret_NEVER_USE_IN_PROD
+      ENCRYPTION_KEY: ci_build_encryption_key_NEVER_USE_IN_PROD
+      UPSTASH_REDIS_REST_URL: ""
+      UPSTASH_REDIS_REST_TOKEN: ""
+      TURNSTILE_SECRET_KEY: ""
+      NEXT_PUBLIC_TURNSTILE_SITE_KEY: ""
+      TELEGRAM_BOT_TOKEN: ""
+      TELEGRAM_SECRET_TOKEN: ""
+      WHATSAPP_API_URL: ""
+      WHATSAPP_API_KEY: ""
+      WHATSAPP_VERIFY_TOKEN: ""
+      LOADBRAIN_API_KEY: ""
+      LOADBRAIN_URL: ""
+      LOADBRAIN_SITE_URL: ""
+      LOADBRAIN_WEBHOOK_SECRET: ""
+      MICROSOFT_CLIENT_ID: ""
+      MICROSOFT_CLIENT_SECRET: ""
+      MICROSOFT_TENANT_ID: ""
+      MICROSOFT_REDIRECT_URI: ""
+      GROQ_API_KEY: ""
+      VAPID_PUBLIC_KEY: ""
+      VAPID_PRIVATE_KEY: ""
+      VAPID_SUBJECT: mailto:build@ci.local
+      CRON_SECRET: ci_build_cron_secret
+      PRINT_SECRET: ci_build_print_secret
+      R2_ACCESS_KEY_ID: ""
+      R2_SECRET_ACCESS_KEY: ""
+      R2_ENDPOINT: ""
+      R2_BUCKET_NAME: ""
+      R2_PUBLIC_URL: ""
+      NEXT_PUBLIC_APP_URL: http://localhost:1556
+      ENABLE_DEBUG_ROUTES: "false"
+      N8N_CALLBACK_SECRET: ci_n8n_secret
+      N8N_WEBHOOK_URL: ""
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Pack LoadBrain stubs into expected tgz paths
+        run: bash scripts/ci-pack-loadbrain-stubs.sh
+      - name: Install deps
+        run: |
+          rm -f package-lock.json
+          npm install --legacy-peer-deps --no-audit --no-fund
+      - name: next build (strict — ignoreBuildErrors=false + ignoreDuringBuilds=false)
+        # Doit passer SANS aucune env externe configurée. Si une route crashe
+        # au module-load ou au "collecting page data" sans creds, c'est un bug
+        # qui doit être fixé (typiquement : init lazy au lieu de top-level).
+        run: npm run build
+
   e2e-tests:
     name: E2E Playwright
     runs-on: ubuntu-latest
