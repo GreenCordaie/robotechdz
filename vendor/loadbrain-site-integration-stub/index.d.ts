@@ -19,10 +19,13 @@ export declare class LoadBrainClient {
     renewSubscription(taskId: string): Promise<{ success: boolean; taskId: string; status: string }>;
 }
 
-type AnyHandler = (req: Request) => Promise<Response>;
+// Signature alignée sur le vrai SDK (createNextRouteHandler dans
+// @loadbrain/site-integration/dist/middleware.d.ts) : 2 args (req, ctx).
+type AnyHandler = (req: unknown, ctx: unknown) => Promise<Response>;
 export declare function createNextRouteHandler(config: LoadBrainConfig): {
     GET: AnyHandler;
     POST: AnyHandler;
     DELETE: AnyHandler;
     PUT: AnyHandler;
+    PATCH: AnyHandler;
 };

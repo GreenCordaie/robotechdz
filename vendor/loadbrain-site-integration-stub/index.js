@@ -51,7 +51,7 @@ function createNextRouteHandler(_config) {
             headers: { "content-type": "application/json" },
         });
     };
-    return { GET: handler, POST: handler, DELETE: handler, PUT: handler };
+    return { GET: handler, POST: handler, DELETE: handler, PUT: handler, PATCH: handler };
 }
 
 module.exports = { LoadBrainClient, validateConfig, createNextRouteHandler };
