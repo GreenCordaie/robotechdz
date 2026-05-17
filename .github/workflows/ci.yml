@@ -119,10 +119,14 @@ jobs:
           cache: npm
       - name: Pack LoadBrain stubs into expected tgz paths
         run: bash scripts/ci-pack-loadbrain-stubs.sh
-      - name: Install deps
+      - name: Install deps (inclure devDeps malgré NODE_ENV=production)
+        # `NODE_ENV=production` au niveau du job fait que npm install skip
+        # les devDependencies par défaut. Or tailwindcss / postcss / autoprefixer
+        # sont en devDeps mais REQUIS au build (next/font les charge). On force
+        # --include=dev pour les avoir.
         run: |
           rm -f package-lock.json
-          npm install --legacy-peer-deps --no-audit --no-fund
+          npm install --legacy-peer-deps --no-audit --no-fund --include=dev
       - name: next build (strict — ignoreBuildErrors=false + ignoreDuringBuilds=false)
         # Doit passer SANS aucune env externe configurée. Si une route crashe
         # au module-load ou au "collecting page data" sans creds, c'est un bug
