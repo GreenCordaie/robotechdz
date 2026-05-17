@@ -6,7 +6,10 @@ export default defineConfig({
     expect: { timeout: 8_000 },
     fullyParallel: false, // les tests partagent une DB seedée, on évite les races
     forbidOnly: !!process.env.CI,
-    retries: 0,
+    // CI : 1 retry pour absorber les flakys de cold-compile Next.js dev server
+    // sur les pages admin lourdes (Settings, B2B). Local : 0 retry pour révéler
+    // tout de suite les vraies régressions.
+    retries: process.env.CI ? 1 : 0,
     workers: 1,
     reporter: [["list"], ["html", { open: "never", outputFolder: "playwright-report" }]],
     use: {
