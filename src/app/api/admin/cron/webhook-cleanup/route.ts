@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { db } from "@/db";
-import { webhookDeliveryAttempts } from "@/db/schema";
+import { webhookDeliveryAttempts, notificationLogs } from "@/db/schema";
 import { and, eq, lt } from "drizzle-orm";
 
 export const dynamic = "force-dynamic";
@@ -19,6 +19,7 @@ export const runtime = "nodejs";
 
 const RESOLVED_RETENTION_DAYS = 30;
 const DEAD_RETENTION_DAYS = 90;
+const NOTIFICATION_LOGS_RETENTION_DAYS = 30;
 
 export async function GET(req: Request) {
     try {
@@ -63,13 +64,22 @@ export async function GET(req: Request) {
             )
             .returning({ id: webhookDeliveryAttempts.id });
 
+        // Notification logs >30j
+        const notifLogsCutoff = new Date(now - NOTIFICATION_LOGS_RETENTION_DAYS * 86_400_000);
+        const notifLogsDeleted = await db
+            .delete(notificationLogs)
+            .where(lt(notificationLogs.createdAt, notifLogsCutoff))
+            .returning({ id: notificationLogs.id });
+
         return NextResponse.json({
             success: true,
             resolvedDeleted: resolvedDeleted.length,
             deadDeleted: deadDeleted.length,
+            notifLogsDeleted: notifLogsDeleted.length,
             cutoffs: {
                 resolved: resolvedCutoff.toISOString(),
                 dead: deadCutoff.toISOString(),
+                notifLogs: notifLogsCutoff.toISOString(),
             },
         });
     } catch (error) {

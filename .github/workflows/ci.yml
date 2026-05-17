@@ -65,17 +65,35 @@ jobs:
   build-check:
     name: Production build (next build)
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     needs: typecheck-and-lint
     # Pourquoi : tsc strict catche les erreurs de typage MAIS pas les crashs au
     # "collecting page data" (rendu statique des routes). Sans ce job, des bugs
     # type "validateConfig au module-load avec env vide" ou "<html> dupliqué dans
     # une page App Router" cassent le build prod sans qu'on le sache avant deploy.
+    services:
+      # Postgres requis : pendant le static render, le root layout exécute
+      # generateMetadata/generateViewport qui font des queries Drizzle vers
+      # shop_settings. Sans DB joignable → Export errors sur toutes les pages.
+      # On schéma-push avant le build pour avoir une DB à jour.
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: testuser
+          POSTGRES_PASSWORD: testpass
+          POSTGRES_DB: pc_ia_test
+        ports:
+          - 5499:5432
+        options: >-
+          --health-cmd "pg_isready -U testuser -d pc_ia_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
     env:
       # Env figé — toutes clés vides → court-circuit → 0 credit consommé.
       # Le build doit fonctionner même sans creds (les routes lazy-init au runtime).
       NODE_ENV: production
-      DATABASE_URL: postgres://noop:noop@localhost:5432/noop
+      DATABASE_URL: postgres://testuser:testpass@localhost:5499/pc_ia_test
       REDIS_URL: redis://localhost:6379
       SESSION_SECRET: ci_build_session_secret_NEVER_USE_IN_PROD
       ENCRYPTION_KEY: ci_build_encryption_key_NEVER_USE_IN_PROD
@@ -127,6 +145,18 @@ jobs:
         run: |
           rm -f package-lock.json
           npm install --legacy-peer-deps --no-audit --no-fund --include=dev
+      - name: Wait for postgres ready
+        run: |
+          for i in {1..30}; do
+            if pg_isready -h localhost -p 5499 -U testuser -d pc_ia_test; then
+              echo "postgres ready"; break
+            fi
+            sleep 1
+          done
+        env:
+          PGPASSWORD: testpass
+      - name: Apply schema (drizzle-kit push)
+        run: npx drizzle-kit push --force
       - name: next build (strict — ignoreBuildErrors=false + ignoreDuringBuilds=false)
         # Doit passer SANS aucune env externe configurée. Si une route crashe
         # au module-load ou au "collecting page data" sans creds, c'est un bug

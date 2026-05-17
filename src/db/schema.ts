@@ -374,6 +374,26 @@ export const notificationTemplates = pgTable("notification_templates", {
     updatedByUserId: integer("updated_by_user_id").references(() => users.id, { onDelete: "set null" }),
 });
 
+// EPIC 1 / Phase L2 — Notification logs (audit + debug envois WhatsApp reseller).
+// 1 row par appel safeSend() (success, fail, ou skip via pref opt-out).
+// Rétention via cron quotidien (à wirer).
+export const notificationLogs = pgTable("notification_logs", {
+    id: serial("id").primaryKey(),
+    eventKey: text("event_key").notNull(),
+    channel: text("channel").notNull().default("whatsapp"), // futur : telegram, push
+    resellerId: integer("reseller_id").references(() => resellers.id, { onDelete: "set null" }),
+    contactPhone: text("contact_phone"),
+    delivered: boolean("delivered").notNull(),
+    reason: text("reason"), // si !delivered : "Désactivé par le reseller", "WhatsApp non configuré", "HTTP 401"…
+    createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
+}, (table) => {
+    return {
+        createdAtIdx: index("nl_created_at_idx").on(table.createdAt),
+        eventKeyIdx: index("nl_event_key_idx").on(table.eventKey),
+        resellerIdIdx: index("nl_reseller_id_idx").on(table.resellerId),
+    };
+});
+
 // EPIC 1 / Phase G3 — Webhook DLQ.
 // Retries persisted en DB (pas BullMQ) pour rester portable Node + Edge.
 // Status flow : RETRYING (attempt < 5) → DEAD (attempt = 5, abandon) → RESOLVED (replay manuel admin OK).

@@ -118,11 +118,18 @@ export default function NotificationTemplatesContent() {
                 <Mail className="w-7 h-7 text-[var(--primary)]" />
                 <h1 className="text-2xl font-bold">Templates notifications WhatsApp</h1>
             </div>
-            <p className="text-sm text-gray-500 mb-6">
+            <p className="text-sm text-gray-500 mb-3">
                 Personnalisez les messages envoyés aux resellers.
                 Variables : <code className="bg-[#161616] px-1 rounded">{"{{key}}"}</code>.
                 Reset = retour au template par défaut.
             </p>
+            <a
+                href="/admin/settings/notifications/logs"
+                data-testid="notif-logs-link"
+                className="inline-block mb-6 text-xs font-medium text-[var(--primary)] hover:underline"
+            >
+                → Voir l&apos;historique des envois (notification logs)
+            </a>
 
             {loading ? (
                 <div className="flex justify-center py-12">

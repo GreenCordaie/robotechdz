@@ -1,6 +1,6 @@
 import "server-only";
 import { db } from "@/db";
-import { resellers, shopSettings } from "@/db/schema";
+import { resellers, shopSettings, notificationLogs } from "@/db/schema";
 import { sendWhatsAppMessage } from "@/lib/whatsapp";
 import { eq } from "drizzle-orm";
 import { loadAndRender } from "./notification-templates.service";
@@ -27,27 +27,14 @@ interface ResellerNotificationContext {
     contactPhone: string | null;
 }
 
-// Catalogue stable des events. Les clés sont utilisées :
-//   - dans la table resellers.notification_preferences (JSONB)
-//   - dans l'UI /reseller/settings/notifications (toggles)
-export const RESELLER_NOTIF_EVENTS = {
-    walletRecharged: "wallet.recharged",
-    signupApproved: "signup.approved",
-    signupRejected: "signup.rejected",
-    orderConfirmed: "order.confirmed",
-    orderCredentialsReady: "order.credentials.ready",
-} as const;
-
-export type ResellerNotifEventKey =
-    (typeof RESELLER_NOTIF_EVENTS)[keyof typeof RESELLER_NOTIF_EVENTS];
-
-export const RESELLER_NOTIF_EVENT_LABELS: Record<ResellerNotifEventKey, string> = {
-    "wallet.recharged": "Recharge wallet confirmée",
-    "signup.approved": "Compte partenaire activé",
-    "signup.rejected": "Demande partenaire refusée",
-    "order.confirmed": "Commande B2B confirmée",
-    "order.credentials.ready": "Credentials prêtes après provisioning",
-};
+// Catalogue stable des events. Re-export depuis /lib pour que les Client
+// Components puissent importer sans hériter du marker "server-only".
+import {
+    RESELLER_NOTIF_EVENTS,
+    RESELLER_NOTIF_EVENT_LABELS,
+    type ResellerNotifEventKey,
+} from "@/lib/notification-events";
+export { RESELLER_NOTIF_EVENTS, RESELLER_NOTIF_EVENT_LABELS, type ResellerNotifEventKey };
 
 async function loadWhatsappSettings(): Promise<
     | {
@@ -94,31 +81,65 @@ function formatCurrencyDzd(amount: number): string {
     return new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 0 }).format(amount) + " DZD";
 }
 
+async function logNotification(
+    resellerId: number | undefined,
+    eventKey: ResellerNotifEventKey,
+    phone: string | null | undefined,
+    delivered: boolean,
+    reason: string | null
+): Promise<void> {
+    try {
+        await db.insert(notificationLogs).values({
+            eventKey,
+            channel: "whatsapp",
+            resellerId: resellerId ?? null,
+            contactPhone: phone ?? null,
+            delivered,
+            reason,
+        });
+    } catch (err) {
+        console.warn("[reseller-notif] log insert failed (non-bloquant):", err);
+    }
+}
+
 async function safeSend(
     resellerId: number | undefined,
     eventKey: ResellerNotifEventKey,
     phone: string | null | undefined,
     message: string
 ): Promise<{ delivered: boolean; reason?: string }> {
-    if (!phone) return { delivered: false, reason: "Pas de téléphone reseller" };
+    if (!phone) {
+        await logNotification(resellerId, eventKey, phone, false, "Pas de téléphone reseller");
+        return { delivered: false, reason: "Pas de téléphone reseller" };
+    }
 
     if (resellerId !== undefined) {
         const enabled = await isResellerNotifEnabled(resellerId, eventKey);
-        if (!enabled) return { delivered: false, reason: "Désactivé par le reseller" };
+        if (!enabled) {
+            await logNotification(resellerId, eventKey, phone, false, "Désactivé par le reseller");
+            return { delivered: false, reason: "Désactivé par le reseller" };
+        }
     }
 
     const settings = await loadWhatsappSettings();
     if (!settings) {
+        await logNotification(resellerId, eventKey, phone, false, "WhatsApp non configuré (shop_settings)");
         return { delivered: false, reason: "WhatsApp non configuré (shop_settings)" };
     }
 
     try {
         const res = await sendWhatsAppMessage(phone, message, settings);
-        if (res.success) return { delivered: true };
-        return { delivered: false, reason: res.error ?? "Échec WhatsApp" };
+        if (res.success) {
+            await logNotification(resellerId, eventKey, phone, true, null);
+            return { delivered: true };
+        }
+        const reason = res.error ?? "Échec WhatsApp";
+        await logNotification(resellerId, eventKey, phone, false, reason);
+        return { delivered: false, reason };
     } catch (err) {
         const msg = err instanceof Error ? err.message : "Exception WhatsApp";
         console.warn("[reseller-notif] safeSend error:", msg);
+        await logNotification(resellerId, eventKey, phone, false, msg);
         return { delivered: false, reason: msg };
     }
 }
