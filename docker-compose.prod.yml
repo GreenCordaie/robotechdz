@@ -22,13 +22,18 @@ services:
       - DATABASE_URL=postgresql://flexbox_user:${DB_PASSWORD}@db:5432/flexbox
       - REDIS_URL=redis://redis:6379
       - WHATSAPP_API_URL=http://robotech-whatsapp:3000
+      # Next.js standalone server lit HOSTNAME pour bind. Sans override, Docker
+      # set HOSTNAME = container ID → Next bind sur l'IP du container, jamais
+      # sur 127.0.0.1 → healthcheck localhost échoue. Force 0.0.0.0 pour binder
+      # toutes les interfaces (incluant loopback).
+      - HOSTNAME=0.0.0.0
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:3000/api/health').then(r=>{process.exit(r.ok?0:1)}).catch(()=>process.exit(1))\""]
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:3000/api/health').then(r=>{process.exit(r.ok?0:1)}).catch(()=>process.exit(1))\""]
       interval: 30s
       timeout: 10s
       retries: 3
