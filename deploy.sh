@@ -220,19 +220,41 @@ deploy_with_backup() {
     PREV_SHORT=$(git rev-parse --short HEAD)
     log "Current: $PREV_SHORT"
 
-    # 2. Fetch + checkout target (idempotent if already there)
-    git fetch origin --tags
-    git checkout "$TARGET_REF" 2>&1 | tail -3
-    NEW_SHA=$(git rev-parse HEAD)
-    NEW_SHORT=$(git rev-parse --short HEAD)
-    log "New: $NEW_SHORT"
+    # 2. Fetch
+    if ! git fetch origin --tags; then
+        err "git fetch failed — vérifier deploy key SSH ou remote URL"
+    fi
+
+    # 3. Resolve target ref (accepte master, origin/master, tag, SHA, etc)
+    if ! NEW_SHA=$(git rev-parse "$TARGET_REF^{commit}" 2>/dev/null); then
+        if ! NEW_SHA=$(git rev-parse "origin/$TARGET_REF^{commit}" 2>/dev/null); then
+            err "Cannot resolve ref '$TARGET_REF' (ni local, ni origin/, ni tag, ni SHA)"
+        fi
+        log "Resolved '$TARGET_REF' → origin/$TARGET_REF"
+    fi
+    NEW_SHORT=$(git rev-parse --short "$NEW_SHA")
+    log "Target: $NEW_SHORT"
 
     if [ "$PREV_SHA" = "$NEW_SHA" ]; then
         log "Already at $NEW_SHORT — nothing to do."
         return 0
     fi
 
-    # 3. DB backup
+    # 4. Check working tree clean (sinon checkout va échouer silencieusement)
+    DIRTY=$(git status --porcelain | grep -v '^??' | wc -l)
+    if [ "$DIRTY" -gt 0 ]; then
+        warn "Working tree has $DIRTY modified tracked files. Stashing as safety:"
+        git status --porcelain | grep -v '^??' | head -5
+        git stash push -m "auto-stash-before-deploy-${PREV_SHORT}_$(date +%Y%m%d_%H%M%S)" 2>&1 | tail -2
+    fi
+
+    # 5. Checkout target — exit code MUST be checked (pas de pipe qui swallow)
+    if ! git checkout --force "$NEW_SHA"; then
+        err "git checkout $NEW_SHORT failed — abort"
+    fi
+    log "Checked out $NEW_SHORT"
+
+    # 6. DB backup (avant toute migration)
     BACKUP_DIR="$APP_DIR/backups"
     mkdir -p "$BACKUP_DIR"
     BACKUP_FILE="$BACKUP_DIR/pre_${PREV_SHORT}_to_${NEW_SHORT}_$(date +%Y%m%d_%H%M%S).sql.gz"
@@ -240,38 +262,46 @@ deploy_with_backup() {
     if ! docker compose -f $COMPOSE_FILE exec -T db \
         pg_dump -U flexbox_user flexbox 2>/dev/null | gzip > "$BACKUP_FILE"; then
         warn "DB backup failed — aborting deploy, restoring git HEAD"
-        git checkout "$PREV_SHA"
+        git checkout --force "$PREV_SHA"
         return 1
     fi
 
-    # 4. Tag current image as previous + sha (for rollback)
+    # 7. Run migrations AVANT le build
+    # Le build Next.js prerender les pages qui query la DB → si le schéma n'a
+    # pas les colonnes attendues par le NEW code, le build crash. Donc on
+    # applique les migrations SQL idempotentes (IF NOT EXISTS) directement
+    # via psql AVANT que le build container démarre.
+    log "Applying migrations (drizzle/*.sql via psql, idempotent)..."
+    for f in drizzle/[0-9]*.sql; do
+        [ -f "$f" ] || continue
+        log "  → $(basename $f)"
+        if ! cat "$f" | docker compose -f $COMPOSE_FILE exec -T db psql -U flexbox_user -d flexbox > /dev/null 2>&1; then
+            warn "Migration $(basename $f) failed — restoring git HEAD + DB"
+            git checkout --force "$PREV_SHA"
+            return 1
+        fi
+    done
+    log "✅ Migrations OK"
+
+    # 8. Tag current image as previous + sha (for rollback)
     docker tag robotech-app:latest "robotech-app:$PREV_SHORT" 2>/dev/null || true
     docker tag robotech-app:latest robotech-app:previous 2>/dev/null || true
 
-    # 5. Build new image
+    # 9. Build new image (DB schéma à jour → build prerender ne crashera pas)
     log "Building image..."
     set -a; source .env.production; set +a
     if ! docker compose -f $COMPOSE_FILE build app; then
         warn "Build failed — restoring previous git HEAD (image untouched)"
-        git checkout "$PREV_SHA"
+        git checkout --force "$PREV_SHA"
         return 1
     fi
     docker tag robotech-app:latest "robotech-app:$NEW_SHORT" 2>/dev/null || true
 
-    # 6. Restart app
+    # 10. Restart app
     log "Restarting app..."
     docker compose -f $COMPOSE_FILE up -d app
 
-    # 7. Run migrations
-    sleep 5
-    log "Running migrations..."
-    if ! docker compose -f $COMPOSE_FILE exec -T app npx drizzle-kit push 2>&1 | tail -10; then
-        warn "Migration failed — rolling back to $PREV_SHORT"
-        rollback_to "$PREV_SHORT"
-        return 1
-    fi
-
-    # 8. Health check (5 retries with backoff)
+    # 11. Health check (5 retries with backoff)
     log "Health check..."
     HTTP=000
     for i in 1 2 3 4 5; do
@@ -287,10 +317,10 @@ deploy_with_backup() {
     fi
     log "✅ Health check OK"
 
-    # 9. Cleanup: keep last 10 DB backups
+    # 12. Cleanup: keep last 10 DB backups
     ls -t "$BACKUP_DIR"/pre_*.sql.gz 2>/dev/null | tail -n +11 | xargs -r rm
 
-    # 10. Cleanup: keep last 5 SHA-tagged images (preserve latest + previous)
+    # 13. Cleanup: keep last 5 SHA-tagged images (preserve latest + previous)
     docker images robotech-app --format "{{.Tag}}" \
         | grep -v -E "^(latest|previous|<none>)$" \
         | tail -n +6 \
