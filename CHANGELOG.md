@@ -2,6 +2,59 @@
 
 Toutes les modifications notables de ce projet seront documentées dans ce fichier.
 
+## [13.0.1] — Deploy pipeline fixes (2026-05-19)
+
+> Hotfix infra découvert pendant le premier deploy v13 sur prod
+> (187.124.191.30). Aucune feature, uniquement des fixes de tooling.
+
+### 🚀 deploy.sh — 3 bugs critiques fixés (commit `2c05311`)
+
+1. **Migration order** : `docker compose build app` (= `npm run build`)
+   tournait AVANT `drizzle-kit push`. Le build Next.js prerender les pages
+   qui query la DB ; si le schéma n'a pas les colonnes attendues par le
+   NEW code, le build crash avec `errorMissingColumn`. **Fix** : apply
+   les migrations SQL idempotentes via psql AVANT le docker build.
+
+2. **Silent failure** : `git checkout REF | tail -3` masquait l'exit
+   code (pipe finit par tail = 0). Quand checkout échouait
+   (untracked file blocking, ref invalide, etc.), le script reportait
+   `"Already at X — nothing to do"` et retournait SUCCESS. **Fix** :
+   `git rev-parse` pour résoudre + `git checkout --force` avec check exit.
+
+3. **Ref unresolvable** : `master` n'existe pas comme branche locale sur
+   le VPS → `git checkout master` fail avec `"invalid reference: master"`.
+   **Fix** : tente `$REF` puis `origin/$REF` puis abort (résout master,
+   tag, short SHA, full SHA, `refs/tags/X`, etc.).
+
+Bonus : working tree dirty auto-stashed avant checkout (safety net).
+
+### 🩺 docker-compose.prod — healthcheck (commit `d8d7ce2`)
+
+Container `robotech-app` marqué `unhealthy` depuis des semaines
+(`FailingStreak=365`). **Cause** : Next.js standalone server lit
+`$HOSTNAME` pour le bind ; Docker set `HOSTNAME = container ID`
+→ Next bind sur l'IP du container, pas sur `127.0.0.1`. Le healthcheck
+fait `fetch('http://localhost:3000/...')` depuis l'intérieur → Connection
+refused. **Fix** : `HOSTNAME=0.0.0.0` override + healthcheck via `127.0.0.1`.
+
+L'app répondait correctement depuis l'extérieur (Docker route 0.0.0.0:3000
+→ container IP), donc personne n'avait remarqué. Mais un autoscaler
+ou Traefik route fail-fast l'aurait considéré HS.
+
+### 🔐 Infra deploy mise en route
+- Secrets GitHub configurés : `VPS_HOST`, `VPS_USER`, `VPS_SSH_KEY`
+- Deploy key SSH dédiée `github_deploy` sur le VPS, enregistrée en
+  read-only sur le repo (avant : 0 deploy avait jamais fonctionné via CI)
+- Crons Linux installés sur VPS via wrapper `/usr/local/bin/robotech-cron-webhook` :
+  - `* * * * *` retry webhooks
+  - `0 3 * * *` cleanup DLQ + notification_logs
+
+### 📊 Bilan déploiement v13.0.0 → prod
+- Code : `6f580da` → `d8d7ce2` (post-v13 + tous fixes)
+- DB : 28 → 34 tables (migrations 0005–0012 idempotentes appliquées)
+- App : healthy, HTTP 200 sur `/api/health` (latence ~170ms)
+- Crons : tournent toutes les minutes avec HTTP 200
+
 ## [13.0.0] — Marketplace B2B + Webhooks + Notifications (2026-05-16)
 
 > Merge cascade des **20 PRs** (`#1 → #20`) dans master via commit `a1df514`.
