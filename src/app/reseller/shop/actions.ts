@@ -185,7 +185,8 @@ export const getResellerCatalogAction = withAuth(
                 discountPct: totalDiscountPct,
                 stock,
                 deliveryType,
-                loadbrainSlug: r.loadbrainSlug,
+                // loadbrainSlug intentionnellement omis — ne PAS leak au reseller
+                // (utilisé en interne pour calculer deliveryType ci-dessus)
             };
         });
 
@@ -226,7 +227,6 @@ export interface ResellerCatalogItem {
     discountPct: number;
     stock: number;
     deliveryType: "auto" | "stock" | "manual";
-    loadbrainSlug: string | null;
 }
 
 export interface ResellerCatalogPricing {
