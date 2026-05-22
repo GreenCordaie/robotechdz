@@ -7,6 +7,8 @@ import {
     ModalBody,
     Button,
     Input,
+    Select,
+    SelectItem,
 } from "@heroui/react";
 
 interface AppOption {
@@ -129,20 +131,48 @@ export default function IbosolDeviceModal({
                                     <label className="block text-[10px] font-black text-black uppercase tracking-wider">
                                         Application
                                     </label>
-                                    <div className="relative">
-                                        <select
-                                            value={appId}
-                                            onChange={(e) => setAppId(e.target.value)}
-                                            className="w-full h-12 border-2 border-slate-200 bg-white rounded-lg shadow-sm px-3 pr-10 text-sm font-black text-black focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 outline-none appearance-none cursor-pointer transition-colors"
-                                        >
-                                            {appOptions.map((opt) => (
-                                                <option key={opt.id} value={opt.id}>
-                                                    {opt.label}
-                                                </option>
-                                            ))}
-                                        </select>
-                                        <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none !text-lg">expand_more</span>
-                                    </div>
+                                    <Select
+                                        aria-label="Application"
+                                        selectedKeys={[appId]}
+                                        onChange={(e) => e.target.value && setAppId(e.target.value)}
+                                        classNames={{
+                                            trigger: "h-12 border-2 border-slate-200 bg-white data-[hover=true]:bg-white rounded-lg shadow-sm",
+                                            value: "text-sm font-black text-black",
+                                            listbox: "bg-white",
+                                            popoverContent: "bg-white",
+                                        }}
+                                        renderValue={(items) => {
+                                            const selected = items[0];
+                                            if (!selected) return null;
+                                            const opt = appOptions.find((o) => o.id === selected.key);
+                                            if (!opt) return null;
+                                            return (
+                                                <div className="flex items-center gap-2">
+                                                    {opt.icon && opt.icon.startsWith("http") && (
+                                                        // eslint-disable-next-line @next/next/no-img-element
+                                                        <img src={opt.icon} alt="" className="w-6 h-6 rounded object-cover" />
+                                                    )}
+                                                    <span>{opt.label}</span>
+                                                </div>
+                                            );
+                                        }}
+                                    >
+                                        {appOptions.map((opt) => (
+                                            <SelectItem
+                                                key={opt.id}
+                                                textValue={opt.label}
+                                                startContent={
+                                                    opt.icon && opt.icon.startsWith("http") ? (
+                                                        // eslint-disable-next-line @next/next/no-img-element
+                                                        <img src={opt.icon} alt="" className="w-6 h-6 rounded object-cover flex-shrink-0" />
+                                                    ) : null
+                                                }
+                                                className="text-black"
+                                            >
+                                                {opt.label}
+                                            </SelectItem>
+                                        ))}
+                                    </Select>
                                 </div>
 
                                 <div className="flex items-start gap-2.5 p-3.5 bg-cyan-50/50 rounded-xl border border-cyan-100">
