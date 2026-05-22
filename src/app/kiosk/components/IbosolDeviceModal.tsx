@@ -9,7 +9,13 @@ import {
     Input,
 } from "@heroui/react";
 
-const APP_OPTIONS = [
+interface AppOption {
+    id: string;
+    label: string;
+    icon?: string;
+}
+
+const FALLBACK_APP_OPTIONS: AppOption[] = [
     { id: "1", label: "IBO Player" },
     { id: "2", label: "SmartOne" },
     { id: "3", label: "BOB Player" },
@@ -33,12 +39,31 @@ export default function IbosolDeviceModal({
 }: IbosolDeviceModalProps) {
     const [mac, setMac] = useState("");
     const [appId, setAppId] = useState("1");
+    const [appOptions, setAppOptions] = useState<AppOption[]>(FALLBACK_APP_OPTIONS);
 
     useEffect(() => {
         if (isOpen) {
             setMac("");
             setAppId("1");
         }
+    }, [isOpen]);
+
+    useEffect(() => {
+        if (!isOpen) return;
+        fetch("/api/ibosol/apps")
+            .then((r) => r.json())
+            .then((body) => {
+                if (Array.isArray(body?.data) && body.data.length > 0) {
+                    setAppOptions(body.data.map((a: { id: number; name: string; icon?: string }) => ({
+                        id: String(a.id),
+                        label: a.name,
+                        icon: a.icon,
+                    })));
+                }
+            })
+            .catch(() => {
+                // keep fallback
+            });
     }, [isOpen]);
 
     const isValidMac = MAC_REGEX.test(mac.trim());
@@ -110,7 +135,7 @@ export default function IbosolDeviceModal({
                                             onChange={(e) => setAppId(e.target.value)}
                                             className="w-full h-12 border-2 border-slate-200 bg-white rounded-lg shadow-sm px-3 pr-10 text-sm font-black text-black focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 outline-none appearance-none cursor-pointer transition-colors"
                                         >
-                                            {APP_OPTIONS.map((opt) => (
+                                            {appOptions.map((opt) => (
                                                 <option key={opt.id} value={opt.id}>
                                                     {opt.label}
                                                 </option>

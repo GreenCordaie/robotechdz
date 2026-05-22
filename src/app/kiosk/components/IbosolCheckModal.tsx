@@ -3,7 +3,13 @@
 import React, { useEffect, useState } from "react";
 import { Modal, ModalContent, ModalBody, Button, Input } from "@heroui/react";
 
-const APP_OPTIONS = [
+interface AppOption {
+    id: string;
+    label: string;
+    icon?: string;
+}
+
+const FALLBACK_APP_OPTIONS: AppOption[] = [
     { id: "1", label: "IBO Player" },
     { id: "2", label: "SmartOne" },
     { id: "3", label: "BOB Player" },
@@ -22,12 +28,31 @@ interface IbosolCheckModalProps {
 export default function IbosolCheckModal({ isOpen, onClose, onSubmit, theme = "light" }: IbosolCheckModalProps) {
     const [mac, setMac] = useState("");
     const [appId, setAppId] = useState("1");
+    const [appOptions, setAppOptions] = useState<AppOption[]>(FALLBACK_APP_OPTIONS);
 
     useEffect(() => {
         if (isOpen) {
             setMac("");
             setAppId("1");
         }
+    }, [isOpen]);
+
+    useEffect(() => {
+        if (!isOpen) return;
+        fetch("/api/ibosol/apps")
+            .then((r) => r.json())
+            .then((body) => {
+                if (Array.isArray(body?.data) && body.data.length > 0) {
+                    setAppOptions(body.data.map((a: { id: number; name: string; icon?: string }) => ({
+                        id: String(a.id),
+                        label: a.name,
+                        icon: a.icon,
+                    })));
+                }
+            })
+            .catch(() => {
+                // keep fallback
+            });
     }, [isOpen]);
 
     const isValidMac = MAC_REGEX.test(mac.trim());
@@ -94,7 +119,7 @@ export default function IbosolCheckModal({ isOpen, onClose, onSubmit, theme = "l
                                                 : "bg-white border-slate-200 text-black"
                                         }`}
                                     >
-                                        {APP_OPTIONS.map((opt) => (
+                                        {appOptions.map((opt) => (
                                             <option key={opt.id} value={opt.id} className={isDark ? "bg-[#161616] text-white" : ""}>
                                                 {opt.label}
                                             </option>

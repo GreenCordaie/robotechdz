@@ -6,7 +6,13 @@ import { toast } from "react-hot-toast";
 import { manualInjectIptvAction } from "../actions";
 import type { IptvPlan } from "@/app/kiosk/components/IbosolComboModal";
 
-const APP_OPTIONS = [
+interface AppOption {
+    id: string;
+    label: string;
+    icon?: string;
+}
+
+const FALLBACK_APP_OPTIONS: AppOption[] = [
     { id: "1", label: "IBO Player" },
     { id: "2", label: "SmartOne" },
     { id: "3", label: "BOB Player" },
@@ -25,6 +31,7 @@ interface AdminInjectIptvModalProps {
 export default function AdminInjectIptvModal({ isOpen, onClose, iptvPlans, onSuccess }: AdminInjectIptvModalProps) {
     const [mac, setMac] = useState("");
     const [appId, setAppId] = useState("1");
+    const [appOptions, setAppOptions] = useState<AppOption[]>(FALLBACK_APP_OPTIONS);
     const [activeProvider, setActiveProvider] = useState("");
     const [selectedPlanId, setSelectedPlanId] = useState<string>("");
     const [customPrice, setCustomPrice] = useState("");
@@ -42,6 +49,24 @@ export default function AdminInjectIptvModal({ isOpen, onClose, iptvPlans, onSuc
             setActiveProvider(firstProvider);
         }
     }, [isOpen, iptvPlans]);
+
+    useEffect(() => {
+        if (!isOpen) return;
+        fetch("/api/ibosol/apps")
+            .then((r) => r.json())
+            .then((body) => {
+                if (Array.isArray(body?.data) && body.data.length > 0) {
+                    setAppOptions(body.data.map((a: { id: number; name: string; icon?: string }) => ({
+                        id: String(a.id),
+                        label: a.name,
+                        icon: a.icon,
+                    })));
+                }
+            })
+            .catch(() => {
+                // keep fallback
+            });
+    }, [isOpen]);
 
     const providers = Array.from(new Set(iptvPlans.map((p) => p.providerName)));
     const filtered = iptvPlans
@@ -127,7 +152,7 @@ export default function AdminInjectIptvModal({ isOpen, onClose, iptvPlans, onSuc
                                         onChange={(e) => setAppId(e.target.value)}
                                         className="w-full h-12 border-2 border-white/10 bg-zinc-900/40 rounded-lg shadow-sm px-3 pr-10 text-sm font-black text-white focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 outline-none appearance-none cursor-pointer transition-colors"
                                     >
-                                        {APP_OPTIONS.map((opt) => (
+                                        {appOptions.map((opt) => (
                                             <option key={opt.id} value={opt.id} className="bg-[#161616] text-white">
                                                 {opt.label}
                                             </option>

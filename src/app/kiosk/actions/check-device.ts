@@ -1,6 +1,7 @@
 "use server";
 
 import { lbClient, lbConfig, isLoadBrainEnabled } from "@/lib/loadbrain";
+import { getIbosolApps, getIbosolAppName } from "@/lib/ibosol-apps";
 import { z } from "zod";
 
 const inputSchema = z.object({
@@ -20,13 +21,6 @@ export interface CheckDeviceResult {
         playlistInjected: boolean;
     };
 }
-
-const APP_NAMES: Record<number, string> = {
-    1: "IBO Player",
-    2: "SmartOne",
-    3: "BOB Player",
-    4: "IBO Pro",
-};
 
 const POLL_INTERVAL_MS = 1500;
 const POLL_MAX_ATTEMPTS = 20;          // ~30s d'attente max
@@ -112,11 +106,12 @@ export async function checkIbosolDevice(input: { mac: string; appId: number }): 
 
             if (task.status === "completed") {
                 const creds = task.credentials || {};
+                const apps = await getIbosolApps();
                 return {
                     success: true,
                     data: {
                         mac: creds.mac || parsed.data.mac,
-                        appName: APP_NAMES[parsed.data.appId] || "IBO Player",
+                        appName: getIbosolAppName(parsed.data.appId, apps),
                         isActivated: !!creds.isActivated,
                         expiresAt: creds.expiresAt || null,
                         ip: creds.device?.ip || null,

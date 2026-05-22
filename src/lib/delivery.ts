@@ -5,6 +5,7 @@ import { N8nService } from "@/services/n8n.service";
 import { decrypt } from "@/lib/encryption";
 import { sendWhatsAppMessage, sendWhatsAppButtons } from "@/lib/whatsapp";
 import { parseIbosolCustomData } from "@/lib/ibosol-credentials";
+import { getIbosolApps, getIbosolAppName, type IbosolApp } from "@/lib/ibosol-apps";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -15,13 +16,6 @@ function decryptCode(raw: any): string | null {
 }
 
 // ─── Ibosol helpers ──────────────────────────────────────────────────────────
-
-const IBOSOL_APP_NAMES: Record<number, string> = {
-    1: "IBO Player",
-    2: "SmartOne",
-    3: "BOB Player",
-    4: "IBO Pro",
-};
 
 function formatExpiresFr(raw?: string): string {
     if (!raw) return "N/A";
@@ -42,8 +36,8 @@ interface IbosolFormatInput {
     isPartial?: boolean;
 }
 
-function buildIbosolMessage(input: IbosolFormatInput): string {
-    const appName = IBOSOL_APP_NAMES[input.appId ?? 1] ?? "IBO Player";
+function buildIbosolMessage(input: IbosolFormatInput, apps: IbosolApp[]): string {
+    const appName = getIbosolAppName(input.appId ?? 1, apps);
 
     if (input.isPartial) {
         return [
@@ -442,6 +436,9 @@ export async function triggerOrderDelivery(
                 // ── Ibosol delivery (3 templates: activation seule / combo OK / combo partiel) ──
                 const ibosolItems = ((order as any).items || []).filter(isIbosolItem);
 
+                // Pre-fetch IBOSOL apps once (cached 1h) for accurate names on apps 5-19
+                const ibosolApps = ibosolItems.length > 0 ? await getIbosolApps() : [];
+
                 for (const ibo of ibosolItems) {
                     const codes = ibo.codes || [];
                     if (codes.length === 0) continue;
@@ -476,7 +473,7 @@ export async function triggerOrderDelivery(
                         m3uUrl: fields["M3U"],
                         iptvProductName: customData?.combo?.iptvProductName,
                         isPartial,
-                    });
+                    }, ibosolApps);
 
                     await sendWhatsAppMessage(customerPhone, ibosolMsg, {
                         whatsappApiUrl: settings?.whatsappApiUrl ?? undefined,
