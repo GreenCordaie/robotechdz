@@ -14,6 +14,8 @@ import {
     parseIbosolCustomData,
 } from "@/lib/ibosol-credentials";
 
+import { sanitizeProviderError } from "@/lib/sanitize-provider-error";
+
 /**
  * Shape of the LoadBrain task payload — accepted both from the webhook event
  * (POST /api/loadbrain/webhook) and from the polling fallback (GET /api/v1/provision/:taskId).
@@ -84,7 +86,7 @@ export async function processCompletedTask(event: LoadBrainTaskEvent): Promise<v
         console.error(`[LoadBrain] order_item #${targetItem.id} has null variantId — cannot insert credentials`);
         await db.update(iptvProvisions).set({
             status: "failed",
-            error: "order_item.variantId is null",
+            error: sanitizeProviderError("order_item.variantId is null"),
             errorCode: "INVALID_ORDER_ITEM",
         }).where(and(
             eq(iptvProvisions.orderId, order.id),
@@ -120,7 +122,7 @@ export async function processCompletedTask(event: LoadBrainTaskEvent): Promise<v
         console.error(`[LoadBrain] completed event with empty credentials for ${event.orderId}`);
         await db.update(iptvProvisions).set({
             status: "failed",
-            error: "Empty credentials in completed webhook",
+            error: sanitizeProviderError("Empty credentials in completed webhook"),
             errorCode: "EMPTY_CREDENTIALS",
         }).where(and(
             eq(iptvProvisions.orderId, order.id),
@@ -190,7 +192,7 @@ export async function processCompletedTask(event: LoadBrainTaskEvent): Promise<v
 
         await tx.update(iptvProvisions).set({
             status: finalStatus,
-            error: partial ? "IPTV combo not delivered" : null,
+            error: partial ? sanitizeProviderError("IPTV combo not delivered") : null,
             errorCode: partial ? "PARTIAL_IPTV" : null,
             credentialsEncrypted: encrypt(JSON.stringify(event.credentials)),
             completedAt: new Date(),
@@ -353,7 +355,7 @@ export async function processFailedTask(event: LoadBrainTaskEvent): Promise<void
         // Status filter remains as belt-and-suspenders: only queued/processing get demoted.
         await db.update(iptvProvisions).set({
             status: "failed",
-            error: event.error || "Unknown",
+            error: sanitizeProviderError(event.error),
             errorCode: event.errorCode || null,
         }).where(and(
             eq(iptvProvisions.orderId, order.id),

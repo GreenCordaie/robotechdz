@@ -67,7 +67,6 @@ interface OrderDetailItem {
         id: number;
         status: string;
         error: string | null;
-        loadbrainSlug: string;
         credentials: unknown;
         completedAt: Date | string | null;
     }>;
@@ -388,7 +387,7 @@ function IptvProvisionBlock({
     return (
         <div className="bg-[#0a0a0a] border border-white/5 rounded-xl p-3 space-y-2">
             <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-slate-300">{provision.loadbrainSlug}</span>
+                <span className="text-xs font-bold text-slate-300">IPTV</span>
                 {isDone && (
                     <span className="text-[10px] font-black uppercase text-emerald-400 flex items-center gap-1">
                         <CheckCircle2 size={10} />

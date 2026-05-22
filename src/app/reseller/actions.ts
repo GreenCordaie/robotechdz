@@ -170,7 +170,8 @@ export const getResellerOrderDetailAction = withAuth(
                             id: p.id,
                             status: p.status,
                             error: p.error,
-                            loadbrainSlug: p.loadbrainSlug,
+                            // loadbrainSlug intentionally omitted — never leak upstream
+                            // provider identifier (e.g. "atlaspro-12m") to reseller browser.
                             credentials,
                             completedAt: p.completedAt,
                         };
