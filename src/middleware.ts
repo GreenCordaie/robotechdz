@@ -55,6 +55,26 @@ export async function middleware(request: NextRequest) {
         return response;
     }
 
+    // SuperAdmin protection (strict SUPER_ADMIN role required)
+    if (path.startsWith("/superadmin")) {
+        const session = request.cookies.get("session")?.value;
+        if (!session) {
+            const loginUrl = new URL("/admin/login", request.url);
+            loginUrl.searchParams.set("redirect", path);
+            return NextResponse.redirect(loginUrl);
+        }
+        try {
+            const parsed = await decrypt(session);
+            if (parsed.userRole !== UserRole.SUPER_ADMIN) {
+                // Defense-in-depth: layout double-checks via hasRole.
+                return NextResponse.redirect(new URL("/admin/dashboard", request.url));
+            }
+        } catch (err) {
+            return NextResponse.redirect(new URL("/admin/login", request.url));
+        }
+        return response;
+    }
+
     // Admin & Reseller protection
     if (path.startsWith("/admin") || path.startsWith("/reseller")) {
         const session = request.cookies.get("session")?.value;
@@ -104,5 +124,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-    matcher: ["/admin/:path*", "/reseller/:path*"],
+    matcher: ["/admin/:path*", "/reseller/:path*", "/superadmin/:path*"],
 };

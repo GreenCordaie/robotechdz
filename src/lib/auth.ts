@@ -1,6 +1,8 @@
 import { cookies } from "next/headers";
 import { encrypt, decrypt } from "./jwt";
 
+export { hasRole, requireRole, isSuperAdmin } from "./roles";
+
 async function getAuthDeps() {
     const { db } = await import("@/db");
     const { users } = await import("@/db/schema");
