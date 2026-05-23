@@ -287,11 +287,21 @@ export const checkoutResellerAction = withAuth(
         roles: [UserRole.RESELLER],
         schema: z.object({
             resellerId: z.number(),
-            cart: z.array(z.object({
-                id: z.number(), // variantId
-                quantity: z.number().min(1)
-            }))
-        })
+            // Either legacy local variantId checkout (`id`) OR BSV mirror
+            // checkout (`listingId`). Each cart line is one or the other.
+            cart: z.array(
+                z.union([
+                    z.object({
+                        id: z.number(),
+                        quantity: z.number().min(1),
+                    }),
+                    z.object({
+                        listingId: z.string().min(1),
+                        quantity: z.number().min(1),
+                    }),
+                ])
+            ),
+        }),
     },
     async ({ resellerId, cart }, user) => {
         // Enforce ownership: session user must own this reseller account
@@ -302,9 +312,32 @@ export const checkoutResellerAction = withAuth(
 
         if (!reseller) return { success: false, error: "Compte revendeur invalide" };
 
+        // Split cart into legacy local lines and BSV mirror lines.
+        const legacyCart = cart.filter(
+            (c): c is { id: number; quantity: number } => "id" in c
+        );
+        const bsvCart = cart.filter(
+            (c): c is { listingId: string; quantity: number } => "listingId" in c
+        );
+
+        if (bsvCart.length > 0 && legacyCart.length === 0) {
+            return handleBsvCheckout({
+                reseller,
+                userId: user.id,
+                bsvCart,
+            });
+        }
+
+        if (bsvCart.length > 0 && legacyCart.length > 0) {
+            return {
+                success: false,
+                error: "Mixer panier BSV + variants locaux pas supporté",
+            };
+        }
+
         try {
             // HARDENING: Recalculate prices server-side to prevent client-side manipulation
-            const variantIds = cart.map(item => item.id);
+            const variantIds = legacyCart.map(item => item.id);
             const dbVariants = await db.query.productVariants.findMany({
                 where: inArray(productVariants.id, variantIds),
                 with: {
@@ -317,7 +350,7 @@ export const checkoutResellerAction = withAuth(
 
             const variantMap = new Map(dbVariants.map(v => [v.id, v]));
             let grossTotal = 0;
-            const enrichedCart = cart.map(item => {
+            const enrichedCart = legacyCart.map(item => {
                 const variant = variantMap.get(item.id);
                 if (!variant) throw new Error(`Variante ${item.id} introuvable`);
                 // EPIC 1 — Prix reseller : override > salePriceDzd
@@ -434,7 +467,7 @@ export const checkoutResellerAction = withAuth(
                 const v = variantMap.get(item.id);
                 return !!v?.loadbrainSlug;
             });
-            const totalItems = cart.reduce((acc, c) => acc + (c.quantity || 0), 0);
+            const totalItems = legacyCart.reduce((acc, c) => acc + (c.quantity || 0), 0);
             ResellerNotifications.notifyOrderConfirmed({
                 resellerId: reseller.id,
                 companyName: reseller.companyName,
@@ -466,3 +499,174 @@ export const checkoutResellerAction = withAuth(
         }
     }
 );
+
+/* ----------------------------------------------------------------------
+ * BSV mirror checkout (Lot 3)
+ *
+ * MOCK STAGE: pricing via stub, LoadBrain order via mock.
+ * SWAP WHEN AGENTS 1 & 2 MERGE:
+ *   - `@/services/__mocks__/bsv-pricing.service.stub` → `@/services/bsv-pricing.service`
+ *   - `createBsvOrderMock` → `lbV2!.giftcards.orders.create(...)`
+ * --------------------------------------------------------------------- */
+async function handleBsvCheckout({
+    reseller,
+    userId,
+    bsvCart,
+}: {
+    reseller: { id: number; companyName: string; contactPhone: string | null; customDiscount: string | null; wallet: { id: number; balance: string | null } | null };
+    userId: number;
+    bsvCart: Array<{ listingId: string; quantity: number }>;
+}) {
+    try {
+        const { bsvOrders: bsvOrdersTable } = await import("@/db/schema");
+        const { searchBsvListingsMock, createBsvOrderMock } = await import(
+            "@/lib/__mocks__/loadbrain-listings.mock"
+        );
+        const { bsvPricingService } = await import(
+            "@/services/__mocks__/bsv-pricing.service.stub"
+        );
+
+        // Load all listings so we can resolve listingId → priceCentsUsd + product meta
+        const lbResp = await searchBsvListingsMock({ limit: 48, page: 1 });
+        const listingMap = new Map(lbResp.data.items.map((l) => [l.listingId, l]));
+
+        const missing = bsvCart.find((c) => !listingMap.has(c.listingId));
+        if (missing) {
+            return {
+                success: false as const,
+                error: `Annonce ${missing.listingId} introuvable (peut-être expirée)`,
+            };
+        }
+
+        const tier = await TierService.getCurrentTierForReseller(reseller.id);
+        const tierDiscountPct = tier ? parseFloat(tier.discountPct) : 0;
+        const customDiscountPct = reseller.customDiscount
+            ? Math.min(
+                  parseFloat(reseller.customDiscount),
+                  100 - tierDiscountPct
+              )
+            : 0;
+
+        const pricingInputs = bsvCart.map((c) => {
+            const l = listingMap.get(c.listingId)!;
+            return {
+                priceCentsUsd: l.priceCents,
+                category: l.product.category,
+                brand: l.product.brand,
+                sku: l.product.sku,
+            };
+        });
+
+        const prices = await bsvPricingService.computeBulk(pricingInputs, {
+            resellerId: reseller.id,
+            tierDiscountPct,
+            customDiscountPct,
+        });
+
+        const totalAmount = bsvCart.reduce(
+            (acc, c, i) => acc + prices[i].finalPriceDzd * c.quantity,
+            0
+        );
+
+        const orderNumber = `BSV-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+
+        const res = await db.transaction(async (tx) => {
+            const lockedReseller = await tx.query.resellers.findFirst({
+                where: and(eq(resellers.id, reseller.id), eq(resellers.userId, userId)),
+                with: { wallet: true },
+            });
+            if (!lockedReseller || !lockedReseller.wallet) {
+                throw new Error("Portefeuille introuvable");
+            }
+            const currentBalance = parseFloat(lockedReseller.wallet.balance || "0");
+            if (currentBalance < totalAmount) {
+                throw new Error("Solde insuffisant");
+            }
+
+            // 1. Insert local order (status PAYE — wallet debited, but BSV
+            //    fulfilment is async → bsv_orders.status = PENDING_LOADBRAIN).
+            const [newOrder] = await tx.insert(orders).values({
+                orderNumber,
+                status: "PAYE",
+                totalAmount: totalAmount.toFixed(2),
+                montantPaye: totalAmount.toFixed(2),
+                resteAPayer: "0",
+                resellerId: reseller.id,
+                source: "B2B_WEB",
+                deliveryMethod: "TICKET",
+            }).returning();
+
+            // 2. Debit wallet atomically
+            await tx
+                .update(resellerWallets)
+                .set({
+                    balance: sql`${resellerWallets.balance} - ${totalAmount}`,
+                    totalSpent: sql`${resellerWallets.totalSpent} + ${totalAmount}`,
+                    updatedAt: new Date(),
+                })
+                .where(eq(resellerWallets.id, lockedReseller.wallet.id));
+
+            await tx.insert(resellerTransactions).values({
+                walletId: lockedReseller.wallet.id,
+                type: "PURCHASE",
+                amount: totalAmount.toString(),
+                orderId: newOrder.id,
+                description: `Achat BSV - ${orderNumber}`,
+            });
+
+            // 3. For each BSV cart line:
+            //    a. POST to LoadBrain (mocked) → get lbOrderId
+            //    b. Insert bsv_orders row tying local order + LB order + listing
+            for (let i = 0; i < bsvCart.length; i++) {
+                const c = bsvCart[i];
+                const price = prices[i];
+                const externalOrderId = `${orderNumber}-${i}`;
+
+                // ⇣⇣⇣ SWAP THIS CALL WHEN AGENT 1 MERGES ⇣⇣⇣
+                const lbCreate = await createBsvOrderMock({
+                    listingId: c.listingId,
+                    quantity: c.quantity,
+                    externalOrderId,
+                });
+
+                await tx.insert(bsvOrdersTable).values({
+                    localOrderId: newOrder.id,
+                    resellerId: reseller.id,
+                    listingId: c.listingId,
+                    quantity: c.quantity,
+                    pricePaidDzd: (
+                        price.finalPriceDzd * c.quantity
+                    ).toFixed(2),
+                    lbOrderId: lbCreate.data.lbOrderId,
+                    status: "PENDING_LOADBRAIN",
+                });
+            }
+
+            return { id: newOrder.id, orderNumber };
+        });
+
+        // Notification (non-blocking)
+        ResellerNotifications.notifyOrderConfirmed({
+            resellerId: reseller.id,
+            companyName: reseller.companyName,
+            contactPhone: reseller.contactPhone,
+            orderNumber: res.orderNumber,
+            totalAmount,
+            itemCount: bsvCart.reduce((a, c) => a + c.quantity, 0),
+            hasInstantDelivery: true,
+        }).catch((err) => {
+            console.warn("[bsv-checkout] notify failed (non-bloquant):", err);
+        });
+
+        revalidatePath("/reseller/orders");
+
+        return { success: true as const, orderNumber: res.orderNumber };
+    } catch (error) {
+        console.error("BSV checkout error:", error);
+        const msg =
+            error instanceof Error
+                ? error.message
+                : "Erreur traitement commande BSV";
+        return { success: false as const, error: msg };
+    }
+}
