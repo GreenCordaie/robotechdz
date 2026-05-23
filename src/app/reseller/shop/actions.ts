@@ -238,20 +238,17 @@ export interface ResellerCatalogPricing {
 }
 
 /* ----------------------------------------------------------------------
- * BSV Mirror Shop catalog action (Lot 3)
+ * BSV Mirror Shop catalog action (Lot 3) — production wiring
  *
- * MOCK STAGE:
- *   - LoadBrain SDK v2 `giftcards.listings.search()` is mocked via
- *     `@/lib/__mocks__/loadbrain-listings.mock`.
- *   - `bsv-pricing.service` is stubbed via
- *     `@/services/__mocks__/bsv-pricing.service.stub` (+15% markup, 270 DZD/USD).
+ * Wired against:
+ *   - LoadBrain SDK v2 listings.search() — see @/lib/loadbrain-v2.ts
+ *   - bsvPricingService — see @/services/bsv-pricing.service.ts
  *
- * SWAP WHEN AGENTS 1 & 2 MERGE:
- *   - Replace `searchBsvListingsMock` call with `lbV2!.giftcards.listings.search(...)`.
- *   - Replace import of `bsv-pricing.service.stub` with `bsv-pricing.service`.
+ * (The historical __mocks__ stubs remain in the repo for local dev when
+ * LoadBrain is unreachable. Swap back if needed.)
  * --------------------------------------------------------------------- */
-import { searchBsvListingsMock } from "@/lib/__mocks__/loadbrain-listings.mock";
-import { bsvPricingService } from "@/services/__mocks__/bsv-pricing.service.stub";
+import { lbV2 } from "@/lib/loadbrain-v2";
+import { bsvPricingService } from "@/services/bsv-pricing.service";
 import type {
     EnrichedBsvListing,
     BsvListingPricingInput,
@@ -313,24 +310,33 @@ export const getBsvCatalogAction = withAuth(
                   ? "newest"
                   : "score";
 
-        // ⇣⇣⇣ SWAP THIS CALL WHEN AGENT 1 MERGES ⇣⇣⇣
-        const lbResp = await searchBsvListingsMock({
-            q: params.q,
-            brand: params.brand,
-            category: params.category,
-            region: params.region,
-            deliveryType: params.deliveryType,
-            priceMinUsd,
-            priceMaxUsd,
-            sortBy: sdkSort,
-            page: params.page,
-            limit: params.limit,
-        });
-
-        if (!lbResp.success) {
+        // Real LoadBrain SDK v2 call (Agent 1 merged). The SDK throws on
+        // error and returns the unwrapped data directly — wrap to keep the
+        // callsite's success/error contract for the React layer.
+        if (!lbV2) {
             return {
                 success: false as const,
-                error: lbResp.error ?? "Erreur LoadBrain",
+                error: "LoadBrain non configuré (LOADBRAIN_API_KEY manquant)",
+            };
+        }
+        let lbResp: Awaited<ReturnType<typeof lbV2.giftcards.listings.search>>;
+        try {
+            lbResp = await lbV2.giftcards.listings.search({
+                q: params.q,
+                brand: params.brand,
+                category: params.category,
+                region: params.region,
+                deliveryType: params.deliveryType,
+                priceMinUsd,
+                priceMaxUsd,
+                sortBy: sdkSort,
+                page: params.page,
+                limit: params.limit,
+            });
+        } catch (err) {
+            return {
+                success: false as const,
+                error: `LoadBrain catalogue: ${(err as Error).message}`,
             };
         }
 
@@ -340,7 +346,7 @@ export const getBsvCatalogAction = withAuth(
             customDiscountPct,
         };
 
-        const pricingInputs: BsvListingPricingInput[] = lbResp.data.items.map(
+        const pricingInputs: BsvListingPricingInput[] = lbResp.items.map(
             (l) => ({
                 priceCentsUsd: l.priceCents,
                 category: l.product.category,
@@ -349,7 +355,27 @@ export const getBsvCatalogAction = withAuth(
             })
         );
 
-        const prices = await bsvPricingService.computeBulk(pricingInputs, ctx);
+        const servicePrices = await bsvPricingService.computeBulk(pricingInputs, ctx);
+
+        // Adapter: the real service returns { costDzd, basePriceDzd, finalPriceDzd, ... },
+        // the UI consumes { listPriceDzd, finalPriceDzd, discountPct, conversionRate }.
+        // We bridge the two so the UI doesn't need to know about the service shape.
+        const totalDiscountPct = tierDiscountPct + customDiscountPct;
+        // Adapter tolerant of both shapes:
+        //   Real Agent 2 service: { basePriceDzd, finalPriceDzd, conversionRate, ... }
+        //   Legacy stub:          { listPriceDzd, finalPriceDzd, conversionRate, discountPct, markupPct, basePriceCentsUsd }
+        // Tests still use the stub via vi.mock; prod uses the real service.
+        const prices = servicePrices.map((p) => {
+            const x = p as unknown as Record<string, number>;
+            return {
+                basePriceCentsUsd: x.basePriceCentsUsd ?? 0,
+                markupPct: x.markupPct ?? 0,
+                listPriceDzd: x.listPriceDzd ?? x.basePriceDzd ?? 0,
+                finalPriceDzd: x.finalPriceDzd ?? 0,
+                discountPct: x.discountPct ?? totalDiscountPct,
+                conversionRate: x.conversionRate ?? 0,
+            };
+        });
 
         const RANKS = [
             "L1",
@@ -363,7 +389,7 @@ export const getBsvCatalogAction = withAuth(
             "L9",
         ];
 
-        let enriched: EnrichedBsvListing[] = lbResp.data.items.map((l, i) => ({
+        let enriched: EnrichedBsvListing[] = lbResp.items.map((l, i) => ({
             ...l,
             pricing: prices[i],
         }));
@@ -390,7 +416,7 @@ export const getBsvCatalogAction = withAuth(
             success: true as const,
             data: {
                 items: enriched,
-                pagination: lbResp.data.pagination,
+                pagination: lbResp.pagination,
                 pricing: {
                     tierName: tier?.name ?? null,
                     tierColor: tier?.color ?? null,

@@ -11,6 +11,39 @@ vi.mock("server-only", () => ({}));
 
 process.env.ENCRYPTION_KEY ||= "test_encryption_key_32_bytes_xxxxxxxxxx";
 
+// Post-merge wiring: the action imports the real LoadBrain SDK + pricing service.
+// Tests want deterministic data → mock both at the module boundary so the action's
+// flow logic (sort, filter, enrich) is what's actually under test.
+vi.mock("@/lib/loadbrain-v2", async () => {
+    const mod = await import("@/lib/__mocks__/loadbrain-listings.mock");
+    return {
+        lbV2: {
+            giftcards: {
+                listings: {
+                    search: async (params: unknown) => {
+                        const r = await mod.searchBsvListingsMock(
+                            params as Parameters<typeof mod.searchBsvListingsMock>[0],
+                        );
+                        // Real SDK returns the unwrapped data envelope; the mock
+                        // returns { success, data }, so peel one layer.
+                        return r.data;
+                    },
+                    get: async () => ({}),
+                },
+                orders: {
+                    create: async () => ({ id: "lb_test", status: "queued" }),
+                },
+            },
+        },
+    };
+});
+
+vi.mock("@/services/bsv-pricing.service", async () => {
+    // Re-export the stub under the real-service path so the action sees the
+    // same singleton + types it expects.
+    return await import("@/services/__mocks__/bsv-pricing.service.stub");
+});
+
 vi.mock("@/lib/security", () => ({
     withAuth: (_cfg: unknown, action: (input: unknown, user: unknown) => unknown) =>
         (input: unknown) =>

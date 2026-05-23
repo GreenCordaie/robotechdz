@@ -54,9 +54,9 @@ export function BsvListingCard({
                 <div className="flex items-center justify-between px-4 pt-4">
                     <div className="flex gap-1.5 flex-wrap">
                         <DeliveryBadge type={deliveryType} />
-                        {stockQty > 0 ? (
+                        {(stockQty ?? 0) > 0 ? (
                             <span className="px-2 py-1 rounded-md bg-emerald-500/15 text-[9px] font-black text-emerald-400 uppercase border border-emerald-500/25 flex items-center gap-1">
-                                <Package size={10} /> {stockQty}
+                                <Package size={10} /> {stockQty ?? 0}
                             </span>
                         ) : (
                             <span className="px-2 py-1 rounded-md bg-red-500/15 text-[9px] font-black text-red-400 uppercase border border-red-500/25">
@@ -74,7 +74,7 @@ export function BsvListingCard({
                     </h4>
                     <p
                         className="text-[10px] text-slate-500 font-medium mt-1 line-clamp-2"
-                        title={rawTitle}
+                        title={rawTitle ?? undefined}
                     >
                         {rawTitle}
                     </p>
@@ -124,7 +124,7 @@ export function BsvListingCard({
                     <Button
                         data-testid="bsv-add-to-cart"
                         onPress={onAddToCart}
-                        isDisabled={stockQty <= 0}
+                        isDisabled={(stockQty ?? 0) <= 0}
                         size="sm"
                         className={`font-black uppercase text-[10px] tracking-wider rounded-xl px-3 h-9 ${
                             isInCart

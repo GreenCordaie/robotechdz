@@ -519,16 +519,40 @@ async function handleBsvCheckout({
 }) {
     try {
         const { bsvOrders: bsvOrdersTable } = await import("@/db/schema");
-        const { searchBsvListingsMock, createBsvOrderMock } = await import(
-            "@/lib/__mocks__/loadbrain-listings.mock"
-        );
+        const { lbV2 } = await import("@/lib/loadbrain-v2");
         const { bsvPricingService } = await import(
-            "@/services/__mocks__/bsv-pricing.service.stub"
+            "@/services/bsv-pricing.service"
         );
 
-        // Load all listings so we can resolve listingId → priceCentsUsd + product meta
-        const lbResp = await searchBsvListingsMock({ limit: 48, page: 1 });
-        const listingMap = new Map(lbResp.data.items.map((l) => [l.listingId, l]));
+        if (!lbV2) {
+            return {
+                success: false as const,
+                error: "LoadBrain non configuré (LOADBRAIN_API_KEY manquant)",
+            };
+        }
+
+        // Resolve every cart listingId via the LoadBrain SDK. SDK throws
+        // on per-call failure → catch and bubble a friendly error.
+        type Detail = Awaited<ReturnType<typeof lbV2.giftcards.listings.get>>;
+        const fetched: Array<Detail | null> = await Promise.all(
+            bsvCart.map(async (c) => {
+                try {
+                    return await lbV2.giftcards.listings.get(c.listingId);
+                } catch {
+                    return null;
+                }
+            }),
+        );
+        const failedIdx = fetched.findIndex((r) => r === null);
+        if (failedIdx >= 0) {
+            return {
+                success: false as const,
+                error: `Annonce ${bsvCart[failedIdx].listingId} introuvable (peut-être expirée)`,
+            };
+        }
+        const listingMap = new Map(
+            fetched.map((r, i) => [bsvCart[i].listingId, r as Detail]),
+        );
 
         const missing = bsvCart.find((c) => !listingMap.has(c.listingId));
         if (missing) {
@@ -622,12 +646,13 @@ async function handleBsvCheckout({
                 const price = prices[i];
                 const externalOrderId = `${orderNumber}-${i}`;
 
-                // ⇣⇣⇣ SWAP THIS CALL WHEN AGENT 1 MERGES ⇣⇣⇣
-                const lbCreate = await createBsvOrderMock({
+                // Real LoadBrain SDK v2 order create (Agent 1 merged). SDK
+                // returns data directly + throws on error.
+                const lbCreate = await lbV2.giftcards.orders.create({
                     listingId: c.listingId,
                     quantity: c.quantity,
                     externalOrderId,
-                });
+                } as Parameters<typeof lbV2.giftcards.orders.create>[0]);
 
                 await tx.insert(bsvOrdersTable).values({
                     localOrderId: newOrder.id,
@@ -637,7 +662,11 @@ async function handleBsvCheckout({
                     pricePaidDzd: (
                         price.finalPriceDzd * c.quantity
                     ).toFixed(2),
-                    lbOrderId: lbCreate.data.lbOrderId,
+                    // Real SDK uses `.id`; mock used `.orderId`. Accept both.
+                    lbOrderId:
+                        (lbCreate as { id?: string; orderId?: string }).id ??
+                        (lbCreate as { id?: string; orderId?: string }).orderId ??
+                        null,
                     status: "PENDING_LOADBRAIN",
                 });
             }

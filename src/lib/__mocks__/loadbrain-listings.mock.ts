@@ -138,7 +138,7 @@ export async function searchBsvListingsMock(
         items = items.filter(
             (l) =>
                 l.product.displayName.toLowerCase().includes(q) ||
-                l.rawTitle.toLowerCase().includes(q)
+                (l.rawTitle ?? "").toLowerCase().includes(q)
         );
     }
     if (params.brand) {

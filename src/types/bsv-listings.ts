@@ -31,7 +31,9 @@ export interface BsvListingProduct {
 
 export interface BsvListingSeller {
     slug: string;
-    rank: BsvSellerRank | null;
+    /** Stable when from BSV (L1..L9 or named tier). Accept any string from the
+     * SDK to absorb new ranks added upstream without a code change. */
+    rank: BsvSellerRank | string | null;
     positiveReviews: number;
     negativeReviews: number;
 }
@@ -39,16 +41,17 @@ export interface BsvListingSeller {
 export interface BsvListing {
     listingId: string;
     upstreamKey: string;
-    encodedId: string;
+    encodedId: string | null;
     product: BsvListingProduct;
     seller: BsvListingSeller;
     priceCents: number;
-    currency: "USD";
+    /** Always "USD" today, but typed widely so SDK literal differences don't break compile. */
+    currency: string;
     deliveryType: BsvDeliveryType;
     isApi: boolean;
-    stockQty: number;
+    stockQty: number | null;
     score: number;
-    rawTitle: string;
+    rawTitle: string | null;
 }
 
 export interface BsvListingsPagination {
