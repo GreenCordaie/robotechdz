@@ -788,3 +788,27 @@ export const apiLogsRelations = relations(apiLogs, ({ one }) => ({
         references: [partnerApiKeys.id],
     }),
 }));
+
+// ---------------------------------------------------------------------------
+// BSV Mirror Shop — pricing rules for listings sourced from LoadBrain/BSV
+// ---------------------------------------------------------------------------
+// Scope precedence at resolution time (most-specific wins):
+//   sku > brand > category > global
+// markup_type 'pct' stores basis points (1500 = 15%).
+// markup_type 'fixed_dzd' stores absolute DZD added on top of the cost.
+export const bsvPricingRules = pgTable("bsv_pricing_rules", {
+    id: serial("id").primaryKey(),
+    scopeType: text("scope_type").notNull(), // 'global' | 'category' | 'brand' | 'sku'
+    scopeValue: text("scope_value").notNull(), // '*' for global, ex: 'gaming' | 'free-fire' | 'free-fire__110DIAMONDS__GLOBAL'
+    markupType: text("markup_type").notNull(), // 'pct' | 'fixed_dzd'
+    markupValue: numeric("markup_value", { precision: 12, scale: 2 }).notNull(),
+    notes: text("notes"),
+    isActive: boolean("is_active").notNull().default(true),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow(),
+}, (table) => {
+    return {
+        scopeLookupIdx: index("bsv_pricing_rules_scope_lookup").on(table.scopeType, table.scopeValue),
+    };
+});
+
