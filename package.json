@@ -20,6 +20,7 @@
     "@heroui/react": "2.8.10",
     "@heroui/theme": "2.4.26",
     "@loadbrain/sdk": "file:../LoadBrain/dist-packages/loadbrain-sdk-3.2.0.tgz",
+    "@loadbrain/sdk-v2": "file:../LoadBrain/packages/sdk-v2",
     "@loadbrain/site-integration": "file:../LoadBrain/dist-packages/loadbrain-site-integration-3.2.0-fixed.tgz",
     "@upstash/redis": "^1.37.0",
     "bcryptjs": "^3.0.3",
