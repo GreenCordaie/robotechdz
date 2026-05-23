@@ -812,3 +812,74 @@ export const bsvPricingRules = pgTable("bsv_pricing_rules", {
     };
 });
 
+/* ----------------------------------------------------------------------
+ * BSV Mirror Shop (Lot 3) — additive tables, no FK changes to existing ones
+ * --------------------------------------------------------------------- */
+
+export const bsvOrderStatusEnum = pgEnum("bsv_order_status", [
+    "PENDING_LOADBRAIN",
+    "COMPLETED",
+    "FAILED",
+    "REFUNDED",
+]);
+
+/**
+ * Mirror-order: one row per reseller checkout of a BSV listing.
+ * Linked to the local `orders` row (which handles the wallet debit) via
+ * `localOrderId`, and to the LoadBrain order via `lbOrderId`.
+ */
+export const bsvOrders = pgTable("bsv_orders", {
+    id: serial("id").primaryKey(),
+    localOrderId: integer("local_order_id")
+        .references(() => orders.id, { onDelete: "cascade" })
+        .notNull(),
+    resellerId: integer("reseller_id")
+        .references(() => resellers.id, { onDelete: "cascade" })
+        .notNull(),
+    listingId: text("listing_id").notNull(),
+    quantity: integer("quantity").notNull(),
+    pricePaidDzd: numeric("price_paid_dzd", { precision: 12, scale: 2 }).notNull(),
+    lbOrderId: text("lb_order_id"),
+    status: bsvOrderStatusEnum("status").default("PENDING_LOADBRAIN").notNull(),
+    /** Forensic snapshot from LoadBrain: seller, exact price, BSV tx, etc. */
+    wonSnapshot: jsonb("won_snapshot").$type<unknown>(),
+    completedAt: timestamp("completed_at", { mode: "date" }),
+    createdAt: timestamp("created_at", { mode: "date" }).defaultNow(),
+}, (table) => ({
+    localOrderIdx: index("bsv_orders_local_order_idx").on(table.localOrderId),
+    lbOrderIdx: index("bsv_orders_lb_order_idx").on(table.lbOrderId),
+    resellerIdx: index("bsv_orders_reseller_idx").on(table.resellerId),
+}));
+
+export const bsvDeliveredCodes = pgTable("bsv_delivered_codes", {
+    id: serial("id").primaryKey(),
+    bsvOrderId: integer("bsv_order_id")
+        .references(() => bsvOrders.id, { onDelete: "cascade" })
+        .notNull(),
+    /** Encrypted code (use lib/encryption.ts). */
+    code: text("code").notNull(),
+    redemptionUrl: text("redemption_url"),
+    pin: text("pin"),
+    createdAt: timestamp("created_at", { mode: "date" }).defaultNow(),
+}, (table) => ({
+    bsvOrderIdx: index("bsv_delivered_codes_bsv_order_idx").on(table.bsvOrderId),
+}));
+
+export const bsvOrdersRelations = relations(bsvOrders, ({ one, many }) => ({
+    localOrder: one(orders, {
+        fields: [bsvOrders.localOrderId],
+        references: [orders.id],
+    }),
+    reseller: one(resellers, {
+        fields: [bsvOrders.resellerId],
+        references: [resellers.id],
+    }),
+    codes: many(bsvDeliveredCodes),
+}));
+
+export const bsvDeliveredCodesRelations = relations(bsvDeliveredCodes, ({ one }) => ({
+    bsvOrder: one(bsvOrders, {
+        fields: [bsvDeliveredCodes.bsvOrderId],
+        references: [bsvOrders.id],
+    }),
+}));

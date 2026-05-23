@@ -236,3 +236,177 @@ export interface ResellerCatalogPricing {
     customDiscountPct: number;
     totalDiscountPct: number;
 }
+
+/* ----------------------------------------------------------------------
+ * BSV Mirror Shop catalog action (Lot 3)
+ *
+ * MOCK STAGE:
+ *   - LoadBrain SDK v2 `giftcards.listings.search()` is mocked via
+ *     `@/lib/__mocks__/loadbrain-listings.mock`.
+ *   - `bsv-pricing.service` is stubbed via
+ *     `@/services/__mocks__/bsv-pricing.service.stub` (+15% markup, 270 DZD/USD).
+ *
+ * SWAP WHEN AGENTS 1 & 2 MERGE:
+ *   - Replace `searchBsvListingsMock` call with `lbV2!.giftcards.listings.search(...)`.
+ *   - Replace import of `bsv-pricing.service.stub` with `bsv-pricing.service`.
+ * --------------------------------------------------------------------- */
+import { searchBsvListingsMock } from "@/lib/__mocks__/loadbrain-listings.mock";
+import { bsvPricingService } from "@/services/__mocks__/bsv-pricing.service.stub";
+import type {
+    EnrichedBsvListing,
+    BsvListingPricingInput,
+    ResellerPricingContext,
+} from "@/types/bsv-listings";
+
+export const getBsvCatalogAction = withAuth(
+    {
+        roles: [UserRole.RESELLER],
+        schema: z.object({
+            q: z.string().optional(),
+            brand: z.string().optional(),
+            category: z.string().optional(),
+            region: z.string().optional(),
+            deliveryType: z.enum(["auto", "manual", "all"]).default("all"),
+            sellerRankMin: z.enum(["all", "L4", "L7", "L9"]).default("all"),
+            priceMinDzd: z.number().optional(),
+            priceMaxDzd: z.number().optional(),
+            sortBy: z
+                .enum(["score", "price_asc", "price_desc", "newest"])
+                .default("score"),
+            page: z.number().int().min(1).default(1),
+            limit: z.number().int().min(1).max(48).default(24),
+        }),
+    },
+    async (params, user) => {
+        const reseller = await db.query.resellers.findFirst({
+            where: eq(resellers.userId, user.id),
+        });
+        if (!reseller) {
+            return { success: false as const, error: "Compte revendeur introuvable" };
+        }
+
+        const tier = await TierService.getCurrentTierForReseller(reseller.id);
+        const tierDiscountPct = tier ? parseFloat(tier.discountPct) : 0;
+        const customDiscountPct = reseller.customDiscount
+            ? Math.min(
+                  parseFloat(reseller.customDiscount),
+                  100 - tierDiscountPct
+              )
+            : 0;
+
+        // Convert DZD price filters → USD using the SAME rate as the pricing
+        // service, so the round-trip is consistent.
+        const rate = await bsvPricingService.getUsdToDzdRate();
+        const priceMinUsd =
+            typeof params.priceMinDzd === "number"
+                ? params.priceMinDzd / rate
+                : undefined;
+        const priceMaxUsd =
+            typeof params.priceMaxDzd === "number"
+                ? params.priceMaxDzd / rate
+                : undefined;
+
+        const sdkSort: "price" | "score" | "newest" =
+            params.sortBy === "price_asc" || params.sortBy === "price_desc"
+                ? "price"
+                : params.sortBy === "newest"
+                  ? "newest"
+                  : "score";
+
+        // ⇣⇣⇣ SWAP THIS CALL WHEN AGENT 1 MERGES ⇣⇣⇣
+        const lbResp = await searchBsvListingsMock({
+            q: params.q,
+            brand: params.brand,
+            category: params.category,
+            region: params.region,
+            deliveryType: params.deliveryType,
+            priceMinUsd,
+            priceMaxUsd,
+            sortBy: sdkSort,
+            page: params.page,
+            limit: params.limit,
+        });
+
+        if (!lbResp.success) {
+            return {
+                success: false as const,
+                error: lbResp.error ?? "Erreur LoadBrain",
+            };
+        }
+
+        const ctx: ResellerPricingContext = {
+            resellerId: reseller.id,
+            tierDiscountPct,
+            customDiscountPct,
+        };
+
+        const pricingInputs: BsvListingPricingInput[] = lbResp.data.items.map(
+            (l) => ({
+                priceCentsUsd: l.priceCents,
+                category: l.product.category,
+                brand: l.product.brand,
+                sku: l.product.sku,
+            })
+        );
+
+        const prices = await bsvPricingService.computeBulk(pricingInputs, ctx);
+
+        const RANKS = [
+            "L1",
+            "L2",
+            "L3",
+            "L4",
+            "L5",
+            "L6",
+            "L7",
+            "L8",
+            "L9",
+        ];
+
+        let enriched: EnrichedBsvListing[] = lbResp.data.items.map((l, i) => ({
+            ...l,
+            pricing: prices[i],
+        }));
+
+        if (params.sellerRankMin !== "all") {
+            const minIdx = RANKS.indexOf(params.sellerRankMin);
+            enriched = enriched.filter((l) => {
+                const lIdx = RANKS.indexOf(l.seller.rank ?? "L1");
+                return lIdx >= minIdx;
+            });
+        }
+
+        if (params.sortBy === "price_asc") {
+            enriched.sort(
+                (a, b) => a.pricing.finalPriceDzd - b.pricing.finalPriceDzd
+            );
+        } else if (params.sortBy === "price_desc") {
+            enriched.sort(
+                (a, b) => b.pricing.finalPriceDzd - a.pricing.finalPriceDzd
+            );
+        }
+
+        return {
+            success: true as const,
+            data: {
+                items: enriched,
+                pagination: lbResp.data.pagination,
+                pricing: {
+                    tierName: tier?.name ?? null,
+                    tierColor: tier?.color ?? null,
+                    tierDiscountPct,
+                    customDiscountPct,
+                    conversionRate: rate,
+                },
+            },
+        };
+    }
+);
+
+export interface BsvCatalogPricingMeta {
+    tierName: string | null;
+    tierColor: string | null;
+    tierDiscountPct: number;
+    customDiscountPct: number;
+    conversionRate: number;
+}

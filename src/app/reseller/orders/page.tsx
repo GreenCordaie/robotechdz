@@ -33,6 +33,7 @@ import {
     getResellerOrderDetailAction,
     sendCredentialsToClientAction,
 } from "../actions";
+import { BsvOrdersSection } from "./components/BsvOrdersSection";
 import { formatCurrency, formatDate } from "@/lib/formatters";
 import { toast } from "react-hot-toast";
 
@@ -118,6 +119,7 @@ export default function ResellerOrders() {
 
     return (
         <div className="space-y-8 animate-in fade-in duration-500 pb-20">
+            <BsvOrdersSection />
             <header className="flex flex-col md:flex-row md:items-center justify-between gap-6">
                 <div>
                     <h1 className="text-3xl font-black text-white tracking-tight flex items-center gap-3">
