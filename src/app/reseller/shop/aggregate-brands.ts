@@ -52,7 +52,7 @@ async function countG2BulkByBrand(): Promise<Map<string, number>> {
         });
         if (!res?.success) break;
         res.data.items.forEach((p) => {
-            const slug = toBrandSlug(deriveG2BulkBrand(p.title));
+            const slug = toBrandSlug(deriveG2BulkBrand(p));
             counts.set(slug, (counts.get(slug) ?? 0) + 1);
         });
         if (page >= res.data.pagination.totalPages) break;

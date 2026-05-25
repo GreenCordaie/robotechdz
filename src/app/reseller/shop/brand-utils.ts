@@ -101,7 +101,31 @@ export function artworkFor(slug: string): string {
  * landing can group products before they get passed through the pricing
  * service. Returns a slug-shaped label (with hyphens) to match BSV.
  */
-export function deriveG2BulkBrand(title: string): string {
+/**
+ * Best-effort brand classification for a G2Bulk product.
+ *
+ * Accepts either a raw title string (legacy callsites) or a full product
+ * shape exposing `categoryTitle`. When `categoryTitle` is available it wins
+ * over the title heuristics — G2Bulk titles often look like
+ * "1 USD Diamond(100+10)" with no game name; the category title carries the
+ * truth ("Garena Free Fire Vouchers(Official)").
+ */
+export function deriveG2BulkBrand(
+    input: string | { title: string; categoryTitle?: string | null },
+): string {
+    const title = typeof input === "string" ? input : input.title;
+    const categoryTitle =
+        typeof input === "string" ? null : (input.categoryTitle ?? null);
+    // Strong signal: category title from G2Bulk (operator-facing label)
+    const ct = (categoryTitle ?? "").toLowerCase();
+    if (ct.includes("free fire") || ct.includes("garena free fire")) return "free-fire";
+    if (ct.includes("mobile legends")) return "mobile-legends";
+    if (ct.includes("pubg")) return "pubg-mobile";
+    if (ct.includes("call of duty") || ct.includes("cod mobile")) return "call-of-duty";
+    if (ct.includes("clash of clans")) return "clash-of-clans";
+    if (ct.includes("clash royale")) return "clash-royale";
+    if (ct.includes("fortnite")) return "fortnite";
+
     const t = title.toLowerCase();
     // ── In-game currency proxies (G2Bulk titles often omit the game name) ───
     // "UC Voucher" / "UC " = PUBG Mobile currency. Word-boundary check on " uc"

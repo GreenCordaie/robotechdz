@@ -112,12 +112,17 @@ function extractRegion(title: string, fallback?: string): string {
  * ────────────────────────────────────────────────────────────────────────── */
 
 function bsvToDenomination(l: EnrichedBsvListing): Denomination {
+    // BSV exposes the real seller stock via `stockQty`. Treat `null` as
+    // "unknown but in stock" (BSV doesn't always reveal exact qty) — fall
+    // back to 1 so the row stays selectable; the actual purchase guard is
+    // the BSV won-snapshot at checkout.
+    const stock = l.stockQty ?? 1;
     return {
         key: `bsv:${l.listingId}`,
         source: "bsv",
         title: l.product.displayName,
         region: extractRegion(l.product.displayName, l.product.region ?? undefined),
-        stock: 1,
+        stock,
         priceDzd: l.pricing.finalPriceDzd,
         priceUsd: null,
         listPriceDzd: l.pricing.listPriceDzd,
@@ -204,7 +209,7 @@ export default function ResellerBrandPage() {
                 const g2bRaw =
                     g2bRes?.success
                         ? (g2bRes.data.items as G2BulkCatalogProduct[]).filter(
-                              (p) => toBrandSlug(deriveG2BulkBrand(p.title)) === slug
+                              (p) => toBrandSlug(deriveG2BulkBrand(p)) === slug
                           )
                         : [];
                 const g2b: Denomination[] = g2bRaw.map(g2bToDenomination);
@@ -434,9 +439,22 @@ const DenominationRow: React.FC<{
                     {selected && <Check size={14} className="text-black" />}
                 </span>
 
-                <span className="flex-1 min-w-0 truncate text-sm font-semibold text-white">
-                    {item.title}
-                </span>
+                <div className="flex-1 min-w-0">
+                    <p className="truncate text-sm font-semibold text-white">
+                        {item.title}
+                    </p>
+                    <p className="truncate text-[10px] text-slate-500 font-medium mt-0.5">
+                        <span
+                            className={`uppercase font-black tracking-widest mr-1.5 ${
+                                item.source === "bsv" ? "text-orange-400" : "text-cyan-400"
+                            }`}
+                        >
+                            {item.source === "bsv" ? "BSV" : "G2Bulk"}
+                        </span>
+                        · vendeur {item.seller}
+                        {item.region && item.region !== "—" && ` · ${item.region}`}
+                    </p>
+                </div>
 
                 <span
                     className={`shrink-0 text-[10px] font-black uppercase tracking-widest ${

@@ -37,6 +37,8 @@ export interface EnrichedG2BulkProduct {
     productId: number;
     providerId: string;
     categoryId: number | null;
+    /** G2Bulk's human label for the category (e.g. "Garena Free Fire Vouchers"). */
+    categoryTitle: string | null;
     title: string;
     description: string | null;
     imageUrl: string | null;
@@ -100,6 +102,11 @@ type ProviderProduct = {
     unitPriceCents: number;
     currency: string;
     stock: number;
+    /** Upstream raw payload (Kinguin/G2Bulk-shaped). Contains `category_title`
+     * which is the operator-friendly brand label (e.g. "Garena Free Fire
+     * Vouchers"). Used by deriveG2BulkBrand to classify products whose title
+     * only contains currency-style names like "1 USD Diamond(100+10)". */
+    raw?: { category_title?: string } | null;
 };
 
 async function fetchG2BulkProducts(params: {
@@ -224,6 +231,7 @@ export const getG2BulkCatalogAction = withAuth(
             productId: p.id,
             providerId: p.providerId,
             categoryId: p.categoryId,
+            categoryTitle: p.raw?.category_title ?? null,
             title: p.title,
             description: p.description,
             imageUrl: p.imageUrl,
