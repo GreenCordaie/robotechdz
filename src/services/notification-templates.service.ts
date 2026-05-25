@@ -54,6 +54,24 @@ export const TEMPLATE_DEFAULTS: Record<string, string> = {
         "Accès complets sur le portail : /reseller/orders\n" +
         "Bouton \"Envoyer au client\" disponible.\n\n" +
         "_FLEXBOX DIRECT — partenaire B2B_",
+
+    "streaming.netflix.delivered":
+        "🎬 *{{brandName}}* — Tes accès\n\n" +
+        "📧 Email : {{accountEmail}}\n" +
+        "🔑 Mot de passe : *{{accountPassword}}*\n" +
+        "👤 Profil : {{profileName}}\n" +
+        "🔢 PIN : *{{profilePin}}*\n\n" +
+        "📺 Sur ta TV, connecte-toi puis tape ce lien quand Netflix demande un code :\n" +
+        "👉 {{activationUrl}}\n" +
+        "{{extraMemberHint}}",
+
+    "streaming.household.update_required":
+        "⚠️ *{{brandName}}* — Mise à jour du foyer Netflix\n\n" +
+        "Netflix demande de valider le foyer pour continuer à regarder.\n\n" +
+        "Ouvre ce lien sur ton *téléphone en 4G/5G* (pas en Wi-Fi) :\n" +
+        "👉 {{activationUrl}}\n\n" +
+        "Le bouton de mise à jour s'affichera automatiquement.\n" +
+        "_FLEXBOX DIRECT_",
 };
 
 /**
@@ -65,6 +83,16 @@ export const TEMPLATE_VARIABLES: Record<string, string[]> = {
     "signup.rejected": ["companyName", "email", "reason"],
     "order.confirmed": ["companyName", "orderNumber", "itemCount", "totalAmount", "deliveryStatus"],
     "order.credentials.ready": ["companyName", "orderNumber", "credentialSummary"],
+    "streaming.netflix.delivered": [
+        "brandName",
+        "accountEmail",
+        "accountPassword",
+        "profileName",
+        "profilePin",
+        "activationUrl",
+        "extraMemberHint",
+    ],
+    "streaming.household.update_required": ["brandName", "activationUrl"],
 };
 
 const TEMPLATE_LABELS: Record<string, string> = {
@@ -73,6 +101,8 @@ const TEMPLATE_LABELS: Record<string, string> = {
     "signup.rejected": "Demande partenaire refusée",
     "order.confirmed": "Commande B2B confirmée",
     "order.credentials.ready": "Credentials prêtes après provisioning",
+    "streaming.netflix.delivered": "Streaming — Netflix livré avec deeplink",
+    "streaming.household.update_required": "Streaming — Mise à jour foyer Netflix (push proactif)",
 };
 
 export function getTemplateLabel(eventKey: string): string {

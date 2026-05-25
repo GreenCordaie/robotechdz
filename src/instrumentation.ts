@@ -39,6 +39,16 @@ export async function register() {
             console.log('[Sweeper] shared-account scheduled every 6h');
         }
 
+        // Streaming deeplink mailbox watcher (gated by STREAMING_DEEPLINK_MODE=true)
+        try {
+            const { initStreamingMailboxWatcher } = await import(
+                './workers/streaming-mailbox-watcher.worker'
+            );
+            initStreamingMailboxWatcher();
+        } catch (err: any) {
+            console.error('[Instrumentation] streaming watcher init failed:', err?.message);
+        }
+
         // You can add more worker initializations here
     }
 }

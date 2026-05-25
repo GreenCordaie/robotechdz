@@ -142,6 +142,9 @@ export const digitalCodes = pgTable("digital_codes", {
     msClientId: text("ms_client_id"), // The Specific Azure Client ID used for this account
     msLastSync: timestamp("ms_last_sync", { mode: 'date' }),
 
+    // Streaming deeplink — Netflix "Extra Member" (+1 stream) operator-side flag
+    hasExtraMember: boolean("has_extra_member").default(false).notNull(),
+
 }, (table) => {
     return {
         variantIdIdx: index("dc_variant_id_idx").on(table.variantId),
@@ -1016,5 +1019,63 @@ export const centralWalletTransactionsRelations = relations(centralWalletTransac
     adminUser: one(users, {
         fields: [centralWalletTransactions.adminUserId],
         references: [users.id],
+    }),
+}));
+
+// ─── Streaming Auto-Code Deeplink ─────────────────────────────────────────────
+// Token-only public page that streams Netflix OTP / household links to the customer.
+export const slotActivationTokens = pgTable("slot_activation_tokens", {
+    id: serial("id").primaryKey(),
+    token: varchar("token", { length: 16 }).notNull().unique(),
+    slotId: integer("slot_id").references(() => digitalCodeSlots.id, { onDelete: "cascade" }).notNull(),
+    validFrom: timestamp("valid_from", { mode: "date" }).defaultNow().notNull(),
+    validUntil: timestamp("valid_until", { mode: "date" }).notNull(),
+    lastSeenAt: timestamp("last_seen_at", { mode: "date" }),
+    createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
+}, (table) => ({
+    tokenIdx: index("sat_token_idx").on(table.token),
+    slotIdx: index("sat_slot_idx").on(table.slotId),
+    lastSeenIdx: index("sat_last_seen_idx").on(table.lastSeenAt),
+}));
+
+export const slotEvents = pgTable("slot_events", {
+    id: serial("id").primaryKey(),
+    slotId: integer("slot_id").references(() => digitalCodeSlots.id, { onDelete: "set null" }),
+    digitalCodeId: integer("digital_code_id").references(() => digitalCodes.id, { onDelete: "cascade" }).notNull(),
+    eventType: varchar("event_type", { length: 20 }).notNull(), // OTP_CODE | HOUSEHOLD_LINK
+    valueEncrypted: text("value_encrypted").notNull(),
+    sourceEmailId: text("source_email_id"),
+    deliveredToSession: boolean("delivered_to_session").default(false).notNull(),
+    deliveredAt: timestamp("delivered_at", { mode: "date" }),
+    receivedAt: timestamp("received_at", { mode: "date" }).defaultNow().notNull(),
+}, (table) => ({
+    receivedIdx: index("se_received_idx").on(table.receivedAt),
+    slotIdx: index("se_slot_idx").on(table.slotId),
+}));
+
+export const slotLifecycle = pgTable("slot_lifecycle", {
+    slotId: integer("slot_id").primaryKey().references(() => digitalCodeSlots.id, { onDelete: "cascade" }),
+    firstActivatedAt: timestamp("first_activated_at", { mode: "date" }),
+    lastHouseholdAt: timestamp("last_household_at", { mode: "date" }),
+    nextHouseholdExpectedAt: timestamp("next_household_expected_at", { mode: "date" }),
+    monitoringIntensity: varchar("monitoring_intensity", { length: 10 }).default("NORMAL").notNull(),
+    updatedAt: timestamp("updated_at", { mode: "date" }).defaultNow().notNull(),
+});
+
+export const slotActivationTokensRelations = relations(slotActivationTokens, ({ one }) => ({
+    slot: one(digitalCodeSlots, {
+        fields: [slotActivationTokens.slotId],
+        references: [digitalCodeSlots.id],
+    }),
+}));
+
+export const slotEventsRelations = relations(slotEvents, ({ one }) => ({
+    slot: one(digitalCodeSlots, {
+        fields: [slotEvents.slotId],
+        references: [digitalCodeSlots.id],
+    }),
+    digitalCode: one(digitalCodes, {
+        fields: [slotEvents.digitalCodeId],
+        references: [digitalCodes.id],
     }),
 }));

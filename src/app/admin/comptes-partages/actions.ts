@@ -12,6 +12,7 @@ import { UserRole } from "@/lib/constants";
 import { AccountService } from "@/services/account.service";
 import { sweepExpiredSlots } from "@/services/shared-account-sweeper.service";
 import { generateMissingSlots } from "@/services/shared-account-orphan-generator.service";
+import { createTokenForSlot } from "@/services/slot-activation-token.service";
 
 const MASKED = "***";
 
@@ -516,8 +517,22 @@ export const attribuerSlotAutomatiqueAction = withAuth(
                         .where(eq(digitalCodes.id, availableSlot.digitalCodeId));
                 }
 
+                // Generate the customer-facing streaming activation deeplink token.
+                // Best-effort: failure to mint should not block slot assignment.
+                let activationUrl: string | undefined;
+                try {
+                    const { token } = await createTokenForSlot(tx, availableSlot.id);
+                    const baseUrl =
+                        process.env.NEXT_PUBLIC_APP_URL ||
+                        process.env.PUBLIC_URL ||
+                        "https://boutique.nexusbox.tech";
+                    activationUrl = `${baseUrl.replace(/\/$/, "")}/activer/${token}`;
+                } catch (err: any) {
+                    console.error("[slot-assign] activation token generation failed:", err?.message);
+                }
+
                 revalidatePath("/admin/traitement");
-                return { success: true };
+                return { success: true, activationUrl };
             });
         } catch (error) {
             return { success: false, error: (error as Error).message };
