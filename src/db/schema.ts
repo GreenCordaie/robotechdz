@@ -883,3 +883,98 @@ export const bsvDeliveredCodesRelations = relations(bsvDeliveredCodes, ({ one })
         references: [bsvOrders.id],
     }),
 }));
+
+// ---------------------------------------------------------------------------
+// G2Bulk Mirror Shop — pricing rules for products sourced from LoadBrain/G2Bulk
+// ---------------------------------------------------------------------------
+// Mirrors bsvPricingRules. Scope precedence at resolution time
+// (most-specific wins): sku > brand > category > global.
+// markup_type 'pct' stores basis points (1500 = 15%).
+// markup_type 'fixed_dzd' stores absolute DZD added on top of cost.
+export const g2bulkPricingRules = pgTable("g2bulk_pricing_rules", {
+    id: serial("id").primaryKey(),
+    scopeType: text("scope_type").notNull(), // 'global' | 'category' | 'brand' | 'sku'
+    scopeValue: text("scope_value").notNull(), // '*' for global
+    markupType: text("markup_type").notNull(), // 'pct' | 'fixed_dzd'
+    markupValue: numeric("markup_value", { precision: 12, scale: 2 }).notNull(),
+    notes: text("notes"),
+    isActive: boolean("is_active").notNull().default(true),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow(),
+}, (table) => {
+    return {
+        scopeLookupIdx: index("g2bulk_pricing_rules_scope_lookup").on(table.scopeType, table.scopeValue),
+    };
+});
+
+/* ----------------------------------------------------------------------
+ * G2Bulk Mirror Shop (Lot 3) — additive tables, mirrors bsv_orders/bsv_delivered_codes
+ * --------------------------------------------------------------------- */
+
+export const g2bulkOrderStatusEnum = pgEnum("g2bulk_order_status", [
+    "PENDING_LOADBRAIN",
+    "COMPLETED",
+    "FAILED",
+    "REFUNDED",
+]);
+
+/**
+ * Mirror-order: one row per reseller checkout of a G2Bulk product.
+ * Linked to the local `orders` row (wallet debit) via `localOrderId`,
+ * and to the LoadBrain order via `lbOrderId`.
+ */
+export const g2bulkOrders = pgTable("g2bulk_orders", {
+    id: serial("id").primaryKey(),
+    localOrderId: integer("local_order_id")
+        .references(() => orders.id, { onDelete: "cascade" })
+        .notNull(),
+    resellerId: integer("reseller_id")
+        .references(() => resellers.id, { onDelete: "cascade" })
+        .notNull(),
+    productId: text("product_id").notNull(), // upstream G2Bulk product id (stringified)
+    quantity: integer("quantity").notNull(),
+    pricePaidDzd: numeric("price_paid_dzd", { precision: 12, scale: 2 }).notNull(),
+    lbOrderId: text("lb_order_id"),
+    status: g2bulkOrderStatusEnum("status").default("PENDING_LOADBRAIN").notNull(),
+    /** Forensic snapshot from LoadBrain: provider, exact price, etc. */
+    wonSnapshot: jsonb("won_snapshot").$type<unknown>(),
+    completedAt: timestamp("completed_at", { mode: "date" }),
+    createdAt: timestamp("created_at", { mode: "date" }).defaultNow(),
+}, (table) => ({
+    localOrderIdx: index("g2bulk_orders_local_order_idx").on(table.localOrderId),
+    lbOrderIdx: index("g2bulk_orders_lb_order_idx").on(table.lbOrderId),
+    resellerIdx: index("g2bulk_orders_reseller_idx").on(table.resellerId),
+}));
+
+export const g2bulkDeliveredCodes = pgTable("g2bulk_delivered_codes", {
+    id: serial("id").primaryKey(),
+    g2bulkOrderId: integer("g2bulk_order_id")
+        .references(() => g2bulkOrders.id, { onDelete: "cascade" })
+        .notNull(),
+    /** Encrypted code (use lib/encryption.ts). */
+    code: text("code").notNull(),
+    redemptionUrl: text("redemption_url"),
+    pin: text("pin"),
+    createdAt: timestamp("created_at", { mode: "date" }).defaultNow(),
+}, (table) => ({
+    g2bulkOrderIdx: index("g2bulk_delivered_codes_g2bulk_order_idx").on(table.g2bulkOrderId),
+}));
+
+export const g2bulkOrdersRelations = relations(g2bulkOrders, ({ one, many }) => ({
+    localOrder: one(orders, {
+        fields: [g2bulkOrders.localOrderId],
+        references: [orders.id],
+    }),
+    reseller: one(resellers, {
+        fields: [g2bulkOrders.resellerId],
+        references: [resellers.id],
+    }),
+    codes: many(g2bulkDeliveredCodes),
+}));
+
+export const g2bulkDeliveredCodesRelations = relations(g2bulkDeliveredCodes, ({ one }) => ({
+    g2bulkOrder: one(g2bulkOrders, {
+        fields: [g2bulkDeliveredCodes.g2bulkOrderId],
+        references: [g2bulkOrders.id],
+    }),
+}));
