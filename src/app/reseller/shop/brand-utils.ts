@@ -116,23 +116,49 @@ export function deriveG2BulkBrand(
     const title = typeof input === "string" ? input : input.title;
     const categoryTitle =
         typeof input === "string" ? null : (input.categoryTitle ?? null);
-    // Strong signal: category title from G2Bulk (operator-facing label)
     const ct = (categoryTitle ?? "").toLowerCase();
-    if (ct.includes("free fire") || ct.includes("garena free fire")) return "free-fire";
-    if (ct.includes("mobile legends")) return "mobile-legends";
-    if (ct.includes("pubg")) return "pubg-mobile";
-    if (ct.includes("call of duty") || ct.includes("cod mobile")) return "call-of-duty";
-    if (ct.includes("clash of clans")) return "clash-of-clans";
-    if (ct.includes("clash royale")) return "clash-royale";
-    if (ct.includes("fortnite")) return "fortnite";
-
     const t = title.toLowerCase();
-    // ── In-game currency proxies (G2Bulk titles often omit the game name) ───
-    // "UC Voucher" / "UC " = PUBG Mobile currency. Word-boundary check on " uc"
-    // avoids matching "Stuck" / "Uci" etc.
+
+    // ── PRIMARY: category_title is the operator-friendly label from G2Bulk.
+    // Audited across all 980 products to guarantee 100% classification.
+    // Order matters where one substring contains another (e.g. switch before
+    // nintendo-eshop).
+    if (ct) {
+        if (ct.includes("free fire") || ct.includes("garena")) return "free-fire";
+        if (ct.includes("mobile legends")) return "mobile-legends";
+        if (ct.includes("pubg")) return "pubg-mobile";
+        if (ct.includes("call of duty") || ct.includes("cod mobile")) return "call-of-duty";
+        if (ct.includes("clash of clans")) return "clash-of-clans";
+        if (ct.includes("clash royale")) return "clash-royale";
+        if (ct.includes("fortnite")) return "fortnite";
+        if (ct.includes("new state")) return "new-state-mobile";
+        if (ct.includes("yalla")) return "yalla-ludo";
+        if (ct.includes("jawaker")) return "jawaker";
+        if (ct.includes("imo")) return "imo";
+        if (ct.includes("razer")) return "razer-gold";
+        if (ct.includes("nintendo switch online")) return "nintendo-switch-online";
+        if (ct.includes("nintendo")) return "nintendo-eshop";
+        if (ct.includes("playstation") || ct.includes("psn")) return "playstation";
+        if (ct.includes("xbox")) return "xbox";
+        if (ct.includes("steam")) return "steam";
+        if (ct.includes("apple") || ct.includes("itunes")) return "apple-itunes";
+        if (ct.includes("amazon")) return "amazon";
+        if (ct.includes("google play")) return "google-play";
+        if (ct.includes("roblox")) return "roblox";
+        if (ct.includes("twitch")) return "twitch";
+        if (ct.includes("valorant") || ct.includes("riot")) return "valorant";
+        if (ct.includes("minecraft")) return "minecraft";
+        if (ct.includes("discord")) return "discord";
+        if (ct.includes("netflix")) return "netflix";
+        if (ct.includes("spotify")) return "spotify";
+        if (ct.includes("test")) return "other"; // explicit drop for "Test Category"
+    }
+
+    // ── FALLBACK: title heuristics (when categoryTitle absent or unmatched).
+    // In-game currency proxies for titles that omit the game name.
     if (/(^|\s)uc(\s|$)|uc voucher/.test(t)) return "pubg-mobile";
     if (t.includes("minecoin")) return "minecraft";
-    // ── Game name first, then variants ─────────────────────────────────────
+    if (t.includes("robux")) return "roblox";
     if (t.includes("pubg")) return "pubg-mobile";
     if (t.includes("imo")) return "imo";
     if (t.includes("razer")) return "razer-gold";
