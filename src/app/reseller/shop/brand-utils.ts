@@ -21,27 +21,48 @@
  * To re-seed after a G2Bulk catalog change, re-run the classification audit
  * (see commit 9708b33) and update this list.
  */
-export const SEED_BRANDS: ReadonlyArray<{ slug: string; label: string }> = [
-    { slug: "playstation", label: "PlayStation Network" },       // 192
-    { slug: "steam", label: "Steam" },                            // 188
-    { slug: "apple-itunes", label: "Apple iTunes" },              // 137
-    { slug: "xbox", label: "XBOX" },                              // 98
-    { slug: "google-play", label: "Google Play" },                // 78
-    { slug: "nintendo-eshop", label: "Nintendo eShop" },          // 66
-    { slug: "amazon", label: "Amazon" },                          // 62
-    { slug: "roblox", label: "Roblox" },                          // 52
-    { slug: "razer-gold", label: "Razer Gold" },                  // 42
-    { slug: "yalla-ludo", label: "Yalla Ludo" },                  // 16
-    { slug: "pubg-mobile", label: "PUBG Mobile" },                // 10
-    { slug: "jawaker", label: "Jawaker" },                        // 8
-    { slug: "twitch", label: "Twitch" },                          // 7
-    { slug: "valorant", label: "Valorant" },                      // 6
-    { slug: "free-fire", label: "Free Fire" },                    // 5
-    { slug: "minecraft", label: "Minecraft" },                    // 4
-    { slug: "discord", label: "Discord" },                        // 3
-    { slug: "nintendo-switch-online", label: "Nintendo Switch Online" }, // 2
-    { slug: "imo", label: "IMO GiftCards" },                      // 2
-    { slug: "new-state-mobile", label: "New State Mobile" },      // 1
+/**
+ * Brand type taxonomy.
+ *
+ *  - `giftcard` — region-locked wallet credit (Steam, PSN, Amazon, iTunes,
+ *    etc.). Consumers redeem the code on the platform store, usually tied
+ *    to a specific country/currency.
+ *  - `topup`    — in-game currency packs (Free Fire Diamonds, PUBG UC,
+ *    Yalla Gold, etc.). Usually global, redeemed inside a specific game
+ *    account.
+ *  - `mixed`    — brand sells both variants (e.g. Roblox = regional
+ *    giftcards + global Robux top-ups).
+ */
+export type BrandType = "giftcard" | "topup" | "mixed";
+
+export const SEED_BRANDS: ReadonlyArray<{
+    slug: string;
+    label: string;
+    type: BrandType;
+}> = [
+    // ── Gift Cards (regional wallet credit) ──────────────────────────────
+    { slug: "playstation", label: "PlayStation Network", type: "giftcard" },       // 192
+    { slug: "steam", label: "Steam", type: "giftcard" },                            // 188
+    { slug: "apple-itunes", label: "Apple iTunes", type: "giftcard" },              // 137
+    { slug: "xbox", label: "XBOX", type: "giftcard" },                              // 98
+    { slug: "google-play", label: "Google Play", type: "giftcard" },                // 78
+    { slug: "nintendo-eshop", label: "Nintendo eShop", type: "giftcard" },          // 66
+    { slug: "amazon", label: "Amazon", type: "giftcard" },                          // 62
+    { slug: "razer-gold", label: "Razer Gold", type: "giftcard" },                  // 42
+    { slug: "twitch", label: "Twitch", type: "giftcard" },                          // 7
+    { slug: "nintendo-switch-online", label: "Nintendo Switch Online", type: "giftcard" }, // 2
+    // ── Game Top-Ups (in-game currency, mostly global) ───────────────────
+    { slug: "yalla-ludo", label: "Yalla Ludo", type: "topup" },                     // 16
+    { slug: "pubg-mobile", label: "PUBG Mobile", type: "topup" },                   // 10
+    { slug: "jawaker", label: "Jawaker", type: "topup" },                           // 8
+    { slug: "valorant", label: "Valorant", type: "topup" },                         // 6
+    { slug: "free-fire", label: "Free Fire", type: "topup" },                       // 5
+    { slug: "minecraft", label: "Minecraft", type: "topup" },                       // 4
+    { slug: "discord", label: "Discord", type: "topup" },                           // 3
+    { slug: "imo", label: "IMO GiftCards", type: "topup" },                         // 2
+    { slug: "new-state-mobile", label: "New State Mobile", type: "topup" },         // 1
+    // ── Mixed (sells both giftcards AND top-ups) ─────────────────────────
+    { slug: "roblox", label: "Roblox", type: "mixed" },                             // 52
 ];
 
 /**
@@ -185,4 +206,5 @@ export interface BrandCategory {
     label: string;
     count: number;
     imageUrl: string;
+    type: BrandType;
 }

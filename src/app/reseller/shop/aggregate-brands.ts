@@ -81,10 +81,13 @@ export async function getBrandCategoriesAction(): Promise<{
         label: b.label,
         count: g2b.get(b.slug) ?? 0,
         imageUrl: artworkFor(b.slug),
+        type: b.type,
     })).filter((c) => c.count > 0);
 
     // Surface brands G2Bulk added that aren't in our seed list yet, so the
-    // operator notices the drift and updates SEED_BRANDS in code.
+    // operator notices the drift and updates SEED_BRANDS in code. Default
+    // unknown brands to "giftcard" since most G2Bulk additions are regional
+    // wallet credits — flip via SEED_BRANDS once classified.
     g2b.forEach((n, slug) => {
         if (!seedSlugs.has(slug) && slug && slug !== "other") {
             merged.push({
@@ -92,6 +95,7 @@ export async function getBrandCategoriesAction(): Promise<{
                 label: prettifyLabel(slug),
                 count: n,
                 imageUrl: artworkFor(slug),
+                type: "giftcard",
             });
         }
     });

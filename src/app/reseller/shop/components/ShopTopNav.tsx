@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { LucideIcon } from "lucide-react";
 import {
     LayoutDashboard,
@@ -41,7 +41,7 @@ interface NavItem {
 
 const NAV_ITEMS: ReadonlyArray<NavItem> = [
     { href: "/reseller/dashboard", label: "Dashboard", icon: LayoutDashboard },
-    { href: "/reseller/shop", label: "Gift Cards & Vouchers", icon: Gift },
+    { href: "/reseller/shop?type=giftcard", label: "Gift Cards & Vouchers", icon: Gift },
     { href: "/reseller/shop?type=topup", label: "Game Top Up", icon: Gamepad2 },
     { href: "/reseller/shop?type=bulk", label: "Bulk Game TopUp", icon: Layers },
     { href: "/reseller/wallet", label: "Wallet", icon: Wallet },
@@ -87,9 +87,24 @@ export const ShopTopNav: React.FC<ShopTopNavProps> = ({ shopName: shopNameProp }
 
     const handleLogout = () => router.push("/reseller/login");
 
+    const searchParams = useSearchParams();
+    const currentType = searchParams.get("type");
+
     const isActive = (href: string) => {
-        const [base] = href.split("?");
-        return pathname === base || (base === "/reseller/shop" && pathname.startsWith("/reseller/shop"));
+        const [base, query = ""] = href.split("?");
+        // Same base path? If the link carries a ?type=… discriminator, the
+        // active tab is the one whose `type` matches the current URL.
+        if (base === "/reseller/shop") {
+            const linkType = new URLSearchParams(query).get("type");
+            if (!pathname.startsWith("/reseller/shop")) return false;
+            // Brand-detail pages (/reseller/shop/[brand]) keep the "Gift Cards"
+            // tab highlighted by default so the operator has a clear "back to
+            // catalog" anchor.
+            const onBrandDetail = pathname !== "/reseller/shop";
+            if (onBrandDetail) return linkType === "giftcard";
+            return linkType === currentType || (!linkType && !currentType);
+        }
+        return pathname === base;
     };
 
     return (

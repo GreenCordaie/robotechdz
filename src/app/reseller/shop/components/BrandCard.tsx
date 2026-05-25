@@ -47,6 +47,24 @@ export const BrandCard: React.FC<BrandCardProps> = ({ category }) => {
                 </div>
             )}
 
+            {/* Top-left type badge (Gift Card / Top-Up / Mixed). */}
+            <span
+                data-testid="brand-type-badge"
+                className={`absolute top-2 left-2 text-[9px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-md border backdrop-blur-sm ${
+                    category.type === "topup"
+                        ? "text-cyan-300 bg-cyan-500/15 border-cyan-400/40"
+                        : category.type === "mixed"
+                          ? "text-purple-300 bg-purple-500/15 border-purple-400/40"
+                          : "text-emerald-300 bg-emerald-500/15 border-emerald-400/40"
+                }`}
+            >
+                {category.type === "topup"
+                    ? "Top-Up"
+                    : category.type === "mixed"
+                      ? "Mixed"
+                      : "Gift Card"}
+            </span>
+
             <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/60 to-transparent p-3">
                 <div className="flex items-end justify-between gap-2">
                     <h3 className="text-sm font-black text-white tracking-tight line-clamp-1">
