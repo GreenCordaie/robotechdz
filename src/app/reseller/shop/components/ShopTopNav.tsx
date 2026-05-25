@@ -45,7 +45,7 @@ const NAV_ITEMS: ReadonlyArray<NavItem> = [
     { href: "/reseller/shop/all", label: "Tout le catalogue", icon: LayoutGrid },
     { href: "/reseller/shop?type=giftcard", label: "Gift Cards & Vouchers", icon: Gift },
     { href: "/reseller/shop?type=topup", label: "Game Top Up", icon: Gamepad2 },
-    { href: "/reseller/shop?type=bulk", label: "Bulk Game TopUp", icon: Layers },
+    { href: "/reseller/shop/games", label: "Bulk Game TopUp", icon: Layers },
     { href: "/reseller/wallet", label: "Wallet", icon: Wallet },
     { href: "/reseller/dashboard?tab=leaderboard", label: "LeaderBoard", icon: Trophy },
     { href: "/reseller/dashboard?tab=giveaway", label: "Giveaway", icon: PartyPopper },
@@ -99,16 +99,22 @@ export const ShopTopNav: React.FC<ShopTopNavProps> = ({ shopName: shopNameProp }
         if (base === "/reseller/shop") {
             const linkType = new URLSearchParams(query).get("type");
             if (!pathname.startsWith("/reseller/shop")) return false;
+            // Sub-routes that have their OWN nav entry (/shop/all, /shop/games)
+            // must never highlight the gift-card shop tabs.
+            if (
+                pathname.startsWith("/reseller/shop/all") ||
+                pathname.startsWith("/reseller/shop/games")
+            ) {
+                return false;
+            }
             // Brand-detail pages (/reseller/shop/[brand]) keep the "Gift Cards"
-            // tab highlighted by default so the operator has a clear "back to
-            // catalog" anchor. The flat catalog (/reseller/shop/all) has its
-            // own nav entry, so it must NOT highlight the Gift Cards tab.
-            const onAllCatalog = pathname.startsWith("/reseller/shop/all");
-            const onBrandDetail = pathname !== "/reseller/shop" && !onAllCatalog;
+            // tab highlighted so the operator has a clear "back to catalog" anchor.
+            const onBrandDetail = pathname !== "/reseller/shop";
             if (onBrandDetail) return linkType === "giftcard";
             return linkType === currentType || (!linkType && !currentType);
         }
-        return pathname === base;
+        // Non-shop items: match exact path or any sub-route (e.g. /shop/games/pubgm).
+        return pathname === base || pathname.startsWith(base + "/");
     };
 
     return (
