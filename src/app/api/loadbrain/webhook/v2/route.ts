@@ -7,6 +7,8 @@ import { db } from "@/db";
 import {
     bsvOrders,
     bsvDeliveredCodes,
+    g2bulkOrders,
+    g2bulkDeliveredCodes,
     orders,
     resellerWallets,
     resellerTransactions,
@@ -14,6 +16,214 @@ import {
 } from "@/db/schema";
 import { eq, sql } from "drizzle-orm";
 import { encrypt } from "@/lib/encryption";
+
+// ──────────────────────────────────────────────────────────────────────────
+// G2Bulk event handlers — extracted from the handlers map so we can keep
+// them outside the SDK's strictly-typed WebhookEventName union (g2bulk.*
+// events aren't yet in the SDK's union). Until the SDK ships them, we
+// register via a widened cast at the call site.
+// ──────────────────────────────────────────────────────────────────────────
+type G2BulkDeliveredEvent = {
+    data: {
+        orderId: string;
+        codes: ReadonlyArray<{
+            index?: number;
+            code: string;
+            redemptionUrl?: string | null;
+            pin?: string | null;
+        }>;
+        wonSnapshot?: unknown;
+    };
+    timestamp?: string;
+};
+
+type G2BulkFailedEvent = {
+    data: {
+        orderId: string;
+        error?: string;
+    };
+    timestamp?: string;
+};
+
+async function handleG2BulkDelivered(event: G2BulkDeliveredEvent): Promise<void> {
+    const lbOrderId = event.data.orderId;
+    const codes = event.data.codes ?? [];
+    const wonSnapshot = event.data.wonSnapshot ?? null;
+
+    const [localG2bulkOrder] = await db
+        .select()
+        .from(g2bulkOrders)
+        .where(eq(g2bulkOrders.lbOrderId, lbOrderId));
+
+    if (!localG2bulkOrder) {
+        console.warn(
+            "[v2-webhook] g2bulk.order.delivered for unknown lbOrderId:",
+            lbOrderId,
+        );
+        return;
+    }
+
+    await db.transaction(async (tx) => {
+        for (const c of codes) {
+            await tx.insert(g2bulkDeliveredCodes).values({
+                g2bulkOrderId: localG2bulkOrder.id,
+                code: encrypt(c.code),
+                redemptionUrl: c.redemptionUrl ?? null,
+                pin: c.pin ? encrypt(c.pin) : null,
+            });
+        }
+
+        await tx
+            .update(g2bulkOrders)
+            .set({
+                status: "COMPLETED",
+                completedAt: new Date(),
+                wonSnapshot: wonSnapshot ?? undefined,
+            })
+            .where(eq(g2bulkOrders.id, localG2bulkOrder.id));
+
+        await tx
+            .update(orders)
+            .set({ status: "LIVRE", isDelivered: true })
+            .where(eq(orders.id, localG2bulkOrder.localOrderId));
+    });
+
+    // Best-effort WhatsApp notification — non-blocking.
+    try {
+        const reseller = await db.query.resellers.findFirst({
+            where: eq(resellers.id, localG2bulkOrder.resellerId),
+        });
+        const localOrder = await db.query.orders.findFirst({
+            where: eq(orders.id, localG2bulkOrder.localOrderId),
+        });
+        if (reseller?.contactPhone && localOrder) {
+            const notifModule = (await import(
+                "@/services/reseller-notifications.service"
+            )) as unknown as {
+                ResellerNotifications: Record<
+                    string,
+                    ((arg: unknown) => Promise<unknown>) | undefined
+                >;
+            };
+            const notify = notifModule.ResellerNotifications.notifyOrderDelivered;
+            if (typeof notify === "function") {
+                await notify({
+                    resellerId: reseller.id,
+                    companyName: reseller.companyName,
+                    contactPhone: reseller.contactPhone,
+                    orderNumber: localOrder.orderNumber,
+                    codeCount: codes.length,
+                }).catch((err: unknown) => {
+                    console.warn(
+                        "[v2-webhook] g2bulk notifyOrderDelivered failed (non-bloquant):",
+                        err,
+                    );
+                });
+            }
+        }
+    } catch (err) {
+        console.warn("[v2-webhook] g2bulk notify wiring failed:", err);
+    }
+}
+
+async function handleG2BulkFailed(event: G2BulkFailedEvent): Promise<void> {
+    const lbOrderId = event.data.orderId;
+    const errorMsg = event.data.error ?? "unknown error";
+
+    const [localG2bulkOrder] = await db
+        .select()
+        .from(g2bulkOrders)
+        .where(eq(g2bulkOrders.lbOrderId, lbOrderId));
+
+    if (!localG2bulkOrder) {
+        console.warn(
+            "[v2-webhook] g2bulk.order.failed for unknown lbOrderId:",
+            lbOrderId,
+        );
+        return;
+    }
+
+    await db.transaction(async (tx) => {
+        await tx
+            .update(g2bulkOrders)
+            .set({ status: "REFUNDED", completedAt: new Date() })
+            .where(eq(g2bulkOrders.id, localG2bulkOrder.id));
+
+        const reseller = await tx.query.resellers.findFirst({
+            where: eq(resellers.id, localG2bulkOrder.resellerId),
+            with: { wallet: true },
+        });
+
+        if (reseller?.wallet) {
+            const refundAmount = parseFloat(localG2bulkOrder.pricePaidDzd);
+            await tx
+                .update(resellerWallets)
+                .set({
+                    balance: sql`${resellerWallets.balance} + ${refundAmount}`,
+                    updatedAt: new Date(),
+                })
+                .where(eq(resellerWallets.id, reseller.wallet.id));
+
+            await tx.insert(resellerTransactions).values({
+                walletId: reseller.wallet.id,
+                type: "REFUND",
+                amount: refundAmount.toString(),
+                orderId: localG2bulkOrder.localOrderId,
+                description: `Remboursement G2Bulk - échec livraison: ${errorMsg}`,
+            });
+        }
+
+        await tx
+            .update(orders)
+            .set({ status: "ANNULE" })
+            .where(eq(orders.id, localG2bulkOrder.localOrderId));
+    });
+
+    // Best-effort failure notification
+    try {
+        const reseller = await db.query.resellers.findFirst({
+            where: eq(resellers.id, localG2bulkOrder.resellerId),
+        });
+        const localOrder = await db.query.orders.findFirst({
+            where: eq(orders.id, localG2bulkOrder.localOrderId),
+        });
+        if (reseller?.contactPhone && localOrder) {
+            const notifModule = (await import(
+                "@/services/reseller-notifications.service"
+            )) as unknown as {
+                ResellerNotifications: Record<
+                    string,
+                    ((arg: unknown) => Promise<unknown>) | undefined
+                >;
+            };
+            const notify =
+                notifModule.ResellerNotifications.notifyOrderFailed ??
+                notifModule.ResellerNotifications.notifyOrderCancelled;
+            if (typeof notify === "function") {
+                await notify({
+                    resellerId: reseller.id,
+                    companyName: reseller.companyName,
+                    contactPhone: reseller.contactPhone,
+                    orderNumber: localOrder.orderNumber,
+                    reason: errorMsg,
+                }).catch((err: unknown) => {
+                    console.warn(
+                        "[v2-webhook] g2bulk failure notify failed (non-bloquant):",
+                        err,
+                    );
+                });
+            }
+        }
+    } catch (err) {
+        console.warn("[v2-webhook] g2bulk failure notify wiring failed:", err);
+    }
+
+    console.warn(
+        "[v2-webhook] g2bulk.order.failed processed:",
+        lbOrderId,
+        errorMsg,
+    );
+}
 
 /**
  * SDK v2 webhook entry point. Lives side-by-side with the legacy
@@ -26,7 +236,22 @@ import { encrypt } from "@/lib/encryption";
 const handler = createWebhookHandler({
     secret: process.env.LOADBRAIN_WEBHOOK_SECRET ?? "",
     toleranceSeconds: 300,
+    // SWAP WHEN sdk-v2 g2bulk webhook events land: drop the `as never` cast
+    // once `WebhookEventName` includes "g2bulk.order.delivered" |
+    // "g2bulk.order.failed" | "g2bulk.order.refunded".
     handlers: {
+        // ────────────────────────────────────────────────────────────────
+        // G2Bulk Mirror Shop (Lot 4) — same shape as BSV handlers, dedicated
+        // tables (g2bulk_orders / g2bulk_delivered_codes).
+        // ────────────────────────────────────────────────────────────────
+        ["g2bulk.order.delivered" as never]: (async (event: G2BulkDeliveredEvent) =>
+            handleG2BulkDelivered(event)) as never,
+        ["g2bulk.order.failed" as never]: (async (event: G2BulkFailedEvent) =>
+            handleG2BulkFailed(event)) as never,
+        // Refund flow is identical to failed (refund + mark REFUNDED).
+        ["g2bulk.order.refunded" as never]: (async (event: G2BulkFailedEvent) =>
+            handleG2BulkFailed(event)) as never,
+
         "provision.task.completed": async (event) => {
             await processCompletedTask({
                 orderId: event.data.taskId,
