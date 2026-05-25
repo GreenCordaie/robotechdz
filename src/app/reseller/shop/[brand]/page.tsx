@@ -2,26 +2,8 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import {
-    Button,
-    Divider,
-    Modal,
-    ModalBody,
-    ModalContent,
-    ModalFooter,
-    ModalHeader,
-    Spinner,
-    useDisclosure,
-} from "@heroui/react";
-import {
-    ArrowLeft,
-    ChevronRight,
-    CreditCard,
-    Minus,
-    Plus,
-    ShoppingCart,
-    Trash2,
-} from "lucide-react";
+import { Button, Spinner } from "@heroui/react";
+import { ArrowLeft, Check, Minus, Plus } from "lucide-react";
 import { toast } from "react-hot-toast";
 
 import { getBsvCatalogAction } from "../actions";
@@ -39,20 +21,129 @@ import {
 } from "../brand-utils";
 import type { EnrichedBsvListing } from "@/types/bsv-listings";
 
-type SourceFilter = "all" | "bsv" | "g2bulk";
+/* ──────────────────────────────────────────────────────────────────────────
+ * Types
+ * ────────────────────────────────────────────────────────────────────────── */
 
-interface CartItem {
-    readonly source: "bsv" | "g2bulk";
-    readonly listingId?: string;
-    readonly g2bulkProductId?: number;
+type Source = "bsv" | "g2bulk";
+
+interface Denomination {
+    readonly key: string; // unique key for selection / cart
+    readonly source: Source;
     readonly title: string;
-    readonly seller: string;
-    readonly finalPriceDzd: number;
+    readonly region: string; // 2-letter ISO code, or "—" when unknown
+    readonly stock: number; // 0 = out of stock
+    readonly priceDzd: number;
+    readonly priceUsd: number | null;
     readonly listPriceDzd: number;
-    readonly quantity: number;
+    readonly seller: string;
+    readonly raw: EnrichedBsvListing | G2BulkCatalogProduct;
 }
 
-const PAGE_SIZE = 24;
+// NOTE: BSV/G2Bulk action schemas cap `limit` at 48 — keep at or below that
+// to avoid Zod validation failure that returns success:false with no items.
+const PAGE_SIZE = 48;
+const ALL_REGION = "ALL";
+
+/* ──────────────────────────────────────────────────────────────────────────
+ * Region extraction — maps free-form country strings to ISO-2 codes
+ * ────────────────────────────────────────────────────────────────────────── */
+
+const COUNTRY_MAP: ReadonlyMap<string, string> = new Map(
+    Object.entries({
+        japan: "JP",
+        "saudi arabia": "SA",
+        saudi: "SA",
+        turkey: "TR",
+        turkiye: "TR",
+        indonesia: "ID",
+        "united states": "US",
+        usa: "US",
+        us: "US",
+        global: "GL",
+        worldwide: "WW",
+        ww: "WW",
+        mexico: "MX",
+        brazil: "BR",
+        thailand: "TH",
+        "united kingdom": "GB",
+        uk: "GB",
+        spain: "ES",
+        poland: "PL",
+        hungary: "HU",
+        taiwan: "TW",
+        australia: "AU",
+        malaysia: "MY",
+        korea: "KR",
+        philippines: "PH",
+        singapore: "SG",
+        vietnam: "VN",
+        france: "FR",
+        germany: "DE",
+        italy: "IT",
+        netherlands: "NL",
+        canada: "CA",
+        argentina: "AR",
+        india: "IN",
+        emirates: "AE",
+        uae: "AE",
+        kuwait: "KW",
+        qatar: "QA",
+        bahrain: "BH",
+        oman: "OM",
+    })
+);
+
+function extractRegion(title: string, fallback?: string): string {
+    if (fallback && /^[A-Z]{2}$/.test(fallback)) return fallback;
+    const lower = title.toLowerCase();
+    const entries = Array.from(COUNTRY_MAP.entries());
+    for (const [needle, code] of entries) {
+        if (lower.includes(needle)) return code;
+    }
+    // Detect bare 2-letter codes at end of title (e.g. "100 USD ... US")
+    const match = title.match(/\b([A-Z]{2})\b(?!.*\b[A-Z]{2}\b)/);
+    if (match) return match[1];
+    return "—";
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+ * Mappers — turn catalog items into the unified Denomination row type
+ * ────────────────────────────────────────────────────────────────────────── */
+
+function bsvToDenomination(l: EnrichedBsvListing): Denomination {
+    return {
+        key: `bsv:${l.listingId}`,
+        source: "bsv",
+        title: l.product.displayName,
+        region: extractRegion(l.product.displayName, l.product.region ?? undefined),
+        stock: 1,
+        priceDzd: l.pricing.finalPriceDzd,
+        priceUsd: null,
+        listPriceDzd: l.pricing.listPriceDzd,
+        seller: l.seller.slug,
+        raw: l,
+    };
+}
+
+function g2bToDenomination(p: G2BulkCatalogProduct): Denomination {
+    return {
+        key: `g2b:${p.productId}`,
+        source: "g2bulk",
+        title: p.title,
+        region: extractRegion(p.title),
+        stock: p.stock,
+        priceDzd: p.pricing.finalPriceDzd,
+        priceUsd: p.unitPriceCents / 100,
+        listPriceDzd: p.pricing.basePriceDzd,
+        seller: "G2Bulk",
+        raw: p,
+    };
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+ * Main page
+ * ────────────────────────────────────────────────────────────────────────── */
 
 export default function ResellerBrandPage() {
     const router = useRouter();
@@ -61,19 +152,15 @@ export default function ResellerBrandPage() {
     const seed = SEED_BRANDS.find((b) => b.slug === slug);
     const label = seed?.label ?? prettifyLabel(slug);
 
-    const [sourceFilter, setSourceFilter] = useState<SourceFilter>("all");
-    const [page, setPage] = useState(1);
-    const [bsvItems, setBsvItems] = useState<EnrichedBsvListing[]>([]);
-    const [bsvTotal, setBsvTotal] = useState(0);
-    const [g2bItems, setG2bItems] = useState<G2BulkCatalogProduct[]>([]);
-    const [g2bTotal, setG2bTotal] = useState(0);
+    const [items, setItems] = useState<ReadonlyArray<Denomination>>([]);
     const [isLoading, setIsLoading] = useState(true);
-
+    const [region, setRegion] = useState<string>(ALL_REGION);
+    const [selectedKey, setSelectedKey] = useState<string | null>(null);
+    const [quantity, setQuantity] = useState(1);
     const [resellerId, setResellerId] = useState<number | null>(null);
-    const [cart, setCart] = useState<CartItem[]>([]);
     const [isCheckingOut, setIsCheckingOut] = useState(false);
-    const { isOpen, onOpen, onClose } = useDisclosure();
 
+    /* ───── Reseller ───── */
     useEffect(() => {
         getCurrentResellerAction({}).then((res) => {
             if (res.success && res.data) {
@@ -82,49 +169,47 @@ export default function ResellerBrandPage() {
         });
     }, []);
 
+    /* ───── Catalog fetch ───── */
     useEffect(() => {
         let active = true;
         const load = async () => {
             setIsLoading(true);
             try {
                 const [bsvRes, g2bRes] = await Promise.all([
-                    sourceFilter === "g2bulk"
-                        ? Promise.resolve(null)
-                        : getBsvCatalogAction({
-                              brand: label,
-                              page,
-                              limit: PAGE_SIZE,
-                              deliveryType: "all",
-                              sellerRankMin: "all",
-                              sortBy: "score",
-                          }),
-                    sourceFilter === "bsv"
-                        ? Promise.resolve(null)
-                        : getG2BulkCatalogAction({
-                              q: label,
-                              page,
-                              limit: PAGE_SIZE,
-                              sortBy: "newest",
-                          }),
+                    getBsvCatalogAction({
+                        // BSV "brand" field uses opaque slugs like
+                        // `games-minecraft-gift-card` — full-text search on the
+                        // human label is far more reliable for category drill-in.
+                        q: label,
+                        page: 1,
+                        limit: PAGE_SIZE,
+                        deliveryType: "all",
+                        sellerRankMin: "all",
+                        sortBy: "score",
+                    }).catch(() => null),
+                    getG2BulkCatalogAction({
+                        q: label,
+                        page: 1,
+                        limit: PAGE_SIZE,
+                        sortBy: "newest",
+                    }).catch(() => null),
                 ]);
                 if (!active) return;
-                if (bsvRes?.success) {
-                    setBsvItems(bsvRes.data.items as EnrichedBsvListing[]);
-                    setBsvTotal(bsvRes.data.pagination.total);
-                } else {
-                    setBsvItems([]);
-                    setBsvTotal(0);
-                }
-                if (g2bRes?.success) {
-                    const filtered = (g2bRes.data.items as G2BulkCatalogProduct[]).filter(
-                        (p) => toBrandSlug(deriveG2BulkBrand(p.title)) === slug
-                    );
-                    setG2bItems(filtered);
-                    setG2bTotal(filtered.length);
-                } else {
-                    setG2bItems([]);
-                    setG2bTotal(0);
-                }
+
+                const bsv: Denomination[] =
+                    bsvRes?.success
+                        ? (bsvRes.data.items as EnrichedBsvListing[]).map(bsvToDenomination)
+                        : [];
+
+                const g2bRaw =
+                    g2bRes?.success
+                        ? (g2bRes.data.items as G2BulkCatalogProduct[]).filter(
+                              (p) => toBrandSlug(deriveG2BulkBrand(p.title)) === slug
+                          )
+                        : [];
+                const g2b: Denomination[] = g2bRaw.map(g2bToDenomination);
+
+                setItems([...bsv, ...g2b]);
             } finally {
                 if (active) setIsLoading(false);
             }
@@ -133,117 +218,74 @@ export default function ResellerBrandPage() {
         return () => {
             active = false;
         };
-    }, [slug, label, sourceFilter, page]);
+    }, [slug, label]);
 
-    const cartBsvIds = useMemo(
-        () => new Set(cart.filter((c) => c.source === "bsv").map((c) => c.listingId as string)),
-        [cart]
-    );
-    const cartG2bIds = useMemo(
-        () => new Set(cart.filter((c) => c.source === "g2bulk").map((c) => c.g2bulkProductId as number)),
-        [cart]
-    );
-
-    const addBsv = useCallback((l: EnrichedBsvListing) => {
-        setCart((prev) => {
-            const ex = prev.find((c) => c.source === "bsv" && c.listingId === l.listingId);
-            if (ex) {
-                toast(`${l.product.displayName} (déjà au panier)`, { icon: "✓" });
-                return prev.map((c) =>
-                    c.source === "bsv" && c.listingId === l.listingId
-                        ? { ...c, quantity: c.quantity + 1 }
-                        : c
-                );
-            }
-            toast.success(l.product.displayName, { icon: "🛒" });
-            return [
-                ...prev,
-                {
-                    source: "bsv",
-                    listingId: l.listingId,
-                    title: l.product.displayName,
-                    seller: l.seller.slug,
-                    finalPriceDzd: l.pricing.finalPriceDzd,
-                    listPriceDzd: l.pricing.listPriceDzd,
-                    quantity: 1,
-                },
-            ];
+    /* ───── Derived ───── */
+    const regions = useMemo(() => {
+        const set = new Set<string>();
+        items.forEach((it) => {
+            if (it.region && it.region !== "—") set.add(it.region);
         });
-    }, []);
+        return Array.from(set).sort();
+    }, [items]);
 
-    const addG2b = useCallback((p: G2BulkCatalogProduct) => {
-        setCart((prev) => {
-            const ex = prev.find(
-                (c) => c.source === "g2bulk" && c.g2bulkProductId === p.productId
-            );
-            if (ex) {
-                toast(`${p.title} (déjà au panier)`, { icon: "✓" });
-                return prev.map((c) =>
-                    c.source === "g2bulk" && c.g2bulkProductId === p.productId
-                        ? { ...c, quantity: c.quantity + 1 }
-                        : c
-                );
-            }
-            toast.success(p.title, { icon: "🛒" });
-            return [
-                ...prev,
-                {
-                    source: "g2bulk",
-                    g2bulkProductId: p.productId,
-                    title: p.title,
-                    seller: "G2Bulk",
-                    finalPriceDzd: p.pricing.finalPriceDzd,
-                    listPriceDzd: p.pricing.basePriceDzd,
-                    quantity: 1,
-                },
-            ];
-        });
-    }, []);
+    const filtered = useMemo(() => {
+        if (region === ALL_REGION) return items;
+        return items.filter((it) => it.region === region);
+    }, [items, region]);
 
-    const cartKey = (c: CartItem) =>
-        c.source === "bsv" ? `bsv:${c.listingId}` : `g2b:${c.g2bulkProductId}`;
-    const removeFromCart = (key: string) =>
-        setCart((prev) => prev.filter((c) => cartKey(c) !== key));
-    const updateQuantity = (key: string, delta: number) =>
-        setCart((prev) =>
-            prev
-                .map((c) =>
-                    cartKey(c) === key
-                        ? { ...c, quantity: Math.max(0, c.quantity + delta) }
-                        : c
-                )
-                .filter((c) => c.quantity > 0)
-        );
-
-    const cartTotal = cart.reduce(
-        (acc, item) => acc + item.finalPriceDzd * item.quantity,
-        0
+    const selected = useMemo(
+        () => items.find((it) => it.key === selectedKey) || null,
+        [items, selectedKey]
     );
 
-    const handleCheckout = async () => {
-        if (cart.length === 0 || !resellerId) return;
-        const sources = new Set(cart.map((c) => c.source));
-        if (sources.size > 1) {
-            toast.error("Panier mixé BSV+G2Bulk non supporté — séparez les commandes.");
+    // Clamp quantity to selected stock whenever selection changes
+    useEffect(() => {
+        if (!selected) {
+            setQuantity(1);
             return;
         }
+        setQuantity(Math.min(Math.max(1, quantity), Math.max(1, selected.stock)));
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [selectedKey]);
+
+    // Reset selection when region filter changes if selected item not visible
+    useEffect(() => {
+        if (selected && region !== ALL_REGION && selected.region !== region) {
+            setSelectedKey(null);
+        }
+    }, [region, selected]);
+
+    /* ───── Actions ───── */
+    const handleSelect = useCallback(
+        (it: Denomination) => {
+            if (it.stock <= 0) {
+                toast.error("Rupture de stock — choisissez une autre dénomination.");
+                return;
+            }
+            setSelectedKey(it.key);
+        },
+        []
+    );
+
+    const handlePurchase = useCallback(async () => {
+        if (!selected || !resellerId || quantity < 1) return;
         setIsCheckingOut(true);
         try {
+            const cartItem =
+                selected.source === "bsv"
+                    ? { listingId: (selected.raw as EnrichedBsvListing).listingId, quantity }
+                    : {
+                          g2bulkProductId: (selected.raw as G2BulkCatalogProduct).productId,
+                          quantity,
+                      };
             const res = await checkoutResellerAction({
                 resellerId,
-                cart: cart.map((c) =>
-                    c.source === "bsv"
-                        ? { listingId: c.listingId as string, quantity: c.quantity }
-                        : {
-                              g2bulkProductId: c.g2bulkProductId as number,
-                              quantity: c.quantity,
-                          }
-                ),
+                cart: [cartItem],
             });
             if (res.success) {
                 toast.success("Commande envoyée à LoadBrain", { duration: 4000 });
-                setCart([]);
-                onClose();
+                setSelectedKey(null);
                 router.push("/reseller/orders");
             } else {
                 toast.error(res.error || "Échec de la commande");
@@ -253,125 +295,106 @@ export default function ResellerBrandPage() {
         } finally {
             setIsCheckingOut(false);
         }
-    };
+    }, [selected, resellerId, quantity, router]);
 
-    const totalCount =
-        sourceFilter === "bsv"
-            ? bsvTotal
-            : sourceFilter === "g2bulk"
-              ? g2bTotal
-              : bsvTotal + g2bTotal;
-
+    /* ───── Render ───── */
     return (
-        <div className="space-y-6 animate-in fade-in duration-500">
-            <div className="flex items-center justify-between gap-4">
-                <div className="flex items-center gap-3 min-w-0">
-                    <button
-                        onClick={() => router.push("/reseller/shop")}
-                        className="size-10 rounded-full bg-[#161616] border border-[#262626] flex items-center justify-center hover:border-[#FACC15]/40 shrink-0"
-                        aria-label="Retour"
-                    >
-                        <ArrowLeft size={16} />
-                    </button>
-                    <div className="min-w-0">
-                        <h1 className="text-2xl lg:text-3xl font-black text-white tracking-tight truncate">
+        <div className="space-y-6 animate-in fade-in duration-300">
+            {/* Back link */}
+            <button
+                onClick={() => router.push("/reseller/shop")}
+                className="inline-flex items-center gap-2 text-sm text-slate-400 hover:text-white transition-colors"
+            >
+                <ArrowLeft size={14} />
+                Retour aux catégories
+            </button>
+
+            {/* Two-column layout */}
+            <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-6 items-start">
+                {/* ----- LEFT: title + filters + list ----- */}
+                <div className="space-y-5 min-w-0">
+                    <div className="space-y-1">
+                        <h1 className="text-4xl lg:text-5xl font-black text-[#FACC15] tracking-tight">
                             {label}
                         </h1>
-                        <p className="text-[11px] text-slate-500 font-bold uppercase tracking-widest">
-                            {totalCount} produit{totalCount === 1 ? "" : "s"}
+                        <p className="text-sm text-slate-400">
+                            Sélectionnez une dénomination à acheter
                         </p>
                     </div>
+
+                    {regions.length > 1 && (
+                        <RegionPills
+                            regions={regions}
+                            value={region}
+                            onChange={setRegion}
+                        />
+                    )}
+
+                    {isLoading ? (
+                        <div className="py-20 flex justify-center">
+                            <Spinner color="warning" />
+                        </div>
+                    ) : filtered.length === 0 ? (
+                        <p className="text-center text-slate-500 italic py-12">
+                            Aucune dénomination pour cette catégorie / région.
+                        </p>
+                    ) : (
+                        <ul className="space-y-2" data-testid="denomination-list">
+                            {filtered.map((it) => (
+                                <DenominationRow
+                                    key={it.key}
+                                    item={it}
+                                    selected={selectedKey === it.key}
+                                    onSelect={handleSelect}
+                                />
+                            ))}
+                        </ul>
+                    )}
                 </div>
 
-                {cart.length > 0 && (
-                    <Button
-                        onPress={onOpen}
-                        data-testid="open-cart"
-                        className="bg-[#FACC15] text-black font-black px-5 h-11 rounded-full"
-                        endContent={<ChevronRight size={18} />}
-                    >
-                        Panier · {formatCurrency(cartTotal, "DZD")}
-                    </Button>
-                )}
+                {/* ----- RIGHT: sticky purchase panel ----- */}
+                <aside className="lg:sticky lg:top-24">
+                    <PurchasePanel
+                        item={selected}
+                        quantity={quantity}
+                        onQuantity={setQuantity}
+                        onPurchase={handlePurchase}
+                        isCheckingOut={isCheckingOut}
+                    />
+                </aside>
             </div>
-
-            <SourceFilterChips value={sourceFilter} onChange={setSourceFilter} />
-
-            {isLoading ? (
-                <div className="py-20 flex justify-center">
-                    <Spinner color="warning" />
-                </div>
-            ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                    {(sourceFilter === "g2bulk" ? [] : bsvItems).map((l) => (
-                        <BsvCard
-                            key={`bsv-${l.listingId}`}
-                            listing={l}
-                            inCart={cartBsvIds.has(l.listingId)}
-                            onAdd={addBsv}
-                        />
-                    ))}
-                    {(sourceFilter === "bsv" ? [] : g2bItems).map((p) => (
-                        <G2bCard
-                            key={`g2b-${p.productId}`}
-                            product={p}
-                            inCart={cartG2bIds.has(p.productId)}
-                            onAdd={addG2b}
-                        />
-                    ))}
-                    {!isLoading &&
-                        (sourceFilter === "g2bulk" ? [] : bsvItems).length === 0 &&
-                        (sourceFilter === "bsv" ? [] : g2bItems).length === 0 && (
-                            <p className="col-span-full text-center text-slate-500 italic py-12">
-                                Aucun produit dans cette catégorie pour le moment.
-                            </p>
-                        )}
-                </div>
-            )}
-
-            <CartModal
-                isOpen={isOpen}
-                onClose={onClose}
-                cart={cart}
-                cartTotal={cartTotal}
-                onUpdateQty={updateQuantity}
-                onRemove={removeFromCart}
-                onCheckout={handleCheckout}
-                isCheckingOut={isCheckingOut}
-                cartKey={cartKey}
-            />
         </div>
     );
 }
 
-// ---------------------------------------------------------------------------
-// Sub-components kept in the same file for locality — none exceed 50 lines.
-// ---------------------------------------------------------------------------
+/* ──────────────────────────────────────────────────────────────────────────
+ * Sub-components
+ * ────────────────────────────────────────────────────────────────────────── */
 
-const SourceFilterChips: React.FC<{
-    readonly value: SourceFilter;
-    readonly onChange: (v: SourceFilter) => void;
-}> = ({ value, onChange }) => {
-    const opts: ReadonlyArray<{ key: SourceFilter; label: string }> = [
-        { key: "all", label: "Tous" },
-        { key: "bsv", label: "BSV" },
-        { key: "g2bulk", label: "G2Bulk" },
-    ];
+const RegionPills: React.FC<{
+    readonly regions: ReadonlyArray<string>;
+    readonly value: string;
+    readonly onChange: (r: string) => void;
+}> = ({ regions, value, onChange }) => {
+    const opts = [ALL_REGION, ...regions];
     return (
-        <div className="flex items-center gap-2" data-testid="source-filter">
-            {opts.map((o) => {
-                const active = value === o.key;
+        <div className="flex flex-wrap gap-2" data-testid="region-filter">
+            {opts.map((r) => {
+                const active = value === r;
                 return (
                     <button
-                        key={o.key}
-                        onClick={() => onChange(o.key)}
-                        className={`px-4 py-1.5 rounded-full text-xs font-black tracking-tight transition-all ${
+                        key={r}
+                        onClick={() => onChange(r)}
+                        className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-black tracking-tight transition-all ${
                             active
                                 ? "bg-[#FACC15] text-black"
-                                : "bg-[#161616] border border-[#262626] text-slate-400 hover:text-white"
+                                : "bg-[#161616] border border-[#262626] text-slate-300 hover:border-[#FACC15]/40"
                         }`}
                     >
-                        {o.label}
+                        <span className={`text-[9px] uppercase ${active ? "text-black/60" : "text-slate-500"}`}>
+                            {r === ALL_REGION ? "" : r.toLowerCase()}
+                        </span>
+                        {r === ALL_REGION ? "Tous" : r}
                     </button>
                 );
             })}
@@ -379,205 +402,149 @@ const SourceFilterChips: React.FC<{
     );
 };
 
-const BsvCard: React.FC<{
-    readonly listing: EnrichedBsvListing;
-    readonly inCart: boolean;
-    readonly onAdd: (l: EnrichedBsvListing) => void;
-}> = ({ listing, inCart, onAdd }) => (
-    <div className="bg-[#161616] border border-[#262626] rounded-2xl p-4 flex flex-col gap-3 hover:border-[#FACC15]/40 transition-colors">
-        <div className="flex items-start justify-between gap-2">
-            <h3 className="font-bold text-white text-sm line-clamp-2 flex-1">
-                {listing.product.displayName}
-            </h3>
-            <span className="text-[9px] uppercase font-black tracking-widest text-orange-400 bg-orange-500/10 border border-orange-500/30 px-1.5 py-0.5 rounded shrink-0">
-                BSV
-            </span>
-        </div>
-        <p className="text-[10px] text-slate-500 font-medium line-clamp-1">
-            Vendeur: {listing.seller.slug} · Rang {listing.seller.rank ?? "—"}
-        </p>
-        <div className="flex items-end justify-between mt-auto">
-            <div>
-                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">
-                    Stock: {listing.stockQty ?? "—"}
-                </p>
-                <p className="text-lg font-black text-[#FACC15]">
-                    {formatCurrency(listing.pricing.finalPriceDzd, "DZD")}
-                </p>
-            </div>
-            <Button
-                size="sm"
-                onPress={() => onAdd(listing)}
-                isDisabled={inCart}
-                startContent={inCart ? null : <Plus size={14} />}
-                className={`font-bold ${inCart ? "bg-emerald-500/20 text-emerald-400" : "bg-[#FACC15] text-black"}`}
+const DenominationRow: React.FC<{
+    readonly item: Denomination;
+    readonly selected: boolean;
+    readonly onSelect: (it: Denomination) => void;
+}> = ({ item, selected, onSelect }) => {
+    const outOfStock = item.stock <= 0;
+    return (
+        <li>
+            <button
+                type="button"
+                onClick={() => onSelect(item)}
+                disabled={outOfStock}
+                data-testid="denomination-row"
+                data-selected={selected}
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl border text-left transition-all ${
+                    selected
+                        ? "bg-[#FACC15]/10 border-[#FACC15] ring-1 ring-[#FACC15]/60"
+                        : outOfStock
+                          ? "bg-[#0f0f0f] border-[#1a1a1a] opacity-50 cursor-not-allowed"
+                          : "bg-[#161616] border-[#262626] hover:border-[#FACC15]/40 hover:bg-[#1c1c1c]"
+                }`}
             >
-                {inCart ? "Au panier" : "Ajouter"}
-            </Button>
-        </div>
-    </div>
-);
+                <span
+                    className={`size-5 shrink-0 rounded-md border flex items-center justify-center ${
+                        selected
+                            ? "bg-[#FACC15] border-[#FACC15]"
+                            : "bg-transparent border-[#3a3a3a]"
+                    }`}
+                >
+                    {selected && <Check size={14} className="text-black" />}
+                </span>
 
-const G2bCard: React.FC<{
-    readonly product: G2BulkCatalogProduct;
-    readonly inCart: boolean;
-    readonly onAdd: (p: G2BulkCatalogProduct) => void;
-}> = ({ product, inCart, onAdd }) => (
-    <div className="bg-[#161616] border border-[#262626] rounded-2xl p-4 flex flex-col gap-3 hover:border-cyan-500/40 transition-colors">
-        <div className="flex items-start justify-between gap-2">
-            <h3 className="font-bold text-white text-sm line-clamp-2 flex-1">
-                {product.title}
-            </h3>
-            <span className="text-[9px] uppercase font-black tracking-widest text-cyan-400 bg-cyan-500/10 border border-cyan-500/30 px-1.5 py-0.5 rounded shrink-0">
-                G2Bulk
-            </span>
-        </div>
-        {product.description && (
-            <p className="text-[11px] text-slate-500 line-clamp-2">{product.description}</p>
-        )}
-        <div className="flex items-end justify-between mt-auto">
-            <div>
-                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">
-                    Stock: {product.stock}
-                </p>
-                <p className="text-lg font-black text-[#FACC15]">
-                    {formatCurrency(product.pricing.finalPriceDzd, "DZD")}
-                </p>
-            </div>
-            <Button
-                size="sm"
-                onPress={() => onAdd(product)}
-                isDisabled={inCart}
-                startContent={inCart ? null : <Plus size={14} />}
-                className={`font-bold ${inCart ? "bg-emerald-500/20 text-emerald-400" : "bg-[#FACC15] text-black"}`}
-            >
-                {inCart ? "Au panier" : "Ajouter"}
-            </Button>
-        </div>
-    </div>
-);
+                <span className="flex-1 min-w-0 truncate text-sm font-semibold text-white">
+                    {item.title}
+                </span>
 
-interface CartModalProps {
-    readonly isOpen: boolean;
-    readonly onClose: () => void;
-    readonly cart: ReadonlyArray<CartItem>;
-    readonly cartTotal: number;
-    readonly onUpdateQty: (key: string, delta: number) => void;
-    readonly onRemove: (key: string) => void;
-    readonly onCheckout: () => void;
+                <span
+                    className={`shrink-0 text-[10px] font-black uppercase tracking-widest ${
+                        outOfStock ? "text-red-400" : "text-emerald-400"
+                    }`}
+                >
+                    {outOfStock ? "Rupture" : `${item.stock} en stock`}
+                </span>
+
+                <span className="shrink-0 text-sm font-black text-white min-w-[110px] text-right">
+                    {formatCurrency(item.priceDzd, "DZD")}
+                </span>
+            </button>
+        </li>
+    );
+};
+
+const PurchasePanel: React.FC<{
+    readonly item: Denomination | null;
+    readonly quantity: number;
+    readonly onQuantity: (n: number) => void;
+    readonly onPurchase: () => void;
     readonly isCheckingOut: boolean;
-    readonly cartKey: (c: CartItem) => string;
-}
+}> = ({ item, quantity, onQuantity, onPurchase, isCheckingOut }) => {
+    if (!item) {
+        return (
+            <div className="bg-[#161616] border border-[#262626] rounded-2xl p-6 text-center text-slate-500 text-sm">
+                Choisissez une dénomination dans la liste pour acheter.
+            </div>
+        );
+    }
+    const max = Math.max(1, item.stock);
+    const total = item.priceDzd * quantity;
+    return (
+        <div className="bg-[#161616] border border-[#262626] rounded-2xl p-5 space-y-4">
+            <div>
+                <p className="text-[10px] uppercase font-black tracking-widest text-slate-500 mb-1">
+                    Sélection
+                </p>
+                <h3 className="text-base font-black text-white leading-snug">
+                    {item.title}
+                </h3>
+                <div className="flex items-baseline gap-2 mt-2">
+                    <span className="text-lg font-black text-[#FACC15]">
+                        {formatCurrency(item.priceDzd, "DZD")}
+                    </span>
+                    <span className="text-xs text-slate-500">/ unité</span>
+                    <span className="ml-auto text-[10px] uppercase font-black tracking-widest text-emerald-400">
+                        {item.stock} en stock
+                    </span>
+                </div>
+            </div>
 
-const CartModal: React.FC<CartModalProps> = ({
-    isOpen,
-    onClose,
-    cart,
-    cartTotal,
-    onUpdateQty,
-    onRemove,
-    onCheckout,
-    isCheckingOut,
-    cartKey,
-}) => (
-    <Modal
-        isOpen={isOpen}
-        onClose={onClose}
-        size="2xl"
-        classNames={{
-            base: "bg-[#0f0d0c] border border-[#2d2622] rounded-[32px]",
-            header: "border-b border-[#2d2622] p-8",
-            body: "p-8",
-            footer: "border-t border-[#2d2622] p-8",
-        }}
-    >
-        <ModalContent>
-            {(closeFn) => (
-                <>
-                    <ModalHeader className="flex flex-col gap-1">
-                        <h2 className="text-2xl font-black text-white tracking-tight flex items-center gap-3">
-                            <ShoppingCart className="text-[#FACC15]" />
-                            Récapitulatif
-                        </h2>
-                        <p className="text-xs text-slate-500 font-bold uppercase tracking-widest">
-                            Paiement via Wallet partenaire
-                        </p>
-                    </ModalHeader>
-                    <ModalBody>
-                        <div className="space-y-4 max-h-[40vh] overflow-y-auto pr-2">
-                            {cart.map((item) => (
-                                <div
-                                    key={cartKey(item)}
-                                    className="flex items-center justify-between bg-[#161616] p-4 rounded-2xl border border-[#262626]"
-                                >
-                                    <div className="flex-1 min-w-0">
-                                        <h4 className="font-bold text-white text-sm line-clamp-1">
-                                            {item.title}
-                                        </h4>
-                                        <p className="text-[10px] text-slate-500 font-medium">
-                                            Vendeur: {item.seller}
-                                        </p>
-                                        <p className="text-xs text-[#FACC15] font-black mt-0.5">
-                                            {formatCurrency(item.finalPriceDzd, "DZD")}{" "}
-                                            <span className="text-slate-500 font-medium">/ unité</span>
-                                        </p>
-                                    </div>
-                                    <div className="flex items-center gap-4 ml-4">
-                                        <div className="flex items-center gap-2 bg-[#0a0a0a] rounded-xl border border-[#262626] p-1">
-                                            <button
-                                                onClick={() => onUpdateQty(cartKey(item), -1)}
-                                                className="size-7 rounded-lg flex items-center justify-center hover:bg-white/5 text-slate-400"
-                                                aria-label="Diminuer"
-                                            >
-                                                <Minus size={14} />
-                                            </button>
-                                            <span className="text-sm font-black w-4 text-center">
-                                                {item.quantity}
-                                            </span>
-                                            <button
-                                                onClick={() => onUpdateQty(cartKey(item), 1)}
-                                                className="size-7 rounded-lg flex items-center justify-center hover:bg-white/5 text-slate-400"
-                                                aria-label="Augmenter"
-                                            >
-                                                <Plus size={14} />
-                                            </button>
-                                        </div>
-                                        <button
-                                            onClick={() => onRemove(cartKey(item))}
-                                            className="p-2 text-slate-600 hover:text-red-500"
-                                            aria-label="Retirer"
-                                        >
-                                            <Trash2 size={18} />
-                                        </button>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
+            <div className="border-t border-[#262626] pt-4 space-y-2">
+                <label className="text-[10px] uppercase font-black tracking-widest text-slate-500">
+                    Quantité
+                </label>
+                <div className="flex items-center gap-3">
+                    <button
+                        type="button"
+                        onClick={() => onQuantity(Math.max(1, quantity - 1))}
+                        className="size-9 rounded-lg border border-[#262626] flex items-center justify-center hover:border-[#FACC15]/40 text-white"
+                        aria-label="Diminuer"
+                    >
+                        <Minus size={14} />
+                    </button>
+                    <input
+                        type="number"
+                        min={1}
+                        max={max}
+                        value={quantity}
+                        onChange={(e) => {
+                            const n = parseInt(e.target.value, 10);
+                            if (Number.isFinite(n))
+                                onQuantity(Math.min(max, Math.max(1, n)));
+                        }}
+                        className="flex-1 h-9 bg-[#0a0a0a] border border-[#262626] rounded-lg text-center text-white font-black focus:outline-none focus:border-[#FACC15]"
+                    />
+                    <button
+                        type="button"
+                        onClick={() => onQuantity(Math.min(max, quantity + 1))}
+                        className="size-9 rounded-lg border border-[#262626] flex items-center justify-center hover:border-[#FACC15]/40 text-white"
+                        aria-label="Augmenter"
+                    >
+                        <Plus size={14} />
+                    </button>
+                </div>
+                <p className="text-[10px] text-slate-500">Max {max} unité{max > 1 ? "s" : ""}</p>
+            </div>
 
-                        <div className="mt-6 p-6 rounded-2xl bg-[#FACC15]/5 border border-[#FACC15]/10">
-                            <div className="flex justify-between items-center">
-                                <span className="text-lg font-black text-white">Total à débiter</span>
-                                <span className="text-3xl font-black text-[#FACC15]">
-                                    {formatCurrency(cartTotal, "DZD")}
-                                </span>
-                            </div>
-                        </div>
-                    </ModalBody>
-                    <ModalFooter>
-                        <Button variant="light" onPress={closeFn} className="font-bold text-slate-400">
-                            Continuer mes achats
-                        </Button>
-                        <Button
-                            onPress={onCheckout}
-                            disabled={isCheckingOut}
-                            className="bg-[#FACC15] text-black font-black px-10 h-14 rounded-2xl"
-                            endContent={!isCheckingOut && <CreditCard size={20} />}
-                        >
-                            {isCheckingOut ? <Spinner size="sm" /> : "Confirmer & Payer"}
-                        </Button>
-                    </ModalFooter>
-                </>
-            )}
-        </ModalContent>
-    </Modal>
-);
+            <div className="border-t border-[#262626] pt-4 flex items-baseline justify-between">
+                <span className="text-[11px] uppercase font-black tracking-widest text-slate-500">
+                    Total
+                </span>
+                <span className="text-xl font-black text-[#FACC15]">
+                    {formatCurrency(total, "DZD")}
+                </span>
+            </div>
+
+            <Button
+                onPress={onPurchase}
+                isLoading={isCheckingOut}
+                isDisabled={isCheckingOut || item.stock <= 0}
+                data-testid="purchase-btn"
+                className="w-full h-12 bg-[#FACC15] text-black font-black text-base rounded-xl hover:bg-[#FACC15]/90 transition-colors"
+            >
+                {isCheckingOut ? "Traitement…" : "Acheter maintenant"}
+            </Button>
+        </div>
+    );
+};

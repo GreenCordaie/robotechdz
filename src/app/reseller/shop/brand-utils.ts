@@ -11,9 +11,9 @@
  */
 export const SEED_BRANDS: ReadonlyArray<{ slug: string; label: string }> = [
     { slug: "pubg-mobile", label: "PUBG Mobile" },
-    { slug: "imo-giftcards", label: "IMO GiftCards" },
+    { slug: "imo", label: "IMO GiftCards" },
     { slug: "razer-gold", label: "Razer Gold" },
-    { slug: "playstation-network", label: "PlayStation Network" },
+    { slug: "playstation", label: "PlayStation Network" },
     { slug: "free-fire", label: "Free Fire" },
     { slug: "yalla-ludo", label: "Yalla Ludo" },
     { slug: "new-state-mobile", label: "New State Mobile" },
@@ -30,7 +30,22 @@ export const SEED_BRANDS: ReadonlyArray<{ slug: string; label: string }> = [
     { slug: "valorant", label: "Valorant" },
     { slug: "minecraft", label: "Minecraft" },
     { slug: "nintendo-switch-online", label: "Nintendo Switch Online" },
-    { slug: "test", label: "Test" },
+    { slug: "mobile-legends", label: "Mobile Legends" },
+    { slug: "fortnite", label: "Fortnite" },
+    { slug: "netflix", label: "Netflix" },
+    { slug: "spotify", label: "Spotify" },
+    { slug: "apex-legends", label: "Apex Legends" },
+    { slug: "call-of-duty", label: "Call of Duty" },
+    { slug: "league-of-legends", label: "League of Legends" },
+    { slug: "clash-royale", label: "Clash Royale" },
+    { slug: "clash-of-clans", label: "Clash of Clans" },
+    { slug: "blizzard", label: "Blizzard" },
+    { slug: "world-of-warcraft", label: "World of Warcraft" },
+    { slug: "gta5", label: "Grand Theft Auto V" },
+    { slug: "gamestop", label: "GameStop" },
+    { slug: "bigo-live", label: "Bigo Live" },
+    { slug: "riot-access", label: "Riot Access" },
+    { slug: "uber", label: "Uber" },
 ];
 
 /**
@@ -55,8 +70,30 @@ export function prettifyLabel(slug: string): string {
         .join(" ");
 }
 
+/**
+ * Manifest of brand slugs that have a .webp asset on disk (the rest default
+ * to .png). Keep in sync with `public/brands/`. When you add a new image,
+ * include its slug here if it's webp; png is the implicit default.
+ */
+const WEBP_BRANDS: ReadonlySet<string> = new Set([
+    "amazon",
+    "fortnite",
+    "google-play",
+    "netflix",
+    "nintendo-eshop",
+    "nintendo-switch-online",
+    "playstation",
+    "razer-gold",
+    "riot-access",
+    "spotify",
+    "uber",
+    "valorant",
+    "xbox",
+]);
+
 export function artworkFor(slug: string): string {
-    return `/brands/${slug}.png`;
+    const ext = WEBP_BRANDS.has(slug) ? "webp" : "png";
+    return `/brands/${slug}.${ext}`;
 }
 
 /**
@@ -67,9 +104,9 @@ export function artworkFor(slug: string): string {
 export function deriveG2BulkBrand(title: string): string {
     const t = title.toLowerCase();
     if (t.includes("pubg")) return "pubg-mobile";
-    if (t.includes("imo")) return "imo-giftcards";
+    if (t.includes("imo")) return "imo";
     if (t.includes("razer")) return "razer-gold";
-    if (t.includes("playstation") || t.includes("psn")) return "playstation-network";
+    if (t.includes("playstation") || t.includes("psn")) return "playstation";
     if (t.includes("free fire")) return "free-fire";
     if (t.includes("yalla")) return "yalla-ludo";
     if (t.includes("new state")) return "new-state-mobile";
