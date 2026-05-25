@@ -9,43 +9,39 @@
  * landing to always show these even when neither catalog has live items for
  * them yet (operators expect a consistent gallery on first paint).
  */
+/**
+ * SEED_BRANDS — aligned 1:1 with the G2Bulk catalog (audit 2026-05-25).
+ *
+ * Source of truth: classification of all 980 G2Bulk products via their
+ * `raw.category_title` field, mapped through `deriveG2BulkBrand`. Brands
+ * are ordered by product count (largest first) so the landing surfaces the
+ * widest selection at the top of the grid. Counts are reference values for
+ * the landing render — actual counts are recomputed live from the catalog.
+ *
+ * To re-seed after a G2Bulk catalog change, re-run the classification audit
+ * (see commit 9708b33) and update this list.
+ */
 export const SEED_BRANDS: ReadonlyArray<{ slug: string; label: string }> = [
-    { slug: "pubg-mobile", label: "PUBG Mobile" },
-    { slug: "imo", label: "IMO GiftCards" },
-    { slug: "razer-gold", label: "Razer Gold" },
-    { slug: "playstation", label: "PlayStation Network" },
-    { slug: "free-fire", label: "Free Fire" },
-    { slug: "yalla-ludo", label: "Yalla Ludo" },
-    { slug: "new-state-mobile", label: "New State Mobile" },
-    { slug: "discord", label: "Discord" },
-    { slug: "steam", label: "Steam" },
-    { slug: "apple-itunes", label: "Apple iTunes" },
-    { slug: "roblox", label: "Roblox" },
-    { slug: "nintendo-eshop", label: "Nintendo eShop" },
-    { slug: "xbox", label: "XBOX" },
-    { slug: "google-play", label: "Google Play" },
-    { slug: "amazon", label: "Amazon" },
-    { slug: "jawaker", label: "Jawaker" },
-    { slug: "twitch", label: "Twitch" },
-    { slug: "valorant", label: "Valorant" },
-    { slug: "minecraft", label: "Minecraft" },
-    { slug: "nintendo-switch-online", label: "Nintendo Switch Online" },
-    { slug: "mobile-legends", label: "Mobile Legends" },
-    { slug: "fortnite", label: "Fortnite" },
-    { slug: "netflix", label: "Netflix" },
-    { slug: "spotify", label: "Spotify" },
-    { slug: "apex-legends", label: "Apex Legends" },
-    { slug: "call-of-duty", label: "Call of Duty" },
-    { slug: "league-of-legends", label: "League of Legends" },
-    { slug: "clash-royale", label: "Clash Royale" },
-    { slug: "clash-of-clans", label: "Clash of Clans" },
-    { slug: "blizzard", label: "Blizzard" },
-    { slug: "world-of-warcraft", label: "World of Warcraft" },
-    { slug: "gta5", label: "Grand Theft Auto V" },
-    { slug: "gamestop", label: "GameStop" },
-    { slug: "bigo-live", label: "Bigo Live" },
-    { slug: "riot-access", label: "Riot Access" },
-    { slug: "uber", label: "Uber" },
+    { slug: "playstation", label: "PlayStation Network" },       // 192
+    { slug: "steam", label: "Steam" },                            // 188
+    { slug: "apple-itunes", label: "Apple iTunes" },              // 137
+    { slug: "xbox", label: "XBOX" },                              // 98
+    { slug: "google-play", label: "Google Play" },                // 78
+    { slug: "nintendo-eshop", label: "Nintendo eShop" },          // 66
+    { slug: "amazon", label: "Amazon" },                          // 62
+    { slug: "roblox", label: "Roblox" },                          // 52
+    { slug: "razer-gold", label: "Razer Gold" },                  // 42
+    { slug: "yalla-ludo", label: "Yalla Ludo" },                  // 16
+    { slug: "pubg-mobile", label: "PUBG Mobile" },                // 10
+    { slug: "jawaker", label: "Jawaker" },                        // 8
+    { slug: "twitch", label: "Twitch" },                          // 7
+    { slug: "valorant", label: "Valorant" },                      // 6
+    { slug: "free-fire", label: "Free Fire" },                    // 5
+    { slug: "minecraft", label: "Minecraft" },                    // 4
+    { slug: "discord", label: "Discord" },                        // 3
+    { slug: "nintendo-switch-online", label: "Nintendo Switch Online" }, // 2
+    { slug: "imo", label: "IMO GiftCards" },                      // 2
+    { slug: "new-state-mobile", label: "New State Mobile" },      // 1
 ];
 
 /**

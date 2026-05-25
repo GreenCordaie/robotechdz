@@ -71,20 +71,21 @@ export async function getBrandCategoriesAction(): Promise<{
         () => new Map<string, number>(),
     );
 
-    const combined = new Map<string, number>();
-    g2b.forEach((n, slug) => combined.set(slug, (combined.get(slug) ?? 0) + n));
-
     const seedSlugs = new Set(SEED_BRANDS.map((b) => b.slug));
+
+    // Build cards for seed brands, in seed order (curated by volume), but
+    // ONLY include brands that have ≥ 1 G2Bulk product visible right now.
+    // This prevents empty placeholder cards from cluttering the landing.
     const merged: BrandCategory[] = SEED_BRANDS.map((b) => ({
         slug: b.slug,
         label: b.label,
-        count: combined.get(b.slug) ?? 0,
+        count: g2b.get(b.slug) ?? 0,
         imageUrl: artworkFor(b.slug),
-    }));
+    })).filter((c) => c.count > 0);
 
-    // Surface unexpected brands so operators don't lose visibility when seeds
-    // drift behind reality.
-    combined.forEach((n, slug) => {
+    // Surface brands G2Bulk added that aren't in our seed list yet, so the
+    // operator notices the drift and updates SEED_BRANDS in code.
+    g2b.forEach((n, slug) => {
         if (!seedSlugs.has(slug) && slug && slug !== "other") {
             merged.push({
                 slug,
