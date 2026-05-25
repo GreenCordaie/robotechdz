@@ -103,6 +103,12 @@ export function artworkFor(slug: string): string {
  */
 export function deriveG2BulkBrand(title: string): string {
     const t = title.toLowerCase();
+    // ── In-game currency proxies (G2Bulk titles often omit the game name) ───
+    // "UC Voucher" / "UC " = PUBG Mobile currency. Word-boundary check on " uc"
+    // avoids matching "Stuck" / "Uci" etc.
+    if (/(^|\s)uc(\s|$)|uc voucher/.test(t)) return "pubg-mobile";
+    if (t.includes("minecoin")) return "minecraft";
+    // ── Game name first, then variants ─────────────────────────────────────
     if (t.includes("pubg")) return "pubg-mobile";
     if (t.includes("imo")) return "imo";
     if (t.includes("razer")) return "razer-gold";
@@ -121,8 +127,10 @@ export function deriveG2BulkBrand(title: string): string {
     if (t.includes("amazon")) return "amazon";
     if (t.includes("jawaker")) return "jawaker";
     if (t.includes("twitch")) return "twitch";
-    if (t.includes("valorant")) return "valorant";
+    if (t.includes("valorant") || t.includes("riot")) return "valorant";
     if (t.includes("minecraft")) return "minecraft";
+    if (t.includes("netflix")) return "netflix";
+    if (t.includes("spotify")) return "spotify";
     return "other";
 }
 
