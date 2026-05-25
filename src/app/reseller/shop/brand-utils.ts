@@ -201,6 +201,46 @@ export function deriveG2BulkBrand(
     return "other";
 }
 
+/**
+ * Derive the pricing *category* scope for a G2Bulk product. Used by the
+ * pricing service's `category`-scope rule lookup (precedence is
+ * sku > brand > category > global).
+ *
+ * SINGLE SOURCE OF TRUTH — both the catalog pricing path
+ * (`g2bulk-shop-actions.ts`) and the checkout/wallet path
+ * (`reseller/actions.ts`) MUST use this so the displayed price and the
+ * debited price can never diverge.
+ *
+ * A numeric `categoryId` from the provider wins when present; otherwise we
+ * fall back to a brand → category mapping keyed on the canonical brand
+ * slugs returned by `deriveG2BulkBrand`.
+ */
+const GAMING_BRANDS: ReadonlySet<string> = new Set([
+    "steam", "playstation", "xbox", "nintendo-eshop", "nintendo-switch-online",
+    "valorant", "roblox", "minecraft", "fortnite", "call-of-duty",
+    "clash-of-clans", "clash-royale", "mobile-legends", "free-fire",
+    "pubg-mobile", "new-state-mobile", "twitch",
+]);
+const STREAMING_BRANDS: ReadonlySet<string> = new Set(["netflix", "spotify"]);
+const MOBILE_BRANDS: ReadonlySet<string> = new Set([
+    "apple-itunes", "google-play", "imo", "jawaker", "yalla-ludo", "discord",
+]);
+
+export function inferG2BulkCategory(
+    categoryId: number | null,
+    brand: string,
+): string {
+    // Numeric categoryId mappings (heuristic — admin can override via rules).
+    if (categoryId === 10) return "retail";
+    if (categoryId === 20 || categoryId === 40 || categoryId === 50) return "gaming";
+    if (categoryId === 30) return "mobile";
+    // Fallback from canonical brand slug.
+    if (GAMING_BRANDS.has(brand)) return "gaming";
+    if (STREAMING_BRANDS.has(brand)) return "streaming";
+    if (MOBILE_BRANDS.has(brand)) return "mobile";
+    return "retail";
+}
+
 export interface BrandCategory {
     slug: string;
     label: string;

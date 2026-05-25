@@ -754,6 +754,11 @@ async function handleG2BulkCheckout({
         const { g2bulkPricingService } = await import(
             "@/services/g2bulk-pricing.service"
         );
+        // Shared classification — same source of truth as the catalog pricing
+        // path so the displayed price and the debited price never diverge.
+        const { deriveG2BulkBrand, inferG2BulkCategory } = await import(
+            "./shop/brand-utils"
+        );
         const {
             getG2BulkProductMock,
             createG2BulkOrderMock,
@@ -768,6 +773,10 @@ async function handleG2BulkCheckout({
             unitPriceCents: number;
             currency: string;
             stock: number;
+            /** Upstream raw payload; `category_title` is the operator-friendly
+             * brand label used by deriveG2BulkBrand. May be absent (mock/SDK
+             * `get`), in which case classification falls back to the title. */
+            raw?: { category_title?: string } | null;
         };
 
         const sdkAny = lbV2 as unknown as {
@@ -807,36 +816,15 @@ async function handleG2BulkCheckout({
             ? Math.min(parseFloat(reseller.customDiscount), 100 - tierDiscountPct)
             : 0;
 
-        // Inline brand/category inference — kept consistent with
-        // g2bulk-shop-actions.ts. Duplicated intentionally to avoid a
-        // cyclic import.
-        const inferBrand = (title: string): string => {
-            const t = title.toLowerCase();
-            if (t.includes("amazon")) return "amazon";
-            if (t.includes("steam")) return "steam";
-            if (t.includes("itunes") || t.includes("apple")) return "itunes";
-            if (t.includes("free fire")) return "free-fire";
-            if (t.includes("pubg")) return "pubg-mobile";
-            if (t.includes("playstation") || t.includes("psn")) return "psn";
-            if (t.includes("xbox")) return "xbox";
-            if (t.includes("google play")) return "google-play";
-            return "other";
-        };
-        const inferCategory = (categoryId: number | null, brand: string): string => {
-            if (categoryId === 10) return "retail";
-            if (categoryId === 20 || categoryId === 40 || categoryId === 50) return "gaming";
-            if (categoryId === 30) return "mobile";
-            if (["steam", "free-fire", "pubg-mobile", "psn", "xbox"].includes(brand)) return "gaming";
-            if (["itunes", "google-play"].includes(brand)) return "mobile";
-            return "retail";
-        };
-
         const pricingInputs = g2bulkCart.map((c) => {
             const p = productMap.get(c.g2bulkProductId)!;
-            const brand = inferBrand(p.title);
+            const brand = deriveG2BulkBrand({
+                title: p.title,
+                categoryTitle: p.raw?.category_title ?? null,
+            });
             return {
                 priceCentsUsd: p.unitPriceCents,
-                category: inferCategory(p.categoryId, brand),
+                category: inferG2BulkCategory(p.categoryId, brand),
                 brand,
                 sku: `g2b__${p.providerId}`,
             };

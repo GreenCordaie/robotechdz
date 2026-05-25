@@ -21,6 +21,12 @@ import {
     prettifyLabel,
     toBrandSlug,
 } from "../brand-utils";
+import {
+    regionFlag,
+    regionLabel,
+    resolveRegion,
+    type RegionCode,
+} from "../region-utils";
 import type { EnrichedBsvListing } from "@/types/bsv-listings";
 
 /* ──────────────────────────────────────────────────────────────────────────
@@ -48,68 +54,6 @@ const PAGE_SIZE = 48;
 const ALL_REGION = "ALL";
 
 /* ──────────────────────────────────────────────────────────────────────────
- * Region extraction — maps free-form country strings to ISO-2 codes
- * ────────────────────────────────────────────────────────────────────────── */
-
-const COUNTRY_MAP: ReadonlyMap<string, string> = new Map(
-    Object.entries({
-        japan: "JP",
-        "saudi arabia": "SA",
-        saudi: "SA",
-        turkey: "TR",
-        turkiye: "TR",
-        indonesia: "ID",
-        "united states": "US",
-        usa: "US",
-        us: "US",
-        global: "GL",
-        worldwide: "WW",
-        ww: "WW",
-        mexico: "MX",
-        brazil: "BR",
-        thailand: "TH",
-        "united kingdom": "GB",
-        uk: "GB",
-        spain: "ES",
-        poland: "PL",
-        hungary: "HU",
-        taiwan: "TW",
-        australia: "AU",
-        malaysia: "MY",
-        korea: "KR",
-        philippines: "PH",
-        singapore: "SG",
-        vietnam: "VN",
-        france: "FR",
-        germany: "DE",
-        italy: "IT",
-        netherlands: "NL",
-        canada: "CA",
-        argentina: "AR",
-        india: "IN",
-        emirates: "AE",
-        uae: "AE",
-        kuwait: "KW",
-        qatar: "QA",
-        bahrain: "BH",
-        oman: "OM",
-    })
-);
-
-function extractRegion(title: string, fallback?: string): string {
-    if (fallback && /^[A-Z]{2}$/.test(fallback)) return fallback;
-    const lower = title.toLowerCase();
-    const entries = Array.from(COUNTRY_MAP.entries());
-    for (const [needle, code] of entries) {
-        if (lower.includes(needle)) return code;
-    }
-    // Detect bare 2-letter codes at end of title (e.g. "100 USD ... US")
-    const match = title.match(/\b([A-Z]{2})\b(?!.*\b[A-Z]{2}\b)/);
-    if (match) return match[1];
-    return "—";
-}
-
-/* ──────────────────────────────────────────────────────────────────────────
  * Mappers — turn catalog items into the unified Denomination row type
  * ────────────────────────────────────────────────────────────────────────── */
 
@@ -123,7 +67,9 @@ function bsvToDenomination(l: EnrichedBsvListing): Denomination {
         key: `bsv:${l.listingId}`,
         source: "bsv",
         title: l.product.displayName,
-        region: extractRegion(l.product.displayName, l.product.region ?? undefined),
+        region:
+            resolveRegion(l.product.region ?? null, l.product.displayName) ??
+            "GLOBAL",
         stock,
         priceDzd: l.pricing.finalPriceDzd,
         priceUsd: null,
@@ -138,7 +84,10 @@ function g2bToDenomination(p: G2BulkCatalogProduct): Denomination {
         key: `g2b:${p.productId}`,
         source: "g2bulk",
         title: p.title,
-        region: extractRegion(p.title),
+        // G2Bulk's category_title carries the region authoritatively
+        // ("Apple iTunes Saudi Arabia"). Title-fallback for the few where
+        // categoryTitle is null.
+        region: resolveRegion(p.categoryTitle, p.title) ?? "GLOBAL",
         stock: p.stock,
         priceDzd: p.pricing.finalPriceDzd,
         priceUsd: p.unitPriceCents / 100,
@@ -193,18 +142,35 @@ export default function ResellerBrandPage() {
                 // for Free Fire) — q would return zero matches for many brands.
                 // 980 products / 48-per-page = 21 pages. Bump to 25 for headroom.
                 // (Schema caps `limit` at 48, so we can't fetch fewer pages.)
+                //
+                // PERF: page 1 is fetched first to learn `totalPages`, then the
+                // remaining pages are fetched IN PARALLEL (was a sequential loop
+                // of ~21 round-trips → ~10-20s). Bounded by MAX_PAGES.
                 const MAX_PAGES = 25;
-                const all: G2BulkCatalogProduct[] = [];
-                for (let page = 1; page <= MAX_PAGES; page++) {
-                    const res = await getG2BulkCatalogAction({
+                const fetchPage = (page: number) =>
+                    getG2BulkCatalogAction({
                         page,
                         limit: PAGE_SIZE,
                         sortBy: "newest",
                     }).catch(() => null);
-                    if (!active) return;
-                    if (!res?.success) break;
-                    all.push(...(res.data.items as G2BulkCatalogProduct[]));
-                    if (page >= res.data.pagination.totalPages) break;
+
+                const first = await fetchPage(1);
+                if (!active) return;
+                const all: G2BulkCatalogProduct[] = [];
+                if (first?.success) {
+                    all.push(...(first.data.items as G2BulkCatalogProduct[]));
+                    const lastPage = Math.min(first.data.pagination.totalPages, MAX_PAGES);
+                    if (lastPage > 1) {
+                        const rest = await Promise.all(
+                            Array.from({ length: lastPage - 1 }, (_, i) => fetchPage(i + 2))
+                        );
+                        if (!active) return;
+                        for (const res of rest) {
+                            if (res?.success) {
+                                all.push(...(res.data.items as G2BulkCatalogProduct[]));
+                            }
+                        }
+                    }
                 }
                 const matched = all.filter(
                     (p) => toBrandSlug(deriveG2BulkBrand(p)) === slug
@@ -221,12 +187,18 @@ export default function ResellerBrandPage() {
     }, [slug, label]);
 
     /* ───── Derived ───── */
-    const regions = useMemo(() => {
-        const set = new Set<string>();
+    // Region pills: unique canonical region codes from items, ordered by
+    // product count (most-populated first) so the densest regions are
+    // surfaced as primary entry points.
+    const regions = useMemo<ReadonlyArray<RegionCode>>(() => {
+        const counts = new Map<RegionCode, number>();
         items.forEach((it) => {
-            if (it.region && it.region !== "—") set.add(it.region);
+            if (!it.region) return;
+            counts.set(it.region, (counts.get(it.region) ?? 0) + 1);
         });
-        return Array.from(set).sort();
+        return Array.from(counts.entries())
+            .sort((a, b) => b[1] - a[1])
+            .map(([code]) => code);
     }, [items]);
 
     const filtered = useMemo(() => {
@@ -372,7 +344,7 @@ export default function ResellerBrandPage() {
  * ────────────────────────────────────────────────────────────────────────── */
 
 const RegionPills: React.FC<{
-    readonly regions: ReadonlyArray<string>;
+    readonly regions: ReadonlyArray<RegionCode>;
     readonly value: string;
     readonly onChange: (r: string) => void;
 }> = ({ regions, value, onChange }) => {
@@ -381,20 +353,30 @@ const RegionPills: React.FC<{
         <div className="flex flex-wrap gap-2" data-testid="region-filter">
             {opts.map((r) => {
                 const active = value === r;
+                const isAll = r === ALL_REGION;
+                const flag = isAll ? "🗺️" : regionFlag(r);
+                const text = isAll ? "Toutes régions" : regionLabel(r);
                 return (
                     <button
                         key={r}
                         onClick={() => onChange(r)}
+                        data-region-code={r}
+                        title={isAll ? "Afficher toutes les régions" : text}
                         className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-black tracking-tight transition-all ${
                             active
                                 ? "bg-[#FACC15] text-black"
                                 : "bg-[#161616] border border-[#262626] text-slate-300 hover:border-[#FACC15]/40"
                         }`}
                     >
-                        <span className={`text-[9px] uppercase ${active ? "text-black/60" : "text-slate-500"}`}>
-                            {r === ALL_REGION ? "" : r.toLowerCase()}
-                        </span>
-                        {r === ALL_REGION ? "Tous" : r}
+                        <span aria-hidden>{flag}</span>
+                        <span>{isAll ? text : r}</span>
+                        {!isAll && (
+                            <span
+                                className={`text-[9px] font-bold ${active ? "text-black/60" : "text-slate-500"}`}
+                            >
+                                {text}
+                            </span>
+                        )}
                     </button>
                 );
             })}
@@ -447,7 +429,7 @@ const DenominationRow: React.FC<{
                             {item.source === "bsv" ? "BSV" : "G2Bulk"}
                         </span>
                         · vendeur {item.seller}
-                        {item.region && item.region !== "—" && ` · ${item.region}`}
+                        {item.region && ` · ${regionFlag(item.region)} ${item.region}`}
                     </p>
                 </div>
 

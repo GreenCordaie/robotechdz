@@ -49,7 +49,7 @@ export const CategoryGrid: React.FC<CategoryGridProps> = ({ categories }) => {
             ) : (
                 <div
                     data-testid="category-grid"
-                    className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4"
+                    className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 gap-3"
                 >
                     {filtered.map((c) => (
                         <BrandCard key={c.slug} category={c} />

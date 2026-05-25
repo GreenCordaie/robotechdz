@@ -14,10 +14,8 @@ import {
     type ResellerPricingContext,
     type ComputedPrice,
 } from "@/services/g2bulk-pricing.service";
-import {
-    searchG2BulkProductsMock,
-    type G2BulkProductMock,
-} from "@/lib/__mocks__/g2bulk-sdk.mock";
+import { searchG2BulkProductsMock } from "@/lib/__mocks__/g2bulk-sdk.mock";
+import { deriveG2BulkBrand, inferG2BulkCategory } from "./brand-utils";
 
 /* ----------------------------------------------------------------------
  * G2Bulk catalog action (Lot 5)
@@ -56,41 +54,12 @@ export interface G2BulkCatalogPricingMeta {
     conversionRate: number;
 }
 
-/**
- * Derive a brand/category slug from a G2Bulk product. G2Bulk doesn't
- * expose a canonical brand field; we infer one from the title prefix so
- * the pricing service's brand-scope rules can match (e.g. "amazon",
- * "steam", "free-fire").
- */
-function inferBrand(title: string): string {
-    const t = title.toLowerCase();
-    if (t.includes("amazon")) return "amazon";
-    if (t.includes("steam")) return "steam";
-    if (t.includes("itunes") || t.includes("apple")) return "itunes";
-    if (t.includes("free fire")) return "free-fire";
-    if (t.includes("pubg")) return "pubg-mobile";
-    if (t.includes("playstation") || t.includes("psn")) return "psn";
-    if (t.includes("xbox")) return "xbox";
-    if (t.includes("google play")) return "google-play";
-    if (t.includes("netflix")) return "netflix";
-    if (t.includes("spotify")) return "spotify";
-    return "other";
-}
-
-function inferCategory(categoryId: number | null, brand: string): string {
-    // Numeric categoryId mappings (heuristic — admin can override via rules).
-    if (categoryId === 10) return "retail";
-    if (categoryId === 20) return "gaming";
-    if (categoryId === 30) return "mobile";
-    if (categoryId === 40) return "gaming";
-    if (categoryId === 50) return "gaming";
-    // Fallback from brand
-    if (["steam", "free-fire", "pubg-mobile", "psn", "xbox"].includes(brand))
-        return "gaming";
-    if (["netflix", "spotify"].includes(brand)) return "streaming";
-    if (["itunes", "google-play"].includes(brand)) return "mobile";
-    return "retail";
-}
+/* Brand/category classification is centralised in `./brand-utils`
+ * (`deriveG2BulkBrand` + `inferG2BulkCategory`) so the catalog pricing path
+ * and the checkout/wallet path share one source of truth — see the note in
+ * brand-utils.ts. Previously a local `inferBrand` here returned non-canonical
+ * slugs ("psn", "itunes") and ignored `category_title`, so admin brand-scope
+ * pricing rules never matched. */
 
 type ProviderProduct = {
     id: number;
@@ -215,8 +184,11 @@ export const getG2BulkCatalogAction = withAuth(
         };
 
         const pricingInputs: G2BulkListingPricingInput[] = resp.items.map((p) => {
-            const brand = inferBrand(p.title);
-            const category = inferCategory(p.categoryId, brand);
+            const brand = deriveG2BulkBrand({
+                title: p.title,
+                categoryTitle: p.raw?.category_title ?? null,
+            });
+            const category = inferG2BulkCategory(p.categoryId, brand);
             return {
                 priceCentsUsd: p.unitPriceCents,
                 category,
