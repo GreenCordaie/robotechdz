@@ -372,7 +372,27 @@ export const createG2BulkGameOrderAction = withAuth(
             revalidatePath("/reseller/orders");
             return { success: true as const, orderNumber: res.orderNumber };
         } catch (err) {
-            return { success: false as const, error: (err as Error).message };
+            // Robust error extraction: drizzle / pg / upstream services can throw
+            // shapes other than plain Error (objects with a nested message, raw
+            // Response bodies, etc.). Always surface a readable string so the
+            // client never collapses to "[object Object]" in a toast.
+            const message = ((): string => {
+                if (err instanceof Error && typeof err.message === "string") {
+                    return err.message;
+                }
+                if (err && typeof err === "object") {
+                    const maybe = (err as { message?: unknown }).message;
+                    if (typeof maybe === "string") return maybe;
+                    try {
+                        return JSON.stringify(err);
+                    } catch {
+                        /* circular — fall through */
+                    }
+                }
+                return String(err ?? "Erreur inconnue");
+            })();
+            console.error("[createG2BulkGameOrderAction] failed:", err);
+            return { success: false as const, error: message };
         }
     },
 );

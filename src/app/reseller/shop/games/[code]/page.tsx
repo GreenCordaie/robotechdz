@@ -17,6 +17,28 @@ import {
 } from "../../g2bulk-games-actions";
 import { formatCurrency } from "@/lib/formatters";
 
+/**
+ * Coerce any thrown / returned error shape into a human-readable string for
+ * toast rendering. Server actions occasionally surface non-Error shapes
+ * (drizzle, pg, upstream JSON), and `toast.error(obj)` collapses to the
+ * literal "[object Object]" — this helper avoids that footgun everywhere.
+ */
+function asErrorString(err: unknown, fallback: string): string {
+    if (typeof err === "string" && err.length > 0) return err;
+    if (err instanceof Error && typeof err.message === "string" && err.message) return err.message;
+    if (err && typeof err === "object") {
+        const m = (err as { message?: unknown }).message;
+        if (typeof m === "string" && m) return m;
+        try {
+            const s = JSON.stringify(err);
+            if (s && s !== "{}") return s;
+        } catch {
+            /* circular — fall through */
+        }
+    }
+    return fallback;
+}
+
 export default function ResellerGameCataloguePage() {
     const router = useRouter();
     const params = useParams<{ code: string }>();
@@ -92,10 +114,10 @@ export default function ResellerGameCataloguePage() {
                 setSelectedId(null);
                 router.push("/reseller/orders");
             } else {
-                toast.error(res.error || "Échec de la commande");
+                toast.error(asErrorString(res.error, "Échec de la commande"));
             }
-        } catch {
-            toast.error("Erreur technique lors du paiement");
+        } catch (err) {
+            toast.error(asErrorString(err, "Erreur technique lors du paiement"));
         } finally {
             setIsBuying(false);
         }
