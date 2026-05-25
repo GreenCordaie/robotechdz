@@ -28,8 +28,18 @@ async function verifyTurnstile(token: string, secret: string) {
 export async function loginResellerAction(email: string, pin: string, honeypot?: string, turnstileToken?: string) {
     const turnstileSecret = process.env.TURNSTILE_SECRET_KEY;
 
-    // 0. Turnstile check
-    if (turnstileSecret) {
+    // Cloudflare Turnstile official test secret keys — always pass.
+    // Used in local dev where the login widget isn't rendered.
+    // Doc: https://developers.cloudflare.com/turnstile/troubleshooting/testing/
+    const TURNSTILE_TEST_SECRETS = new Set([
+        "1x0000000000000000000000000000000AA", // always passes
+        "2x0000000000000000000000000000000AA", // always fails
+        "3x0000000000000000000000000000000AA", // token already spent
+    ]);
+    const isTurnstileTestKey = turnstileSecret ? TURNSTILE_TEST_SECRETS.has(turnstileSecret) : false;
+
+    // 0. Turnstile check (skipped when using Cloudflare test keys in dev)
+    if (turnstileSecret && !isTurnstileTestKey) {
         if (!turnstileToken) {
             return { success: false, error: "Veuillez valider le CAPTCHA" };
         }
