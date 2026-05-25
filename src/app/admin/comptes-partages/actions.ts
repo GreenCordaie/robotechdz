@@ -527,6 +527,13 @@ export const attribuerSlotAutomatiqueAction = withAuth(
                         process.env.PUBLIC_URL ||
                         "https://boutique.nexusbox.tech";
                     activationUrl = `${baseUrl.replace(/\/$/, "")}/activer/${token}`;
+                    // Denormalize onto the slot row so the sync delivery
+                    // formatter (lib/delivery.ts) can include the link
+                    // without an extra DB hop.
+                    await tx
+                        .update(digitalCodeSlots)
+                        .set({ activationUrl })
+                        .where(eq(digitalCodeSlots.id, availableSlot.id));
                 } catch (err: any) {
                     console.error("[slot-assign] activation token generation failed:", err?.message);
                 }

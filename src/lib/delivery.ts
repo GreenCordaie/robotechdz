@@ -139,7 +139,11 @@ export function formatOrderItemsText(items: any[]): string {
                 return {
                     parentCode: decrypt(s.digitalCode.code),
                     slotNumber: s.slotNumber,
-                    pin: s.code ? decrypt(s.code) : null
+                    pin: s.code ? decrypt(s.code) : null,
+                    // Streaming activation deeplink (populated at slot
+                    // assignment by attribuerSlotAutomatiqueAction). Null for
+                    // non-streaming or pre-deeplink-feature slots.
+                    activationUrl: s.activationUrl ?? null,
                 };
             } catch { return null; }
         }).filter(Boolean);
@@ -148,7 +152,11 @@ export function formatOrderItemsText(items: any[]): string {
             text += `Produit : ${item.name}\nAccès : *${code}*\n\n`;
         }
         for (const slot of slots as any[]) {
-            text += `Produit : ${item.name}\nAccès : *${slot.parentCode}*\nProfil : ${slot.slotNumber}${slot.pin ? ` | PIN : ${slot.pin}` : ""}\n\n`;
+            text += `Produit : ${item.name}\nAccès : *${slot.parentCode}*\nProfil : ${slot.slotNumber}${slot.pin ? ` | PIN : ${slot.pin}` : ""}`;
+            if (slot.activationUrl) {
+                text += `\n📺 *Code TV auto* (à utiliser quand Netflix demande un code) :\n${slot.activationUrl}`;
+            }
+            text += `\n\n`;
         }
     }
     return text.trim();

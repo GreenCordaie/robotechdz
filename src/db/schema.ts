@@ -163,6 +163,10 @@ export const digitalCodeSlots = pgTable("digital_code_slots", {
     orderItemId: integer("order_item_id").references(() => orderItems.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at", { mode: 'date' }).defaultNow(),
     expiresAt: timestamp("expires_at", { mode: 'date' }),
+    // Denormalized streaming activation deeplink — set at slot assignment,
+    // mirrors the canonical row in `slot_activation_tokens`. Lets the sync
+    // WhatsApp delivery formatter include the link without a join.
+    activationUrl: text("activation_url"),
 }, (table) => {
     return {
         digitalCodeIdIdx: index("dcs_digital_code_id_idx").on(table.digitalCodeId),
