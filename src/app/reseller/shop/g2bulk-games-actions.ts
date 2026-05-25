@@ -92,11 +92,29 @@ async function lbGames<T>(path: string, init?: RequestInit): Promise<T> {
         },
         signal: AbortSignal.timeout(LB_TIMEOUT_MS),
     });
-    const json = (await res.json().catch(() => null)) as
-        | { success?: boolean; data?: unknown; error?: string }
-        | null;
+    const text = await res.text();
+    let json: { success?: boolean; data?: unknown; error?: unknown } | null = null;
+    try {
+        json = text ? JSON.parse(text) : null;
+    } catch {
+        json = null;
+    }
     if (!res.ok || !json?.success) {
-        throw new Error(json?.error || `LoadBrain HTTP ${res.status}`);
+        // The upstream `error` may be a string, a structured object, or absent
+        // (e.g. a bare 403 with empty body). Always surface a readable string —
+        // never let `new Error(object)` collapse to "[object Object]".
+        const e = json?.error;
+        const detail =
+            typeof e === "string"
+                ? e
+                : e && typeof e === "object" && "message" in e
+                  ? String((e as { message: unknown }).message)
+                  : e
+                    ? JSON.stringify(e)
+                    : text
+                      ? text.slice(0, 300)
+                      : "(réponse vide)";
+        throw new Error(`G2Bulk games (HTTP ${res.status}) : ${detail}`);
     }
     return json.data as T;
 }
