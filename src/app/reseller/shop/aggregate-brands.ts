@@ -12,7 +12,11 @@ import {
 } from "./brand-utils";
 
 const PROBE_LIMIT = 48;
-const MAX_PROBE_PAGES = 6;
+// Raised from 6 → 30 so the aggregator covers G2Bulk's full ~980-product catalog
+// (30 × 48 = 1440 slots ≥ 980) and a meaningful slice of BSV's ~10 500 active
+// listings (30 × 48 = 1440 ≈ 14% of BSV). For full BSV coverage on the landing,
+// raise further or move counts to a server-side cache.
+const MAX_PROBE_PAGES = 30;
 
 /**
  * Walk a few catalog pages and accumulate per-brand counts. Bounded so we
