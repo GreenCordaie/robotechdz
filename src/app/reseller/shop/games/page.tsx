@@ -39,10 +39,13 @@ export default function ResellerGamesPage() {
     }, []);
 
     const filtered = useMemo(() => {
-        const q = query.trim().toLowerCase();
+        // Normalize away spaces/punctuation so "free fire" matches "Freefire"
+        // and "pubg mobile" matches "PUBGM".
+        const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+        const q = norm(query);
         if (!q) return games;
         return games.filter(
-            (g) => g.name.toLowerCase().includes(q) || g.code.toLowerCase().includes(q),
+            (g) => norm(g.name).includes(q) || norm(g.code).includes(q),
         );
     }, [games, query]);
 
