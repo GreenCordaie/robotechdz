@@ -24,6 +24,10 @@ import { useRouter } from "next/navigation";
 import { toast } from "react-hot-toast";
 
 import { getBsvCatalogAction } from "./actions";
+import {
+    getG2BulkCatalogAction,
+    type G2BulkCatalogProduct,
+} from "./g2bulk-shop-actions";
 import { checkoutResellerAction, getCurrentResellerAction } from "../actions";
 import { formatCurrency } from "@/lib/formatters";
 import {
@@ -34,7 +38,11 @@ import { BsvListingGrid } from "./components/BsvListingGrid";
 import type { EnrichedBsvListing } from "@/types/bsv-listings";
 
 type CartItem = {
-    listingId: string;
+    // Either a BSV listing or a G2Bulk product, distinguished by `source`.
+    source: "bsv" | "g2bulk";
+    // BSV uses listingId (string), G2Bulk uses g2bulkProductId (number).
+    listingId?: string;
+    g2bulkProductId?: number;
     title: string;
     seller: string;
     finalPriceDzd: number;
@@ -90,6 +98,11 @@ export default function ResellerShop() {
     const [pricing, setPricing] = useState<PricingMeta | null>(null);
     const [isLoading, setIsLoading] = useState(true);
 
+    // G2Bulk catalog state — fetched in parallel with BSV, rendered as a
+    // distinct section in the same page (operator-visible badge, unified UX).
+    const [g2bulkItems, setG2bulkItems] = useState<G2BulkCatalogProduct[]>([]);
+    const [g2bulkLoading, setG2bulkLoading] = useState(true);
+
     const [reseller, setReseller] = useState<ResellerSummary | null>(null);
     const [cart, setCart] = useState<CartItem[]>([]);
     const [isCheckingOut, setIsCheckingOut] = useState(false);
@@ -127,6 +140,44 @@ export default function ResellerShop() {
             }
         });
     }, []);
+
+    // Load G2Bulk catalog in parallel with BSV (page/search apply to both,
+    // best-effort: G2Bulk uses its own categoryId/priceMax — title-search
+    // shared).
+    useEffect(() => {
+        let cancelled = false;
+        const loadG2bulk = async () => {
+            setG2bulkLoading(true);
+            try {
+                const res = await getG2BulkCatalogAction({
+                    q: debouncedQ || undefined,
+                    priceMaxDzd: filters.priceMaxDzd,
+                    sortBy:
+                        filters.sortBy === "price_asc"
+                            ? "price_asc"
+                            : filters.sortBy === "price_desc"
+                                ? "price_desc"
+                                : "newest",
+                    page: 1,
+                    limit: 24,
+                });
+                if (cancelled) return;
+                if (res?.success) {
+                    setG2bulkItems(res.data.items as G2BulkCatalogProduct[]);
+                } else {
+                    setG2bulkItems([]);
+                }
+            } catch {
+                if (!cancelled) setG2bulkItems([]);
+            } finally {
+                if (!cancelled) setG2bulkLoading(false);
+            }
+        };
+        loadG2bulk();
+        return () => {
+            cancelled = true;
+        };
+    }, [debouncedQ, filters.priceMaxDzd, filters.sortBy]);
 
     // Load catalog reactively
     useEffect(() => {
@@ -180,19 +231,31 @@ export default function ResellerShop() {
     ]);
 
     const cartListingIds = useMemo(
-        () => new Set(cart.map((c) => c.listingId)),
+        () =>
+            new Set(
+                cart.filter((c) => c.source === "bsv").map((c) => c.listingId as string)
+            ),
+        [cart]
+    );
+    const cartG2bulkIds = useMemo(
+        () =>
+            new Set(
+                cart.filter((c) => c.source === "g2bulk").map((c) => c.g2bulkProductId as number)
+            ),
         [cart]
     );
 
     const addToCart = useCallback((listing: EnrichedBsvListing) => {
         setCart((prev) => {
-            const existing = prev.find((c) => c.listingId === listing.listingId);
+            const existing = prev.find(
+                (c) => c.source === "bsv" && c.listingId === listing.listingId
+            );
             if (existing) {
                 toast(`${listing.product.displayName} (déjà au panier)`, {
                     icon: "✓",
                 });
                 return prev.map((c) =>
-                    c.listingId === listing.listingId
+                    c.source === "bsv" && c.listingId === listing.listingId
                         ? { ...c, quantity: c.quantity + 1 }
                         : c
                 );
@@ -201,6 +264,7 @@ export default function ResellerShop() {
             return [
                 ...prev,
                 {
+                    source: "bsv",
                     listingId: listing.listingId,
                     title: listing.product.displayName,
                     seller: listing.seller.slug,
@@ -212,15 +276,48 @@ export default function ResellerShop() {
         });
     }, []);
 
-    const removeFromCart = (listingId: string) => {
-        setCart((prev) => prev.filter((c) => c.listingId !== listingId));
+    const addG2BulkToCart = useCallback((product: G2BulkCatalogProduct) => {
+        setCart((prev) => {
+            const existing = prev.find(
+                (c) => c.source === "g2bulk" && c.g2bulkProductId === product.productId
+            );
+            if (existing) {
+                toast(`${product.title} (déjà au panier)`, { icon: "✓" });
+                return prev.map((c) =>
+                    c.source === "g2bulk" && c.g2bulkProductId === product.productId
+                        ? { ...c, quantity: c.quantity + 1 }
+                        : c
+                );
+            }
+            toast.success(`${product.title}`, { icon: "🛒" });
+            return [
+                ...prev,
+                {
+                    source: "g2bulk",
+                    g2bulkProductId: product.productId,
+                    title: product.title,
+                    seller: "G2Bulk",
+                    finalPriceDzd: product.pricing.finalPriceDzd,
+                    listPriceDzd: product.pricing.basePriceDzd,
+                    quantity: 1,
+                },
+            ];
+        });
+    }, []);
+
+    // Composite cart key: stable across both sources.
+    const cartKey = (c: CartItem): string =>
+        c.source === "bsv" ? `bsv:${c.listingId}` : `g2b:${c.g2bulkProductId}`;
+
+    const removeFromCart = (key: string) => {
+        setCart((prev) => prev.filter((c) => cartKey(c) !== key));
     };
 
-    const updateQuantity = (listingId: string, delta: number) => {
+    const updateQuantity = (key: string, delta: number) => {
         setCart((prev) =>
             prev
                 .map((c) =>
-                    c.listingId === listingId
+                    cartKey(c) === key
                         ? { ...c, quantity: Math.max(0, c.quantity + delta) }
                         : c
                 )
@@ -239,14 +336,22 @@ export default function ResellerShop() {
 
     const handleCheckout = async () => {
         if (cart.length === 0 || !reseller) return;
+        // The server-side checkout rejects mixing sources; nudge the user
+        // before the round-trip when we can detect it client-side.
+        const sources = new Set(cart.map((c) => c.source));
+        if (sources.size > 1) {
+            toast.error("Panier mixé BSV+G2Bulk non supporté — séparez les commandes.");
+            return;
+        }
         setIsCheckingOut(true);
         try {
             const res = await checkoutResellerAction({
                 resellerId: reseller.id,
-                cart: cart.map((c) => ({
-                    listingId: c.listingId,
-                    quantity: c.quantity,
-                })),
+                cart: cart.map((c) =>
+                    c.source === "bsv"
+                        ? { listingId: c.listingId as string, quantity: c.quantity }
+                        : { g2bulkProductId: c.g2bulkProductId as number, quantity: c.quantity }
+                ),
             });
             if (res.success) {
                 toast.success("Commande envoyée à LoadBrain", { duration: 4000 });
@@ -331,6 +436,91 @@ export default function ResellerShop() {
                 onPageChange={setPage}
             />
 
+            {/* ----------------- G2Bulk catalog section ----------------- */}
+            <section className="max-w-7xl mx-auto w-full px-2 mt-12">
+                <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-3">
+                        <h2 className="text-xl font-black text-white tracking-tight">
+                            Catalogue G2Bulk
+                        </h2>
+                        <span className="text-[10px] uppercase font-black tracking-widest text-cyan-400 bg-cyan-500/10 border border-cyan-500/30 px-2 py-1 rounded">
+                            G2Bulk
+                        </span>
+                    </div>
+                    <p className="text-xs text-slate-500 font-bold uppercase tracking-widest">
+                        {g2bulkItems.length} produit{g2bulkItems.length === 1 ? "" : "s"}
+                    </p>
+                </div>
+
+                {g2bulkLoading && (
+                    <div className="py-10 flex justify-center">
+                        <Spinner color="warning" />
+                    </div>
+                )}
+
+                {!g2bulkLoading && g2bulkItems.length === 0 && (
+                    <p className="text-center text-slate-500 text-sm italic py-8">
+                        Aucun produit G2Bulk pour ces filtres.
+                    </p>
+                )}
+
+                {!g2bulkLoading && g2bulkItems.length > 0 && (
+                    <div
+                        data-testid="g2bulk-grid"
+                        className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"
+                    >
+                        {g2bulkItems.map((p) => {
+                            const inCart = cartG2bulkIds.has(p.productId);
+                            return (
+                                <div
+                                    key={p.productId}
+                                    className="bg-[#161616] border border-[#262626] rounded-2xl p-4 flex flex-col gap-3 hover:border-cyan-500/40 transition-colors"
+                                >
+                                    <div className="flex items-start justify-between gap-2">
+                                        <h3 className="font-bold text-white text-sm line-clamp-2 flex-1">
+                                            {p.title}
+                                        </h3>
+                                        <span className="text-[9px] uppercase font-black tracking-widest text-cyan-400 bg-cyan-500/10 border border-cyan-500/30 px-1.5 py-0.5 rounded shrink-0">
+                                            G2Bulk
+                                        </span>
+                                    </div>
+                                    {p.description && (
+                                        <p className="text-[11px] text-slate-500 line-clamp-2">
+                                            {p.description}
+                                        </p>
+                                    )}
+                                    <div className="flex items-end justify-between mt-auto">
+                                        <div>
+                                            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">
+                                                Stock: {p.stock}
+                                            </p>
+                                            <p className="text-lg font-black text-[var(--primary)]">
+                                                {formatCurrency(
+                                                    p.pricing.finalPriceDzd,
+                                                    "DZD"
+                                                )}
+                                            </p>
+                                        </div>
+                                        <Button
+                                            size="sm"
+                                            color={inCart ? "success" : "primary"}
+                                            onPress={() => addG2BulkToCart(p)}
+                                            isDisabled={inCart}
+                                            startContent={
+                                                inCart ? null : <Plus size={14} />
+                                            }
+                                            className="font-bold"
+                                        >
+                                            {inCart ? "Au panier" : "Ajouter"}
+                                        </Button>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
+            </section>
+
             <Modal
                 isOpen={isOpen}
                 onClose={onClose}
@@ -358,12 +548,17 @@ export default function ResellerShop() {
                                 <div className="space-y-4 max-h-[40vh] overflow-y-auto pr-2">
                                     {cart.map((item) => (
                                         <div
-                                            key={item.listingId}
+                                            key={cartKey(item)}
                                             className="flex items-center justify-between bg-[#161616] p-4 rounded-2xl border border-[#262626]"
                                         >
                                             <div className="flex-1 min-w-0">
                                                 <h4 className="font-bold text-white text-sm line-clamp-1">
                                                     {item.title}
+                                                    {item.source === "g2bulk" && (
+                                                        <span className="ml-2 text-[9px] uppercase font-black tracking-widest text-cyan-400 bg-cyan-500/10 border border-cyan-500/30 px-1.5 py-0.5 rounded">
+                                                            G2Bulk
+                                                        </span>
+                                                    )}
                                                 </h4>
                                                 <p className="text-[10px] text-slate-500 font-medium">
                                                     Vendeur: {item.seller}
@@ -384,7 +579,7 @@ export default function ResellerShop() {
                                                     <button
                                                         onClick={() =>
                                                             updateQuantity(
-                                                                item.listingId,
+                                                                cartKey(item),
                                                                 -1
                                                             )
                                                         }
@@ -399,7 +594,7 @@ export default function ResellerShop() {
                                                     <button
                                                         onClick={() =>
                                                             updateQuantity(
-                                                                item.listingId,
+                                                                cartKey(item),
                                                                 1
                                                             )
                                                         }
@@ -412,7 +607,7 @@ export default function ResellerShop() {
                                                 <button
                                                     onClick={() =>
                                                         removeFromCart(
-                                                            item.listingId
+                                                            cartKey(item)
                                                         )
                                                     }
                                                     className="p-2 text-slate-600 hover:text-red-500"
