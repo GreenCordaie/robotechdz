@@ -501,12 +501,12 @@ export const checkoutResellerAction = withAuth(
 );
 
 /* ----------------------------------------------------------------------
- * BSV mirror checkout (Lot 3)
+ * BSV mirror checkout — production path.
  *
- * MOCK STAGE: pricing via stub, LoadBrain order via mock.
- * SWAP WHEN AGENTS 1 & 2 MERGE:
- *   - `@/services/__mocks__/bsv-pricing.service.stub` → `@/services/bsv-pricing.service`
- *   - `createBsvOrderMock` → `lbV2!.giftcards.orders.create(...)`
+ * Wired to the real LoadBrain SDK (`lbV2.giftcards.orders.create`) and
+ * the real `bsv-pricing.service` since 89b6b6b. The __mocks__ files
+ * still exist under src/ for vitest unit tests, but this runtime path
+ * never reads them.
  * --------------------------------------------------------------------- */
 async function handleBsvCheckout({
     reseller,
