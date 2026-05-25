@@ -191,8 +191,11 @@ export default function ResellerBrandPage() {
                 // categoryTitle-derived brand. We CANNOT use q=label because
                 // G2Bulk titles often omit the game name (e.g. "1 USD Diamond"
                 // for Free Fire) — q would return zero matches for many brands.
+                // 980 products / 48-per-page = 21 pages. Bump to 25 for headroom.
+                // (Schema caps `limit` at 48, so we can't fetch fewer pages.)
+                const MAX_PAGES = 25;
                 const all: G2BulkCatalogProduct[] = [];
-                for (let page = 1; page <= 11; page++) {
+                for (let page = 1; page <= MAX_PAGES; page++) {
                     const res = await getG2BulkCatalogAction({
                         page,
                         limit: PAGE_SIZE,
