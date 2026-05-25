@@ -53,6 +53,29 @@ interface Denomination {
 const PAGE_SIZE = 48;
 const ALL_REGION = "ALL";
 
+/**
+ * Extract the leading numeric face-value from a denomination title, used
+ * to order rows from smallest → largest within a region group.
+ *
+ *  "10 USD Diamond(1080+108)"      → 10
+ *  "500 MXN iTunes Mexico"         → 500
+ *  "8100 Uc Voucher"               → 8100
+ *  "10,000 Robux Global"           → 10000
+ *
+ * Returns Number.MAX_SAFE_INTEGER for titles with no leading number so they
+ * sort to the bottom of the group rather than disappearing.
+ */
+function extractFaceValue(title: string): number {
+    const match = title.replace(/,/g, "").match(/-?\d+(?:\.\d+)?/);
+    if (!match) return Number.MAX_SAFE_INTEGER;
+    const n = Number(match[0]);
+    return Number.isFinite(n) ? n : Number.MAX_SAFE_INTEGER;
+}
+
+function sortByFaceValue(arr: Denomination[]): Denomination[] {
+    return [...arr].sort((a, b) => extractFaceValue(a.title) - extractFaceValue(b.title));
+}
+
 /* ──────────────────────────────────────────────────────────────────────────
  * Mappers — turn catalog items into the unified Denomination row type
  * ────────────────────────────────────────────────────────────────────────── */
@@ -206,6 +229,31 @@ export default function ResellerBrandPage() {
         return items.filter((it) => it.region === region);
     }, [items, region]);
 
+    // Group filtered items by region (no grouping needed when one region is
+    // already selected). Within each group, sort by extracted face value
+    // (ascending) so the cheapest/smallest denomination comes first, which
+    // matches how resellers think about a price ladder.
+    const grouped = useMemo<ReadonlyArray<{ region: RegionCode; items: Denomination[] }>>(() => {
+        if (region !== ALL_REGION) {
+            return [
+                {
+                    region: region as RegionCode,
+                    items: sortByFaceValue(filtered as Denomination[]),
+                },
+            ];
+        }
+        const byRegion = new Map<RegionCode, Denomination[]>();
+        filtered.forEach((it) => {
+            const r = (it.region as RegionCode) || "GLOBAL";
+            const arr = byRegion.get(r) ?? [];
+            arr.push(it);
+            byRegion.set(r, arr);
+        });
+        return Array.from(byRegion.entries())
+            .sort((a, b) => b[1].length - a[1].length)
+            .map(([r, arr]) => ({ region: r, items: sortByFaceValue(arr) }));
+    }, [filtered, region]);
+
     const selected = useMemo(
         () => items.find((it) => it.key === selectedKey) || null,
         [items, selectedKey]
@@ -311,16 +359,43 @@ export default function ResellerBrandPage() {
                             Aucune dénomination pour cette catégorie / région.
                         </p>
                     ) : (
-                        <ul className="space-y-2" data-testid="denomination-list">
-                            {filtered.map((it) => (
-                                <DenominationRow
-                                    key={it.key}
-                                    item={it}
-                                    selected={selectedKey === it.key}
-                                    onSelect={handleSelect}
-                                />
+                        <div className="space-y-6" data-testid="denomination-list">
+                            {grouped.map(({ region: r, items: groupItems }) => (
+                                <section
+                                    key={r}
+                                    data-testid="region-group"
+                                    data-region={r}
+                                >
+                                    {/* Header is hidden when a region filter is active —
+                                        the pills already convey the context. */}
+                                    {region === ALL_REGION && (
+                                        <header className="flex items-baseline justify-between mb-2 pb-1 border-b border-[#262626]">
+                                            <h2 className="text-sm font-black uppercase tracking-widest text-slate-300 flex items-center gap-2">
+                                                <span aria-hidden>{regionFlag(r)}</span>
+                                                <span>{regionLabel(r)}</span>
+                                                <span className="text-[10px] text-slate-500 ml-1">
+                                                    ({r})
+                                                </span>
+                                            </h2>
+                                            <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                                                {groupItems.length} dénomination
+                                                {groupItems.length === 1 ? "" : "s"}
+                                            </span>
+                                        </header>
+                                    )}
+                                    <ul className="space-y-2">
+                                        {groupItems.map((it) => (
+                                            <DenominationRow
+                                                key={it.key}
+                                                item={it}
+                                                selected={selectedKey === it.key}
+                                                onSelect={handleSelect}
+                                            />
+                                        ))}
+                                    </ul>
+                                </section>
                             ))}
-                        </ul>
+                        </div>
                     )}
                 </div>
 
