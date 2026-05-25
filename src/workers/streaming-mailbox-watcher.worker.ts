@@ -152,6 +152,9 @@ interface PollDeps {
         codeId: number
     ) => Promise<{ type: string; value?: string; sourceEmailId?: string }>;
     broadcast?: (digitalCodeId: number, slotIds: number[], event: any) => void;
+    /** Optional override for the proactive WhatsApp push on HOUSEHOLD_LINK.
+     * Tests inject a stub; prod uses the default that talks to lib/whatsapp. */
+    pushHouseholdWhatsapp?: (recipients: Array<{ phone: string; activationUrl: string; accountEmail: string; brandName: string }>) => Promise<void>;
 }
 
 /**
@@ -203,7 +206,10 @@ export async function pollAccount(
         deps.resolveEmail ??
         (async (email, token, clientId, codeId) => {
             const r = await NetflixResolverService.resolve(email, token, clientId, codeId);
-            return { type: r.type, value: r.value, sourceEmailId: undefined };
+            // sourceEmailId is now plumbed through the resolver → enables the
+            // (digital_code_id, source_email_id) dedup index to drop repeats
+            // on re-poll instead of re-pushing the same code to the customer.
+            return { type: r.type, value: r.value, sourceEmailId: r.sourceEmailId };
         });
 
     const result = await resolver(
@@ -261,6 +267,24 @@ export async function pollAccount(
             if (eventType === "HOUSEHOLD_LINK") {
                 for (const slotId of route.slotIds) {
                     await upsertHouseholdLifecycle(db, slotId, now);
+                }
+                // Proactive WhatsApp fan-out: alert every customer of this
+                // account that Netflix asked for a household update. The
+                // first to click resolves it for everyone. Failures are
+                // best-effort — page SSE still works as fallback.
+                try {
+                    await pushHouseholdWhatsAppNotifications(
+                        db,
+                        account.id,
+                        route.slotIds,
+                        result.value!,
+                        deps,
+                    );
+                } catch (err: any) {
+                    console.error(
+                        "[StreamingWatcher] household whatsapp fan-out failed:",
+                        err?.message,
+                    );
                 }
             }
         }
@@ -342,6 +366,106 @@ export function initStreamingMailboxWatcher() {
     setTimeout(tick, 15_000); // initial delay so boot completes
     _interval = setInterval(tick, POLL_INTERVAL_HIGH_MS);
     console.log("[StreamingWatcher] scheduled every 30s");
+}
+
+/**
+ * Build the per-recipient WhatsApp push list for a HOUSEHOLD_LINK event,
+ * then either invoke the injected `pushHouseholdWhatsapp` dep (tests) or
+ * the real WhatsApp + template stack (prod).
+ *
+ * Best-effort: silently skips slots without a phone or without an
+ * activation URL. Returns the count of messages dispatched.
+ */
+export async function pushHouseholdWhatsAppNotifications(
+    db: any,
+    accountId: number,
+    slotIds: number[],
+    _householdLink: string,
+    deps: PollDeps,
+): Promise<{ sent: number; skipped: number }> {
+    if (slotIds.length === 0) return { sent: 0, skipped: 0 };
+
+    const account = await db.query.digitalCodes.findFirst({
+        where: eq(digitalCodes.id, accountId),
+    });
+    const accountEmail = account?.msAccountEmail ?? "Netflix";
+
+    const slotsWithCtx = await db.query.digitalCodeSlots.findMany({
+        where: inArray(digitalCodeSlots.id, slotIds),
+        with: {
+            orderItem: {
+                with: {
+                    order: { with: { client: true } },
+                },
+            },
+        },
+    });
+
+    const recipients: Array<{
+        phone: string;
+        activationUrl: string;
+        accountEmail: string;
+        brandName: string;
+    }> = [];
+
+    for (const s of slotsWithCtx as any[]) {
+        const phone =
+            s.orderItem?.order?.customerPhone ||
+            s.orderItem?.order?.client?.telephone;
+        if (!phone || !s.activationUrl) continue;
+        recipients.push({
+            phone,
+            activationUrl: s.activationUrl,
+            accountEmail,
+            brandName: "Netflix",
+        });
+    }
+
+    if (recipients.length === 0) {
+        return { sent: 0, skipped: slotIds.length };
+    }
+
+    if (deps.pushHouseholdWhatsapp) {
+        await deps.pushHouseholdWhatsapp(recipients);
+        return { sent: recipients.length, skipped: slotIds.length - recipients.length };
+    }
+
+    // Default prod path — lazy-import to keep tests fast.
+    const { loadAndRender } = await import("@/services/notification-templates.service");
+    const { sendWhatsAppMessage } = await import("@/lib/whatsapp");
+    const { db: dbModule } = await import("@/db");
+    const { shopSettings } = await import("@/db/schema");
+
+    const settings = await (dbModule as any).query.shopSettings.findFirst();
+    const waSettings = {
+        whatsappApiUrl: settings?.whatsappApiUrl ?? undefined,
+        whatsappApiKey: settings?.whatsappApiKey ?? undefined,
+        whatsappInstanceName: settings?.whatsappInstanceName ?? undefined,
+    };
+    const shopName = settings?.shopName || "Ma Boutique";
+
+    let sent = 0;
+    for (const r of recipients) {
+        try {
+            const body = await loadAndRender("streaming.household.update_required", {
+                companyName: shopName,
+                brandName: r.brandName,
+                accountEmail: r.accountEmail,
+                activationUrl: r.activationUrl,
+            });
+            const phoneJid =
+                r.phone.replace(/\D/g, "") + (r.phone.includes("@") ? "" : "@c.us");
+            await sendWhatsAppMessage(phoneJid, body, waSettings);
+            sent++;
+        } catch (err: any) {
+            console.error(
+                `[StreamingWatcher] household whatsapp send failed (phone ${r.phone}):`,
+                err?.message,
+            );
+        }
+    }
+    void shopSettings; // satisfy unused import (used via dbModule.query)
+    return { sent, skipped: slotIds.length - sent };
 }
 
 export const __forTests = {

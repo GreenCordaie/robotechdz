@@ -18,6 +18,7 @@ import {
     routeEvent,
     persistEvent,
     pollAccount,
+    pushHouseholdWhatsAppNotifications,
     __forTests,
 } from "@/workers/streaming-mailbox-watcher.worker";
 
@@ -247,5 +248,83 @@ describe("pollAccount integration", () => {
         });
         const res = await pollAccount(db, 10);
         expect(res.polled).toBe(false);
+    });
+});
+
+describe("pushHouseholdWhatsAppNotifications", () => {
+    function makeDb(account: any, slotsWithCtx: any[]) {
+        return {
+            query: {
+                digitalCodes: { findFirst: async () => account },
+                digitalCodeSlots: { findMany: async () => slotsWithCtx },
+            },
+        } as any;
+    }
+
+    it("invokes the injected push dep with phone + activationUrl per slot", async () => {
+        const db = makeDb(
+            { id: 99, msAccountEmail: "kenny23@outlook.com" },
+            [
+                {
+                    id: 1,
+                    activationUrl: "https://boutique/activer/AAA",
+                    orderItem: { order: { customerPhone: "+213600000001", client: null } },
+                },
+                {
+                    id: 2,
+                    activationUrl: "https://boutique/activer/BBB",
+                    orderItem: { order: { customerPhone: null, client: { telephone: "+213600000002" } } },
+                },
+            ],
+        );
+        const calls: any[] = [];
+        const res = await pushHouseholdWhatsAppNotifications(
+            db,
+            99,
+            [1, 2],
+            "https://netflix.com/household/x",
+            { pushHouseholdWhatsapp: async (recipients) => { calls.push(recipients); } },
+        );
+        expect(res.sent).toBe(2);
+        expect(res.skipped).toBe(0);
+        expect(calls).toHaveLength(1);
+        expect(calls[0].map((r: any) => r.phone).sort()).toEqual(["+213600000001", "+213600000002"]);
+        expect(calls[0].every((r: any) => r.activationUrl && r.accountEmail === "kenny23@outlook.com" && r.brandName === "Netflix")).toBe(true);
+    });
+
+    it("skips slots without a phone or without an activationUrl", async () => {
+        const db = makeDb(
+            { id: 99, msAccountEmail: "x@y.com" },
+            [
+                { id: 1, activationUrl: null, orderItem: { order: { customerPhone: "+213600000001" } } },
+                { id: 2, activationUrl: "https://u/2", orderItem: { order: { customerPhone: null, client: null } } },
+                { id: 3, activationUrl: "https://u/3", orderItem: { order: { customerPhone: "+213600000003" } } },
+            ],
+        );
+        const calls: any[] = [];
+        const res = await pushHouseholdWhatsAppNotifications(
+            db,
+            99,
+            [1, 2, 3],
+            "https://netflix.com/h",
+            { pushHouseholdWhatsapp: async (recipients) => { calls.push(recipients); } },
+        );
+        expect(res.sent).toBe(1);
+        expect(res.skipped).toBe(2);
+        expect(calls[0][0].phone).toBe("+213600000003");
+    });
+
+    it("returns zero with no recipients (no call to push dep)", async () => {
+        const db = makeDb({ id: 99, msAccountEmail: "x@y.com" }, []);
+        const calls: any[] = [];
+        const res = await pushHouseholdWhatsAppNotifications(
+            db,
+            99,
+            [],
+            "https://netflix.com/h",
+            { pushHouseholdWhatsapp: async (r) => { calls.push(r); } },
+        );
+        expect(res.sent).toBe(0);
+        expect(calls).toHaveLength(0);
     });
 });
