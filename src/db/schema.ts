@@ -978,3 +978,43 @@ export const g2bulkDeliveredCodesRelations = relations(g2bulkDeliveredCodes, ({ 
         references: [g2bulkOrders.id],
     }),
 }));
+
+// ---------------------------------------------------------------------------
+// Central B2B Wallet — singleton wallet (id = 1) holding admin-managed funds.
+// Admin tops it up manually (bank transfer received, etc.). Admin then
+// disburses to reseller wallets, which is how resellers get recharged.
+// ---------------------------------------------------------------------------
+export const centralWallet = pgTable("central_wallet", {
+    id: integer("id").primaryKey().default(1),
+    balance: numeric("balance", { precision: 12, scale: 2 }).default("0").notNull(),
+    totalToppedUp: numeric("total_topped_up", { precision: 12, scale: 2 }).default("0").notNull(),
+    totalDisbursed: numeric("total_disbursed", { precision: 12, scale: 2 }).default("0").notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+});
+
+export const centralWalletTransactions = pgTable("central_wallet_transactions", {
+    id: serial("id").primaryKey(),
+    type: text("type").notNull(), // 'admin_topup' | 'reseller_credit' | 'adjustment'
+    amountDzd: numeric("amount_dzd", { precision: 12, scale: 2 }).notNull(),
+    balanceAfter: numeric("balance_after", { precision: 12, scale: 2 }).notNull(),
+    resellerId: integer("reseller_id").references(() => resellers.id, { onDelete: "set null" }),
+    adminUserId: integer("admin_user_id").references(() => users.id, { onDelete: "set null" }),
+    reference: text("reference"),
+    notes: text("notes"),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+}, (table) => ({
+    typeIdx: index("cwt_type_idx").on(table.type),
+    resellerIdx: index("cwt_reseller_idx").on(table.resellerId),
+    createdAtIdx: index("cwt_created_at_idx").on(table.createdAt),
+}));
+
+export const centralWalletTransactionsRelations = relations(centralWalletTransactions, ({ one }) => ({
+    reseller: one(resellers, {
+        fields: [centralWalletTransactions.resellerId],
+        references: [resellers.id],
+    }),
+    adminUser: one(users, {
+        fields: [centralWalletTransactions.adminUserId],
+        references: [users.id],
+    }),
+}));
