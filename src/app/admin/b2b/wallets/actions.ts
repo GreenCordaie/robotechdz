@@ -8,6 +8,8 @@ import {
     auditLogs,
     users,
     shopSettings,
+    centralWallet,
+    centralWalletTransactions,
 } from "@/db/schema";
 import { eq, desc, sql, and } from "drizzle-orm";
 import { withAuth } from "@/lib/security";
@@ -15,6 +17,25 @@ import { UserRole } from "@/lib/constants";
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { ResellerNotifications } from "@/services/reseller-notifications.service";
+
+const CENTRAL_WALLET_ID = 1;
+
+/**
+ * Ensures the singleton central wallet row exists. Idempotent.
+ * Kept here (duplicated with central-wallet/actions.ts) to avoid cross-imports
+ * between two "use server" files which Next.js sometimes mis-bundles.
+ */
+async function ensureCentralWalletExists(): Promise<void> {
+    await db
+        .insert(centralWallet)
+        .values({
+            id: CENTRAL_WALLET_ID,
+            balance: "0",
+            totalToppedUp: "0",
+            totalDisbursed: "0",
+        })
+        .onConflictDoNothing({ target: centralWallet.id });
+}
 
 /**
  * Vue admin de tous les wallets reseller : balance + tier + dernière activité.
@@ -60,14 +81,23 @@ export const listResellerWalletsForAdminAction = withAuth(
 );
 
 /**
- * Recharge manuelle du wallet : le reseller a payé en boutique (cash, CIB,
- * Edahabia, virement, autre), l'admin crédite son wallet manuellement.
+ * Recharge manuelle du wallet reseller — passage OBLIGATOIRE par le wallet central.
+ *
+ * Le reseller a payé en boutique (cash, CIB, Edahabia, virement, autre). Pour que
+ * la compta B2B reste cohérente, on enregistre l'encaissement ET le décaissement
+ * dans le central — net = 0 sur le central mais trace complète des deux flux.
  *
  * Transaction atomique :
- *   1. Récupère le wallet (FOR UPDATE pour éviter race avec checkoutReseller)
- *   2. INSERT reseller_transactions type=RECHARGE
- *   3. UPDATE balance += amount
- *   4. Audit log RESELLER_WALLET_MANUAL_RECHARGE
+ *   1. Lock central_wallet FOR UPDATE
+ *   2. Lock/crée reseller_wallet FOR UPDATE
+ *   3. central += amount   → insert central_wallet_transactions type=admin_topup (cash in)
+ *   4. central -= amount   → insert central_wallet_transactions type=reseller_credit (cash out)
+ *      (net central inchangé, mais both topped_up and disbursed counters bougent)
+ *   5. reseller += amount  → insert reseller_transactions type=RECHARGE
+ *   6. Audit log RESELLER_WALLET_MANUAL_RECHARGE
+ *
+ * Ainsi le central reste la source de vérité unique : impossible de créditer
+ * un reseller sans laisser de trace côté central.
  *
  * AUCUN appel externe (Telegram/WhatsApp/email). L'admin communique
  * manuellement au reseller via le canal de son choix.
@@ -102,8 +132,24 @@ export const adminRechargeWalletAction = withAuth(
             };
         }
 
+        await ensureCentralWalletExists();
+
+        const amountStr = amount.toFixed(2);
+        const referenceText = `${input.method}${input.referenceNumber ? ` #${input.referenceNumber}` : ""}`;
+
         try {
             const result = await db.transaction(async (tx) => {
+                // 1. Lock central wallet
+                const centralRows = (await tx.execute(
+                    sql`SELECT id, balance FROM central_wallet
+                        WHERE id = ${CENTRAL_WALLET_ID}
+                        FOR UPDATE`
+                )) as unknown as Array<{ id: number; balance: string }>;
+                const centralRow = centralRows[0];
+                if (!centralRow) throw new Error("Wallet central introuvable");
+                const centralPrev = parseFloat(centralRow.balance);
+
+                // 2. Lookup + lock reseller
                 const reseller = await tx.query.resellers.findFirst({
                     where: eq(resellers.id, input.resellerId),
                     with: { wallet: true },
@@ -117,7 +163,6 @@ export const adminRechargeWalletAction = withAuth(
 
                 let wallet = reseller.wallet;
                 if (!wallet) {
-                    // Wallet pas encore créé (cas rare) → on le créé
                     const [newWallet] = await tx
                         .insert(resellerWallets)
                         .values({
@@ -129,13 +174,77 @@ export const adminRechargeWalletAction = withAuth(
                     wallet = newWallet;
                 }
 
-                const previousBalance = parseFloat(wallet.balance ?? "0");
-                const newBalance = previousBalance + amount;
+                // Re-lock the wallet row inside the tx to avoid race with checkout
+                const walletLockedRows = (await tx.execute(
+                    sql`SELECT id, balance FROM reseller_wallets
+                        WHERE id = ${wallet.id}
+                        FOR UPDATE`
+                )) as unknown as Array<{ id: number; balance: string }>;
+                const lockedWallet = walletLockedRows[0];
+                if (!lockedWallet) throw new Error("Wallet reseller introuvable");
+                const previousBalance = parseFloat(lockedWallet.balance ?? "0");
 
+                // 3. Central IN — record cash received (admin_topup)
+                const centralAfterTopupCents =
+                    Math.round(centralPrev * 100) + Math.round(amount * 100);
+                const centralAfterTopup = (centralAfterTopupCents / 100).toFixed(2);
+                await tx
+                    .update(centralWallet)
+                    .set({
+                        balance: sql`${centralWallet.balance} + ${amountStr}`,
+                        totalToppedUp: sql`${centralWallet.totalToppedUp} + ${amountStr}`,
+                        updatedAt: new Date(),
+                    })
+                    .where(eq(centralWallet.id, CENTRAL_WALLET_ID));
+
+                const [topupTx] = await tx
+                    .insert(centralWalletTransactions)
+                    .values({
+                        type: "admin_topup",
+                        amountDzd: amountStr,
+                        balanceAfter: centralAfterTopup,
+                        adminUserId: user.id,
+                        reference: referenceText,
+                        notes:
+                            `Pass-through recharge reseller #${reseller.id} ${reseller.companyName}` +
+                            (input.note ? ` — ${input.note}` : ""),
+                    })
+                    .returning();
+
+                // 4. Central OUT — disburse to reseller (reseller_credit)
+                const centralAfterDisburseCents =
+                    centralAfterTopupCents - Math.round(amount * 100);
+                const centralAfterDisburse = (centralAfterDisburseCents / 100).toFixed(2);
+                await tx
+                    .update(centralWallet)
+                    .set({
+                        balance: sql`${centralWallet.balance} - ${amountStr}`,
+                        totalDisbursed: sql`${centralWallet.totalDisbursed} + ${amountStr}`,
+                        updatedAt: new Date(),
+                    })
+                    .where(eq(centralWallet.id, CENTRAL_WALLET_ID));
+
+                const [disburseTx] = await tx
+                    .insert(centralWalletTransactions)
+                    .values({
+                        type: "reseller_credit",
+                        amountDzd: (-amount).toFixed(2),
+                        balanceAfter: centralAfterDisburse,
+                        resellerId: reseller.id,
+                        adminUserId: user.id,
+                        reference: referenceText,
+                        notes:
+                            `Pass-through depuis recharge directe (paire avec central tx #${topupTx.id})` +
+                            (input.note ? ` — ${input.note}` : ""),
+                    })
+                    .returning();
+
+                // 5. Credit reseller wallet
+                const newBalance = previousBalance + amount;
                 await tx
                     .update(resellerWallets)
                     .set({
-                        balance: sql`${resellerWallets.balance} + ${amount}`,
+                        balance: sql`${resellerWallets.balance} + ${amountStr}`,
                         updatedAt: new Date(),
                     })
                     .where(eq(resellerWallets.id, wallet.id));
@@ -149,11 +258,12 @@ export const adminRechargeWalletAction = withAuth(
                     .values({
                         walletId: wallet.id,
                         type: "RECHARGE",
-                        amount: amount.toFixed(2),
+                        amount: amountStr,
                         description,
                     })
                     .returning();
 
+                // 6. Audit log
                 await tx.insert(auditLogs).values({
                     userId: user.id,
                     action: "RESELLER_WALLET_MANUAL_RECHARGE",
@@ -168,6 +278,8 @@ export const adminRechargeWalletAction = withAuth(
                         previousBalance,
                         newBalance,
                         transactionId: tx2.id,
+                        centralTopupTxId: topupTx.id,
+                        centralDisburseTxId: disburseTx.id,
                     },
                 });
 
@@ -176,11 +288,14 @@ export const adminRechargeWalletAction = withAuth(
                     previousBalance,
                     newBalance,
                     amount,
+                    centralTopupTxId: topupTx.id,
+                    centralDisburseTxId: disburseTx.id,
                 };
             });
 
             revalidatePath("/admin/b2b/wallets");
             revalidatePath("/admin/b2b");
+            revalidatePath("/admin/b2b/central-wallet");
 
             // EPIC 6 — Auto-notify reseller via WhatsApp (no-op safe si non configuré).
             // Lookup reseller info pour le message (companyName + contactPhone).

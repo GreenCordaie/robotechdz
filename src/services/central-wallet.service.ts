@@ -76,3 +76,52 @@ export type CentralTxType = "admin_topup" | "reseller_credit" | "adjustment";
 export function isCentralTxType(value: string): value is CentralTxType {
     return value === "admin_topup" || value === "reseller_credit" || value === "adjustment";
 }
+
+/**
+ * Conservation invariant for the central wallet.
+ *
+ * Pure: caller passes the three central counters and the function tells whether
+ * the books balance. Used by the reconciliation widget and tests.
+ *
+ * The contract is:
+ *     balance == totalToppedUp - totalDisbursed
+ *
+ * `tolerance` is in DZD (defaults to 0.01 — one centime). Anything tighter
+ * trips on legitimate Postgres rounding of `numeric(12,2)` arithmetic.
+ */
+export type CentralReconciliation = {
+    balanced: boolean;
+    expectedBalance: number; // computed (toppedUp - disbursed)
+    actualBalance: number;
+    drift: number; // actual - expected, signed (DZD)
+};
+
+export function reconcileCentralCounters(args: {
+    balance: string | number;
+    totalToppedUp: string | number;
+    totalDisbursed: string | number;
+    tolerance?: number;
+}): CentralReconciliation {
+    const tol = args.tolerance ?? 0.01;
+    const balance = typeof args.balance === "number" ? args.balance : parseFloat(args.balance || "0");
+    const topped = typeof args.totalToppedUp === "number"
+        ? args.totalToppedUp
+        : parseFloat(args.totalToppedUp || "0");
+    const disbursed = typeof args.totalDisbursed === "number"
+        ? args.totalDisbursed
+        : parseFloat(args.totalDisbursed || "0");
+
+    // Work in centime space to avoid float drift.
+    const balanceCents = Math.round(balance * 100);
+    const toppedCents = Math.round(topped * 100);
+    const disbursedCents = Math.round(disbursed * 100);
+    const expectedCents = toppedCents - disbursedCents;
+    const driftCents = balanceCents - expectedCents;
+
+    return {
+        balanced: Math.abs(driftCents) <= Math.round(tol * 100),
+        expectedBalance: expectedCents / 100,
+        actualBalance: balanceCents / 100,
+        drift: driftCents / 100,
+    };
+}

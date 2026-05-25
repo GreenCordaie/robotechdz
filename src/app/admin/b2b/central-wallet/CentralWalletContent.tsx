@@ -28,6 +28,7 @@ import {
     listResellersForCreditAction,
 } from "./actions";
 import { formatCurrency, formatDate } from "@/lib/formatters";
+import { reconcileCentralCounters } from "@/services/central-wallet.service";
 
 type CentralWalletState = {
     balance: string;
@@ -127,6 +128,14 @@ export default function CentralWalletContent() {
     const balanceNum = parseFloat(wallet?.balance ?? "0");
     const totalPages = Math.max(1, Math.ceil(txTotal / 25));
 
+    const reconciliation = wallet
+        ? reconcileCentralCounters({
+              balance: wallet.balance,
+              totalToppedUp: wallet.totalToppedUp,
+              totalDisbursed: wallet.totalDisbursed,
+          })
+        : null;
+
     return (
         <div className="p-8 space-y-6 max-w-7xl">
             <header className="flex flex-col md:flex-row md:items-start justify-between gap-4">
@@ -171,6 +180,37 @@ export default function CentralWalletContent() {
                     </div>
                 )}
             </div>
+
+            {/* Reconciliation banner — only shown when books don't balance */}
+            {reconciliation && !reconciliation.balanced && (
+                <div
+                    data-testid="reconciliation-alert"
+                    className="bg-red-500/10 border border-red-500/40 rounded-2xl p-4 flex items-start gap-3"
+                >
+                    <div className="text-red-400 text-2xl leading-none mt-0.5">⚠</div>
+                    <div className="flex-1 space-y-1">
+                        <p className="text-sm font-black text-red-300 uppercase tracking-wider">
+                            Écart de réconciliation détecté
+                        </p>
+                        <p className="text-xs text-red-200/90 font-medium">
+                            Solde attendu (top-ups − distributions) :{" "}
+                            <strong>{formatCurrency(reconciliation.expectedBalance, "DZD")}</strong>
+                            {" · "}
+                            Solde réel : <strong>{formatCurrency(reconciliation.actualBalance, "DZD")}</strong>
+                            {" · "}
+                            Drift :{" "}
+                            <strong className={reconciliation.drift < 0 ? "text-red-400" : "text-amber-400"}>
+                                {reconciliation.drift > 0 ? "+" : ""}
+                                {formatCurrency(reconciliation.drift, "DZD")}
+                            </strong>
+                        </p>
+                        <p className="text-[11px] text-red-300/70">
+                            Un écart indique une transaction qui a écrit sur le central sans passer
+                            par le flux normal. Inspecter les ajustements et auditer les transactions.
+                        </p>
+                    </div>
+                </div>
+            )}
 
             {/* Action forms side by side */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

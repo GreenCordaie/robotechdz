@@ -4,6 +4,7 @@ import {
     hasSufficientBalance,
     computeBalanceAfter,
     isCentralTxType,
+    reconcileCentralCounters,
     MAX_AMOUNT_DZD,
 } from "@/services/central-wallet.service";
 
@@ -108,6 +109,81 @@ describe("central-wallet service helpers", () => {
         it("rejects unknown types", () => {
             expect(isCentralTxType("foo")).toBe(false);
             expect(isCentralTxType("")).toBe(false);
+        });
+    });
+
+    describe("reconcileCentralCounters", () => {
+        it("reports balanced when balance == toppedUp - disbursed", () => {
+            const r = reconcileCentralCounters({
+                balance: "250.00",
+                totalToppedUp: "1000.00",
+                totalDisbursed: "750.00",
+            });
+            expect(r.balanced).toBe(true);
+            expect(r.expectedBalance).toBe(250);
+            expect(r.actualBalance).toBe(250);
+            expect(r.drift).toBe(0);
+        });
+
+        it("flags a drift when balance is short", () => {
+            const r = reconcileCentralCounters({
+                balance: "240.00",
+                totalToppedUp: "1000.00",
+                totalDisbursed: "750.00",
+            });
+            expect(r.balanced).toBe(false);
+            expect(r.drift).toBe(-10);
+        });
+
+        it("flags a drift when balance is over", () => {
+            const r = reconcileCentralCounters({
+                balance: "260.00",
+                totalToppedUp: "1000.00",
+                totalDisbursed: "750.00",
+            });
+            expect(r.balanced).toBe(false);
+            expect(r.drift).toBe(10);
+        });
+
+        it("treats a pass-through (top-up + disburse same amount) as balanced", () => {
+            // Reseller pays 100k cash → central in 100k + out 100k → balance unchanged
+            const r = reconcileCentralCounters({
+                balance: "0.00",
+                totalToppedUp: "100000.00",
+                totalDisbursed: "100000.00",
+            });
+            expect(r.balanced).toBe(true);
+            expect(r.expectedBalance).toBe(0);
+        });
+
+        it("tolerates one centime of postgres numeric noise", () => {
+            const r = reconcileCentralCounters({
+                balance: "250.01",
+                totalToppedUp: "1000.00",
+                totalDisbursed: "750.00",
+            });
+            expect(r.balanced).toBe(true);
+            expect(r.drift).toBe(0.01);
+        });
+
+        it("accepts a tighter custom tolerance", () => {
+            const r = reconcileCentralCounters({
+                balance: "250.01",
+                totalToppedUp: "1000.00",
+                totalDisbursed: "750.00",
+                tolerance: 0,
+            });
+            expect(r.balanced).toBe(false);
+        });
+
+        it("treats empty/invalid counters as zero", () => {
+            const r = reconcileCentralCounters({
+                balance: "",
+                totalToppedUp: "",
+                totalDisbursed: "",
+            });
+            expect(r.balanced).toBe(true);
+            expect(r.actualBalance).toBe(0);
         });
     });
 });
