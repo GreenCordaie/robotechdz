@@ -4,14 +4,24 @@ import { db } from "@/db";
 import { digitalCodes, productVariants, products, digitalCodeSlots, auditLogs } from "@/db/schema";
 import { eq, and, sql, desc, exists } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { withAuth } from "@/lib/security";
+import { withAuth, logSecurityAction, getAuthenticatedUser } from "@/lib/security";
 import { z } from "zod";
 import { encrypt, decrypt } from "@/lib/encryption";
 import { N8nService } from "@/services/n8n.service";
 import { UserRole } from "@/lib/constants";
 import { AccountService } from "@/services/account.service";
+import { sweepExpiredSlots } from "@/services/shared-account-sweeper.service";
+import { generateMissingSlots } from "@/services/shared-account-orphan-generator.service";
 
-export async function getSharedAccountsInventory() {
+const MASKED = "***";
+
+export async function getSharedAccountsInventory(opts?: { revealPasswords?: boolean }) {
+    const user = await getAuthenticatedUser();
+    if (!user || user.role !== UserRole.ADMIN) {
+        return [];
+    }
+    const reveal = !!opts?.revealPasswords;
+
     const results = await db.query.productVariants.findMany({
         where: eq(productVariants.isSharing, true),
         with: {
@@ -23,11 +33,7 @@ export async function getSharedAccountsInventory() {
                         with: {
                             orderItem: {
                                 with: {
-                                    order: {
-                                        with: {
-                                            client: true
-                                        }
-                                    }
+                                    order: { with: { client: true } }
                                 }
                             }
                         }
@@ -38,22 +44,76 @@ export async function getSharedAccountsInventory() {
         }
     });
 
-    // Decrypt codes for admin view — outlookPassword exposed (decrypted) for admin Microsoft linking
-    return results.map(v => ({
-        ...v,
-        digitalCodes: v.digitalCodes.map(dc => ({
-            ...dc,
-            code: decrypt(dc.code) || dc.code,
-            outlookPassword: dc.outlookPassword ? (decrypt(dc.outlookPassword) || undefined) : undefined,
-            hasOutlookPassword: !!dc.outlookPassword,
-            msStatus: dc.msStatus, // DISCONNECTED, CONNECTED, EXPIRED
-            slots: dc.slots.map(s => ({
-                ...s,
-                code: s.code ? (decrypt(s.code) || s.code) : null
-            }))
-        }))
-    }));
+    const variantIds: number[] = [];
+    let accountCount = 0;
+    let slotCount = 0;
+
+    const mapped = results.map(v => {
+        variantIds.push(v.id);
+        return {
+            ...v,
+            digitalCodes: v.digitalCodes.map(dc => {
+                accountCount++;
+                slotCount += dc.slots.length;
+                const decryptedCode = decrypt(dc.code) || dc.code;
+                const decryptedOutlook = dc.outlookPassword ? (decrypt(dc.outlookPassword) || undefined) : undefined;
+                // Mask code: split email | pass and keep email visible always
+                const [email, ...rest] = (decryptedCode || "").split("|").map(s => s.trim());
+                const fullCode = reveal ? decryptedCode : `${email} | ${MASKED}`;
+                return {
+                    ...dc,
+                    code: fullCode,
+                    outlookPassword: reveal ? decryptedOutlook : (decryptedOutlook ? MASKED : undefined),
+                    hasOutlookPassword: !!dc.outlookPassword,
+                    msStatus: dc.msStatus,
+                    slots: dc.slots.map(s => ({
+                        ...s,
+                        code: reveal && s.code ? (decrypt(s.code) || s.code) : (s.code ? MASKED : null)
+                    }))
+                };
+            })
+        };
+    });
+
+    if (reveal) {
+        await logSecurityAction({
+            userId: user.id,
+            action: "SHARED_ACCOUNT_PASSWORDS_REVEALED",
+            entityType: "SHARED_ACCOUNT",
+            newData: { variantIds, accountCount, slotCount }
+        }).catch(() => { });
+    }
+
+    // Attach a marker on the array (frontend reads via length === N pattern; keep shape stable)
+    (mapped as any).passwordsRevealed = reveal;
+    return mapped;
 }
+
+export const sweepSharedAccountSlots = withAuth(
+    { roles: [UserRole.ADMIN] },
+    async (_input, user) => {
+        try {
+            const res = await sweepExpiredSlots(db as any);
+            revalidatePath("/admin/comptes-partages");
+            return { success: true, ...res };
+        } catch (error) {
+            return { success: false, error: (error as Error).message };
+        }
+    }
+);
+
+export const generateMissingSlotsAction = withAuth(
+    { roles: [UserRole.ADMIN] },
+    async (_input, user) => {
+        try {
+            const res = await generateMissingSlots(db as any, user.id);
+            revalidatePath("/admin/comptes-partages");
+            return { success: true, ...res };
+        } catch (error) {
+            return { success: false, error: (error as Error).message };
+        }
+    }
+);
 
 export const getSharingVariants = withAuth(
     { roles: [UserRole.ADMIN] },

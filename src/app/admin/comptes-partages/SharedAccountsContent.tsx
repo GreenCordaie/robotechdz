@@ -12,6 +12,8 @@ import {
     linkProductToSharing,
     getSharedAccountsHistory,
     resolveHouseholdAction,
+    sweepSharedAccountSlots,
+    generateMissingSlotsAction,
 } from "./actions";
 import {
     Users, Mail, LayoutGrid, CheckCircle2, Search, User, Calendar,
@@ -89,16 +91,33 @@ export default function SharedAccountsContent() {
 
     // ── Outlook password visibility (per account id) ──────────────────────────
     const [shownOutlookPw, setShownOutlookPw] = useState<Set<number>>(new Set());
+    const [passwordsRevealed, setPasswordsRevealed] = useState(false);
+    const [revealConfirmOpen, setRevealConfirmOpen] = useState(false);
+    const [isSweeping, setIsSweeping] = useState(false);
+    const [isGenerating, setIsGenerating] = useState(false);
+    const [orphanCount, setOrphanCount] = useState(0);
 
     // ── Load ──────────────────────────────────────────────────────────────────
-    const loadInventory = useCallback(async () => {
+    const loadInventory = useCallback(async (revealPasswords = false) => {
         try {
             const [invData, varData, linkData] = await Promise.all([
-                getSharedAccountsInventory(),
+                getSharedAccountsInventory({ revealPasswords }),
                 getSharingVariants({}),
                 getAvailableVariantsForLinking({})
             ]);
-            if (Array.isArray(invData)) setInventory(invData);
+            if (Array.isArray(invData)) {
+                setInventory(invData);
+                setPasswordsRevealed(!!(invData as any).passwordsRevealed);
+                // Compute orphan count heuristic: variants whose accounts have slots.length < totalSlots
+                let orphans = 0;
+                (invData as any[]).forEach(v => {
+                    v.digitalCodes?.forEach((acc: any) => {
+                        const total = v.totalSlots || 0;
+                        if (total > 0 && (acc.slots?.length || 0) < total) orphans++;
+                    });
+                });
+                setOrphanCount(orphans);
+            }
             if (Array.isArray(varData)) setSharingVariants(varData);
             if (Array.isArray(linkData)) setLinkableVariants(linkData);
         } catch {
@@ -107,6 +126,42 @@ export default function SharedAccountsContent() {
             setIsLoading(false);
         }
     }, []);
+
+    const handleSweep = useCallback(async () => {
+        setIsSweeping(true);
+        try {
+            const res: any = await sweepSharedAccountSlots({});
+            if (res?.success) {
+                toast.success(`🧹 ${res.expired} slot(s) expiré(s) (${res.took_ms}ms)`);
+                await loadInventory(passwordsRevealed);
+            } else {
+                toast.error(res?.error || "Échec du balayage");
+            }
+        } finally {
+            setIsSweeping(false);
+        }
+    }, [loadInventory, passwordsRevealed]);
+
+    const handleGenerateOrphans = useCallback(async () => {
+        setIsGenerating(true);
+        try {
+            const res: any = await generateMissingSlotsAction({});
+            if (res?.success) {
+                toast.success(`⚡ ${res.slotsCreated} slot(s) créé(s) sur ${res.accountsTouched} compte(s)`);
+                await loadInventory(passwordsRevealed);
+            } else {
+                toast.error(res?.error || "Échec de la génération");
+            }
+        } finally {
+            setIsGenerating(false);
+        }
+    }, [loadInventory, passwordsRevealed]);
+
+    const confirmRevealPasswords = useCallback(async () => {
+        setRevealConfirmOpen(false);
+        await loadInventory(true);
+        toast.success("🔓 Mots de passe affichés — action tracée dans l'audit");
+    }, [loadInventory]);
 
     const loadHistory = useCallback(async () => {
         setIsLoadingHistory(true);
@@ -125,10 +180,11 @@ export default function SharedAccountsContent() {
     }, []);
 
     useEffect(() => {
-        loadInventory();
-        const interval = setInterval(loadInventory, 30_000);
+        loadInventory(false);
+        const interval = setInterval(() => loadInventory(false), 30_000);
         return () => clearInterval(interval);
-    }, [loadInventory]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     // ── Slot auto-fill on add variant change ──────────────────────────────────
     useEffect(() => {
@@ -437,8 +493,73 @@ export default function SharedAccountsContent() {
                         onClick={linkModal.onOpen}>
                         Lier SKU
                     </Button>
+                    <Button
+                        variant="flat"
+                        isLoading={isSweeping}
+                        onClick={handleSweep}
+                        className="h-10 px-4 text-sm font-bold rounded-xl bg-yellow-500/10 border border-yellow-500/20 text-yellow-300">
+                        🧹 Balayer les expirés
+                    </Button>
+                    <Button
+                        variant="flat"
+                        isLoading={isGenerating}
+                        onClick={handleGenerateOrphans}
+                        className="h-10 px-4 text-sm font-bold rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-300">
+                        ⚡ Générer slots manquants
+                    </Button>
+                    {!passwordsRevealed ? (
+                        <Button
+                            variant="flat"
+                            onClick={() => setRevealConfirmOpen(true)}
+                            className="h-10 px-4 text-sm font-bold rounded-xl bg-red-500/10 border border-red-500/20 text-red-300">
+                            👁 Révéler les mots de passe
+                        </Button>
+                    ) : (
+                        <Button
+                            variant="flat"
+                            onClick={() => loadInventory(false)}
+                            className="h-10 px-4 text-sm font-bold rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-300">
+                            🔒 Masquer les mots de passe
+                        </Button>
+                    )}
                 </div>
             </header>
+
+            {/* Healthcheck banner */}
+            {orphanCount > 0 && (
+                <div className="flex items-center justify-between gap-3 p-3 rounded-xl bg-red-500/10 border border-red-500/30">
+                    <div className="flex items-center gap-2">
+                        <AlertCircle className="text-red-400" size={18} />
+                        <span className="text-sm font-bold text-red-200">
+                            {orphanCount} compte(s) avec des slots manquants — inventaire fantôme détecté.
+                        </span>
+                    </div>
+                    <Button
+                        size="sm"
+                        isLoading={isGenerating}
+                        onClick={handleGenerateOrphans}
+                        className="h-8 px-3 text-xs font-bold rounded-lg bg-red-500 text-white">
+                        ⚡ Réparer maintenant
+                    </Button>
+                </div>
+            )}
+
+            {/* Reveal confirmation modal */}
+            <Modal isOpen={revealConfirmOpen} onClose={() => setRevealConfirmOpen(false)} backdrop="blur">
+                <ModalContent>
+                    <ModalHeader>Révéler les mots de passe</ModalHeader>
+                    <ModalBody>
+                        <p className="text-sm text-slate-300">
+                            Cette action sera tracée dans le journal d&apos;audit.
+                            Tous les mots de passe des comptes partagés visibles seront déchiffrés et affichés.
+                        </p>
+                    </ModalBody>
+                    <ModalFooter>
+                        <Button variant="light" onClick={() => setRevealConfirmOpen(false)}>Annuler</Button>
+                        <Button color="danger" onClick={confirmRevealPasswords}>Confirmer et révéler</Button>
+                    </ModalFooter>
+                </ModalContent>
+            </Modal>
 
             {/* ── Stats ── */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
