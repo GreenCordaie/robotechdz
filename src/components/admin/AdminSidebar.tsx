@@ -92,6 +92,7 @@ export const AdminSidebar = () => {
         { name: "Fournisseurs", icon: Users, href: "/admin/fournisseurs", roles: ["ADMIN"] },
         ...(isB2bEnabled ? [{ name: "B2B & Revendeurs", icon: Building2, href: "/admin/b2b", roles: ["ADMIN"] }] : []),
         { name: "BSV Pricing", icon: Settings2, href: "/admin/bsv-pricing", roles: ["ADMIN"] },
+        { name: "G2Bulk Pricing", icon: Settings2, href: "/admin/g2bulk-pricing", roles: ["ADMIN"] },
         { name: "Tickets Support", icon: Headset, href: "/admin/support", badge: openTickets, roles: ["ADMIN", "CAISSIER", "TRAITEUR"] },
         { name: "Analytics", icon: BarChart3, href: "/admin/analytics", roles: ["ADMIN"] },
         { name: "Modules", icon: Blocks, href: "/admin/modules", roles: ["ADMIN"] },

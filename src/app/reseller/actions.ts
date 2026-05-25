@@ -287,8 +287,10 @@ export const checkoutResellerAction = withAuth(
         roles: [UserRole.RESELLER],
         schema: z.object({
             resellerId: z.number(),
-            // Either legacy local variantId checkout (`id`) OR BSV mirror
-            // checkout (`listingId`). Each cart line is one or the other.
+            // Cart line is one of three variants:
+            //   - legacy local variant (`id`)
+            //   - BSV mirror listing (`listingId`)
+            //   - G2Bulk product (`g2bulkProductId`)
             cart: z.array(
                 z.union([
                     z.object({
@@ -297,6 +299,10 @@ export const checkoutResellerAction = withAuth(
                     }),
                     z.object({
                         listingId: z.string().min(1),
+                        quantity: z.number().min(1),
+                    }),
+                    z.object({
+                        g2bulkProductId: z.number().int().positive(),
                         quantity: z.number().min(1),
                     }),
                 ])
@@ -312,13 +318,32 @@ export const checkoutResellerAction = withAuth(
 
         if (!reseller) return { success: false, error: "Compte revendeur invalide" };
 
-        // Split cart into legacy local lines and BSV mirror lines.
+        // Split cart into legacy local, BSV mirror, and G2Bulk lines.
         const legacyCart = cart.filter(
             (c): c is { id: number; quantity: number } => "id" in c
         );
         const bsvCart = cart.filter(
             (c): c is { listingId: string; quantity: number } => "listingId" in c
         );
+        const g2bulkCart = cart.filter(
+            (c): c is { g2bulkProductId: number; quantity: number } =>
+                "g2bulkProductId" in c
+        );
+
+        if (g2bulkCart.length > 0 && bsvCart.length === 0 && legacyCart.length === 0) {
+            return handleG2BulkCheckout({
+                reseller,
+                userId: user.id,
+                g2bulkCart,
+            });
+        }
+
+        if (g2bulkCart.length > 0 && (bsvCart.length > 0 || legacyCart.length > 0)) {
+            return {
+                success: false,
+                error: "Mixer panier G2Bulk avec BSV ou variants locaux pas supporté",
+            };
+        }
 
         if (bsvCart.length > 0 && legacyCart.length === 0) {
             return handleBsvCheckout({
@@ -696,6 +721,237 @@ async function handleBsvCheckout({
             error instanceof Error
                 ? error.message
                 : "Erreur traitement commande BSV";
+        return { success: false as const, error: msg };
+    }
+}
+
+/* ----------------------------------------------------------------------
+ * G2Bulk mirror checkout (Lot 5)
+ *
+ * Mirrors handleBsvCheckout for the G2Bulk catalogue. Uses
+ * lbV2.g2bulk.products.get + lbV2.g2bulk.orders.create when LoadBrain
+ * is configured; falls back to the mock SDK otherwise (mirrors the
+ * BSV mock fallback pattern).
+ *
+ * SWAP WHEN sdk-v2 g2bulk methods land in this codebase's installed
+ * SDK: replace mock helpers with direct lbV2.g2bulk.products.get /
+ * lbV2.g2bulk.orders.create calls. The SDK already exposes them
+ * (see ../LoadBrain/packages/sdk-v2/src/client.ts) — only the
+ * package re-install is pending.
+ * --------------------------------------------------------------------- */
+async function handleG2BulkCheckout({
+    reseller,
+    userId,
+    g2bulkCart,
+}: {
+    reseller: { id: number; companyName: string; contactPhone: string | null; customDiscount: string | null; wallet: { id: number; balance: string | null } | null };
+    userId: number;
+    g2bulkCart: Array<{ g2bulkProductId: number; quantity: number }>;
+}) {
+    try {
+        const { g2bulkOrders: g2bulkOrdersTable } = await import("@/db/schema");
+        const { lbV2 } = await import("@/lib/loadbrain-v2");
+        const { g2bulkPricingService } = await import(
+            "@/services/g2bulk-pricing.service"
+        );
+        const {
+            getG2BulkProductMock,
+            createG2BulkOrderMock,
+        } = await import("@/lib/__mocks__/g2bulk-sdk.mock");
+
+        // Resolve every cart productId. Prefer real SDK, fall back to mock.
+        type ProviderProduct = {
+            id: number;
+            providerId: string;
+            categoryId: number | null;
+            title: string;
+            unitPriceCents: number;
+            currency: string;
+            stock: number;
+        };
+
+        const sdkAny = lbV2 as unknown as {
+            g2bulk?: {
+                products?: { get?: (id: number) => Promise<{ product: ProviderProduct }> };
+                orders?: { create?: (input: { productId: number; quantity: number; externalOrderId: string }) => Promise<{ orderId: string }> };
+            };
+        } | null;
+        const useRealSdk = !!sdkAny?.g2bulk?.products?.get;
+
+        const fetched: Array<{ product: ProviderProduct } | null> = await Promise.all(
+            g2bulkCart.map(async (c) => {
+                try {
+                    if (useRealSdk) {
+                        return await sdkAny!.g2bulk!.products!.get!(c.g2bulkProductId);
+                    }
+                    return await getG2BulkProductMock(c.g2bulkProductId);
+                } catch {
+                    return null;
+                }
+            })
+        );
+        const failedIdx = fetched.findIndex((r) => r === null);
+        if (failedIdx >= 0) {
+            return {
+                success: false as const,
+                error: `Produit G2Bulk ${g2bulkCart[failedIdx].g2bulkProductId} introuvable`,
+            };
+        }
+        const productMap = new Map<number, ProviderProduct>(
+            fetched.map((r, i) => [g2bulkCart[i].g2bulkProductId, r!.product])
+        );
+
+        const tier = await TierService.getCurrentTierForReseller(reseller.id);
+        const tierDiscountPct = tier ? parseFloat(tier.discountPct) : 0;
+        const customDiscountPct = reseller.customDiscount
+            ? Math.min(parseFloat(reseller.customDiscount), 100 - tierDiscountPct)
+            : 0;
+
+        // Inline brand/category inference — kept consistent with
+        // g2bulk-shop-actions.ts. Duplicated intentionally to avoid a
+        // cyclic import.
+        const inferBrand = (title: string): string => {
+            const t = title.toLowerCase();
+            if (t.includes("amazon")) return "amazon";
+            if (t.includes("steam")) return "steam";
+            if (t.includes("itunes") || t.includes("apple")) return "itunes";
+            if (t.includes("free fire")) return "free-fire";
+            if (t.includes("pubg")) return "pubg-mobile";
+            if (t.includes("playstation") || t.includes("psn")) return "psn";
+            if (t.includes("xbox")) return "xbox";
+            if (t.includes("google play")) return "google-play";
+            return "other";
+        };
+        const inferCategory = (categoryId: number | null, brand: string): string => {
+            if (categoryId === 10) return "retail";
+            if (categoryId === 20 || categoryId === 40 || categoryId === 50) return "gaming";
+            if (categoryId === 30) return "mobile";
+            if (["steam", "free-fire", "pubg-mobile", "psn", "xbox"].includes(brand)) return "gaming";
+            if (["itunes", "google-play"].includes(brand)) return "mobile";
+            return "retail";
+        };
+
+        const pricingInputs = g2bulkCart.map((c) => {
+            const p = productMap.get(c.g2bulkProductId)!;
+            const brand = inferBrand(p.title);
+            return {
+                priceCentsUsd: p.unitPriceCents,
+                category: inferCategory(p.categoryId, brand),
+                brand,
+                sku: `g2b__${p.providerId}`,
+            };
+        });
+
+        const prices = await g2bulkPricingService.computeBulk(pricingInputs, {
+            resellerId: reseller.id,
+            tierDiscountPct,
+            customDiscountPct,
+        });
+
+        const totalAmount = g2bulkCart.reduce(
+            (acc, c, i) => acc + prices[i].finalPriceDzd * c.quantity,
+            0
+        );
+
+        const orderNumber = `G2B-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+
+        const res = await db.transaction(async (tx) => {
+            const lockedReseller = await tx.query.resellers.findFirst({
+                where: and(eq(resellers.id, reseller.id), eq(resellers.userId, userId)),
+                with: { wallet: true },
+            });
+            if (!lockedReseller || !lockedReseller.wallet) {
+                throw new Error("Portefeuille introuvable");
+            }
+            const currentBalance = parseFloat(lockedReseller.wallet.balance || "0");
+            if (currentBalance < totalAmount) {
+                throw new Error("Solde insuffisant");
+            }
+
+            // 1. Local order row
+            const [newOrder] = await tx.insert(orders).values({
+                orderNumber,
+                status: "PAYE",
+                totalAmount: totalAmount.toFixed(2),
+                montantPaye: totalAmount.toFixed(2),
+                resteAPayer: "0",
+                resellerId: reseller.id,
+                source: "B2B_WEB",
+                deliveryMethod: "TICKET",
+            }).returning();
+
+            // 2. Debit wallet
+            await tx
+                .update(resellerWallets)
+                .set({
+                    balance: sql`${resellerWallets.balance} - ${totalAmount}`,
+                    totalSpent: sql`${resellerWallets.totalSpent} + ${totalAmount}`,
+                    updatedAt: new Date(),
+                })
+                .where(eq(resellerWallets.id, lockedReseller.wallet.id));
+
+            await tx.insert(resellerTransactions).values({
+                walletId: lockedReseller.wallet.id,
+                type: "PURCHASE",
+                amount: totalAmount.toString(),
+                orderId: newOrder.id,
+                description: `Achat G2Bulk - ${orderNumber}`,
+            });
+
+            // 3. Per-cart-line: POST to LoadBrain g2bulk + insert g2bulk_orders row
+            for (let i = 0; i < g2bulkCart.length; i++) {
+                const c = g2bulkCart[i];
+                const price = prices[i];
+                const externalOrderId = `${orderNumber}-${i}`;
+
+                const lbCreate = useRealSdk
+                    ? await sdkAny!.g2bulk!.orders!.create!({
+                        productId: c.g2bulkProductId,
+                        quantity: c.quantity,
+                        externalOrderId,
+                    })
+                    : await createG2BulkOrderMock({
+                        productId: c.g2bulkProductId,
+                        quantity: c.quantity,
+                        externalOrderId,
+                    });
+
+                await tx.insert(g2bulkOrdersTable).values({
+                    localOrderId: newOrder.id,
+                    resellerId: reseller.id,
+                    productId: String(c.g2bulkProductId),
+                    quantity: c.quantity,
+                    pricePaidDzd: (price.finalPriceDzd * c.quantity).toFixed(2),
+                    lbOrderId: lbCreate.orderId,
+                    status: "PENDING_LOADBRAIN",
+                });
+            }
+
+            return { id: newOrder.id, orderNumber };
+        });
+
+        // Best-effort notification (non-blocking)
+        ResellerNotifications.notifyOrderConfirmed({
+            resellerId: reseller.id,
+            companyName: reseller.companyName,
+            contactPhone: reseller.contactPhone,
+            orderNumber: res.orderNumber,
+            totalAmount,
+            itemCount: g2bulkCart.reduce((a, c) => a + c.quantity, 0),
+            hasInstantDelivery: true,
+        }).catch((err) => {
+            console.warn("[g2bulk-checkout] notify failed (non-bloquant):", err);
+        });
+
+        revalidatePath("/reseller/orders");
+
+        return { success: true as const, orderNumber: res.orderNumber };
+    } catch (error) {
+        console.error("G2Bulk checkout error:", error);
+        const msg =
+            error instanceof Error
+                ? error.message
+                : "Erreur traitement commande G2Bulk";
         return { success: false as const, error: msg };
     }
 }
