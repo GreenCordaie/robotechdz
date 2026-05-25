@@ -3,6 +3,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Spinner } from "@heroui/react";
 import { useSearchParams } from "next/navigation";
+import Link from "next/link";
+import { LayoutGrid } from "lucide-react";
 import { CategoryGrid } from "./components/CategoryGrid";
 import { getBrandCategoriesAction } from "./aggregate-brands";
 import type { BrandCategory, BrandType } from "./brand-utils";
@@ -94,6 +96,16 @@ export default function ResellerShopLanding() {
                 <p className="text-sm lg:text-base text-slate-400 max-w-2xl mx-auto">
                     {meta.subtitle}
                 </p>
+                <div className="pt-2">
+                    <Link
+                        href="/reseller/shop/all"
+                        data-testid="view-all-catalog"
+                        className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-[#161616] border border-[#262626] text-sm font-black tracking-tight text-white hover:border-[#FACC15] hover:text-[#FACC15] transition-all"
+                    >
+                        <LayoutGrid size={15} />
+                        Voir tout le catalogue
+                    </Link>
+                </div>
             </header>
 
             {isLoading ? (

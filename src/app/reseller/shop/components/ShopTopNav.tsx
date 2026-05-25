@@ -9,6 +9,7 @@ import {
     Gift,
     Gamepad2,
     Layers,
+    LayoutGrid,
     Wallet,
     Trophy,
     PartyPopper,
@@ -41,6 +42,7 @@ interface NavItem {
 
 const NAV_ITEMS: ReadonlyArray<NavItem> = [
     { href: "/reseller/dashboard", label: "Dashboard", icon: LayoutDashboard },
+    { href: "/reseller/shop/all", label: "Tout le catalogue", icon: LayoutGrid },
     { href: "/reseller/shop?type=giftcard", label: "Gift Cards & Vouchers", icon: Gift },
     { href: "/reseller/shop?type=topup", label: "Game Top Up", icon: Gamepad2 },
     { href: "/reseller/shop?type=bulk", label: "Bulk Game TopUp", icon: Layers },
@@ -99,8 +101,10 @@ export const ShopTopNav: React.FC<ShopTopNavProps> = ({ shopName: shopNameProp }
             if (!pathname.startsWith("/reseller/shop")) return false;
             // Brand-detail pages (/reseller/shop/[brand]) keep the "Gift Cards"
             // tab highlighted by default so the operator has a clear "back to
-            // catalog" anchor.
-            const onBrandDetail = pathname !== "/reseller/shop";
+            // catalog" anchor. The flat catalog (/reseller/shop/all) has its
+            // own nav entry, so it must NOT highlight the Gift Cards tab.
+            const onAllCatalog = pathname.startsWith("/reseller/shop/all");
+            const onBrandDetail = pathname !== "/reseller/shop" && !onAllCatalog;
             if (onBrandDetail) return linkType === "giftcard";
             return linkType === currentType || (!linkType && !currentType);
         }
