@@ -1,11 +1,16 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { usePathname } from "next/navigation";
 import { getPublicSettingsAction } from "@/app/admin/settings/actions";
 import { Spinner } from "@heroui/react";
-import { ShieldAlert, Store, Hammer } from "lucide-react";
+import { ShieldAlert, Store, Hammer, WifiOff } from "lucide-react";
 import { ShopTopNav } from "./shop/components/ShopTopNav";
+
+// Safety net: the settings server action should answer in well under a
+// second. If it hangs (e.g. a broken/recompiling server), never leave the
+// operator on an eternal spinner — surface a retry screen after this delay.
+const SETTINGS_TIMEOUT_MS = 12000;
 
 export default function ResellerLayout({ children }: { children: React.ReactNode }) {
     const pathname = usePathname();
@@ -13,11 +18,19 @@ export default function ResellerLayout({ children }: { children: React.ReactNode
     const [isEnabled, setIsEnabled] = useState<boolean | null>(null);
     const [isMaintenance, setIsMaintenance] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
+    const [loadError, setLoadError] = useState(false);
     const [shopName, setShopName] = useState("Ma Boutique");
 
-    useEffect(() => {
-        const checkB2b = async () => {
-            const res = await getPublicSettingsAction();
+    const loadSettings = useCallback(async () => {
+        setIsLoading(true);
+        setLoadError(false);
+        try {
+            const res = await Promise.race([
+                getPublicSettingsAction(),
+                new Promise<never>((_, reject) =>
+                    setTimeout(() => reject(new Error("timeout")), SETTINGS_TIMEOUT_MS),
+                ),
+            ]);
             if (res.success && res.data) {
                 setIsEnabled(res.data.isB2bEnabled);
                 setIsMaintenance(res.data.isMaintenanceMode);
@@ -26,10 +39,17 @@ export default function ResellerLayout({ children }: { children: React.ReactNode
                 setIsEnabled(false);
                 setIsMaintenance(false);
             }
+        } catch {
+            // Action hung or rejected — show a recoverable error, not a spinner.
+            setLoadError(true);
+        } finally {
             setIsLoading(false);
-        };
-        checkB2b();
+        }
     }, []);
+
+    useEffect(() => {
+        void loadSettings();
+    }, [loadSettings]);
 
     if (isLoginPage) return <>{children}</>;
 
@@ -40,6 +60,35 @@ export default function ResellerLayout({ children }: { children: React.ReactNode
                 <p className="text-slate-500 font-bold uppercase tracking-[0.3em] animate-pulse text-sm">
                     Sécurisation du portail B2B...
                 </p>
+            </div>
+        );
+    }
+
+    if (loadError) {
+        return (
+            <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center p-6">
+                <div className="max-w-md w-full text-center space-y-8 animate-in fade-in zoom-in duration-500">
+                    <div className="size-24 rounded-[40px] bg-amber-500/10 border border-amber-500/20 flex items-center justify-center mx-auto shadow-2xl">
+                        <WifiOff className="size-12 text-amber-500" />
+                    </div>
+                    <div className="space-y-4">
+                        <h1 className="text-3xl font-black text-white tracking-tight">
+                            Connexion impossible
+                        </h1>
+                        <p className="text-slate-500 font-medium leading-relaxed">
+                            Le portail n&apos;a pas répondu à temps. Vérifiez votre connexion puis réessayez.
+                        </p>
+                    </div>
+                    <div className="pt-4">
+                        <button
+                            onClick={() => void loadSettings()}
+                            className="bg-[#161616] border border-[#262626] text-slate-300 hover:text-white px-8 py-3 rounded-2xl font-bold transition-all flex items-center gap-2 mx-auto active:scale-95"
+                        >
+                            <Store className="size-5 text-[var(--primary)]" />
+                            <span>Réessayer</span>
+                        </button>
+                    </div>
+                </div>
             </div>
         );
     }
