@@ -6,7 +6,9 @@ import { Button, Spinner } from "@heroui/react";
 import { ArrowLeft, Check, Minus, Plus } from "lucide-react";
 import { toast } from "react-hot-toast";
 
-import { getBsvCatalogAction } from "../actions";
+// BSV import temporarily commented out — operator disabled BSV catalog 2026-05-25,
+// will re-enable via curated import flow. Restore when ready.
+// import { getBsvCatalogAction } from "../actions";
 import {
     getG2BulkCatalogAction,
     type G2BulkCatalogProduct,
@@ -180,41 +182,31 @@ export default function ResellerBrandPage() {
         const load = async () => {
             setIsLoading(true);
             try {
-                const [bsvRes, g2bRes] = await Promise.all([
-                    getBsvCatalogAction({
-                        // BSV "brand" field uses opaque slugs like
-                        // `games-minecraft-gift-card` — full-text search on the
-                        // human label is far more reliable for category drill-in.
-                        q: label,
-                        page: 1,
-                        limit: PAGE_SIZE,
-                        deliveryType: "all",
-                        sellerRankMin: "all",
-                        sortBy: "score",
-                    }).catch(() => null),
-                    getG2BulkCatalogAction({
-                        q: label,
-                        page: 1,
+                // BSV temporarily disabled (operator decision 2026-05-25):
+                // catalog reactivation will be a curated manual list, not the
+                // 17k auto-discovered firehose. Re-enable via BSV import flow
+                // (TODO) when ready.
+                // -----------------------------------------------------------
+                // G2Bulk: fetch ALL pages and filter client-side by
+                // categoryTitle-derived brand. We CANNOT use q=label because
+                // G2Bulk titles often omit the game name (e.g. "1 USD Diamond"
+                // for Free Fire) — q would return zero matches for many brands.
+                const all: G2BulkCatalogProduct[] = [];
+                for (let page = 1; page <= 11; page++) {
+                    const res = await getG2BulkCatalogAction({
+                        page,
                         limit: PAGE_SIZE,
                         sortBy: "newest",
-                    }).catch(() => null),
-                ]);
-                if (!active) return;
-
-                const bsv: Denomination[] =
-                    bsvRes?.success
-                        ? (bsvRes.data.items as EnrichedBsvListing[]).map(bsvToDenomination)
-                        : [];
-
-                const g2bRaw =
-                    g2bRes?.success
-                        ? (g2bRes.data.items as G2BulkCatalogProduct[]).filter(
-                              (p) => toBrandSlug(deriveG2BulkBrand(p)) === slug
-                          )
-                        : [];
-                const g2b: Denomination[] = g2bRaw.map(g2bToDenomination);
-
-                setItems([...bsv, ...g2b]);
+                    }).catch(() => null);
+                    if (!active) return;
+                    if (!res?.success) break;
+                    all.push(...(res.data.items as G2BulkCatalogProduct[]));
+                    if (page >= res.data.pagination.totalPages) break;
+                }
+                const matched = all.filter(
+                    (p) => toBrandSlug(deriveG2BulkBrand(p)) === slug
+                );
+                setItems(matched.map(g2bToDenomination));
             } finally {
                 if (active) setIsLoading(false);
             }

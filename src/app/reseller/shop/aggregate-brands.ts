@@ -1,6 +1,11 @@
 "use server";
 
-import { getBsvCatalogAction } from "./actions";
+// BSV catalog source is intentionally disabled here (operator decision
+// 2026-05-25): aggregator counts and landing cards only reflect G2Bulk
+// until the operator curates a manual BSV product list. The
+// `countBsvByBrand` function below is preserved (commented out at the
+// callsite) for easy re-enabling.
+// import { getBsvCatalogAction } from "./actions";
 import { getG2BulkCatalogAction } from "./g2bulk-shop-actions";
 import {
     SEED_BRANDS,
@@ -18,29 +23,24 @@ const PROBE_LIMIT = 48;
 // raise further or move counts to a server-side cache.
 const MAX_PROBE_PAGES = 30;
 
-/**
- * Walk a few catalog pages and accumulate per-brand counts. Bounded so we
- * never exhaust the upstream SDK on every landing render.
- */
-async function countBsvByBrand(): Promise<Map<string, number>> {
-    const counts = new Map<string, number>();
-    for (let page = 1; page <= MAX_PROBE_PAGES; page++) {
-        const res = await getBsvCatalogAction({
-            page,
-            limit: PROBE_LIMIT,
-            deliveryType: "all",
-            sellerRankMin: "all",
-            sortBy: "score",
-        });
-        if (!res?.success) break;
-        res.data.items.forEach((it) => {
-            const slug = toBrandSlug(it.product.brand || "other");
-            counts.set(slug, (counts.get(slug) ?? 0) + 1);
-        });
-        if (page >= res.data.pagination.totalPages) break;
-    }
-    return counts;
-}
+// BSV count function disabled — see top-of-file note. Restore the import
+// and uncomment this block when BSV curated list is ready.
+// async function countBsvByBrand(): Promise<Map<string, number>> {
+//     const counts = new Map<string, number>();
+//     for (let page = 1; page <= MAX_PROBE_PAGES; page++) {
+//         const res = await getBsvCatalogAction({
+//             page, limit: PROBE_LIMIT,
+//             deliveryType: "all", sellerRankMin: "all", sortBy: "score",
+//         });
+//         if (!res?.success) break;
+//         res.data.items.forEach((it) => {
+//             const slug = toBrandSlug(it.product.brand || "other");
+//             counts.set(slug, (counts.get(slug) ?? 0) + 1);
+//         });
+//         if (page >= res.data.pagination.totalPages) break;
+//     }
+//     return counts;
+// }
 
 async function countG2BulkByBrand(): Promise<Map<string, number>> {
     const counts = new Map<string, number>();
@@ -64,13 +64,14 @@ export async function getBrandCategoriesAction(): Promise<{
     success: true;
     data: ReadonlyArray<BrandCategory>;
 }> {
-    const [bsv, g2b] = await Promise.all([
-        countBsvByBrand().catch(() => new Map<string, number>()),
-        countG2BulkByBrand().catch(() => new Map<string, number>()),
-    ]);
+    // BSV disabled — only G2Bulk feeds the landing counts. When BSV is
+    // re-enabled, restore the parallel fetch and merge BSV counts into
+    // `combined` below.
+    const g2b = await countG2BulkByBrand().catch(
+        () => new Map<string, number>(),
+    );
 
     const combined = new Map<string, number>();
-    bsv.forEach((n, slug) => combined.set(slug, (combined.get(slug) ?? 0) + n));
     g2b.forEach((n, slug) => combined.set(slug, (combined.get(slug) ?? 0) + n));
 
     const seedSlugs = new Set(SEED_BRANDS.map((b) => b.slug));
