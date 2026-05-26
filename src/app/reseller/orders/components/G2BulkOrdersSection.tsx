@@ -1,8 +1,8 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { Card, CardBody, Chip, Spinner, Button } from "@heroui/react";
-import { Eye, Copy, ShoppingBag, CheckCircle2, AlertTriangle, Clock } from "lucide-react";
+import { Eye, Copy, ShoppingBag, CheckCircle2, AlertTriangle, Clock, RefreshCw } from "lucide-react";
 import { toast } from "react-hot-toast";
 import { formatCurrency, formatDate } from "@/lib/formatters";
 import { getG2BulkOrdersAction, type G2BulkOrderRow } from "../g2bulk-actions";
@@ -37,20 +37,19 @@ export function G2BulkOrdersSection() {
     const [rows, setRows] = useState<G2BulkOrderRow[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [revealed, setRevealed] = useState<Set<number>>(new Set());
+    const [limit, setLimit] = useState(50);
 
-    useEffect(() => {
-        let cancelled = false;
-        getG2BulkOrdersAction({}).then((res) => {
-            if (cancelled) return;
-            if (res.success) {
-                setRows(res.data);
-            }
+    const load = useCallback(() => {
+        setIsLoading(true);
+        getG2BulkOrdersAction({ limit }).then((res) => {
+            if (res.success) setRows(res.data);
             setIsLoading(false);
         });
-        return () => {
-            cancelled = true;
-        };
-    }, []);
+    }, [limit]);
+
+    useEffect(() => {
+        load();
+    }, [load]);
 
     if (isLoading) {
         return (
@@ -92,6 +91,16 @@ export function G2BulkOrdersSection() {
                 <span className="text-[9px] uppercase font-black tracking-widest text-cyan-400 bg-cyan-500/10 border border-cyan-500/30 px-1.5 py-0.5 rounded">
                     G2Bulk
                 </span>
+                <Button
+                    size="sm"
+                    variant="flat"
+                    onPress={load}
+                    isDisabled={isLoading}
+                    startContent={<RefreshCw size={14} />}
+                    className="ml-auto bg-[#161616] text-slate-200 font-bold text-[10px] uppercase tracking-wider"
+                >
+                    Rafraîchir
+                </Button>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -190,6 +199,20 @@ export function G2BulkOrdersSection() {
                                     </div>
                                 )}
 
+                                {(row.status === "REFUNDED" || row.status === "FAILED") && (
+                                    <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-3 text-xs space-y-1">
+                                        <p className="font-black uppercase tracking-wider text-red-300">
+                                            Remboursé sur votre wallet
+                                            {row.refundAmount
+                                                ? ` · ${formatCurrency(parseFloat(row.refundAmount), "DZD")}`
+                                                : ""}
+                                        </p>
+                                        {row.refundReason && (
+                                            <p className="text-red-200/80 italic">{row.refundReason}</p>
+                                        )}
+                                    </div>
+                                )}
+
                                 {row.status === "COMPLETED" && row.codes.length > 0 && (
                                     <div className="space-y-2">
                                         <Button
@@ -233,6 +256,20 @@ export function G2BulkOrdersSection() {
                     );
                 })}
             </div>
+
+            {rows.length >= limit && (
+                <div className="flex justify-center pt-2">
+                    <Button
+                        size="sm"
+                        variant="flat"
+                        onPress={() => setLimit((l) => l + 50)}
+                        isDisabled={isLoading}
+                        className="bg-[#161616] text-slate-200 font-bold text-[10px] uppercase tracking-wider"
+                    >
+                        Charger plus
+                    </Button>
+                </div>
+            )}
         </section>
     );
 }

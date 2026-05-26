@@ -1,11 +1,12 @@
 "use server";
 
 import { db } from "@/db";
-import { g2bulkOrders, g2bulkDeliveredCodes, resellers } from "@/db/schema";
+import { g2bulkOrders, g2bulkDeliveredCodes, resellers, resellerTransactions } from "@/db/schema";
 import { eq, desc, inArray } from "drizzle-orm";
 import { withAuth } from "@/lib/security";
 import { UserRole } from "@/lib/constants";
 import { decrypt } from "@/lib/encryption";
+import { z } from "zod";
 
 /**
  * Returns G2Bulk mirror orders for the authenticated reseller, enriched with
@@ -13,8 +14,12 @@ import { decrypt } from "@/lib/encryption";
  * Mirrors getBsvOrdersAction in bsv-actions.ts.
  */
 export const getG2BulkOrdersAction = withAuth(
-    { roles: [UserRole.RESELLER] },
-    async (_unused, user) => {
+    {
+        roles: [UserRole.RESELLER],
+        schema: z.object({ limit: z.number().int().min(1).max(200).default(50) }).optional(),
+    },
+    async (input, user) => {
+        const limit = input?.limit ?? 50;
         const reseller = await db.query.resellers.findFirst({
             where: eq(resellers.userId, user.id),
         });
@@ -27,7 +32,7 @@ export const getG2BulkOrdersAction = withAuth(
             .from(g2bulkOrders)
             .where(eq(g2bulkOrders.resellerId, reseller.id))
             .orderBy(desc(g2bulkOrders.createdAt))
-            .limit(50);
+            .limit(limit);
 
         if (rows.length === 0) {
             return { success: true as const, data: [] };
@@ -51,6 +56,23 @@ export const getG2BulkOrdersAction = withAuth(
             where: (o, ops) => ops.inArray(o.id, localOrderIds),
         });
         const localOrderMap = new Map(localOrders.map((o) => [o.id, o]));
+
+        // Refund context: the failure webhook writes a type=REFUND reseller_transactions
+        // row (description prefixed "Remboursement…") against the local order.
+        const refundRows = await db
+            .select({
+                orderId: resellerTransactions.orderId,
+                amount: resellerTransactions.amount,
+                description: resellerTransactions.description,
+            })
+            .from(resellerTransactions)
+            .where(inArray(resellerTransactions.orderId, localOrderIds));
+        const refundByOrder = new Map<number, { amount: string; reason: string | null }>();
+        for (const r of refundRows) {
+            if (r.orderId == null) continue;
+            if (!(r.description ?? "").toLowerCase().includes("rembours")) continue;
+            refundByOrder.set(r.orderId, { amount: r.amount, reason: r.description ?? null });
+        }
 
         const enriched = rows.map((row) => {
             const rowCodes = codesByOrder.get(row.id) ?? [];
@@ -89,6 +111,8 @@ export const getG2BulkOrdersAction = withAuth(
                 completedAt: row.completedAt,
                 createdAt: row.createdAt,
                 codes: decoded,
+                refundAmount: refundByOrder.get(row.localOrderId)?.amount ?? null,
+                refundReason: refundByOrder.get(row.localOrderId)?.reason ?? null,
             };
         });
 
@@ -114,4 +138,6 @@ export interface G2BulkOrderRow {
         pin: string | null;
         redemptionUrl: string | null;
     }>;
+    refundAmount: string | null;
+    refundReason: string | null;
 }
