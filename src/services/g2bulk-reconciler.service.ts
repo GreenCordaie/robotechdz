@@ -82,7 +82,14 @@ async function reconcileOne(
     const detail = await lbV2.g2bulk.orders.get(g2bRow.lbOrderId);
     const upstreamStatus = String(detail.order?.status ?? "").toLowerCase();
     if (upstreamStatus === "completed") {
-        await markDelivered(db, g2bRow, detail.codes);
+        // Pull the upstream wonSnapshot (title, providerOrderId, exactPriceCents,
+        // playerName for game orders, etc.) so the reseller list can render
+        // human names instead of "Produit 47". The shape is opaque from our
+        // side — we mirror whatever LoadBrain wrote.
+        const snap =
+            (detail.order as { wonSnapshot?: unknown } | undefined)
+                ?.wonSnapshot ?? null;
+        await markDelivered(db, g2bRow, detail.codes, snap);
         return "delivered";
     }
     if (
@@ -105,6 +112,7 @@ async function markDelivered(
         redemptionUrl?: string | null;
         pin?: string | null;
     }>,
+    wonSnapshot: unknown = null,
 ): Promise<void> {
     await db.transaction(async (tx) => {
         const [fresh] = await tx
@@ -125,7 +133,11 @@ async function markDelivered(
         }
         await tx
             .update(g2bulkOrders)
-            .set({ status: "COMPLETED", completedAt: new Date() })
+            .set({
+                status: "COMPLETED",
+                completedAt: new Date(),
+                wonSnapshot: wonSnapshot ?? fresh.wonSnapshot ?? null,
+            })
             .where(eq(g2bulkOrders.id, g2bRow.id));
         await tx
             .update(orders)
