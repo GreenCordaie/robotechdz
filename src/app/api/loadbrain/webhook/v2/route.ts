@@ -13,9 +13,83 @@ import {
     resellerWallets,
     resellerTransactions,
     resellers,
+    resellerIptvOrders,
 } from "@/db/schema";
 import { eq, sql } from "drizzle-orm";
 import { encrypt } from "@/lib/encryption";
+import {
+    markIptvOrderDelivered,
+    markIptvOrderFailed,
+    setIptvOrderStatus,
+} from "@/services/iptv-reseller.service";
+
+/**
+ * Reseller IPTV mirror dispatch — fired AFTER the legacy IPTV processor so
+ * the new `reseller_iptv_orders` mirror gets the same task lifecycle updates
+ * the legacy `iptv_provisions` table receives. No-op when the task isn't
+ * owned by a reseller mirror row (covers the legacy B2C-only flow).
+ */
+async function dispatchIptvMirror(
+    taskId: string,
+    kind: "completed" | "failed" | "cancelled",
+    event: { data: Record<string, unknown>; timestamp?: string },
+): Promise<void> {
+    if (!taskId) return;
+    const [row] = await db
+        .select()
+        .from(resellerIptvOrders)
+        .where(eq(resellerIptvOrders.lbTaskId, taskId));
+    if (!row) return; // legacy B2C path — already handled by processCompletedTask
+
+    if (kind === "completed") {
+        const creds = (event.data.credentials ?? null) as
+            | Record<string, unknown>
+            | null;
+        const pickStr = (...c: unknown[]): string | null => {
+            for (const v of c) {
+                if (typeof v === "string" && v.trim()) return v.trim();
+                if (typeof v === "number" && Number.isFinite(v)) return String(v);
+            }
+            return null;
+        };
+        const expiryRaw =
+            (creds?.expiresAt as unknown) ??
+            (event.data.expiresAt as unknown) ??
+            null;
+        const expiry = expiryRaw
+            ? new Date(String(expiryRaw))
+            : null;
+        await markIptvOrderDelivered(db, {
+            id: row.id,
+            resellerId: row.resellerId,
+            upstreamLineId: pickStr(creds?.lineId, creds?.id, event.data.lineId),
+            providerAccountId: pickStr(
+                creds?.username,
+                creds?.account,
+                creds?.mac,
+                creds?.accountId,
+            ),
+            expiresAt: expiry && Number.isFinite(expiry.getTime()) ? expiry : null,
+            snapshot: event,
+        });
+    } else if (kind === "failed") {
+        const reason =
+            typeof event.data.error === "string"
+                ? (event.data.error as string)
+                : `task ${kind}`;
+        await markIptvOrderFailed(db, {
+            id: row.id,
+            resellerId: row.resellerId,
+            reason,
+        });
+    } else {
+        await setIptvOrderStatus(db, {
+            id: row.id,
+            resellerId: row.resellerId,
+            status: "CANCELLED",
+        });
+    }
+}
 
 // ──────────────────────────────────────────────────────────────────────────
 // G2Bulk event handlers — extracted from the handlers map so we can keep
@@ -259,6 +333,16 @@ const handler = createWebhookHandler({
                 credentials: event.data.credentials,
                 completedAt: event.timestamp,
             });
+            // Reseller mirror — additive, no-op for legacy B2C tasks.
+            try {
+                await dispatchIptvMirror(
+                    event.data.taskId,
+                    "completed",
+                    event as unknown as { data: Record<string, unknown>; timestamp?: string },
+                );
+            } catch (err) {
+                console.error("[v2-webhook] iptv mirror completed dispatch failed:", err);
+            }
         },
         "provision.task.failed": async (event) => {
             await processFailedTask({
@@ -267,7 +351,30 @@ const handler = createWebhookHandler({
                 error: event.data.error,
                 errorCode: event.data.errorCode,
             });
+            try {
+                await dispatchIptvMirror(
+                    event.data.taskId,
+                    "failed",
+                    event as unknown as { data: Record<string, unknown>; timestamp?: string },
+                );
+            } catch (err) {
+                console.error("[v2-webhook] iptv mirror failed dispatch failed:", err);
+            }
         },
+        ["provision.task.cancelled" as never]: (async (event: {
+            data: { taskId: string; [k: string]: unknown };
+            timestamp?: string;
+        }) => {
+            try {
+                await dispatchIptvMirror(
+                    event.data.taskId,
+                    "cancelled",
+                    event as unknown as { data: Record<string, unknown>; timestamp?: string },
+                );
+            } catch (err) {
+                console.error("[v2-webhook] iptv mirror cancelled dispatch failed:", err);
+            }
+        }) as never,
 
         // ────────────────────────────────────────────────────────────────
         // BSV Mirror Shop (Lot 3) — handles successful delivery of gift card

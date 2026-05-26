@@ -987,6 +987,96 @@ export const g2bulkDeliveredCodesRelations = relations(g2bulkDeliveredCodes, ({ 
 }));
 
 // ---------------------------------------------------------------------------
+// IPTV reseller mirror — every line/code/device sold by a reseller across the
+// four LoadBrain providers (panelking365 / atlaspro / ironmax / ibosol).
+// LoadBrain itself only sees the robotech tenant; this table is the SOURCE
+// OF TRUTH for "which reseller owns line X" and gates every read + mutation.
+// ---------------------------------------------------------------------------
+export const resellerIptvProviderEnum = pgEnum("reseller_iptv_provider", [
+    "panelking365",
+    "atlaspro",
+    "ironmax",
+    "ibosol",
+]);
+
+export const resellerIptvOrderStatusEnum = pgEnum("reseller_iptv_order_status", [
+    "PENDING_LOADBRAIN",
+    "ACTIVE",
+    "FROZEN",
+    "EXPIRED",
+    "CANCELLED",
+    "FAILED",
+    "REFUNDED",
+]);
+
+export const resellerIptvOrders = pgTable("reseller_iptv_orders", {
+    id: serial("id").primaryKey(),
+    localOrderId: integer("local_order_id")
+        .references(() => orders.id, { onDelete: "cascade" })
+        .notNull(),
+    resellerId: integer("reseller_id")
+        .references(() => resellers.id, { onDelete: "cascade" })
+        .notNull(),
+    provider: resellerIptvProviderEnum("provider").notNull(),
+
+    /** LoadBrain v2 task id (provision pipeline). */
+    lbTaskId: text("lb_task_id").unique(),
+    /** LoadBrain v2 order id (panelking/atlaspro hold this). */
+    lbOrderId: text("lb_order_id"),
+    /** Provider-native line id (ironmax) or device id (ibosol). */
+    upstreamLineId: text("upstream_line_id"),
+    /** Xtream username / device MAC / app identifier — whatever the customer needs. */
+    providerAccountId: text("provider_account_id"),
+
+    productId: text("product_id").notNull(),
+    productName: text("product_name").notNull(),
+    productSnapshot: jsonb("product_snapshot").$type<unknown>(),
+    quantity: integer("quantity").default(1).notNull(),
+    pricePaidDzd: numeric("price_paid_dzd", { precision: 12, scale: 2 }).notNull(),
+
+    status: resellerIptvOrderStatusEnum("status")
+        .default("PENDING_LOADBRAIN")
+        .notNull(),
+    lastStatusAt: timestamp("last_status_at", { withTimezone: true, mode: "date" })
+        .defaultNow()
+        .notNull(),
+    lastSyncedAt: timestamp("last_synced_at", { withTimezone: true, mode: "date" }),
+    expiresAt: timestamp("expires_at", { withTimezone: true, mode: "date" }),
+
+    customerLabel: text("customer_label"),
+    customerPhone: text("customer_phone"),
+    notes: text("notes"),
+
+    lastError: text("last_error"),
+    completedAt: timestamp("completed_at", { withTimezone: true, mode: "date" }),
+    cancelledAt: timestamp("cancelled_at", { withTimezone: true, mode: "date" }),
+    refundedAt: timestamp("refunded_at", { withTimezone: true, mode: "date" }),
+
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
+        .defaultNow()
+        .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" })
+        .defaultNow()
+        .notNull(),
+}, (table) => ({
+    resellerIdx: index("rio_reseller_idx").on(table.resellerId),
+    resellerStatusIdx: index("rio_reseller_status_idx").on(table.resellerId, table.status),
+    providerIdx: index("rio_provider_idx").on(table.provider),
+    lbOrderIdx: index("rio_lb_order_idx").on(table.lbOrderId),
+}));
+
+export const resellerIptvOrdersRelations = relations(resellerIptvOrders, ({ one }) => ({
+    localOrder: one(orders, {
+        fields: [resellerIptvOrders.localOrderId],
+        references: [orders.id],
+    }),
+    reseller: one(resellers, {
+        fields: [resellerIptvOrders.resellerId],
+        references: [resellers.id],
+    }),
+}));
+
+// ---------------------------------------------------------------------------
 // Central B2B Wallet — singleton wallet (id = 1) holding admin-managed funds.
 // Admin tops it up manually (bank transfer received, etc.). Admin then
 // disburses to reseller wallets, which is how resellers get recharged.

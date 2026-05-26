@@ -69,6 +69,27 @@ export async function register() {
             console.log('[G2BulkReconciler] scheduled every 60s');
         }
 
+        if (!globalAny.__iptvReconcilerScheduled) {
+            globalAny.__iptvReconcilerScheduled = true;
+            const runIptvReconcile = async () => {
+                try {
+                    const { reconcilePendingIptvOrders } = await import(
+                        './services/iptv-reseller-reconciler.service'
+                    );
+                    const r = await reconcilePendingIptvOrders({ limit: 100 });
+                    if (r.delivered > 0 || r.refunded > 0 || r.errors.length > 0) {
+                        console.log('[IptvReconciler]', JSON.stringify(r));
+                    }
+                } catch (e: any) {
+                    console.error('[IptvReconciler] error:', e?.message);
+                }
+            };
+            // Stagger 30s off the g2bulk cycle so they don't pile up.
+            setTimeout(runIptvReconcile, 50_000);
+            setInterval(runIptvReconcile, 60_000);
+            console.log('[IptvReconciler] scheduled every 60s (offset +30s)');
+        }
+
         // You can add more worker initializations here
     }
 }
