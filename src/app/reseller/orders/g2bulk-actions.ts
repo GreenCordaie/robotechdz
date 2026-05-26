@@ -2,7 +2,7 @@
 
 import { db } from "@/db";
 import { g2bulkOrders, g2bulkDeliveredCodes, resellers, resellerTransactions } from "@/db/schema";
-import { eq, desc, inArray } from "drizzle-orm";
+import { eq, desc, inArray, and } from "drizzle-orm";
 import { withAuth } from "@/lib/security";
 import { UserRole } from "@/lib/constants";
 import { decrypt } from "@/lib/encryption";
@@ -35,7 +35,7 @@ export const getG2BulkOrdersAction = withAuth(
             .limit(limit);
 
         if (rows.length === 0) {
-            return { success: true as const, data: [] };
+            return { success: true as const, data: [], hasMore: false };
         }
 
         const ids = rows.map((r) => r.id);
@@ -58,19 +58,27 @@ export const getG2BulkOrdersAction = withAuth(
         const localOrderMap = new Map(localOrders.map((o) => [o.id, o]));
 
         // Refund context: the failure webhook writes a type=REFUND reseller_transactions
-        // row (description prefixed "Remboursement…") against the local order.
-        const refundRows = await db
-            .select({
-                orderId: resellerTransactions.orderId,
-                amount: resellerTransactions.amount,
-                description: resellerTransactions.description,
-            })
-            .from(resellerTransactions)
-            .where(inArray(resellerTransactions.orderId, localOrderIds));
+        // row against the local order. Filter on the structured `type` column (not
+        // the free-text description) so unrelated transactions never trip the banner.
+        const refundRows =
+            localOrderIds.length === 0
+                ? []
+                : await db
+                      .select({
+                          orderId: resellerTransactions.orderId,
+                          amount: resellerTransactions.amount,
+                          description: resellerTransactions.description,
+                      })
+                      .from(resellerTransactions)
+                      .where(
+                          and(
+                              inArray(resellerTransactions.orderId, localOrderIds),
+                              eq(resellerTransactions.type, "REFUND"),
+                          ),
+                      );
         const refundByOrder = new Map<number, { amount: string; reason: string | null }>();
         for (const r of refundRows) {
             if (r.orderId == null) continue;
-            if (!(r.description ?? "").toLowerCase().includes("rembours")) continue;
             refundByOrder.set(r.orderId, { amount: r.amount, reason: r.description ?? null });
         }
 
@@ -116,7 +124,7 @@ export const getG2BulkOrdersAction = withAuth(
             };
         });
 
-        return { success: true as const, data: enriched };
+        return { success: true as const, data: enriched, hasMore: enriched.length === limit };
     }
 );
 

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Card, CardBody, Chip, Spinner, Button } from "@heroui/react";
 import { Eye, Copy, ShoppingBag, CheckCircle2, AlertTriangle, Clock, RefreshCw } from "lucide-react";
 import { toast } from "react-hot-toast";
@@ -36,13 +36,22 @@ const STATUS_META: Record<
 export function G2BulkOrdersSection() {
     const [rows, setRows] = useState<G2BulkOrderRow[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [hasLoaded, setHasLoaded] = useState(false);
+    const [hasMore, setHasMore] = useState(false);
     const [revealed, setRevealed] = useState<Set<number>>(new Set());
     const [limit, setLimit] = useState(50);
+    const loadSeq = useRef(0);
 
     const load = useCallback(() => {
         setIsLoading(true);
+        const seq = ++loadSeq.current;
         getG2BulkOrdersAction({ limit }).then((res) => {
-            if (res.success) setRows(res.data);
+            if (seq !== loadSeq.current) return; // ignore stale response (double refresh / fast limit change)
+            if (res.success) {
+                setRows(res.data);
+                setHasMore(res.hasMore ?? false);
+            }
+            setHasLoaded(true);
             setIsLoading(false);
         });
     }, [limit]);
@@ -51,7 +60,9 @@ export function G2BulkOrdersSection() {
         load();
     }, [load]);
 
-    if (isLoading) {
+    // Full-card spinner only on the very first load; refreshes keep the list
+    // visible (the Rafraîchir button shows its own disabled state instead).
+    if (!hasLoaded) {
         return (
             <Card className="bg-[#0f0f0f] border border-[#262626]">
                 <CardBody className="flex items-center justify-center py-8">
@@ -257,7 +268,7 @@ export function G2BulkOrdersSection() {
                 })}
             </div>
 
-            {rows.length >= limit && (
+            {hasMore && (
                 <div className="flex justify-center pt-2">
                     <Button
                         size="sm"
