@@ -20,15 +20,16 @@ import {
     orders,
     resellerWallets,
     resellerTransactions,
+    productVariants,
+    products,
 } from "@/db/schema";
-import { eq, sql } from "drizzle-orm";
+import { eq, sql, and, isNotNull } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { withAuth } from "@/lib/security";
 import { UserRole } from "@/lib/constants";
 import { lbV2 } from "@/lib/loadbrain-v2";
 import { TierService } from "@/services/tier.service";
-import { g2bulkPricingService } from "@/services/g2bulk-pricing.service";
 import {
     getResellerIptvOrder,
     listResellerIptvOrders,
@@ -83,58 +84,89 @@ async function resolveResellerCtx(userId: number) {
     return { reseller, tier, tierDiscountPct, customDiscountPct };
 }
 
-/** Extract USD cents from an upstream IPTV product. Falls back gracefully. */
-function extractUsdCents(product: Record<string, unknown>): number {
-    const candidates = [
-        product.priceCents,
-        product.priceUsdCents,
-        product.unitPriceCents,
-        product.costCents,
-    ];
-    for (const c of candidates) {
-        const n = typeof c === "number" ? c : Number(c);
-        if (Number.isFinite(n) && n >= 0) return Math.round(n);
-    }
-    // Some shapes ship dollars as `priceUsd` / `price` — convert.
-    const dollarKeys = ["priceUsd", "price", "unitPriceUsd"] as const;
-    for (const k of dollarKeys) {
-        const v = product[k];
-        const n = typeof v === "number" ? v : Number(v);
-        if (Number.isFinite(n) && n >= 0) return Math.round(n * 100);
-    }
-    return 0;
-}
-
-async function priceIptvProduct(
-    product: Record<string, unknown>,
-    ctx: { reseller: { id: number }; tierDiscountPct: number; customDiscountPct: number },
-    provider: IptvProvider,
-) {
-    const cents = extractUsdCents(product);
-    const sku = `iptv__${provider}__${String(product.id ?? "")}`;
-    const [price] = await g2bulkPricingService.computeBulk(
-        [
-            {
-                priceCentsUsd: cents,
-                category: "iptv",
-                brand: provider,
-                sku,
-            },
-        ],
-        {
-            resellerId: ctx.reseller.id,
-            tierDiscountPct: ctx.tierDiscountPct,
-            customDiscountPct: ctx.customDiscountPct,
-        },
-    );
-    return price;
-}
-
 function ensureSdk(): NonNullable<typeof lbV2> {
     if (!lbV2) {
         throw new Error("LoadBrain n'est pas configuré (LOADBRAIN_API_KEY manquant)");
     }
     return lbV2;
+}
+
+/**
+ * Map a kiosk variant's `loadbrain_slug` to the IPTV provider that fulfils it.
+ * The slug prefix is the contract — defined when the admin set up the variant.
+ */
+function providerFromSlug(slug: string): IptvProvider | null {
+    if (slug.startsWith("ibo-")) return "ibosol";
+    if (slug.startsWith("atlaspro-") || slug.startsWith("atlas-")) return "atlaspro";
+    if (slug.startsWith("ironmax-") || slug.startsWith("iron-")) return "ironmax";
+    // panelking365 owns both the canonical `panelking-*` and the legacy `iptv-*` slugs.
+    if (slug.startsWith("panelking") || slug.startsWith("iptv-")) return "panelking365";
+    return null;
+}
+
+interface LocalIptvVariant {
+    readonly variantId: number;
+    readonly productName: string;
+    readonly variantName: string;
+    readonly loadbrainSlug: string;
+    readonly provider: IptvProvider;
+    /** Reseller-effective price in DZD (override if set, else sale price). */
+    readonly priceDzd: number;
+}
+
+/**
+ * Source of truth for reseller-visible IPTV variants is the kiosk `product_variants`
+ * table. We expose only rows with `loadbrain_slug` set, `reseller_visible = true`,
+ * and where the slug maps to a known provider. Price comes from the local DB —
+ * NEVER from the upstream LoadBrain catalogue.
+ */
+async function listLocalIptvVariants(filter?: {
+    provider?: IptvProvider;
+    slug?: string;
+}): Promise<ReadonlyArray<LocalIptvVariant>> {
+    const where = [
+        isNotNull(productVariants.loadbrainSlug),
+        eq(productVariants.resellerVisible, true),
+    ];
+    if (filter?.slug) {
+        where.push(eq(productVariants.loadbrainSlug, filter.slug));
+    }
+    const rows = await db
+        .select({
+            variantId: productVariants.id,
+            productName: products.name,
+            variantName: productVariants.name,
+            loadbrainSlug: productVariants.loadbrainSlug,
+            salePriceDzd: productVariants.salePriceDzd,
+            resellerOverrideDzd: productVariants.resellerPriceOverrideDzd,
+        })
+        .from(productVariants)
+        .innerJoin(products, eq(products.id, productVariants.productId))
+        .where(and(...where));
+
+    return rows
+        .map((r) => {
+            const slug = r.loadbrainSlug ?? "";
+            const provider = providerFromSlug(slug);
+            if (!provider) return null;
+            if (filter?.provider && provider !== filter.provider) return null;
+            const overrideNum = r.resellerOverrideDzd
+                ? parseFloat(r.resellerOverrideDzd)
+                : NaN;
+            const baseNum = parseFloat(r.salePriceDzd ?? "0");
+            const effective = Number.isFinite(overrideNum) && overrideNum > 0
+                ? overrideNum
+                : baseNum;
+            return {
+                variantId: r.variantId,
+                productName: r.productName,
+                variantName: r.variantName,
+                loadbrainSlug: slug,
+                provider,
+                priceDzd: effective,
+            } satisfies LocalIptvVariant;
+        })
+        .filter((x): x is LocalIptvVariant => x !== null);
 }
 
 /* ──────────────────────────────────────────────────────────────────────── */
@@ -150,29 +182,21 @@ export const getIptvCatalogAction = withAuth(
     },
     async ({ provider }, user) => {
         try {
-            const sdk = ensureSdk();
             const ctx = await resolveResellerCtx(user.id);
             if (!ctx) {
                 return { success: false as const, error: "Compte revendeur introuvable" };
             }
-            const raw = await sdk.iptv.products.list(
-                provider ? { app: provider } : undefined,
-            );
-            const items = await Promise.all(
-                raw.map(async (p) => {
-                    const obj = p as unknown as Record<string, unknown>;
-                    const price = await priceIptvProduct(obj, ctx, provider ?? "panelking365");
-                    return {
-                        id: String(obj.id),
-                        name: String(obj.name ?? obj.id),
-                        provider: provider ?? (obj.provider as IptvProvider | undefined) ?? null,
-                        // Final reseller price after markup + tier discount, in DZD.
-                        priceDzd: price.finalPriceDzd,
-                        basePriceDzd: price.basePriceDzd,
-                        raw: obj,
-                    };
-                }),
-            );
+            const variants = await listLocalIptvVariants({ provider });
+            const items = variants.map((v) => ({
+                // Use the slug as productId because it is what LoadBrain accepts
+                // on POST /provision/tasks. The variantId is also exposed for
+                // local linkage at checkout time.
+                id: v.loadbrainSlug,
+                variantId: v.variantId,
+                name: `${v.productName} — ${v.variantName}`,
+                provider: v.provider,
+                priceDzd: v.priceDzd,
+            }));
             return { success: true as const, data: items };
         } catch (err) {
             console.error("[iptv:getIptvCatalogAction]", err);
@@ -191,27 +215,25 @@ export const getIptvProductAction = withAuth(
     },
     async ({ productId, provider }, user) => {
         try {
-            const sdk = ensureSdk();
             const ctx = await resolveResellerCtx(user.id);
             if (!ctx) {
                 return { success: false as const, error: "Compte revendeur introuvable" };
             }
-            const product = (await sdk.iptv.products.get(productId)) as unknown as Record<
-                string,
-                unknown
-            >;
-            const resolvedProvider =
-                provider ?? (product.provider as IptvProvider | undefined) ?? "panelking365";
-            const price = await priceIptvProduct(product, ctx, resolvedProvider);
+            const [variant] = await listLocalIptvVariants({ slug: productId, provider });
+            if (!variant) {
+                return {
+                    success: false as const,
+                    error: "Produit IPTV introuvable ou non visible pour les revendeurs",
+                };
+            }
             return {
                 success: true as const,
                 data: {
-                    id: String(product.id),
-                    name: String(product.name ?? product.id),
-                    provider: resolvedProvider,
-                    priceDzd: price.finalPriceDzd,
-                    basePriceDzd: price.basePriceDzd,
-                    raw: product,
+                    id: variant.loadbrainSlug,
+                    variantId: variant.variantId,
+                    name: `${variant.productName} — ${variant.variantName}`,
+                    provider: variant.provider,
+                    priceDzd: variant.priceDzd,
                 },
             };
         } catch (err) {
@@ -262,25 +284,29 @@ export const createIptvOrderAction = withAuth(
             }
             const { reseller } = ctx;
 
-            // Re-fetch product server-side (never trust client price/identity).
-            const productRaw = (await sdk.iptv.products.get(productId)) as unknown as Record<
-                string,
-                unknown
-            >;
-            if (!productRaw || !productRaw.id) {
+            // Authoritative product = local kiosk variant. productId is the
+            // loadbrain_slug. We re-resolve to enforce reseller visibility
+            // and re-compute the price server-side.
+            const [variant] = await listLocalIptvVariants({ slug: productId, provider });
+            if (!variant) {
                 return {
                     success: false as const,
-                    error: "Produit IPTV introuvable",
+                    error: "Produit IPTV introuvable ou non visible pour les revendeurs",
                 };
             }
-            const price = await priceIptvProduct(productRaw, ctx, provider);
-            const totalAmount = price.finalPriceDzd;
+            const totalAmount = variant.priceDzd;
             if (!Number.isFinite(totalAmount) || totalAmount <= 0) {
                 return {
                     success: false as const,
                     error: "Prix IPTV invalide pour ce produit",
                 };
             }
+            const productRaw = {
+                id: variant.loadbrainSlug,
+                name: `${variant.productName} — ${variant.variantName}`,
+                provider: variant.provider,
+                variantId: variant.variantId,
+            } as Record<string, unknown>;
 
             const orderNumber = `IPTV-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
             const externalOrderId = orderNumber; // stable idempotency key
