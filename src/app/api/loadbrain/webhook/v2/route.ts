@@ -152,7 +152,14 @@ async function handleG2BulkDelivered(event: G2BulkDeliveredEvent): Promise<void>
             .set({
                 status: "COMPLETED",
                 completedAt: new Date(),
-                wonSnapshot: wonSnapshot ?? undefined,
+                // Merge (not replace) so checkout-time fields (title, playerName
+                // for game top-ups) survive when upstream sends its own snapshot.
+                wonSnapshot: wonSnapshot
+                    ? {
+                          ...((localG2bulkOrder.wonSnapshot as Record<string, unknown> | null) ?? {}),
+                          ...(wonSnapshot as Record<string, unknown>),
+                      }
+                    : undefined,
             })
             .where(eq(g2bulkOrders.id, localG2bulkOrder.id));
 

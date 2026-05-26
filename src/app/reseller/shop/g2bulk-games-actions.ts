@@ -19,6 +19,7 @@ import {
     type ComputedPrice,
 } from "@/services/g2bulk-pricing.service";
 import { ResellerNotifications } from "@/services/reseller-notifications.service";
+import { buildGameWonSnapshot } from "./game-snapshot";
 
 /* ----------------------------------------------------------------------
  * G2Bulk GAME TOP-UPS (in-game currency) — distinct surface from gift-card
@@ -353,7 +354,13 @@ export const createG2BulkGameOrderAction = withAuth(
                     pricePaidDzd: totalAmount.toFixed(2),
                     lbOrderId: lb.orderId ?? null,
                     status: "PENDING_LOADBRAIN",
-                    wonSnapshot: { kind: "game", gameCode, catalogueId, player, lb },
+                    wonSnapshot: buildGameWonSnapshot({
+                        gameCode,
+                        catalogueId,
+                        packageName: pkg.name,
+                        player,
+                        lb,
+                    }),
                 });
 
                 return { id: newOrder.id, orderNumber };
