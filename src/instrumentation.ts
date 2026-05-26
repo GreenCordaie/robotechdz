@@ -49,6 +49,26 @@ export async function register() {
             console.error('[Instrumentation] streaming watcher init failed:', err?.message);
         }
 
+        if (!globalAny.__g2bulkReconcilerScheduled) {
+            globalAny.__g2bulkReconcilerScheduled = true;
+            const runReconcile = async () => {
+                try {
+                    const { reconcilePendingG2BulkOrders } = await import(
+                        './services/g2bulk-reconciler.service'
+                    );
+                    const r = await reconcilePendingG2BulkOrders({ limit: 100 });
+                    if (r.delivered > 0 || r.refunded > 0 || r.errors.length > 0) {
+                        console.log('[G2BulkReconciler]', JSON.stringify(r));
+                    }
+                } catch (e: any) {
+                    console.error('[G2BulkReconciler] error:', e?.message);
+                }
+            };
+            setTimeout(runReconcile, 20_000);
+            setInterval(runReconcile, 60_000);
+            console.log('[G2BulkReconciler] scheduled every 60s');
+        }
+
         // You can add more worker initializations here
     }
 }
