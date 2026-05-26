@@ -103,9 +103,18 @@ export function G2BulkOrdersSection() {
                               providerOrderId?: string;
                               exactPriceCents?: number;
                               provider?: string;
+                              title?: string;
+                              gameCode?: string;
+                              playerName?: string;
                           }
                         | null;
                     const isRevealed = revealed.has(row.id);
+                    // Prefer the human-readable upstream title captured at
+                    // delivery time over the raw G2Bulk product id (which is
+                    // either a numeric SKU or a `game:NNNN` reference).
+                    const productLabel = snap?.title
+                        ? snap.title
+                        : `Produit ${row.productId}`;
 
                     return (
                         <Card
@@ -119,8 +128,13 @@ export function G2BulkOrdersSection() {
                                             {row.localOrderNumber ?? `Commande #${row.localOrderId}`}
                                         </p>
                                         <p className="text-sm font-bold text-white truncate">
-                                            Produit {row.productId} × {row.quantity}
+                                            {productLabel} × {row.quantity}
                                         </p>
+                                        {snap?.playerName && (
+                                            <p className="text-[11px] text-slate-500 truncate">
+                                                Joueur : {snap.playerName}
+                                            </p>
+                                        )}
                                         <p className="text-xs text-slate-500 mt-0.5">
                                             {row.createdAt
                                                 ? formatDate(row.createdAt as string | Date)

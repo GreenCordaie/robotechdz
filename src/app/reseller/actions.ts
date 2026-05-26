@@ -68,15 +68,78 @@ export const getResellerOrdersAction = withAuth(
                     },
                 },
             });
-            // Compte des items pour affichage liste rapide
-            const enriched = list.map((o) => ({
-                ...o,
-                itemCount: o.items.reduce((acc, it) => acc + (it.quantity ?? 0), 0),
-                productNames: o.items
+
+            // G2Bulk + IPTV checkouts do NOT insert order_items rows — they
+            // write to g2bulk_orders / reseller_iptv_orders mirrors instead.
+            // Pull those side-tables in one batch and fold their human title
+            // into the enriched payload so the list never falls back to
+            // "0 article" / "Produit 47" for those flows.
+            const orderIds = list.map((o) => o.id);
+            const { g2bulkOrders: g2bTable, resellerIptvOrders: iptvTable } =
+                await import("@/db/schema");
+            const [g2bRows, iptvRows] =
+                orderIds.length === 0
+                    ? [[] as Array<{ localOrderId: number; productId: string; quantity: number; wonSnapshot: unknown }>, [] as Array<{ localOrderId: number; provider: string; productName: string; quantity: number }>]
+                    : await Promise.all([
+                          db
+                              .select({
+                                  localOrderId: g2bTable.localOrderId,
+                                  productId: g2bTable.productId,
+                                  quantity: g2bTable.quantity,
+                                  wonSnapshot: g2bTable.wonSnapshot,
+                              })
+                              .from(g2bTable)
+                              .where(inArray(g2bTable.localOrderId, orderIds)),
+                          db
+                              .select({
+                                  localOrderId: iptvTable.localOrderId,
+                                  provider: iptvTable.provider,
+                                  productName: iptvTable.productName,
+                                  quantity: iptvTable.quantity,
+                              })
+                              .from(iptvTable)
+                              .where(inArray(iptvTable.localOrderId, orderIds)),
+                      ]);
+
+            const g2bByOrder = new Map<number, { title: string; quantity: number }>();
+            for (const r of g2bRows) {
+                const snap = (r.wonSnapshot ?? null) as { title?: string } | null;
+                g2bByOrder.set(r.localOrderId, {
+                    title: snap?.title || `Produit ${r.productId}`,
+                    quantity: r.quantity,
+                });
+            }
+            const iptvByOrder = new Map<number, { title: string; quantity: number }>();
+            for (const r of iptvRows) {
+                iptvByOrder.set(r.localOrderId, {
+                    title: r.productName,
+                    quantity: r.quantity,
+                });
+            }
+
+            const enriched = list.map((o) => {
+                const baseNames = o.items
                     .map((it) => (it.variant as { product?: { name?: string } } | null)?.product?.name ?? it.name)
-                    .filter(Boolean)
-                    .slice(0, 3),
-            }));
+                    .filter(Boolean);
+                const baseCount = o.items.reduce((acc, it) => acc + (it.quantity ?? 0), 0);
+                const g2b = g2bByOrder.get(o.id);
+                const iptv = iptvByOrder.get(o.id);
+                const sideNames: string[] = [];
+                let sideCount = 0;
+                if (g2b) {
+                    sideNames.push(g2b.title);
+                    sideCount += g2b.quantity;
+                }
+                if (iptv) {
+                    sideNames.push(iptv.title);
+                    sideCount += iptv.quantity;
+                }
+                return {
+                    ...o,
+                    itemCount: baseCount + sideCount,
+                    productNames: [...baseNames, ...sideNames].slice(0, 3),
+                };
+            });
             return { success: true, data: enriched };
         } catch (error) {
             return { success: false, error: "Erreur lors de la récupération des commandes" };
