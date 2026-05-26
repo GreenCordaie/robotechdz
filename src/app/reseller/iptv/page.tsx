@@ -6,7 +6,6 @@ import { Spinner, Tabs, Tab } from "@heroui/react";
 import { Tv, ChevronDown } from "lucide-react";
 import { toast } from "react-hot-toast";
 
-import { ShopTopNav } from "@/app/reseller/shop/components/ShopTopNav";
 import {
     getIptvCatalogAction,
     listMyIptvOrdersAction,
@@ -313,8 +312,6 @@ export default function ResellerIptvPage() {
 
     return (
         <div className="space-y-6 animate-in fade-in duration-300">
-            <ShopTopNav />
-
             {/* Header */}
             <div className="space-y-2">
                 <div className="flex items-center gap-2">

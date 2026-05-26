@@ -45,12 +45,9 @@ const NAV_ITEMS: ReadonlyArray<NavItem> = [
     { href: "/reseller/dashboard", label: "Dashboard", icon: LayoutDashboard },
     { href: "/reseller/shop/all", label: "Tout le catalogue", icon: LayoutGrid },
     { href: "/reseller/shop?type=giftcard", label: "Gift Cards & Vouchers", icon: Gift },
-    { href: "/reseller/shop?type=topup", label: "Game Top Up", icon: Gamepad2 },
-    { href: "/reseller/shop/games", label: "Bulk Game TopUp", icon: Layers },
+    { href: "/reseller/shop/games", label: "Game Top Up", icon: Gamepad2 },
     { href: "/reseller/iptv", label: "IPTV", icon: Tv },
     { href: "/reseller/wallet", label: "Wallet", icon: Wallet },
-    { href: "/reseller/dashboard?tab=leaderboard", label: "LeaderBoard", icon: Trophy },
-    { href: "/reseller/dashboard?tab=giveaway", label: "Giveaway", icon: PartyPopper },
 ];
 
 interface ShopTopNavProps {
