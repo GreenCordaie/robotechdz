@@ -40,9 +40,23 @@ function extractExpiry(payload: unknown): Date | null {
     const tryParse = (v: unknown): Date | null => {
         if (!v) return null;
         if (v instanceof Date) return Number.isFinite(v.getTime()) ? v : null;
-        if (typeof v === "string" || typeof v === "number") {
+        if (typeof v === "number") {
             const d = new Date(v);
             return Number.isFinite(d.getTime()) ? d : null;
+        }
+        if (typeof v === "string") {
+            // ISO first (most upstream events).
+            const iso = new Date(v);
+            if (Number.isFinite(iso.getTime())) return iso;
+            // Panelking/Atlas Xtream format: "DD-MM-YYYY HH:MM" (French style).
+            const m = /^(\d{2})-(\d{2})-(\d{4})\s+(\d{2}):(\d{2})$/.exec(v.trim());
+            if (m) {
+                const [, dd, mm, yyyy, hh, mi] = m;
+                const d = new Date(
+                    `${yyyy}-${mm}-${dd}T${hh}:${mi}:00`,
+                );
+                return Number.isFinite(d.getTime()) ? d : null;
+            }
         }
         return null;
     };
@@ -82,6 +96,10 @@ function extractIdentifiers(payload: unknown): {
         return { upstreamLineId: null, providerAccountId: null };
     const obj = payload as Record<string, unknown>;
     const creds = (obj.credentials ?? {}) as Record<string, unknown>;
+    // Panelking/Atlas wrap credentials inside `screens[]` (Xtream multi-line).
+    // First screen is the canonical one for single-line accounts.
+    const screens = creds.screens as Array<Record<string, unknown>> | undefined;
+    const firstScreen = Array.isArray(screens) && screens.length > 0 ? screens[0] : {};
 
     const pickString = (...candidates: unknown[]): string | null => {
         for (const c of candidates) {
@@ -93,6 +111,8 @@ function extractIdentifiers(payload: unknown): {
 
     return {
         upstreamLineId: pickString(
+            firstScreen.lineId,
+            firstScreen.id,
             creds.lineId,
             creds.id,
             obj.lineId,
@@ -100,6 +120,7 @@ function extractIdentifiers(payload: unknown): {
             obj.deviceId,
         ),
         providerAccountId: pickString(
+            firstScreen.username,
             creds.username,
             creds.account,
             creds.mac,
@@ -180,12 +201,24 @@ async function reconcileOne(
         return "pending";
     }
 
+    // SDK returns shape variants depending on endpoint:
+    //   { task: { status, credentials, ... } }   for provision.tasks.get
+    //   { order: { status, ... } }              for provision.orders.get
+    //   { status, ... }                          (legacy / occasional)
+    // Probe in order so credentials extraction below also sees the right
+    // nested object.
     const obj = (payload ?? {}) as Record<string, unknown>;
-    const upstreamStatus = String(obj.status ?? "").toLowerCase();
+    const inner =
+        (obj.task as Record<string, unknown> | undefined) ??
+        (obj.order as Record<string, unknown> | undefined) ??
+        obj;
+    const upstreamStatus = String(inner.status ?? obj.status ?? "").toLowerCase();
 
     if (upstreamStatus === "completed" || upstreamStatus === "delivered") {
-        const ids = extractIdentifiers(payload);
-        const expiry = extractExpiry(payload);
+        // Pass `inner` (the unwrapped task/order object) so the credentials
+        // probes hit credentials.* one level up rather than missing them.
+        const ids = extractIdentifiers(inner);
+        const expiry = extractExpiry(inner);
         await markIptvOrderDelivered(db, {
             id: row.id,
             resellerId: row.resellerId,
@@ -203,9 +236,11 @@ async function reconcileOne(
         upstreamStatus === "refunded"
     ) {
         const errMsg =
-            typeof obj.error === "string"
-                ? obj.error
-                : `upstream ${upstreamStatus}`;
+            typeof inner.error === "string"
+                ? inner.error
+                : typeof obj.error === "string"
+                  ? obj.error
+                  : `upstream ${upstreamStatus}`;
         await markIptvOrderFailed(db, {
             id: row.id,
             resellerId: row.resellerId,
