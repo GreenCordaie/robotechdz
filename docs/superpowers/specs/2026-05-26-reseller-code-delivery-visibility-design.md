@@ -1,8 +1,28 @@
 # Design — Visibilité de la livraison des codes côté revendeur
 
 **Date :** 2026-05-26
-**Statut :** Validé (brainstorming) — prêt pour plan d'implémentation
+**Statut :** RÉVISÉ — la visibilité de base existe déjà ; périmètre réduit (voir §0)
 **Branche cible :** `feat/bsv-mirror-integrated`
+
+## 0. Révision de périmètre (2026-05-26, après lecture du code rendu)
+
+La prémisse initiale (« le revendeur ne voit pas ses codes ») était **fausse** : la page
+`/reseller/orders` rend déjà `<G2BulkOrdersSection />` (`src/app/reseller/orders/components/G2BulkOrdersSection.tsx`)
+via `getG2BulkOrdersAction` (`src/app/reseller/orders/g2bulk-actions.ts`), qui affiche déjà,
+pour les commandes G2Bulk **et** games : statut (En cours/Livré/Échec/Remboursé), codes
+**masqués + révéler + copier**, prix, et détails `wonSnapshot`.
+
+Les sections §1–§9 ci-dessous décrivent le design *initial* (conservé pour trace) mais sont
+**en grande partie déjà implémentées**. Le travail réel restant est limité à 3 correctifs :
+
+1. **Affichage des commandes games cassé** — `createG2BulkGameOrderAction` stocke
+   `wonSnapshot = { kind, gameCode, catalogueId, player, lb }` sans `title` ni `playerName`,
+   alors que la section lit `snap.title` / `snap.playerName`. → une recharge s'affiche
+   « Produit game:1309 » sans le joueur. *(régression introduite par la feature games)*
+2. **État Remboursé** : la puce s'affiche mais sans motif ni montant remboursé.
+3. **Confort** : pas de bouton « Rafraîchir » pour l'état En cours ; pas de pagination (cap 50).
+
+Le **plan d'implémentation** (`docs/superpowers/plans/`) ne couvre QUE ces 3 points.
 
 ## 1. Problème
 
