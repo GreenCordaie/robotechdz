@@ -9,7 +9,10 @@ import {
     ModalHeader,
     Button,
     Spinner,
+    Tab,
+    Tabs,
 } from "@heroui/react";
+import IptvLineEventsTab from "./IptvLineEventsTab";
 import {
     Copy,
     Eye,
@@ -257,7 +260,19 @@ export const IptvLineDetailModal: React.FC<IptvLineDetailModalProps> = ({
                     )}
 
                     {local && (
-                        <>
+                        <Tabs
+                            aria-label="Détails de la ligne"
+                            variant="underlined"
+                            classNames={{
+                                tabList:
+                                    "gap-4 border-b border-[#262626] p-0",
+                                tab: "px-0 h-9 data-[selected=true]:text-[#FACC15]",
+                                cursor: "bg-[#FACC15]",
+                                tabContent: "text-slate-400 text-xs font-black uppercase tracking-wider",
+                            }}
+                        >
+                            <Tab key="details" title="Détails">
+                                <div className="space-y-5 pt-4">
                             {/* En-tête infos client */}
                             <div className="bg-[#161616] border border-[#262626] rounded-xl p-4 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
                                 <DetailField
@@ -381,7 +396,14 @@ export const IptvLineDetailModal: React.FC<IptvLineDetailModalProps> = ({
                                     </div>
                                 )}
                             </div>
-                        </>
+                                </div>
+                            </Tab>
+                            <Tab key="history" title="Historique">
+                                <div className="pt-4">
+                                    <IptvLineEventsTab id={local.id} />
+                                </div>
+                            </Tab>
+                        </Tabs>
                     )}
                 </ModalBody>
 

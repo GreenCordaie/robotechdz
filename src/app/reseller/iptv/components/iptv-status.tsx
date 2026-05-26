@@ -138,6 +138,38 @@ export function asErrorString(err: unknown, fallback: string): string {
     return fallback;
 }
 
+/**
+ * "DD-MM-YYYY HH:mm" — admin-panel compact format used in the lines table.
+ * Returns "—" for null/invalid.
+ */
+export function formatExpiresShort(
+    value: Date | string | null | undefined,
+): string {
+    if (!value) return "—";
+    const d = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(d.getTime())) return "—";
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${pad(d.getDate())}-${pad(d.getMonth() + 1)}-${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+/**
+ * Compact remaining-time label used in the LEFT column of the admin lines table.
+ * Returns "5d left" / "3h left" / "Expired" / "—".
+ */
+export function formatDaysLeft(
+    value: Date | string | null | undefined,
+): string {
+    if (!value) return "—";
+    const d = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(d.getTime())) return "—";
+    const diffMs = d.getTime() - Date.now();
+    if (diffMs <= 0) return "Expired";
+    const hours = Math.floor(diffMs / (60 * 60 * 1000));
+    if (hours < 24) return `${hours}h left`;
+    const days = Math.floor(hours / 24);
+    return `${days}d left`;
+}
+
 export function parseDurationFromName(name: string): string | null {
     if (!name) return null;
     const m = name.match(

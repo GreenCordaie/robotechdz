@@ -26,7 +26,7 @@ import {
     iptvProvisions,
     resellerIptvOrders,
 } from "@/db/schema";
-import { eq, sql, and, isNotNull, desc } from "drizzle-orm";
+import { eq, sql, and, isNotNull, desc, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { withAuth } from "@/lib/security";
@@ -42,6 +42,7 @@ import {
     type IptvProvider,
     type IptvOrderStatus,
 } from "@/services/iptv-reseller.service";
+import { checkActionGuard } from "./rate-limit";
 
 /* ──────────────────────────────────────────────────────────────────────── */
 /* Helpers                                                                 */
@@ -470,6 +471,270 @@ export const listMyIptvOrdersAction = withAuth(
     },
 );
 
+/* ──────────────────────────────────────────────────────────────────────── */
+/* Live lines (admin-panel style table)                                    */
+/* ──────────────────────────────────────────────────────────────────────── */
+
+/** Pick the first non-empty string/number from a candidate key list. */
+function pickStr(obj: unknown, keys: ReadonlyArray<string>): string | null {
+    if (!obj || typeof obj !== "object") return null;
+    const o = obj as Record<string, unknown>;
+    for (const k of keys) {
+        const v = o[k];
+        if (typeof v === "string" && v.trim().length > 0) return v;
+        if (typeof v === "number" && Number.isFinite(v)) return String(v);
+    }
+    return null;
+}
+
+/**
+ * Walk the upstream task payload and extract the first screen's
+ * `{ username, password, m3uUrl, epgUrl, expiresAt }`. Defensive against
+ * missing credentials / screens.
+ */
+function extractScreen(upstream: unknown): {
+    username: string | null;
+    password: string | null;
+    m3uUrl: string | null;
+    epgUrl: string | null;
+    expiresAt: string | null;
+} {
+    const empty = {
+        username: null,
+        password: null,
+        m3uUrl: null,
+        epgUrl: null,
+        expiresAt: null,
+    };
+    if (!upstream || typeof upstream !== "object") return empty;
+    const up = upstream as Record<string, unknown>;
+    const creds = (up.credentials ?? up.result ?? null) as
+        | Record<string, unknown>
+        | null;
+    if (!creds || typeof creds !== "object") {
+        // Some providers expose username/m3u at root.
+        return {
+            username: pickStr(up, ["username", "user", "login"]),
+            password: pickStr(up, ["password"]),
+            m3uUrl: pickStr(up, ["m3uUrl", "m3u", "playlist"]),
+            epgUrl: pickStr(up, ["epgUrl", "epg"]),
+            expiresAt: pickStr(up, ["expiresAt", "expiry", "expire_date"]),
+        };
+    }
+    const screens = (creds.screens ?? null) as unknown;
+    if (Array.isArray(screens) && screens.length > 0) {
+        const first = screens[0] as Record<string, unknown>;
+        return {
+            username: pickStr(first, ["username", "user", "login"]),
+            password: pickStr(first, ["password"]),
+            m3uUrl: pickStr(first, ["m3uUrl", "m3u", "playlist"]),
+            epgUrl: pickStr(first, ["epgUrl", "epg"]),
+            expiresAt:
+                pickStr(first, ["expiresAt", "expiry", "expire_date"]) ??
+                pickStr(creds, ["expiresAt", "expiry", "expire_date"]),
+        };
+    }
+    return {
+        username: pickStr(creds, ["username", "user", "login"]),
+        password: pickStr(creds, ["password"]),
+        m3uUrl: pickStr(creds, ["m3uUrl", "m3u", "playlist"]),
+        epgUrl: pickStr(creds, ["epgUrl", "epg"]),
+        expiresAt: pickStr(creds, ["expiresAt", "expiry", "expire_date"]),
+    };
+}
+
+/** Run an array of async producers with bounded concurrency. */
+async function runWithConcurrency<T>(
+    items: ReadonlyArray<() => Promise<T>>,
+    limit: number,
+): Promise<ReadonlyArray<PromiseSettledResult<T>>> {
+    const results: PromiseSettledResult<T>[] = new Array(items.length);
+    let cursor = 0;
+    const workers: Promise<void>[] = [];
+    const worker = async () => {
+        while (true) {
+            const idx = cursor++;
+            if (idx >= items.length) return;
+            try {
+                results[idx] = { status: "fulfilled", value: await items[idx]() };
+            } catch (err) {
+                results[idx] = { status: "rejected", reason: err };
+            }
+        }
+    };
+    for (let i = 0; i < Math.min(limit, items.length); i++) {
+        workers.push(worker());
+    }
+    await Promise.all(workers);
+    return results;
+}
+
+/**
+ * Returns the reseller's IPTV lines merged with the LIVE LoadBrain task
+ * payload (username, m3u url, epg url, fresh expiresAt). NEVER returns the
+ * password — that goes through {@link getMyIptvLineCredentialsAction}.
+ *
+ * Filter: reseller_id (auth) + provider, status in (ACTIVE, FROZEN, EXPIRED,
+ * PENDING_LOADBRAIN). Capped to the 200 most-recent rows so a noisy reseller
+ * doesn't fan out into thousands of upstream calls.
+ */
+export const getMyIptvLinesLiveAction = withAuth(
+    {
+        roles: [UserRole.RESELLER],
+        schema: z.object({
+            provider: z.enum(PROVIDERS),
+        }),
+    },
+    async ({ provider }, user) => {
+        try {
+            const sdk = ensureSdk();
+            const ctx = await resolveResellerCtx(user.id);
+            if (!ctx) {
+                return {
+                    success: false as const,
+                    error: "Compte revendeur introuvable",
+                };
+            }
+            const allowed: ReadonlyArray<IptvOrderStatus> = [
+                "PENDING_LOADBRAIN",
+                "ACTIVE",
+                "FROZEN",
+                "EXPIRED",
+            ];
+            const rows = await db
+                .select()
+                .from(resellerIptvOrders)
+                .where(
+                    and(
+                        eq(resellerIptvOrders.resellerId, ctx.reseller.id),
+                        eq(resellerIptvOrders.provider, provider),
+                        inArray(resellerIptvOrders.status, allowed),
+                    ),
+                )
+                .orderBy(desc(resellerIptvOrders.createdAt))
+                .limit(200);
+
+            const tasks = rows.map((row) => async () => {
+                if (!row.lbTaskId) return null;
+                try {
+                    return await sdk.provision.tasks.get(row.lbTaskId);
+                } catch (err) {
+                    console.warn(
+                        `[iptv:getMyIptvLinesLiveAction] task ${row.lbTaskId} fetch failed`,
+                        err,
+                    );
+                    return null;
+                }
+            });
+            const settled = await runWithConcurrency(tasks, 8);
+
+            const items = rows.map((row, i) => {
+                const r = settled[i];
+                const upstream = r.status === "fulfilled" ? r.value : null;
+                const screen = extractScreen(upstream);
+                const liveExpires = screen.expiresAt
+                    ? new Date(screen.expiresAt)
+                    : null;
+                const expiresAt =
+                    liveExpires && !Number.isNaN(liveExpires.getTime())
+                        ? liveExpires
+                        : row.expiresAt;
+                return {
+                    id: row.id,
+                    displayId:
+                        row.upstreamLineId ?? String(row.id),
+                    provider: row.provider,
+                    status: row.status,
+                    productName: row.productName,
+                    username:
+                        screen.username ?? row.providerAccountId ?? null,
+                    // SECURITY: never ship the password in the bulk endpoint
+                    hasPassword: !!screen.password,
+                    m3uUrl: screen.m3uUrl,
+                    epgUrl: screen.epgUrl,
+                    expiresAt: expiresAt
+                        ? expiresAt instanceof Date
+                            ? expiresAt.toISOString()
+                            : expiresAt
+                        : null,
+                    customerLabel: row.customerLabel,
+                    customerPhone: row.customerPhone,
+                    notes: row.notes,
+                    pricePaidDzd: row.pricePaidDzd,
+                    createdAt:
+                        row.createdAt instanceof Date
+                            ? row.createdAt.toISOString()
+                            : row.createdAt,
+                    lbTaskId: row.lbTaskId,
+                };
+            });
+
+            return {
+                success: true as const,
+                data: { items, total: items.length },
+            };
+        } catch (err) {
+            console.error("[iptv:getMyIptvLinesLiveAction]", err);
+            return { success: false as const, error: stringifyError(err) };
+        }
+    },
+);
+
+/**
+ * On-demand password reveal for ONE reseller-owned IPTV line. Kept separate
+ * from the bulk action so the heavy list endpoint never carries secrets — the
+ * client only fetches the password when the operator clicks the eye icon.
+ */
+export const getMyIptvLineCredentialsAction = withAuth(
+    {
+        roles: [UserRole.RESELLER],
+        schema: z.object({ id: z.number().int().positive() }),
+    },
+    async ({ id }, user) => {
+        try {
+            const sdk = ensureSdk();
+            const ctx = await resolveResellerCtx(user.id);
+            if (!ctx) {
+                return {
+                    success: false as const,
+                    error: "Compte revendeur introuvable",
+                };
+            }
+            const row = await getResellerIptvOrder(db, {
+                id,
+                resellerId: ctx.reseller.id,
+            });
+            if (!row) {
+                return {
+                    success: false as const,
+                    error: "Ligne IPTV introuvable",
+                };
+            }
+            if (!row.lbTaskId) {
+                return {
+                    success: false as const,
+                    error: "Aucun task LoadBrain associé",
+                };
+            }
+            const upstream = await sdk.provision.tasks.get(row.lbTaskId);
+            const screen = extractScreen(upstream);
+            return {
+                success: true as const,
+                data: {
+                    username:
+                        screen.username ?? row.providerAccountId ?? null,
+                    password: screen.password,
+                    m3uUrl: screen.m3uUrl,
+                    epgUrl: screen.epgUrl,
+                },
+            };
+        } catch (err) {
+            console.error("[iptv:getMyIptvLineCredentialsAction]", err);
+            return { success: false as const, error: stringifyError(err) };
+        }
+    },
+);
+
 export const getMyIptvOrderDetailAction = withAuth(
     {
         roles: [UserRole.RESELLER],
@@ -586,6 +851,528 @@ export const resendIptvWebhookAction = withAuth(
         }
     },
 );
+
+/* ──────────────────────────────────────────────────────────────────────── */
+/* Direct LoadBrain v2 gateway helpers                                     */
+/* ──────────────────────────────────────────────────────────────────────── */
+
+/** Raw fetch against the LoadBrain v2 HTTP gateway. */
+async function lbFetch(path: string, init?: RequestInit): Promise<unknown> {
+    const base = process.env.LOADBRAIN_URL;
+    const key = process.env.LOADBRAIN_API_KEY;
+    if (!base || !key) throw new Error("LoadBrain n'est pas configuré");
+    const res = await fetch(`${base}${path}`, {
+        ...init,
+        headers: {
+            "X-API-Key": key,
+            "Content-Type": "application/json",
+            ...(init?.headers ?? {}),
+        },
+        signal: AbortSignal.timeout(15_000),
+    });
+    const text = await res.text();
+    let json: { success?: boolean; data?: unknown; error?: unknown } | null = null;
+    try {
+        json = text ? JSON.parse(text) : null;
+    } catch {
+        json = null;
+    }
+    if (!res.ok || !json?.success) {
+        const e = json?.error;
+        const detail =
+            typeof e === "string"
+                ? e
+                : e && typeof e === "object" && "message" in e
+                  ? String((e as { message: unknown }).message)
+                  : e
+                    ? JSON.stringify(e)
+                    : text
+                      ? text.slice(0, 300)
+                      : "(réponse vide)";
+        throw new Error(`LoadBrain (HTTP ${res.status}): ${detail}`);
+    }
+    return json.data;
+}
+
+/** Load a mirror row strictly owned by the calling reseller. */
+async function loadOwnedLine(resellerId: number, mirrorId: number) {
+    const row = await db.query.resellerIptvOrders.findFirst({
+        where: and(
+            eq(resellerIptvOrders.id, mirrorId),
+            eq(resellerIptvOrders.resellerId, resellerId),
+        ),
+    });
+    if (!row) throw new Error("Ligne introuvable ou non autorisée");
+    return row;
+}
+
+/* Capability cache (5 min TTL, module-level). */
+const CAPABILITY_TTL_MS = 5 * 60 * 1000;
+const CAPABILITY_CACHE = new Map<string, { actions: string[]; at: number }>();
+
+export const getIptvCapabilitiesAction = withAuth(
+    {
+        roles: [UserRole.RESELLER],
+        schema: z.object({ provider: z.enum(PROVIDERS) }),
+    },
+    async ({ provider }) => {
+        try {
+            const cached = CAPABILITY_CACHE.get(provider);
+            const now = Date.now();
+            if (cached && now - cached.at < CAPABILITY_TTL_MS) {
+                return { success: true as const, data: { actions: cached.actions } };
+            }
+            const data = await lbFetch(`/api/v2/iptv/capabilities/${provider}`);
+            const actionsRaw = (data as { actions?: unknown })?.actions;
+            const actions: string[] = Array.isArray(actionsRaw)
+                ? actionsRaw.filter((x): x is string => typeof x === "string")
+                : [];
+            CAPABILITY_CACHE.set(provider, { actions, at: now });
+            return { success: true as const, data: { actions } };
+        } catch (err) {
+            console.error("[iptv:getIptvCapabilitiesAction]", err);
+            return { success: false as const, error: stringifyError(err) };
+        }
+    },
+);
+
+export const getIptvLineEventsAction = withAuth(
+    {
+        roles: [UserRole.RESELLER],
+        schema: z.object({ id: z.number().int().positive() }),
+    },
+    async ({ id }, user) => {
+        try {
+            const ctx = await resolveResellerCtx(user.id);
+            if (!ctx) {
+                return { success: false as const, error: "Compte revendeur introuvable" };
+            }
+            const row = await loadOwnedLine(ctx.reseller.id, id);
+            const lbId = row.lbOrderId ?? row.lbTaskId;
+            if (!lbId) {
+                return { success: true as const, data: { events: [] } };
+            }
+            const data = await lbFetch(`/api/v2/iptv/orders/${encodeURIComponent(lbId)}/events`);
+            const eventsRaw = Array.isArray(data)
+                ? data
+                : (data as { events?: unknown })?.events;
+            const events = Array.isArray(eventsRaw) ? eventsRaw : [];
+            return { success: true as const, data: { events } };
+        } catch (err) {
+            console.error("[iptv:getIptvLineEventsAction]", err);
+            return { success: false as const, error: stringifyError(err) };
+        }
+    },
+);
+
+/* ──────────────────────────────────────────────────────────────────────── */
+/* Per-line mutations (gateway-backed)                                     */
+/* ──────────────────────────────────────────────────────────────────────── */
+
+interface OwnedLineCtx {
+    readonly resellerId: number;
+    readonly mirrorId: number;
+    readonly provider: IptvProvider;
+    readonly upstreamLineId: string;
+    readonly row: Awaited<ReturnType<typeof loadOwnedLine>>;
+}
+
+/**
+ * Common preamble: resolve reseller, load owned line, enforce rate-limit, and
+ * extract `(provider, upstreamLineId)`. Returns a discriminated result so each
+ * action can short-circuit with a typed error envelope.
+ */
+async function prepareLineAction(
+    userId: number,
+    mirrorId: number,
+    actionName: string,
+): Promise<
+    | { ok: true; ctx: OwnedLineCtx }
+    | { ok: false; error: string }
+> {
+    const ctx = await resolveResellerCtx(userId);
+    if (!ctx) return { ok: false, error: "Compte revendeur introuvable" };
+    const row = await loadOwnedLine(ctx.reseller.id, mirrorId);
+    const guard = checkActionGuard(
+        `${ctx.reseller.id}:${mirrorId}:${actionName}`,
+    );
+    if (!guard.ok) return { ok: false, error: guard.error };
+    if (!row.upstreamLineId) {
+        return { ok: false, error: "Ligne pas encore activée" };
+    }
+    return {
+        ok: true,
+        ctx: {
+            resellerId: ctx.reseller.id,
+            mirrorId,
+            provider: row.provider as IptvProvider,
+            upstreamLineId: row.upstreamLineId,
+            row,
+        },
+    };
+}
+
+async function setLocalStatus(
+    mirrorId: number,
+    resellerId: number,
+    status: IptvOrderStatus,
+    extra?: Record<string, unknown>,
+): Promise<void> {
+    await db
+        .update(resellerIptvOrders)
+        .set({
+            status,
+            lastStatusAt: new Date(),
+            updatedAt: new Date(),
+            ...(extra ?? {}),
+        })
+        .where(
+            and(
+                eq(resellerIptvOrders.id, mirrorId),
+                eq(resellerIptvOrders.resellerId, resellerId),
+            ),
+        );
+}
+
+function lineActionFactory(
+    actionName: string,
+    gatewaySegment: string,
+    onSuccess?: (ctx: OwnedLineCtx) => Promise<void>,
+) {
+    return withAuth(
+        {
+            roles: [UserRole.RESELLER],
+            schema: z.object({ id: z.number().int().positive() }),
+        },
+        async ({ id }, user) => {
+            try {
+                const pre = await prepareLineAction(user.id, id, actionName);
+                if (!pre.ok) {
+                    return { success: false as const, error: pre.error };
+                }
+                const { provider, upstreamLineId } = pre.ctx;
+                const result = await lbFetch(
+                    `/api/v2/iptv/lines/${provider}/${encodeURIComponent(upstreamLineId)}/${gatewaySegment}`,
+                    { method: "POST" },
+                );
+                if (onSuccess) await onSuccess(pre.ctx);
+                revalidatePath("/reseller/iptv");
+                return { success: true as const, data: result };
+            } catch (err) {
+                console.error(`[iptv:${actionName}Action]`, err);
+                return { success: false as const, error: stringifyError(err) };
+            }
+        },
+    );
+}
+
+export const enableIptvLineAction = lineActionFactory(
+    "enableIptvLine",
+    "enable",
+    async (ctx) => setLocalStatus(ctx.mirrorId, ctx.resellerId, "ACTIVE"),
+);
+
+export const disableIptvLineAction = lineActionFactory(
+    "disableIptvLine",
+    "disable",
+    async (ctx) => setLocalStatus(ctx.mirrorId, ctx.resellerId, "FROZEN"),
+);
+
+export const deleteIptvLineAction = lineActionFactory(
+    "deleteIptvLine",
+    "delete",
+    async (ctx) =>
+        setLocalStatus(ctx.mirrorId, ctx.resellerId, "CANCELLED", {
+            cancelledAt: new Date(),
+        }),
+);
+
+export const kickIptvUserAction = lineActionFactory("kickIptvUser", "kick");
+
+export const resetIptvCredentialsAction = lineActionFactory(
+    "resetIptvCredentials",
+    "reset-credentials",
+);
+
+export const lockIptvIspAction = lineActionFactory("lockIptvIsp", "lock-isp");
+
+export const unlockIptvIspAction = lineActionFactory(
+    "unlockIptvIsp",
+    "unlock-isp",
+);
+
+export const resetIptvCountryAction = lineActionFactory(
+    "resetIptvCountry",
+    "reset-country",
+);
+
+/** Resolve a plan id from the mirror row's product snapshot. */
+function resolvePlanIdFromRow(
+    row: Awaited<ReturnType<typeof loadOwnedLine>>,
+): string | null {
+    const snap = row.productSnapshot as
+        | { product?: { variantId?: unknown } }
+        | null;
+    const v = snap?.product?.variantId;
+    if (typeof v === "string" && v.length > 0) return v;
+    if (typeof v === "number" && Number.isFinite(v)) return String(v);
+    return row.productId ?? null;
+}
+
+export const extendIptvLineAction = withAuth(
+    {
+        roles: [UserRole.RESELLER],
+        schema: z.object({
+            id: z.number().int().positive(),
+            planId: z.string().min(1).max(200).optional(),
+        }),
+    },
+    async ({ id, planId }, user) => {
+        try {
+            const pre = await prepareLineAction(user.id, id, "extendIptvLine");
+            if (!pre.ok) {
+                return { success: false as const, error: pre.error };
+            }
+            const { provider, upstreamLineId, row } = pre.ctx;
+            const finalPlanId = planId ?? resolvePlanIdFromRow(row);
+            if (!finalPlanId) {
+                return {
+                    success: false as const,
+                    error: "Aucun plan disponible pour cette ligne",
+                };
+            }
+            const result = await lbFetch(
+                `/api/v2/iptv/lines/${provider}/${encodeURIComponent(upstreamLineId)}/extend`,
+                {
+                    method: "POST",
+                    body: JSON.stringify({ planId: finalPlanId }),
+                },
+            );
+            revalidatePath("/reseller/iptv");
+            return { success: true as const, data: result };
+        } catch (err) {
+            console.error("[iptv:extendIptvLineAction]", err);
+            return { success: false as const, error: stringifyError(err) };
+        }
+    },
+);
+
+export const cancelIptvProvisioningAction = withAuth(
+    {
+        roles: [UserRole.RESELLER],
+        schema: z.object({ id: z.number().int().positive() }),
+    },
+    async ({ id }, user) => {
+        try {
+            const ctx = await resolveResellerCtx(user.id);
+            if (!ctx) {
+                return { success: false as const, error: "Compte revendeur introuvable" };
+            }
+            const row = await loadOwnedLine(ctx.reseller.id, id);
+            const guard = checkActionGuard(
+                `${ctx.reseller.id}:${id}:cancelIptvProvisioning`,
+            );
+            if (!guard.ok) {
+                return { success: false as const, error: guard.error };
+            }
+            const lbId = row.lbOrderId ?? row.lbTaskId;
+            if (!lbId) {
+                return {
+                    success: false as const,
+                    error: "Aucun task LoadBrain associé",
+                };
+            }
+            const result = await lbFetch(
+                `/api/v2/iptv/orders/${encodeURIComponent(lbId)}/cancel`,
+                { method: "POST" },
+            );
+            await setLocalStatus(id, ctx.reseller.id, "CANCELLED", {
+                cancelledAt: new Date(),
+            });
+            revalidatePath("/reseller/iptv");
+            return { success: true as const, data: result };
+        } catch (err) {
+            console.error("[iptv:cancelIptvProvisioningAction]", err);
+            return { success: false as const, error: stringifyError(err) };
+        }
+    },
+);
+
+export const renewIptvLineAction = withAuth(
+    {
+        roles: [UserRole.RESELLER],
+        schema: z.object({ id: z.number().int().positive() }),
+    },
+    async ({ id }, user) => {
+        try {
+            const ctx = await resolveResellerCtx(user.id);
+            if (!ctx || !ctx.reseller.wallet) {
+                return { success: false as const, error: "Compte revendeur introuvable" };
+            }
+            const { reseller } = ctx;
+            const row = await loadOwnedLine(reseller.id, id);
+            const guard = checkActionGuard(
+                `${reseller.id}:${id}:renewIptvLine`,
+            );
+            if (!guard.ok) {
+                return { success: false as const, error: guard.error };
+            }
+            const slug = row.productId;
+            const provider = row.provider as IptvProvider;
+            const [variant] = await listLocalIptvVariants({
+                slug,
+                provider,
+            });
+            if (!variant) {
+                return {
+                    success: false as const,
+                    error: "Produit IPTV introuvable ou non visible — renouvellement impossible",
+                };
+            }
+            const totalAmount = variant.priceDzd;
+            if (!Number.isFinite(totalAmount) || totalAmount <= 0) {
+                return {
+                    success: false as const,
+                    error: "Prix IPTV invalide pour ce produit",
+                };
+            }
+            const orderNumber = `IPTV-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+            const productRaw = {
+                id: variant.loadbrainSlug,
+                name: `${variant.productName} — ${variant.variantName}`,
+                provider: variant.provider,
+                variantId: variant.variantId,
+            } as Record<string, unknown>;
+
+            const staged = await db.transaction(async (tx) => {
+                const lockedWallet = await tx
+                    .select()
+                    .from(resellerWallets)
+                    .where(eq(resellerWallets.id, reseller.wallet!.id))
+                    .for("update");
+                const balance = parseFloat(lockedWallet[0]?.balance ?? "0");
+                if (balance < totalAmount) {
+                    throw new Error("Solde insuffisant");
+                }
+                const [newOrder] = await tx
+                    .insert(orders)
+                    .values({
+                        orderNumber,
+                        status: "PAYE",
+                        totalAmount: totalAmount.toFixed(2),
+                        montantPaye: totalAmount.toFixed(2),
+                        resteAPayer: "0",
+                        resellerId: reseller.id,
+                        source: "B2B_WEB",
+                        deliveryMethod: "TICKET",
+                        customerPhone: row.customerPhone ?? null,
+                    })
+                    .returning();
+                await tx.insert(orderItems).values({
+                    orderId: newOrder.id,
+                    variantId: variant.variantId,
+                    name: `${variant.productName} — ${variant.variantName}`,
+                    price: totalAmount.toFixed(2),
+                    quantity: 1,
+                });
+                await tx
+                    .update(resellerWallets)
+                    .set({
+                        balance: sql`${resellerWallets.balance} - ${totalAmount}`,
+                        totalSpent: sql`${resellerWallets.totalSpent} + ${totalAmount}`,
+                        updatedAt: new Date(),
+                    })
+                    .where(eq(resellerWallets.id, reseller.wallet!.id));
+                await tx.insert(resellerTransactions).values({
+                    walletId: reseller.wallet!.id,
+                    type: "PURCHASE",
+                    amount: totalAmount.toFixed(2),
+                    orderId: newOrder.id,
+                    description: `IPTV ${provider} renew — ${orderNumber}`,
+                });
+                const iptvOrderId = await insertPendingIptvOrder(tx, {
+                    localOrderId: newOrder.id,
+                    resellerId: reseller.id,
+                    provider,
+                    productId: slug,
+                    productName: variant.productName,
+                    productSnapshot: { product: productRaw, params: null },
+                    quantity: 1,
+                    pricePaidDzd: totalAmount,
+                    customerLabel: row.customerLabel ?? null,
+                    customerPhone: row.customerPhone ?? null,
+                });
+                return { localOrderId: newOrder.id, iptvOrderId };
+            });
+
+            // Trigger upstream renew. We prefer lbOrderId; fall back to lbTaskId.
+            const lbId = row.lbOrderId ?? row.lbTaskId;
+            if (!lbId) {
+                return {
+                    success: false as const,
+                    error: "Aucun identifiant LoadBrain disponible pour le renouvellement",
+                };
+            }
+            try {
+                const renewRes = (await lbFetch(
+                    `/api/v2/iptv/orders/${encodeURIComponent(lbId)}/renew`,
+                    {
+                        method: "POST",
+                        body: JSON.stringify({
+                            localOrderId: staged.localOrderId,
+                            mirrorId: staged.iptvOrderId,
+                        }),
+                    },
+                )) as { taskId?: unknown; orderId?: unknown } | null;
+                const newTaskId =
+                    renewRes && typeof renewRes.taskId === "string"
+                        ? renewRes.taskId
+                        : null;
+                const newOrderId =
+                    renewRes && typeof renewRes.orderId === "string"
+                        ? renewRes.orderId
+                        : null;
+                if (newTaskId || newOrderId) {
+                    await attachLbIdentifiers(db, {
+                        id: staged.iptvOrderId,
+                        resellerId: reseller.id,
+                        lbTaskId: newTaskId,
+                        lbOrderId: newOrderId,
+                    });
+                }
+            } catch (lbErr) {
+                console.error("[iptv:renewIptvLineAction] upstream renew failed", lbErr);
+                await db
+                    .update(resellerIptvOrders)
+                    .set({
+                        lastError: `Renew failed: ${stringifyError(lbErr)}`,
+                        updatedAt: new Date(),
+                    })
+                    .where(eq(resellerIptvOrders.id, staged.iptvOrderId));
+                return {
+                    success: false as const,
+                    error: `Renouvellement différé. Détail: ${stringifyError(lbErr)}`,
+                };
+            }
+
+            revalidatePath("/reseller/iptv");
+            return {
+                success: true as const,
+                data: {
+                    orderNumber,
+                    iptvOrderId: staged.iptvOrderId,
+                },
+            };
+        } catch (err) {
+            console.error("[iptv:renewIptvLineAction]", err);
+            return { success: false as const, error: stringifyError(err) };
+        }
+    },
+);
+
+/* ──────────────────────────────────────────────────────────────────────── */
+/* Legacy cancel (SDK-backed) — kept for back-compat                       */
+/* ──────────────────────────────────────────────────────────────────────── */
 
 export const cancelIptvOrderAction = withAuth(
     {
