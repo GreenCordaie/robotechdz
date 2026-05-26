@@ -18,12 +18,15 @@ import { db } from "@/db";
 import {
     resellers,
     orders,
+    orderItems,
     resellerWallets,
     resellerTransactions,
     productVariants,
     products,
+    iptvProvisions,
+    resellerIptvOrders,
 } from "@/db/schema";
-import { eq, sql, and, isNotNull } from "drizzle-orm";
+import { eq, sql, and, isNotNull, desc } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { withAuth } from "@/lib/security";
@@ -309,9 +312,11 @@ export const createIptvOrderAction = withAuth(
             } as Record<string, unknown>;
 
             const orderNumber = `IPTV-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-            const externalOrderId = orderNumber; // stable idempotency key
 
-            // Stage 1 — local debit + insert pending mirror row.
+            // Stage 1 — local debit + insert order_items + pending mirror row.
+            // We MUST insert an order_items row because the kiosk's IPTV
+            // provisioner (provisionIptvOrder, in @/lib/iptv) looks for
+            // items with a `variant.loadbrainSlug` to know what to provision.
             const staged = await db.transaction(async (tx) => {
                 const lockedWallet = await tx
                     .select()
@@ -334,8 +339,17 @@ export const createIptvOrderAction = withAuth(
                         resellerId: reseller.id,
                         source: "B2B_WEB",
                         deliveryMethod: "TICKET",
+                        customerPhone: customerPhone ?? null,
                     })
                     .returning();
+
+                await tx.insert(orderItems).values({
+                    orderId: newOrder.id,
+                    variantId: variant.variantId,
+                    name: `${variant.productName} — ${variant.variantName}`,
+                    price: totalAmount.toFixed(2),
+                    quantity: 1,
+                });
 
                 await tx
                     .update(resellerWallets)
@@ -370,50 +384,37 @@ export const createIptvOrderAction = withAuth(
                 return { localOrderId: newOrder.id, iptvOrderId };
             });
 
-            // Stage 2 — talk to LoadBrain OUTSIDE the tx so a slow upstream
-            // doesn't hold a DB lock. Idempotency key = local orderNumber so
-            // any retry of this exact action is deduped upstream.
+            // Stage 2 — provision via the SAME path the kiosk uses. The v2
+            // gateway provision/tasks endpoint expects per-module schemas
+            // the gateway doesn't translate (orderId, customerId, providerId,
+            // planId, webhookUrl, webhookSecret all "Required"). The legacy
+            // `provisionIptvOrder` walks variant.loadbrainSlug, builds the
+            // right payload per provider, and inserts an `iptv_provisions`
+            // row that the webhook handler already knows how to complete.
             try {
-                const task = await sdk.provision.tasks.create({
-                    productId: String(productRaw.id),
-                    quantity: 1,
-                    externalOrderId,
-                });
-                const taskObj = task as unknown as Record<string, unknown>;
-                await attachLbIdentifiers(db, {
-                    id: staged.iptvOrderId,
-                    resellerId: reseller.id,
-                    lbTaskId: typeof taskObj.id === "string" ? taskObj.id : null,
-                    lbOrderId:
-                        typeof taskObj.orderId === "string"
-                            ? (taskObj.orderId as string)
-                            : null,
-                });
+                const { provisionIptvOrder } = await import("@/lib/iptv");
+                const provRes = await provisionIptvOrder(staged.localOrderId);
+                // Link the first provisioning task id back into our mirror.
+                if (provRes.taskIds && provRes.taskIds[0]) {
+                    await attachLbIdentifiers(db, {
+                        id: staged.iptvOrderId,
+                        resellerId: reseller.id,
+                        lbTaskId: provRes.taskIds[0],
+                        lbOrderId: null,
+                    });
+                }
             } catch (lbErr) {
-                // Wallet is already debited; reconciler/webhook can't help
-                // (no task id yet). Mark the mirror row's lastError so the
-                // operator + reseller see what happened. Refund flows through
-                // a manual admin action — we deliberately do NOT auto-refund
-                // here because the upstream call may have actually succeeded
-                // and just failed on the response (idempotency key protects).
                 console.error(
-                    "[iptv:createIptvOrderAction] LoadBrain create failed",
+                    "[iptv:createIptvOrderAction] provisionIptvOrder failed",
                     lbErr,
                 );
                 await db
-                    .update(
-                        (await import("@/db/schema")).resellerIptvOrders,
-                    )
+                    .update(resellerIptvOrders)
                     .set({
-                        lastError: `LoadBrain create failed: ${stringifyError(lbErr)}`,
+                        lastError: `Provisioning failed: ${stringifyError(lbErr)}`,
                         updatedAt: new Date(),
                     })
-                    .where(
-                        eq(
-                            (await import("@/db/schema")).resellerIptvOrders.id,
-                            staged.iptvOrderId,
-                        ),
-                    );
+                    .where(eq(resellerIptvOrders.id, staged.iptvOrderId));
                 return {
                     success: false as const,
                     error: `Provisioning différé — sera réessayé automatiquement. Détail: ${stringifyError(lbErr)}`,
