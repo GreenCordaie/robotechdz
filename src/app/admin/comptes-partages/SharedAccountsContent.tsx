@@ -18,7 +18,7 @@ import {
 import {
     Users, Mail, LayoutGrid, CheckCircle2, Search, User, Calendar,
     Activity, ShieldCheck, AlertCircle, Copy, Plus, Edit3, Trash2,
-    Key, ExternalLink, Clock, Link
+    Key, ExternalLink, Clock, Link, Smartphone
 } from "lucide-react";
 import toast from "react-hot-toast";
 import {
@@ -49,7 +49,7 @@ export default function SharedAccountsContent() {
     const [addPurchasePrice, setAddPurchasePrice] = useState("");
     const [addPurchaseCurrency, setAddPurchaseCurrency] = useState("DZD");
     const [addIsRelayed, setAddIsRelayed] = useState(false);
-    const [addSlotsData, setAddSlotsData] = useState<{ profileName: string; pinCode: string }[]>([]);
+    const [addSlotsData, setAddSlotsData] = useState<{ profileName: string; pinCode: string; maxDevices: number }[]>([]);
     const [generatedPins, setGeneratedPins] = useState<{ slotIndex: number; pin: string }[]>([]);
     const [isAdding, setIsAdding] = useState(false);
     const [historySearch, setHistorySearch] = useState("");
@@ -77,7 +77,7 @@ export default function SharedAccountsContent() {
     const [editOutlookPassword, setEditOutlookPassword] = useState("");
     const [editPurchasePrice, setEditPurchasePrice] = useState("");
     const [editPurchaseCurrency, setEditPurchaseCurrency] = useState("DZD");
-    const [editSlotsData, setEditSlotsData] = useState<{ id?: number; profileName: string; pinCode: string }[]>([]);
+    const [editSlotsData, setEditSlotsData] = useState<{ id?: number; profileName: string; pinCode: string; maxDevices: number | null }[]>([]);
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     // ── Delete ────────────────────────────────────────────────────────────────
@@ -195,7 +195,7 @@ export default function SharedAccountsContent() {
         if (!variant) return;
 
         setAddSlotsData(Array.from({ length: variant.totalSlots || 0 }, (_, i) => ({
-            profileName: `Profil ${i + 1}`, pinCode: ""
+            profileName: `Profil ${i + 1}`, pinCode: "", maxDevices: 3
         })));
         lastAddVariantId.current = addVariantId;
     }, [addVariantId, sharingVariants]);
@@ -259,7 +259,7 @@ export default function SharedAccountsContent() {
         setEditPurchasePrice(account.purchasePrice || "");
         setEditPurchaseCurrency(account.purchaseCurrency || "DZD");
         setEditSlotsData(account.slots.map((s: any) => ({
-            id: s.id, profileName: s.profileName || "", pinCode: s.code || ""
+            id: s.id, profileName: s.profileName || "", pinCode: s.code || "", maxDevices: s.maxDevices ?? null
         })));
         accountModal.onOpen();
     };
@@ -366,7 +366,7 @@ export default function SharedAccountsContent() {
                 outlookPassword: editOutlookPassword || undefined,
                 purchasePrice: editPurchasePrice,
                 purchaseCurrency: editPurchaseCurrency,
-                slots: editSlotsData.map(s => ({ id: s.id!, profileName: s.profileName, pinCode: s.pinCode }))
+                slots: editSlotsData.map(s => ({ id: s.id!, profileName: s.profileName, pinCode: s.pinCode, maxDevices: s.maxDevices ?? undefined }))
             });
             if (res.success) {
                 toast.success("Compte mis à jour ✓");
@@ -433,12 +433,12 @@ export default function SharedAccountsContent() {
         toast.success("Copié ✓");
     };
 
-    const updateAddSlot = (index: number, field: "profileName" | "pinCode", value: string) => {
-        setAddSlotsData(prev => { const d = [...prev]; d[index] = { ...d[index], [field]: value }; return d; });
+    const updateAddSlot = (index: number, field: "profileName" | "pinCode" | "maxDevices", value: string | number) => {
+        setAddSlotsData(prev => { const d = [...prev]; d[index] = { ...d[index], [field]: value } as typeof d[number]; return d; });
     };
 
-    const updateEditSlot = (index: number, field: "profileName" | "pinCode", value: string) => {
-        setEditSlotsData(prev => { const d = [...prev]; d[index] = { ...d[index], [field]: value }; return d; });
+    const updateEditSlot = (index: number, field: "profileName" | "pinCode" | "maxDevices", value: string | number | null) => {
+        setEditSlotsData(prev => { const d = [...prev]; d[index] = { ...d[index], [field]: value } as typeof d[number]; return d; });
     };
 
     // ── Progress bar color ────────────────────────────────────────────────────
@@ -760,6 +760,23 @@ export default function SharedAccountsContent() {
                                                                     startContent={<Key size={11} className="text-slate-600" />}
                                                                     classNames={{ inputWrapper: "bg-[#222] h-9 border border-white/5 w-28", input: "text-xs font-mono text-purple-400" }}
                                                                 />
+                                                                <Tooltip content="Nombre maximum d'appareils que le client peut activer avec son lien magique" placement="top">
+                                                                    <Input
+                                                                        type="number"
+                                                                        min={1}
+                                                                        max={50}
+                                                                        placeholder="3"
+                                                                        size="sm"
+                                                                        aria-label="Limite appareils"
+                                                                        value={String(slot.maxDevices ?? 3)}
+                                                                        onValueChange={(v) => {
+                                                                            const n = parseInt(v, 10);
+                                                                            updateAddSlot(index, "maxDevices", Number.isFinite(n) ? Math.min(50, Math.max(1, n)) : 3);
+                                                                        }}
+                                                                        startContent={<Smartphone size={11} className="text-slate-600" />}
+                                                                        classNames={{ inputWrapper: "bg-[#222] h-9 border border-white/5 w-24", input: "text-xs font-mono text-emerald-400" }}
+                                                                    />
+                                                                </Tooltip>
                                                             </div>
                                                         ))}
                                                     </div>
@@ -1570,6 +1587,24 @@ export default function SharedAccountsContent() {
                                                         onValueChange={(v) => updateEditSlot(index, "pinCode", v)}
                                                         startContent={<Key size={11} className="text-slate-600" />}
                                                         classNames={{ inputWrapper: "bg-[#222] h-10 border border-white/5 w-28", input: "text-xs font-mono text-purple-400" }} />
+                                                    <Tooltip content="Nombre maximum d'appareils que le client peut activer avec son lien magique" placement="top">
+                                                        <Input
+                                                            type="number"
+                                                            min={1}
+                                                            max={50}
+                                                            placeholder="∞ illimité"
+                                                            size="sm"
+                                                            aria-label="Limite appareils"
+                                                            value={slot.maxDevices === null || slot.maxDevices === undefined ? "" : String(slot.maxDevices)}
+                                                            onValueChange={(v) => {
+                                                                if (v === "") { updateEditSlot(index, "maxDevices", null); return; }
+                                                                const n = parseInt(v, 10);
+                                                                updateEditSlot(index, "maxDevices", Number.isFinite(n) ? Math.min(50, Math.max(1, n)) : null);
+                                                            }}
+                                                            startContent={<Smartphone size={11} className="text-slate-600" />}
+                                                            classNames={{ inputWrapper: "bg-[#222] h-10 border border-white/5 w-24", input: "text-xs font-mono text-emerald-400" }}
+                                                        />
+                                                    </Tooltip>
                                                 </div>
                                             ))}
                                         </div>

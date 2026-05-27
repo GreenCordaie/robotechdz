@@ -34,6 +34,7 @@ export async function callLoadBrainAutoApprove(
 ): Promise<boolean> {
     const base = process.env.LOADBRAIN_URL;
     const apiKey = process.env.LOADBRAIN_API_KEY;
+    const internalToken = process.env.LOADBRAIN_INTERNAL_TOKEN;
     if (!base) return false;
 
     const fetchFn = deps.fetchFn ?? fetch;
@@ -45,7 +46,11 @@ export async function callLoadBrainAutoApprove(
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
+                // Gateway accepts EITHER X-API-Key (per-site) or X-Internal-Token
+                // (internal service-to-service trust). Send both when available
+                // so we don't break when one path tightens.
                 ...(apiKey ? { "X-API-Key": apiKey } : {}),
+                ...(internalToken ? { "X-Internal-Token": internalToken } : {}),
             },
             body: JSON.stringify(payload),
             signal: controller.signal,

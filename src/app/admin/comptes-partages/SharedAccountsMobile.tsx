@@ -16,7 +16,8 @@ import {
     Trash2,
     Calendar,
     AlertCircle,
-    ExternalLink
+    ExternalLink,
+    Smartphone
 } from "lucide-react";
 import {
     Button,
@@ -32,7 +33,8 @@ import {
     ModalFooter,
     useDisclosure,
     Select,
-    SelectItem
+    SelectItem,
+    Tooltip
 } from "@heroui/react";
 import {
     getSharedAccountsInventory,
@@ -64,7 +66,7 @@ export default function SharedAccountsMobile() {
     const [selectedVariantId, setSelectedVariantId] = useState<string>("");
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
-    const [slotsData, setSlotsData] = useState<{ id?: number, profileName: string, pinCode: string }[]>([]);
+    const [slotsData, setSlotsData] = useState<{ id?: number, profileName: string, pinCode: string, maxDevices: number | null }[]>([]);
 
     const { isOpen: isLinkOpen, onOpen: onLinkOpen, onClose: onLinkClose } = useDisclosure();
     const [linkableVariants, setLinkableVariants] = useState<any[]>([]);
@@ -131,7 +133,8 @@ export default function SharedAccountsMobile() {
         setSlotsData(account.slots.map((s: any) => ({
             id: s.id,
             profileName: s.profileName || "",
-            pinCode: s.code || ""
+            pinCode: s.code || "",
+            maxDevices: s.maxDevices ?? null
         })));
         onOpen();
     };
@@ -142,15 +145,16 @@ export default function SharedAccountsMobile() {
             if (v) {
                 setSlotsData(Array.from({ length: v.totalSlots || 0 }).map((_, i) => ({
                     profileName: `Profil ${i + 1}`,
-                    pinCode: ""
+                    pinCode: "",
+                    maxDevices: 3
                 })));
             }
         }
     }, [selectedVariantId, modalMode, sharingVariants]);
 
-    const handleSlotChange = (index: number, field: string, value: string) => {
+    const handleSlotChange = (index: number, field: string, value: string | number | null) => {
         const newData = [...slotsData];
-        newData[index] = { ...newData[index], [field]: value };
+        newData[index] = { ...newData[index], [field]: value } as typeof newData[number];
         setSlotsData(newData);
     };
 
@@ -205,11 +209,11 @@ export default function SharedAccountsMobile() {
         try {
             let res: { success: boolean; error?: string };
             if (modalMode === "ADD") {
-                res = await addSharedAccount({ variantId: parseInt(selectedVariantId), email, password, isRelayed: false, purchaseCurrency: "DZD", slots: slotsData }) as { success: boolean; error?: string };
+                res = await addSharedAccount({ variantId: parseInt(selectedVariantId), email, password, isRelayed: false, purchaseCurrency: "DZD", slots: slotsData.map(s => ({ profileName: s.profileName, pinCode: s.pinCode, maxDevices: s.maxDevices ?? undefined })) }) as { success: boolean; error?: string };
             } else {
                 res = await updateSharedAccount({
                     id: editingAccount.id, email, password,
-                    slots: slotsData.map((s: any) => ({ id: s.id!, profileName: s.profileName, pinCode: s.pinCode }))
+                    slots: slotsData.map((s: any) => ({ id: s.id!, profileName: s.profileName, pinCode: s.pinCode, maxDevices: s.maxDevices ?? undefined }))
                 }) as { success: boolean; error?: string };
             }
             if (res.success) {
@@ -463,6 +467,25 @@ export default function SharedAccountsMobile() {
                                                         value={s.pinCode}
                                                         onValueChange={(v) => handleSlotChange(idx, 'pinCode', v)}
                                                     />
+                                                    <Tooltip content="Nombre maximum d'appareils que le client peut activer avec son lien magique" placement="top">
+                                                        <Input
+                                                            type="number"
+                                                            min={1}
+                                                            max={50}
+                                                            label="Limite appareils"
+                                                            placeholder={modalMode === "ADD" ? "3" : "∞ illimité"}
+                                                            size="sm"
+                                                            variant="underlined"
+                                                            aria-label="Limite appareils"
+                                                            startContent={<Smartphone size={12} className="text-slate-600" />}
+                                                            value={s.maxDevices === null || s.maxDevices === undefined ? "" : String(s.maxDevices)}
+                                                            onValueChange={(v) => {
+                                                                if (v === "") { handleSlotChange(idx, 'maxDevices', modalMode === "ADD" ? 3 : null); return; }
+                                                                const n = parseInt(v, 10);
+                                                                handleSlotChange(idx, 'maxDevices', Number.isFinite(n) ? Math.min(50, Math.max(1, n)) : (modalMode === "ADD" ? 3 : null));
+                                                            }}
+                                                        />
+                                                    </Tooltip>
                                                 </div>
                                             ))}
                                         </div>

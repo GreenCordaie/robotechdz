@@ -10,7 +10,7 @@ La prémisse initiale (« le revendeur ne voit pas ses codes ») était **fausse
 `/reseller/orders` rend déjà `<G2BulkOrdersSection />` (`src/app/reseller/orders/components/G2BulkOrdersSection.tsx`)
 via `getG2BulkOrdersAction` (`src/app/reseller/orders/g2bulk-actions.ts`), qui affiche déjà,
 pour les commandes G2Bulk **et** games : statut (En cours/Livré/Échec/Remboursé), codes
-**masqués + révéler + copier**, prix, et détails `wonSnapshot`.
+**masqués + révéler + copier**, prix, et détails `wonSnapshot`.$m
 
 Les sections §1–§9 ci-dessous décrivent le design *initial* (conservé pour trace) mais sont
 **en grande partie déjà implémentées**. Le travail réel restant est limité à 3 correctifs :
