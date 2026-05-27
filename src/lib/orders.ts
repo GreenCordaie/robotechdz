@@ -300,7 +300,10 @@ export async function reverseSupplierDebits(
         existingReversals.map((r: any) => r.supplierId)
     );
 
-    await Promise.all(relatedTransactions.map(async (st: any) => {
+    // Séquentiel (pas Promise.all) : une transaction Drizzle = une seule
+    // connexion, donc des requêtes concurrentes peuvent se télescoper. Le
+    // séquencement rend aussi la dédup intra-boucle (reversedSupplierIds) fiable.
+    for (const st of relatedTransactions) {
         // Skip si déjà reversé pour ce fournisseur
         if (reversedSupplierIds.has(st.supplierId)) {
             await logSecurityAction({
@@ -341,5 +344,5 @@ export async function reverseSupplierDebits(
 
         // Mémorise pour bloquer un autre ACHAT_STOCK du même fournisseur dans la même boucle
         reversedSupplierIds.add(st.supplierId);
-    }));
+    }
 }

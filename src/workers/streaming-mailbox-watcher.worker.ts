@@ -131,17 +131,34 @@ export async function persistEvent(
         });
         if (existing) return { inserted: false, id: existing.id };
     }
-    const [row] = await db
-        .insert(slotEvents)
-        .values({
-            digitalCodeId: params.digitalCodeId,
-            slotId: params.slotId,
-            eventType: params.eventType,
-            valueEncrypted: encrypt(params.value),
-            sourceEmailId: params.sourceEmailId,
-        })
-        .returning({ id: slotEvents.id });
-    return { inserted: true, id: row?.id };
+    try {
+        const [row] = await db
+            .insert(slotEvents)
+            .values({
+                digitalCodeId: params.digitalCodeId,
+                slotId: params.slotId,
+                eventType: params.eventType,
+                valueEncrypted: encrypt(params.value),
+                sourceEmailId: params.sourceEmailId,
+            })
+            .returning({ id: slotEvents.id });
+        return { inserted: true, id: row?.id };
+    } catch (err) {
+        // A concurrent poll won the race against our findFirst check above; the
+        // partial UNIQUE index se_dedup_idx (digital_code_id, source_email_id)
+        // rejected this insert. Treat it as a dedup hit, not a failure — so the
+        // same OTP/household email is never delivered twice.
+        if (params.sourceEmailId && (err as { code?: string })?.code === "23505") {
+            const existing = await db.query.slotEvents.findFirst({
+                where: and(
+                    eq(slotEvents.digitalCodeId, params.digitalCodeId),
+                    eq(slotEvents.sourceEmailId, params.sourceEmailId)
+                ),
+            });
+            return { inserted: false, id: existing?.id };
+        }
+        throw err;
+    }
 }
 
 interface PollDeps {

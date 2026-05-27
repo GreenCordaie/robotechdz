@@ -1,7 +1,10 @@
 import "server-only";
 import { db } from "@/db";
 import { resellerWebhooks, webhookDeliveryAttempts } from "@/db/schema";
-import { and, eq, lte, sql } from "drizzle-orm";
+import { and, eq, inArray, lte, sql } from "drizzle-orm";
+
+/** Lease window: keep claimed rows out of a concurrent tick while we process them. */
+const RETRY_LEASE_MS = 2 * 60_000;
 import {
     attemptDelivery,
     MAX_DELIVERY_ATTEMPTS,
@@ -27,16 +30,31 @@ export async function processWebhookRetries(
 }> {
     const now = new Date();
 
-    const due = await db
-        .select()
-        .from(webhookDeliveryAttempts)
-        .where(
-            and(
-                eq(webhookDeliveryAttempts.status, "RETRYING"),
-                lte(webhookDeliveryAttempts.nextAttemptAt, now)
+    // Claim the due rows atomically: SELECT ... FOR UPDATE SKIP LOCKED so two
+    // concurrent cron ticks never grab the same row, then lease them (push
+    // nextAttemptAt forward) so they stay claimed while we deliver outside the
+    // lock. A crash mid-batch simply re-leases after the window expires.
+    const due = await db.transaction(async (tx) => {
+        const rows = await tx
+            .select()
+            .from(webhookDeliveryAttempts)
+            .where(
+                and(
+                    eq(webhookDeliveryAttempts.status, "RETRYING"),
+                    lte(webhookDeliveryAttempts.nextAttemptAt, now)
+                )
             )
-        )
-        .limit(limit);
+            .limit(limit)
+            .for("update", { skipLocked: true });
+
+        if (rows.length > 0) {
+            await tx
+                .update(webhookDeliveryAttempts)
+                .set({ nextAttemptAt: new Date(Date.now() + RETRY_LEASE_MS) })
+                .where(inArray(webhookDeliveryAttempts.id, rows.map((r) => r.id)));
+        }
+        return rows;
+    });
 
     let succeeded = 0;
     let failed = 0;

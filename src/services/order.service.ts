@@ -199,7 +199,16 @@ export class OrderService {
             if (!current) throw new Error("Commande introuvable");
 
             const nextStatus = current.status === OrderStatus.PAYE ? OrderStatus.TERMINE : current.status;
-            await tx.update(orders).set({ status: nextStatus, isDelivered: true }).where(eq(orders.id, id));
+            const isWhatsApp = (current as any).deliveryMethod === DeliveryMethod.WHATSAPP;
+            // printStatus is set inside the transaction so a crash can't leave a
+            // TERMINE order with a stale print state.
+            await tx.update(orders)
+                .set({
+                    status: nextStatus,
+                    isDelivered: true,
+                    ...(nextStatus === OrderStatus.TERMINE ? { printStatus: (isWhatsApp ? "idle" : "print_pending") as any } : {}),
+                })
+                .where(eq(orders.id, id));
 
             for (const itemData of codesData) {
                 const oi = await tx.query.orderItems.findFirst({ where: eq(orderItems.id, itemData.id) });
@@ -232,8 +241,7 @@ export class OrderService {
         });
 
         if (result?.status === OrderStatus.TERMINE) {
-            const isWhatsApp = (result as any).deliveryMethod === DeliveryMethod.WHATSAPP;
-            await db.update(orders).set({ printStatus: isWhatsApp ? "idle" : "print_pending" }).where(eq(orders.id, id));
+            // printStatus already persisted inside the transaction above.
             eventBus.publish(SystemEvent.ORDER_PRINTED, { orderId: id });
             eventBus.publish(SystemEvent.ORDER_DELIVERED, { orderId: id });
         }

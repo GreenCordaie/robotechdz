@@ -414,10 +414,10 @@ export const cancelOrderAction = withAuth(
                     if (item.slots && item.slots.length > 0) {
                         const slotIds = item.slots.map((s: any) => s.id);
                         const parentIds = Array.from(new Set<number>(item.slots.map((s: any) => s.digitalCodeId)));
-                        await Promise.all([
-                            tx.update(digitalCodeSlots).set({ status: DigitalCodeSlotStatus.DISPONIBLE, orderItemId: null }).where(inArray(digitalCodeSlots.id, slotIds)),
-                            tx.update(digitalCodes).set({ status: DigitalCodeStatus.DISPONIBLE, isDebitCompleted: false }).where(inArray(digitalCodes.id, parentIds))
-                        ]);
+                        // Séquentiel : ces deux UPDATE partagent la connexion de la
+                        // transaction, Promise.all les exécuterait sur la même connexion.
+                        await tx.update(digitalCodeSlots).set({ status: DigitalCodeSlotStatus.DISPONIBLE, orderItemId: null }).where(inArray(digitalCodeSlots.id, slotIds));
+                        await tx.update(digitalCodes).set({ status: DigitalCodeStatus.DISPONIBLE, isDebitCompleted: false }).where(inArray(digitalCodes.id, parentIds));
                     }
                 }
 
