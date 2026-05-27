@@ -548,8 +548,9 @@ export const attribuerSlotAutomatiqueAction = withAuth(
 );
 
 export const getSharedAccountsHistory = withAuth(
-    { roles: [UserRole.ADMIN] },
-    async () => {
+    { roles: [UserRole.ADMIN], schema: z.object({ revealPasswords: z.boolean().optional() }).optional() },
+    async (input, user) => {
+        const reveal = !!input?.revealPasswords;
         // Fetch ALL shared accounts (all statuses) with full slot + client context
         const variants = await db.query.productVariants.findMany({
             where: eq(productVariants.isSharing, true),
@@ -594,19 +595,31 @@ export const getSharedAccountsHistory = withAuth(
         const accounts: any[] = [];
         for (const variant of variants) {
             for (const dc of variant.digitalCodes) {
+                const decryptedCode = decrypt(dc.code) || dc.code;
+                // Keep the email visible, mask the password unless explicitly revealed.
+                const [email] = (decryptedCode || "").split("|").map(s => s.trim());
                 accounts.push({
                     ...dc,
-                    code: decrypt(dc.code) || dc.code,
+                    code: reveal ? decryptedCode : `${email} | ${MASKED}`,
                     outlookPassword: undefined,
                     hasOutlookPassword: !!dc.outlookPassword,
                     variant: { ...variant, digitalCodes: undefined },
                     slots: dc.slots.map(s => ({
                         ...s,
-                        code: s.code ? (decrypt(s.code) || s.code) : null,
+                        code: s.code ? (reveal ? (decrypt(s.code) || s.code) : MASKED) : null,
                         resolverLogs: logsBySlot[String(s.id)] || []
                     }))
                 });
             }
+        }
+
+        if (reveal) {
+            await logSecurityAction({
+                userId: user.id,
+                action: "SHARED_ACCOUNT_HISTORY_PASSWORDS_REVEALED",
+                entityType: "SHARED_ACCOUNT",
+                newData: { accountCount: accounts.length }
+            }).catch(() => { });
         }
 
         return { accounts, totalLogs: resolverLogs.length };

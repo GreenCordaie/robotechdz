@@ -520,11 +520,24 @@ export const exportDatabaseAction = withAuth(
     { roles: [UserRole.ADMIN] },
     async () => {
         try {
-            const SENSITIVE_SETTINGS = ['telegramBotToken', 'whatsappToken', 'whatsappApiKey', 'geminiApiKey', 'vapidPrivateKey', 'vapidPublicKey', 'n8nWebhookUrl', 'whatsappVerifyToken', 'whatsappInstanceName'];
+            // Explicit secret columns + a pattern net so any future secret-bearing
+            // column (…Token/…Secret/…Password/…ApiKey/…PrivateKey) is redacted by
+            // default instead of leaking through this admin export.
+            const SENSITIVE_SETTINGS = [
+                'telegramBotToken', 'whatsappToken', 'whatsappApiKey', 'whatsappVerifyToken',
+                'geminiApiKey', 'vapidPrivateKey',
+                'netflixResolverPassword', 'netflixResolverEmail',
+                'microsoftClientId', 'microsoftTenantId', 'microsoftClientSecret',
+            ];
+            const SECRET_KEY_RE = /(token|secret|password|apikey|privatekey)/i;
             const rawSettings = await db.query.shopSettings.findMany();
             const safeSettings = rawSettings.map((s: any) => {
                 const cleaned = { ...s };
-                SENSITIVE_SETTINGS.forEach(k => { if (k in cleaned) cleaned[k] = '[REDACTED]'; });
+                for (const k of Object.keys(cleaned)) {
+                    if ((SENSITIVE_SETTINGS.includes(k) || SECRET_KEY_RE.test(k)) && cleaned[k] != null && cleaned[k] !== '') {
+                        cleaned[k] = '[REDACTED]';
+                    }
+                }
                 return cleaned;
             });
 
