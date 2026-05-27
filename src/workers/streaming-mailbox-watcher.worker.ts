@@ -7,6 +7,7 @@ import {
     slotLifecycle,
 } from "@/db/schema";
 import { NetflixResolverService } from "@/services/netflix-resolver.service";
+import { callLoadBrainAutoApprove } from "@/services/loadbrain-auto-approve.client";
 import { encrypt } from "@/lib/encryption";
 
 /**
@@ -285,23 +286,42 @@ export async function pollAccount(
                 for (const slotId of route.slotIds) {
                     await upsertHouseholdLifecycle(db, slotId, now);
                 }
-                // Proactive WhatsApp fan-out: alert every customer of this
-                // account that Netflix asked for a household update. The
-                // first to click resolves it for everyone. Failures are
-                // best-effort — page SSE still works as fallback.
+                // Option C hybrid: fire-and-forget LoadBrain `auto-approve`
+                // microservice that clicks the verification link via Playwright
+                // headless. The customer's TV is silently unblocked — no
+                // WhatsApp notification needed. If the call fails we fall
+                // back to the legacy fan-out below.
+                let autoApproved = false;
                 try {
-                    await pushHouseholdWhatsAppNotifications(
-                        db,
-                        account.id,
-                        route.slotIds,
-                        result.value!,
-                        deps,
-                    );
+                    autoApproved = await callLoadBrainAutoApprove({
+                        accountId: String(account.id),
+                        codeId: result.sourceEmailId ?? `code-${account.id}-${now.getTime()}`,
+                        url: result.value!,
+                    });
                 } catch (err: any) {
-                    console.error(
-                        "[StreamingWatcher] household whatsapp fan-out failed:",
+                    console.warn(
+                        "[StreamingWatcher] LoadBrain auto-approve unreachable:",
                         err?.message,
                     );
+                }
+
+                if (!autoApproved) {
+                    // Fallback (auto-approve unavailable) — fan-out via WhatsApp
+                    // so SOMEONE can click manually.
+                    try {
+                        await pushHouseholdWhatsAppNotifications(
+                            db,
+                            account.id,
+                            route.slotIds,
+                            result.value!,
+                            deps,
+                        );
+                    } catch (err: any) {
+                        console.error(
+                            "[StreamingWatcher] household whatsapp fan-out failed:",
+                            err?.message,
+                        );
+                    }
                 }
             }
         }

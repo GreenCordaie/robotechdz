@@ -139,7 +139,8 @@ export const addSharedAccount = withAuth(
             isRelayed: z.boolean().optional().default(false),
             slots: z.array(z.object({
                 profileName: z.string().optional(),
-                pinCode: z.string().optional()
+                pinCode: z.string().optional(),
+                maxDevices: z.number().int().positive().max(50).optional(),
             })),
             purchasePrice: z.string().optional(),
             purchaseCurrency: z.string().optional().default("DZD"),
@@ -368,7 +369,8 @@ export const updateSharedAccount = withAuth(
             slots: z.array(z.object({
                 id: z.number(),
                 profileName: z.string().optional(),
-                pinCode: z.string().optional()
+                pinCode: z.string().optional(),
+                maxDevices: z.number().int().positive().max(50).nullable().optional(),
             })).optional(),
             purchasePrice: z.string().optional(),
             purchaseCurrency: z.string().optional()
@@ -397,11 +399,18 @@ export const updateSharedAccount = withAuth(
 
                 if (slotsData) {
                     for (const s of slotsData) {
+                        const slotUpdate: Record<string, unknown> = {
+                            profileName: s.profileName,
+                            code: s.pinCode ? encrypt(s.pinCode) : null,
+                        };
+                        // Only touch maxDevices when explicitly provided so the
+                        // admin can leave it untouched while editing other fields.
+                        // `null` means "unlimited" (legacy slots default).
+                        if (s.maxDevices !== undefined) {
+                            slotUpdate.maxDevices = s.maxDevices;
+                        }
                         await tx.update(digitalCodeSlots)
-                            .set({
-                                profileName: s.profileName,
-                                code: s.pinCode ? encrypt(s.pinCode) : null
-                            })
+                            .set(slotUpdate)
                             .where(eq(digitalCodeSlots.id, s.id));
                     }
                 }

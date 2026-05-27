@@ -167,11 +167,19 @@ export const digitalCodeSlots = pgTable("digital_code_slots", {
     // mirrors the canonical row in `slot_activation_tokens`. Lets the sync
     // WhatsApp delivery formatter include the link without a join.
     activationUrl: text("activation_url"),
+    // Device quota (Option C hybrid — anti link-sharing). NULL = unlimited.
+    // `devicesActivated` bumps on each new page session (debounced 60 min
+    // on `lastDeviceAt`). When devicesActivated >= maxDevices, /activer page
+    // returns 410 Gone.
+    maxDevices: integer("max_devices"),
+    devicesActivated: integer("devices_activated").default(0).notNull(),
+    lastDeviceAt: timestamp("last_device_at", { mode: "date" }),
 }, (table) => {
     return {
         digitalCodeIdIdx: index("dcs_digital_code_id_idx").on(table.digitalCodeId),
         statusIdx: index("dcs_status_idx").on(table.status),
         orderItemIdIdx: index("dcs_order_item_id_idx").on(table.orderItemId),
+        devicesActivatedIdx: index("dcs_devices_activated_idx").on(table.devicesActivated),
     };
 });
 

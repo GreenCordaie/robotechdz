@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { db } from "@/db";
 import { findActiveSlotByToken } from "@/services/slot-activation-token.service";
+import { checkDeviceQuota, bumpDeviceUsage } from "@/services/slot-device-quota.service";
 import { decrypt } from "@/lib/encryption";
 import { ActivationClient } from "./ActivationClient";
 import { productVariants, products } from "@/db/schema";
@@ -33,6 +34,33 @@ export default async function ActivationPage(props: { params: Promise<{ token: s
     }
 
     const { slot, account } = resolved;
+
+    // Device quota guard (Option C hybrid — anti link-sharing).
+    const quota = checkDeviceQuota(slot);
+    if (!quota.ok) {
+        return (
+            <main className="min-h-screen flex items-center justify-center bg-neutral-950 text-neutral-200 px-6">
+                <div className="max-w-md text-center">
+                    <div className="text-5xl mb-4">📵</div>
+                    <h1 className="text-2xl font-semibold mb-2">Limite d&apos;appareils atteinte</h1>
+                    <p className="text-neutral-400">
+                        Vous avez activé {quota.max} appareil{quota.max > 1 ? "s" : ""} avec ce
+                        lien — c&apos;est le maximum prévu pour votre abonnement.
+                        Pour activer un appareil supplémentaire, contactez votre vendeur.
+                    </p>
+                </div>
+            </main>
+        );
+    }
+    // Bump usage on a NEW session (older than 60min). Best-effort: a failed
+    // bump never blocks page render — the next session will retry.
+    if (quota.bumpUsage) {
+        try {
+            await bumpDeviceUsage(db, slot.id);
+        } catch (err) {
+            console.error(`[activer] bumpDeviceUsage failed for slot ${slot.id}:`, err);
+        }
+    }
 
     // Decrypt credentials server-side (token gate already passed)
     const email = account.code ? decrypt(account.code) : null;
