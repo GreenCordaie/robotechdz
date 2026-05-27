@@ -55,6 +55,53 @@ definitive_lint.txt
 # Fichiers .bak (utiliser git history)
 *.bak
 
+# === CONFINEMENT SECRETS (2026-05-27) — ne jamais committer ===
+# Scripts ad-hoc racine porteurs de secrets / credentials
+/check-*.js
+/check_*.js
+/check_*.ts
+/audit_*.js
+/fix_*.js
+/fix_*.py
+/fix_*.ts
+/patch-*.js
+/patch_*.js
+/patch_*.py
+/tmp_*.js
+/tmp_*.ts
+/tmp_*.mjs
+/update_*.js
+/update_*.ts
+/simulate_*.js
+/verify_*.js
+/find_*.js
+/get_token*.js
+/apply_manual_fix.js
+/prepare_n8n_*.js
+/generate_*.js
+/final_n8n_*.js
+# Scripts debug porteurs de credentials sous scripts/
+scripts/check-*.js
+scripts/check-*.ts
+scripts/check_*.ts
+scripts/db_check.ts
+scripts/inspect_products.js
+scripts/get_wa_settings.js
+scripts/extract_wa_creds.js
+scripts/fix-wa-name.js
+# Dumps / backups / diagnostics porteurs de données ou secrets
+database_backup*.json
+*_backup*.json
+db_settings.json
+db_check_output*.json
+diag_full*.json
+*.sqlite
+# Payloads / workflows n8n (contiennent tokens)
+*n8n*payload*.json
+fixed_n8n_workflow.json
+manual_delivery_workflow.json
+workflow_to_activate.json
+
 # E2E orphelins (à formaliser ou supprimer)
 scripts/noop.js
 /test-results/
