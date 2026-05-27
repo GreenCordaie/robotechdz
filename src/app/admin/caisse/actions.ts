@@ -10,7 +10,7 @@ import { withAuth, logSecurityAction } from "@/lib/security";
 import { z } from "zod";
 import { allocateOrderStock, reverseSupplierDebits } from "@/lib/orders";
 import { orderOutstandingDebt } from "@/lib/order-finance";
-import { sendPushToRoleAction, sendPushToUserAction } from "../push/actions";
+import { sendPushToRole, sendPushToUser } from "@/lib/push-sender";
 import { decrypt } from "@/lib/encryption";
 import { OrderService } from "@/services/order.service";
 import { N8nService } from "@/services/n8n.service";
@@ -194,7 +194,7 @@ export const markOrderAsTermine = withAuth(
                 columns: { userId: true }
             });
             if (reseller) {
-                sendPushToUserAction(reseller.userId, {
+                sendPushToUser(reseller.userId, {
                     title: "✅ Commande Prête",
                     body: `Votre commande ${order.orderNumber} est terminée et prête !`,
                     url: "/reseller/orders"
@@ -734,7 +734,7 @@ export const notifyTraiteurAction = withAuth(
             await N8nService.notifyTraiteur(order);
 
             // Also send Push notification
-            await sendPushToRoleAction(UserRole.TRAITEUR, {
+            await sendPushToRole(UserRole.TRAITEUR, {
                 title: " Commande à Traiter",
                 body: "La commande # est prête pour traitement manuel.",
                 url: "/admin/traitement"

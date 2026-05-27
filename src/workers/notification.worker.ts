@@ -63,14 +63,14 @@ export function initNotificationWorker() {
                 await N8nService.notifyOrderEvent("ORDER_PAID", order as any, items);
 
                 // Push notification to admin/caissier
-                const { sendPushToRoleAction } = await import("@/app/admin/push/actions");
+                const { sendPushToRole } = await import("@/lib/push-sender");
                 const amount = parseFloat((order as any).totalAmount || '0').toLocaleString('fr-DZ');
-                sendPushToRoleAction('ADMIN', {
+                sendPushToRole('ADMIN', {
                     title: `Commande ${(order as any).orderNumber}`,
                     body: `${amount} DZD — ${items.length} article(s)`,
                     url: '/admin/caisse',
                 }).catch(() => {});
-                sendPushToRoleAction('CAISSIER', {
+                sendPushToRole('CAISSIER', {
                     title: `Nouvelle commande ${(order as any).orderNumber}`,
                     body: `${amount} DZD — ${items.length} article(s)`,
                     url: '/admin/caisse',

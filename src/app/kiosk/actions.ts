@@ -5,7 +5,7 @@ import { orders, orderItems, productVariants, supportTickets, digitalCodes, prod
 import { revalidatePath } from "next/cache";
 import { sql, eq, and, count, exists } from "drizzle-orm";
 import { sendTelegramNotification } from "@/lib/telegram";
-import { sendPushToRoleAction } from "../admin/push/actions";
+import { sendPushToRole } from "@/lib/push-sender";
 import { cacheGet, cacheSet, cacheDel, CACHE_KEYS, CACHE_TTL } from "@/lib/redis";
 interface KioskOrderItemInput {
     variantId: number;

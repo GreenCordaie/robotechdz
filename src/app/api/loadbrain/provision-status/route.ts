@@ -3,12 +3,19 @@ import { db } from "@/db";
 import { iptvProvisions } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { getSession } from "@/lib/auth";
+import { UserRole } from "@/lib/constants";
+
+const STAFF_ROLES: string[] = [UserRole.ADMIN, UserRole.TRAITEUR, UserRole.CAISSIER];
 
 export async function GET(req: NextRequest) {
-    // Auth check
+    // Auth check — internal IPTV provisioning status is staff-only (not resellers,
+    // who have their own scoped IPTV views).
     const session = await getSession();
     if (!session) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    if (!STAFF_ROLES.includes(session.userRole)) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     const orderId = req.nextUrl.searchParams.get("orderId");

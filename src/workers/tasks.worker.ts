@@ -86,8 +86,8 @@ async function handleTelegram(data: { message: string; roles: string[] }) {
 }
 
 async function handlePush(data: { role: string; payload: any }) {
-    const { sendPushToRoleAction } = await import("@/app/admin/push/actions");
-    await sendPushToRoleAction(data.role as any, data.payload);
+    const { sendPushToRole } = await import("@/lib/push-sender");
+    await sendPushToRole(data.role as any, data.payload);
 }
 
 async function handleN8n(data: { orderId: number; context?: string }) {
