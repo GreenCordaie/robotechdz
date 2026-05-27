@@ -55,6 +55,9 @@ definitive_lint.txt
 # Fichiers .bak (utiliser git history)
 *.bak
 
+# Gestionnaire de paquets: pnpm uniquement (pnpm-lock.yaml est tracké)
+/package-lock.json
+
 # === CONFINEMENT SECRETS (2026-05-27) — ne jamais committer ===
 # Scripts ad-hoc racine porteurs de secrets / credentials
 /check-*.js

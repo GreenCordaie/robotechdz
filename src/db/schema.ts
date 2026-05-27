@@ -1,5 +1,5 @@
-import { pgTable, serial, text, timestamp, numeric, integer, boolean, jsonb, pgEnum, index, uuid, varchar } from "drizzle-orm/pg-core";
-import { relations } from "drizzle-orm";
+import { pgTable, serial, text, timestamp, numeric, integer, boolean, jsonb, pgEnum, index, uniqueIndex, uuid, varchar } from "drizzle-orm/pg-core";
+import { relations, sql } from "drizzle-orm";
 import { OrderStatus, UserRole, ClientActionType, DeliveryMethod, SupplierTransactionType, DigitalCodeStatus, DigitalCodeSlotStatus, OrderSource } from "@/lib/constants";
 
 export const orderStatusEnum = pgEnum("order_status", Object.values(OrderStatus) as [string, ...string[]]);
@@ -1145,6 +1145,11 @@ export const slotEvents = pgTable("slot_events", {
 }, (table) => ({
     receivedIdx: index("se_received_idx").on(table.receivedAt),
     slotIdx: index("se_slot_idx").on(table.slotId),
+    // Partial UNIQUE dedup index (mirrors migration 0018). Declared here so
+    // drizzle-kit is aware of it and won't drop it on the next generate.
+    dedupIdx: uniqueIndex("se_dedup_idx")
+        .on(table.digitalCodeId, table.sourceEmailId)
+        .where(sql`source_email_id IS NOT NULL`),
 }));
 
 export const slotLifecycle = pgTable("slot_lifecycle", {
