@@ -17,8 +17,11 @@ import {
 const DEFAULT_VALIDITY_MS = 30 * 24 * 60 * 60 * 1000; // 30 days fallback
 
 export function generateToken(): string {
-    // 9 random bytes → ~12 char base64url. Cryptographically random.
-    return crypto.randomBytes(9).toString("base64url");
+    // 12 random bytes → 96 bits, base64url = 16 chars (the column is varchar(16)).
+    // Up from 9 bytes / 72 bits (~16M× harder to brute-force within the validity
+    // window). Widening the column to reach 256 bits is a separate migration.
+    // Cryptographically random, URL-safe. Existing tokens stay valid (exact lookup).
+    return crypto.randomBytes(12).toString("base64url");
 }
 
 export interface CreatedToken {

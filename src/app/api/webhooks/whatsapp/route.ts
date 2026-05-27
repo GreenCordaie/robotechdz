@@ -10,6 +10,14 @@ import { verifyWebhookSignature, isEventProcessed } from "@/lib/webhook-security
 import { RateLimitService } from "@/services/rate-limit.service";
 import { sendTelegramNotification } from "@/lib/telegram";
 
+/** Masks an account email for admin alerts/logs: keeps first 3 chars + domain. */
+function maskEmail(raw: string | null | undefined): string {
+    const email = (raw || "").trim();
+    const at = email.indexOf("@");
+    if (at <= 0) return email ? "***" : "";
+    return `${email.slice(0, Math.min(3, at))}***@${email.slice(at + 1)}`;
+}
+
 export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const mode = searchParams.get('hub.mode');
@@ -17,9 +25,11 @@ export async function GET(req: NextRequest) {
     const challenge = searchParams.get('hub.challenge');
 
     const settings = await db.query.shopSettings.findFirst();
-    const VERIFY_TOKEN = settings?.whatsappVerifyToken || "flexbox_direct_webhook_secret";
+    const VERIFY_TOKEN = settings?.whatsappVerifyToken;
 
-    if (mode === 'subscribe' && token === VERIFY_TOKEN) {
+    // Fail closed: no hardcoded fallback secret. If the verify token isn't
+    // configured, reject the handshake rather than accepting a known string.
+    if (VERIFY_TOKEN && mode === 'subscribe' && token === VERIFY_TOKEN) {
         return new Response(challenge, { status: 200 });
     }
     return new Response("Forbidden", { status: 403 });
@@ -357,7 +367,7 @@ export async function POST(req: NextRequest) {
                     // Alerte admin Telegram
                     sendTelegramNotification(
                         `🔴 *Code Netflix demandé — compte non lié Graph*\n\n` +
-                        `📧 Compte : \`${emailNotLinked}\`\n` +
+                        `📧 Compte : \`${maskEmail(emailNotLinked)}\`\n` +
                         `📱 Client : \`${senderPhone.slice(0, 6)}****\`\n\n` +
                         `⚡ Action requise : Lier ce compte Microsoft Graph dans l'admin ou envoyer le code manuellement.`,
                         ['ADMIN', 'TRAITEUR']
@@ -564,7 +574,7 @@ export async function POST(req: NextRequest) {
                 if (uniqueSlots.length > 0 && resolveSlots.length === 1) {
                     const activeData = resolveSlots[0];
                     const account = activeData.account;
-                    console.log(`[NETFLIX_AUTO] Proceeding with account: ${(decrypt(account.code) || '').split('|')[0]} (Status: ${account.msStatus})`);
+                    console.log(`[NETFLIX_AUTO] Proceeding with account: ${maskEmail((decrypt(account.code) || '').split('|')[0])} (Status: ${account.msStatus})`);
 
                     // On vérifie si le compte est lié via Microsoft Graph
                     const canResolve = account.msStatus === 'CONNECTED';
@@ -611,7 +621,7 @@ export async function POST(req: NextRequest) {
                             );
                             sendTelegramNotification(
                                 `🚨 *Netflix — Tentative bloquée (limite 24h)*\n\n` +
-                                `📧 Compte : \`${(decrypt(account.code) || '').split('|')[0]}\`\n` +
+                                `📧 Compte : \`${maskEmail((decrypt(account.code) || '').split('|')[0])}\`\n` +
                                 `📱 Client : \`${senderPhone.slice(0, 6)}****\`\n` +
                                 `📋 Commande : #${activeData.order?.orderNumber || activeData.order?.id}\n` +
                                 `📊 Tentatives aujourd'hui : ${deliveryCount24h + 1}`,
@@ -673,7 +683,7 @@ export async function POST(req: NextRequest) {
                                 if (!isFoyerSlot && deliveryCount24h === 1 && (result.type === 'CODE' || result.type === 'LINK')) {
                                     sendTelegramNotification(
                                         `⚠️ *Netflix — 2ème code livré (dernière autorisation)*\n\n` +
-                                        `📧 Compte : \`${email}\`\n` +
+                                        `📧 Compte : \`${maskEmail(email)}\`\n` +
                                         `📱 Client : \`${senderPhone.slice(0, 6)}****\`\n` +
                                         `📋 Commande : #${activeData.order?.orderNumber || activeData.order?.id}\n\n` +
                                         `_Le client a été averti qu'il ne peut plus ajouter d'appareil._`,
@@ -709,7 +719,7 @@ export async function POST(req: NextRequest) {
                         // Alerte admin Telegram
                         sendTelegramNotification(
                             `🔴 *Code Netflix demandé — compte non lié Graph*\n\n` +
-                            `📧 Compte : \`${emailNotLinked2}\`\n` +
+                            `📧 Compte : \`${maskEmail(emailNotLinked2)}\`\n` +
                             `📱 Client : \`${senderPhone.slice(0, 6)}****\`\n` +
                             `📋 Commande : #${activeData.order?.orderNumber || activeData.order?.id}\n\n` +
                             `⚡ Action requise : Lier ce compte Microsoft Graph dans l'admin (/admin/comptes-partages) puis renvoyer le code manuellement.`,

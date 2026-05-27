@@ -1,5 +1,6 @@
 import { db } from "@/db";
 import { NextResponse } from "next/server";
+import { publicIpRateLimited, clientIpFrom } from "@/lib/public-rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -9,8 +10,11 @@ export const dynamic = "force-dynamic";
  * Public API to fetch shop settings.
  * Cachable by Cloudflare at the Edge.
  */
-export async function GET() {
+export async function GET(request: Request) {
     try {
+        if (await publicIpRateLimited(clientIpFrom(request), { bucket: "settings", limit: 120, windowSec: 60 })) {
+            return NextResponse.json({ success: false, error: "Too many requests" }, { status: 429 });
+        }
         const raw = await db.query.shopSettings.findFirst();
         // Only expose safe public fields — never tokens, secrets, or API keys
         const settings = raw ? {

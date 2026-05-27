@@ -1,5 +1,6 @@
 import { getKioskData } from "@/app/kiosk/actions";
 import { NextResponse } from "next/server";
+import { publicIpRateLimited, clientIpFrom } from "@/lib/public-rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -9,8 +10,11 @@ export const dynamic = "force-dynamic";
  * Public API to fetch catalog data.
  * Cachable by Cloudflare at the Edge.
  */
-export async function GET() {
+export async function GET(request: Request) {
     try {
+        if (await publicIpRateLimited(clientIpFrom(request), { bucket: "catalog", limit: 120, windowSec: 60 })) {
+            return NextResponse.json({ error: "Too many requests" }, { status: 429 });
+        }
         const data = await getKioskData();
 
         return NextResponse.json(data, {
