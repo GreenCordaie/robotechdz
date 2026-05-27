@@ -340,7 +340,7 @@ export async function markIptvOrderFailed(
                     .update(resellerWallets)
                     .set({
                         balance: sql`${resellerWallets.balance} + ${amount}`,
-                        totalSpent: sql`${resellerWallets.totalSpent} - ${amount}`,
+                        totalSpent: sql`GREATEST(0, ${resellerWallets.totalSpent} - ${amount})`,
                         updatedAt: new Date(),
                     })
                     .where(eq(resellerWallets.id, wallet.id));

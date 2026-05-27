@@ -5,6 +5,7 @@ import { allocateOrderStock } from "@/lib/orders";
 import { decrypt, encrypt } from "@/lib/encryption";
 import { OrderStatus, UserRole, ClientActionType, DigitalCodeStatus, OrderSource, DeliveryMethod } from "@/lib/constants";
 import { eventBus, SystemEvent } from "@/lib/events";
+import { isPayableStatus } from "@/lib/order-finance";
 
 export class OrderService {
     /**
@@ -24,11 +25,17 @@ export class OrderService {
         const clientId = options.clientId;
 
         const result = await db.transaction(async (tx) => {
-            const order = await tx.query.orders.findFirst({
-                where: (table, { eq }) => eq(table.id, id)
-            });
+            // Lock the order row for the duration of the transaction so two
+            // concurrent payments (e.g. cashier + web) can't both read the same
+            // montantPaye and lose one another's increment.
+            const [order] = await tx.select().from(orders).where(eq(orders.id, id)).for("update");
 
             if (!order) throw new Error("Commande introuvable");
+
+            // A cancelled or refunded order must never accept a payment.
+            if (!isPayableStatus(order.status)) {
+                throw new Error("Cette commande ne peut plus être encaissée (annulée ou remboursée)");
+            }
 
             const currentCumulativePaid = parseFloat(order.montantPaye || "0");
             const newTotalPaid = currentCumulativePaid + montantRecuMaintenant;
@@ -73,9 +80,9 @@ export class OrderService {
 
             // 6. Manage Client Debt
             if (clientId) {
-                const client = await tx.query.clients.findFirst({
-                    where: (c, { eq }) => eq(c.id, clientId)
-                });
+                // Lock the client row too: total_dette_dzd is read-modify-written
+                // below, so concurrent payments on the same client must serialize.
+                const [client] = await tx.select().from(clients).where(eq(clients.id, clientId)).for("update");
                 if (client) {
                     let newClientTotalDebt = parseFloat(client.totalDetteDzd || "0");
 

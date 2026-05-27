@@ -16,10 +16,9 @@ export class ClientService {
         note?: string;
     }) {
         return await db.transaction(async (tx) => {
-            // 1. Fetch Client
-            const client = await tx.query.clients.findFirst({
-                where: eq(clients.id, data.clientId)
-            });
+            // 1. Fetch Client — lock the row so concurrent debt payments
+            // serialize and can't lose one another's decrement.
+            const [client] = await tx.select().from(clients).where(eq(clients.id, data.clientId)).for("update");
             if (!client) throw new Error("Client introuvable");
 
             const currentDette = parseFloat(client.totalDetteDzd || "0");

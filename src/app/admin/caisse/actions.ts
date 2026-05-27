@@ -9,6 +9,7 @@ import { triggerOrderDelivery } from "@/lib/delivery";
 import { withAuth, logSecurityAction } from "@/lib/security";
 import { z } from "zod";
 import { allocateOrderStock, reverseSupplierDebits } from "@/lib/orders";
+import { orderOutstandingDebt } from "@/lib/order-finance";
 import { sendPushToRoleAction, sendPushToUserAction } from "../push/actions";
 import { decrypt } from "@/lib/encryption";
 import { OrderService } from "@/services/order.service";
@@ -358,6 +359,15 @@ export const refundFullOrder = withAuth(
 
                 await tx.update(orders).set({ status: OrderStatus.REMBOURSE }).where(eq(orders.id, id));
 
+                // Reverse any outstanding client debt carried by this order so a
+                // refund doesn't leave the client with phantom debt.
+                const debtToReverse = orderOutstandingDebt(order as { clientId?: number | null; resteAPayer?: string | null });
+                if (debtToReverse > 0 && (order as any).clientId) {
+                    await tx.execute(
+                        sql`UPDATE clients SET total_dette_dzd = GREATEST(0, CAST(total_dette_dzd AS numeric) - ${debtToReverse})::text WHERE id = ${(order as any).clientId}`
+                    );
+                }
+
                 // --- 🔄 BALANCE REVERSAL LOGIC ---
                 await reverseSupplierDebits(tx, { orderId: id }, "Remboursement Commande Totale");
             });
@@ -386,6 +396,15 @@ export const cancelOrderAction = withAuth(
                 if (!order) throw new Error("Commande introuvable");
 
                 await tx.update(orders).set({ status: OrderStatus.ANNULE }).where(eq(orders.id, orderId));
+
+                // Reverse any outstanding debt this order carried for its client,
+                // otherwise the client keeps phantom debt after cancellation.
+                const debtToReverse = orderOutstandingDebt(order);
+                if (debtToReverse > 0 && order.clientId) {
+                    await tx.execute(
+                        sql`UPDATE clients SET total_dette_dzd = GREATEST(0, CAST(total_dette_dzd AS numeric) - ${debtToReverse})::text WHERE id = ${order.clientId}`
+                    );
+                }
 
                 for (const item of (order.items || [])) {
                     if (item.codes && item.codes.length > 0) {
