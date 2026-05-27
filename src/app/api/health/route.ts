@@ -34,10 +34,12 @@ async function checkWithTimeout<T>(
 }
 
 export async function GET(req: Request): Promise<NextResponse> {
-    // Basic auth — require CRON_SECRET for detailed health info
+    // Basic auth — require CRON_SECRET for detailed health info.
+    // Fail closed: if the secret isn't configured, expose only "ok" rather than
+    // leaking infra details to anonymous callers.
     const authHeader = (req.headers.get("authorization") || "").replace("Bearer ", "");
     const cronSecret = process.env.CRON_SECRET;
-    if (cronSecret && authHeader !== cronSecret) {
+    if (!cronSecret || authHeader !== cronSecret) {
         return NextResponse.json({ status: "ok" }); // Public: only "ok", no details
     }
 

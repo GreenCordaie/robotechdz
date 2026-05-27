@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { productVariants, products } from "@/db/schema";
 import { isNotNull, eq, and, gt } from "drizzle-orm";
+import { getSession } from "@/lib/auth";
 
 interface LoadBrainProduct {
     productId: string;
@@ -12,6 +13,11 @@ interface LoadBrainProduct {
 }
 
 export async function GET() {
+    // Exposes internal LoadBrain provider/plan IDs — require a session.
+    const session = await getSession();
+    if (!session) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
     // Get all IPTV variants in ROBOTECH DB (loadbrain_slug present, > 0 DZD, kiosk_visible)
     const rows = await db
         .select({

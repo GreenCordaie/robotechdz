@@ -1,6 +1,6 @@
 import "server-only";
 import crypto from "crypto";
-import { eq } from "drizzle-orm";
+import { eq, and, or, gt, isNull } from "drizzle-orm";
 import { db as defaultDb } from "@/db";
 import {
     slotActivationTokens,
@@ -110,10 +110,19 @@ export async function findActiveSlotByToken(
  */
 export async function touchPageSeen(db: any, token: string): Promise<void> {
     if (!token) return;
+    // Only touch a known, still-valid token. An arbitrary/expired token matches
+    // zero rows, so this unauthenticated endpoint can't be used to write at will
+    // or amplify mailbox polling.
     await db
         .update(slotActivationTokens)
         .set({ lastSeenAt: new Date() })
-        .where(eq(slotActivationTokens.token, token));
+        .where(and(
+            eq(slotActivationTokens.token, token),
+            or(
+                isNull(slotActivationTokens.validUntil),
+                gt(slotActivationTokens.validUntil, new Date())
+            )
+        ));
 }
 
 /**
