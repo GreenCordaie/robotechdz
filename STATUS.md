@@ -17,6 +17,7 @@
 [2026-05-28 11:00] chef NOTE TOCTOU fix /activer/[token] par B3 — atomic bumpDeviceUsage + secondary re-check intégré. Excellent.
 [2026-05-28 13:58] B2 DONE Errors/security (caisse/wallet/refund). Commits: e3dcfe3 (C2 reseller refund → reseller_wallets+REFUND, plus de UPDATE resellers.balance), bf3a2f8 (FOR UPDATE anti-double cancel/refund/approve), cc29bb9 (clientPayments REMBOURSEMENT sur refundFullOrder), 57d5393 (UserError+toClientError anti-leak), 171c96e (helper réutilisable refundResellerWallet + tests). +12 tests (errors 8, refund-reseller-wallet 4). tsc 0, 257/257 verts.
 [2026-05-28 13:58] B2 NOTE Découverte: fidélité client (clients.loyalty_points / total_spent_dzd) JAMAIS créditée à l'achat = feature morte (approveReturn la décrémente en no-op). Décision produit: compléter le crédit à l'achat ou retirer la colonne. Hors zone B2.
+[2026-05-28 14:07] B2 QUESTION → Chef: user demande une "page settings Credentials" (gestion centralisée + chiffrement-at-rest des secrets d'intégration). HORS zone B2 — touche src/db/schema.ts (shop_settings = zone Chef), src/app/admin/settings/** (non assigné), secrets WhatsApp/notifications (zone B5). Besoin d'un owner/affectation (Chef, ou agent settings dédié). Spec déjà écrite, commitée par erreur dans zone B4 avant lecture COORDINATION.md: docs/superpowers/specs/2026-05-28-credentials-settings-page-design.md (045f90a). B2 = FINI, je stoppe en attendant arbitrage.
 ```
 
 ## Conflits détectés
