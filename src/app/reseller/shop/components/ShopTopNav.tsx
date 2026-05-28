@@ -22,6 +22,7 @@ import {
     Settings as SettingsIcon,
     Bell,
     Webhook,
+    BookOpen,
     Receipt,
     Tv,
 } from "lucide-react";
@@ -217,11 +218,21 @@ export const ShopTopNav: React.FC<ShopTopNavProps> = ({ shopName: shopNameProp }
                                 Notifications
                             </DropdownItem>
                             <DropdownItem
-                                key="api"
+                                key="webhooks"
                                 startContent={<Webhook size={14} />}
                                 onPress={() => router.push("/reseller/webhooks")}
                             >
-                                API
+                                Mes Webhooks
+                            </DropdownItem>
+                            <DropdownItem
+                                key="api-docs"
+                                startContent={<BookOpen size={14} />}
+                                href="/api-docs"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                data-testid="reseller-api-docs-link"
+                            >
+                                API & Docs
                             </DropdownItem>
                             <DropdownItem
                                 key="logout"

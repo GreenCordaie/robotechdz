@@ -69,11 +69,12 @@ test.describe("Reseller notification preferences", () => {
         });
     });
 
-    test("Lien Notifications dans la sidebar", async ({ page }) => {
+    test("Lien Notifications dans le dropdown profil", async ({ page }) => {
         await page.goto("/reseller/dashboard");
         await page.waitForLoadState("domcontentloaded");
 
-        const link = page.getByRole("link", { name: /^Notifications$/i });
+        await page.getByRole("button", { name: /profil/i }).click();
+        const link = page.getByRole("menuitem", { name: /^Notifications$/i });
         await expect(link).toBeVisible();
         await link.click();
         await page.waitForURL(/\/reseller\/settings\/notifications/);
