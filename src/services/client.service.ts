@@ -41,11 +41,16 @@ export class ClientService {
                 .set({ totalDetteDzd: newDette })
                 .where(eq(clients.id, data.clientId));
 
-            // 4. Settle unpaid/partial orders (FIFO)
+            // 4. Settle unpaid/partial orders (FIFO).
+            // Only orders that already went through payOrder (NON_PAYE/PARTIEL)
+            // carry real client debt AND have had their stock allocated. An
+            // EN_ATTENTE order was never paid, so it carries no debt here and
+            // its stock was never allocated — settling it would mark it TERMINE
+            // (delivered) without the customer ever receiving the codes.
             const unpaidOrders = await tx.query.orders.findMany({
                 where: and(
                     eq(orders.clientId, data.clientId),
-                    sql`${orders.status} IN ('NON_PAYE', 'PARTIEL', 'EN_ATTENTE')`
+                    sql`${orders.status} IN ('NON_PAYE', 'PARTIEL')`
                 ),
                 orderBy: (o, { asc }) => [asc(o.createdAt)]
             });
