@@ -187,7 +187,14 @@ export async function pollAccount(
     const account = await db.query.digitalCodes.findFirst({
         where: eq(digitalCodes.id, accountId),
     });
-    if (!account || account.msStatus !== "CONNECTED" || !account.msRefreshToken) {
+    if (
+        !account ||
+        account.msStatus !== "CONNECTED" ||
+        !account.msRefreshToken ||
+        !account.msAccountEmail
+    ) {
+        // msAccountEmail must be present too — otherwise we'd call MS Graph with
+        // "undefined" as the mailbox and waste a token refresh + request.
         return { polled: false, eventsCreated: 0, dispatched: [] };
     }
 
@@ -231,7 +238,7 @@ export async function pollAccount(
         });
 
     const result = await resolver(
-        account.msAccountEmail!,
+        account.msAccountEmail,
         account.msRefreshToken,
         account.msClientId,
         account.id
