@@ -44,6 +44,10 @@
 [2026-05-28 15:45] B6 DONE → chef: Credentials encrypted-at-rest PHASE 1 (spec 045f90a) livree, 5 commits, tsc 0, 267/267 tests verts. UNLOCK schema.ts + actions.ts. Commits: 98d9459 (feat type encryptedText AES-256-GCM transparent sur 8 colonnes shop_settings + saveShopSettingsAction audit-redaction + blank-keeps-current), b646d12 (tests + vitest test-keys), 29bcece (backfill idempotent), a4e9f2f (fix dev start-dev.js decrypt telegram_bot_token raw-SQL), b0e43c1 (status). PAS de migration DB (type SQL reste text, zero diff drizzle). Consommateurs ②/③ recoivent du clair sans changement (lecture Drizzle). Branche feat/bsv-mirror-integrated, NON pushe (en attente d'aval push).
 [2026-05-28 15:45] B6 ACTION-REQUISE → chef (DEPLOY): lancer `npx tsx scripts/backfill-encrypt-settings.ts` AVANT/AVEC le deploy qui embarque ces commits. Idempotent (re-run = no-op). Sans lui, un secret cleartext avec un `.` lit "" jusqu'au backfill (fail-safe, pas de crash). A ajouter au runbook deploy a cote du smoke-test 2FA (caveat B3) et du reset loyalty_points.
 [2026-05-28 15:45] B6 NOTE PHASE 2 NON FAITE (arbitrage user = stop apres P1): l'UI existante ApiBotSettings.tsx fonctionne avec le chiffrement mais (a) ENVOIE ENCORE les valeurs secretes au client au load, (b) est ADMIN (pas SUPER_ADMIN), (c) pas de reveal-on-demand/badges Configure-Manquant. Le durcissement UI (hasX + Reveal audite + SUPER_ADMIN) reste a faire — spec 045f90a comme reference. A re-assigner quand voulu (necessite smoke-test navigateur).
+[2026-05-28 16:10] B5 DONE Investigation e2e ROUGES 12/13 — ROOT CAUSE: src/components/reseller/ResellerSidebar.tsx (section Integrations + liens Mes Webhooks/API&Docs/Notifications) etait du CODE MORT (jamais rendu). La nav reseller = ShopTopNav (top-nav dropdown), pas la sidebar. Les e2e 12 + 13(test3) ciblaient cette sidebar orpheline. Fix (decision user = garder top-nav, adapter tests): (a) ShopTopNav dropdown profil expose desormais 'Mes Webhooks' (renomme depuis 'API') + nouveau lien externe 'API & Docs' (href=/api-docs target=_blank rel=noopener data-testid=reseller-api-docs-link); (b) e2e 12 + 13(test3) reecrits pour ouvrir le dropdown profil au lieu de la sidebar; (c) ResellerSidebar.tsx SUPPRIME (dead code, 0 import). tsc 0. Fichiers: src/app/reseller/shop/components/ShopTopNav.tsx, tests/e2e/12-*.spec.ts, tests/e2e/13-*.spec.ts, suppr src/components/reseller/ResellerSidebar.tsx.
+[2026-05-28 16:10] B5 NOTE e2e 02-reseller-flow ROUGE = PAS un bug de code dans ma zone. Le seed (scripts/seed-e2e.ts) cree bien tier BRONZE + reseller@e2e.test/PIN 1234 + wallet 100k + produit 'Netflix Premium Test' (3 variants), et l'UI wallet rend 'Palier {tier.name}' + testid recharge-info-btn. Rouge = environnemental (serveur :4555 + DB seedee requis, jamais tourne en CI avant) → a confirmer en lancant la stack e2e complete. Aucun fix code 02 cote B5.
+[2026-05-28 16:10] B5 CAVEAT e2e navigateur 12/13 NON executes ici (pas de serveur :4555 + DB seedee dispo). tsc vert + assertions adaptees au DOM reel du dropdown profil (role=menuitem + getByTestId). Smoke-test e2e a faire sur la stack complete avant de clore.
+[2026-05-28 19:45] B2 DONE Re-assignation chef 19:20 (ligne 7 trial, solde 17234 "non debite") = VERIFIE, PAS UN BUG WALLET. Zone caisse/wallet saine: createIptvOrderAction (seul createur de ligne reseller, seul appelant UI = IptvCheckoutModal) debite atomiquement en tx (FOR UPDATE + garde priceDzd>0 + PURCHASE); markIptvOrderFailed ne rembourse que les lignes PENDING_LOADBRAIN jamais livrees; le reconciler in-process (instrumentation.ts, 60s) ne rembourse que sur status upstream failed/cancelled et recupere en ACTIVE les completed. CONFIRME par user: la ligne 7 a ete AUTO-REMBOURSEE suite a un bug de provisioning (deja corrige) -> debit -200 puis refund +200 = net zero = comportement CORRECT d'un trial echoue, PAS un debit manquant. Le "solde inchange" lu = le refund qui marche. Pointeur payOrder/recordPayment = faux-ami (checkout reseller cree l'order PAYE + debite le wallet en direct, ne passe NI par payOrder NI par recordPayment). Aucun changement de code. B2 reste idle.
 ```
 
 ## Conflits détectés
@@ -78,3 +82,34 @@
 ## Sync events
 
 (none)
+
+[2026-05-28 19:50] chef SYNC-LOADBRAIN — relais coord LoadBrain → boutique. Smoke test reseller→prod E2E VALIDÉ à 19:20 (LoadBrain STATUS commit 99821c4). Ligne ID 7 trial 2j IronMax depuis localhost:3050/reseller via LOADBRAIN_URL=https://api.loadbrain.shop = chaîne LoadBrain green bout-en-bout (Telegram session refresh chef 17:30, A3 ironmax fix dfb8941 LIVE, gateway v2 A5 745bcb6 LIVE, marketplace notify 200, poll v2 60s = 200 OK). MAIS 4 bugs reseller-side identifiés (LoadBrain payload complet+correct, consumer reseller ne mappe/débite/transitionne pas):
+  --- @B2 wallet/caisse ---
+  Solde reseller TOUJOURS 17234 DZD après ligne ID 7 trial 200 DZD réussie (devrait être 17034). Hold→debit pas déclenché. Probablement manque hook `onProvisionCompleted` côté wallet OU debit fait en pré-commande mais rollback non-trigger. À investiguer dans ton audit `payOrder`/`recordPayment` en cours.
+  --- @B5 e2e + UI reseller ---
+  4 bugs visuels/state sur table lignes IPTV (composant reseller, pas la ShopTopNav que tu viens de fix l.47):
+  (1) Status reste "EN ATTENTE" malgré poll `200 OK status:completed` → consumer ne transitionne pas EN ATTENTE → ACTIVE.
+  (2) Password column vide/masqué → extraire `credentials.screens[0].password` (= `2895701349247247`) du payload poll.
+  (3) Username tronqué `9999434211447043344` (devrait être `99994342114470433444`) → bug CSS truncation, manque 1 chiffre.
+  (4) EXPIRES/LEFT vides → pour trial, payload retourne `expiresAt=""`, le reseller doit calculer client-side = `created_at + plan.durationDays` (Trial 2j = +2 jours).
+  REFONTE TABLE (zero scroll horizontal) — 8 cols essentielles ≤820px total:
+    ID(60) | LIGNE-username(200,ellipsis+tooltip) | STATUS(110) | TYPE-badge(90) | EXPIRES-relatif(100) | M3U-copy+open(100) | CREATED-relatif(110) | ⋮menu(50)
+  Drawer latéral au clic ligne avec tous les détails:
+    ▶ Credentials: username/password(masqué👁)/code
+    ▶ URLs: m3u_url/epg_url (copy + open buttons)
+    ▶ Lifecycle: created/expires/owner
+    ▶ Network: online/conn/isp_lock/country/speed (placeholder, polled depuis panel plus tard)
+    Actions footer: Renouveler / Désactiver / Supprimer
+  MAPPING payload→UI:
+    - LIGNE          ← credentials.screens[0].username (ellipsis 20 chars + tooltip full)
+    - STATUS         ← poll response.status (transition EN ATTENTE → ACTIVE quand "completed")
+    - M3U            ← credentials.screens[0].m3uUrl (déjà builé avec panel streamingHost lg.stir.wales:8080, AFFICHER TEL QUEL, ne pas re-fabriquer)
+    - EXPIRES        ← credentials.screens[0].expiresAt SI non vide SINON computed(created_at + plan.durationDays)
+    - Drawer-Password ← credentials.screens[0].password (révélable 👁)
+    - Drawer-EPG     ← credentials.screens[0].epgUrl
+    - Drawer-Code    ← credentials.screens[0].code
+  REF DESIGN: Drawer pattern LoadBrain Daylight (commit LoadBrain db723cf, A1 quit DONE) — chef LoadBrain a aussi onboardé A7 design system à 19:30 (LoadBrain commit d6e0336) pour aider sur ce genre de refonte cross-app. Si B5 veut une spec design détaillée, pinger chef pour brief A7.
+
+[2026-05-28 19:50] chef ACK B6 Phase 1 credentials encrypted-at-rest DONE (5 commits 98d9459→b0e43c1, branche feat/bsv-mirror-integrated, 267/267 vert, tsc 0). UNLOCK schema.ts + actions.ts accepté. Push à toi quand prêt. Backfill `npx tsx scripts/backfill-encrypt-settings.ts` AJOUTÉ AU RUNBOOK DEPLOY (à côté smoke 2FA B3 + reset loyalty_points). Phase 2 (UI hardening ApiBotSettings.tsx: SUPER_ADMIN reveal-on-demand + hasX badges + no-leak load) **OFFICIELLEMENT DEFERRED** — à ré-assigner quand voulu, spec 045f90a reste référence. NOTE LoadBrain side: la coord avait listé A2 (LoadBrain) comme possible owner d'un credentials-vault centralisé multi-module — c'est un scope DIFFÉRENT de ce que tu as fait (toi = at-rest local boutique 8 colonnes shop_settings ; A2 archi = vault cross-module LoadBrain). Pas de chevauchement. A2 reste idle LoadBrain-side (sa propal commit 4f03e76 archivée comme reference si futur vault LoadBrain).
+
+[2026-05-28 19:50] chef ACK B5 e2e 12/13 root-causée + adaptée (l.47, code mort ResellerSidebar→ShopTopNav dropdown) — DONE quand tu commit + smoke navigateur OK. Caveat (l.49 stack :4555+DB seedée non dispo) accepté, à confirmer en CI une fois stack levée. e2e 02 environnemental (l.48) noté, pas un bug code B5. Tu as une autre tâche prioritaire ci-dessus (4 bugs ligne IPTV trial ID 7) — c'est dans ta zone reseller-UI, démarre quand tu veux. Discipline: commit ton WIP actuel (ShopTopNav.tsx + e2e 12/13 + suppr ResellerSidebar.tsx) AVANT de commencer le ticket IPTV (sinon sweep race avec mes synces).
