@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   checkDeviceQuota,
+  bumpDeviceUsage,
   type SlotQuotaInput,
 } from "@/services/slot-device-quota.service";
 
@@ -63,5 +64,30 @@ describe("checkDeviceQuota", () => {
   it("computes remaining=0 when this view consumes the last slot", () => {
     const v = checkDeviceQuota(slot({ devicesActivated: 2 }));
     expect(v).toEqual({ ok: true, bumpUsage: true, remaining: 0 });
+  });
+});
+
+describe("bumpDeviceUsage (atomic-bump contract)", () => {
+  // The page.tsx fail-closed gate relies on the boolean contract: true means
+  // THIS request secured the device slot, false means the guarded WHERE matched
+  // no row (cap reached or debounce race lost). We fake the Drizzle builder
+  // chain and assert the row-count → boolean mapping.
+  const fakeDb = (returningRows: Array<{ id: number }>) =>
+    ({
+      update: () => ({
+        set: () => ({
+          where: () => ({
+            returning: async () => returningRows,
+          }),
+        }),
+      }),
+    }) as never;
+
+  it("returns true when the guarded UPDATE returns a row (slot secured)", async () => {
+    expect(await bumpDeviceUsage(fakeDb([{ id: 7 }]), 7)).toBe(true);
+  });
+
+  it("returns false when the guarded UPDATE matches no row (cap/race lost)", async () => {
+    expect(await bumpDeviceUsage(fakeDb([]), 7)).toBe(false);
   });
 });

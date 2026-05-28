@@ -3,8 +3,9 @@ import { db } from "@/db";
 import { findActiveSlotByToken } from "@/services/slot-activation-token.service";
 import { checkDeviceQuota, bumpDeviceUsage } from "@/services/slot-device-quota.service";
 import { decrypt } from "@/lib/encryption";
+import { logger } from "@/lib/logger";
 import { ActivationClient } from "./ActivationClient";
-import { productVariants, products } from "@/db/schema";
+import { productVariants, products, digitalCodeSlots } from "@/db/schema";
 import { eq } from "drizzle-orm";
 
 export const dynamic = "force-dynamic";
@@ -35,30 +36,38 @@ export default async function ActivationPage(props: { params: Promise<{ token: s
 
     const { slot, account } = resolved;
 
-    // Device quota guard (Option C hybrid — anti link-sharing).
+    // Device quota guard (Option C hybrid — anti link-sharing). Fail-closed:
+    // for a NEW session we atomically secure a device slot BEFORE decrypting
+    // and rendering credentials. bumpDeviceUsage is atomic (guarded WHERE), so
+    // under a concurrent burst only ONE request wins the last slot. A loser
+    // re-reads the row: it's only blocked if the quota is genuinely exhausted
+    // — a same-device debounce race (still has room) is allowed through. This
+    // closes the check-then-act TOCTOU without false-blocking a paying customer.
     const quota = checkDeviceQuota(slot);
     if (!quota.ok) {
-        return (
-            <main className="min-h-screen flex items-center justify-center bg-neutral-950 text-neutral-200 px-6">
-                <div className="max-w-md text-center">
-                    <div className="text-5xl mb-4">📵</div>
-                    <h1 className="text-2xl font-semibold mb-2">Limite d&apos;appareils atteinte</h1>
-                    <p className="text-neutral-400">
-                        Vous avez activé {quota.max} appareil{quota.max > 1 ? "s" : ""} avec ce
-                        lien — c&apos;est le maximum prévu pour votre abonnement.
-                        Pour activer un appareil supplémentaire, contactez votre vendeur.
-                    </p>
-                </div>
-            </main>
-        );
+        return <DeviceLimitScreen max={quota.max} />;
     }
-    // Bump usage on a NEW session (older than 60min). Best-effort: a failed
-    // bump never blocks page render — the next session will retry.
     if (quota.bumpUsage) {
+        let secured = false;
         try {
-            await bumpDeviceUsage(db, slot.id);
+            secured = await bumpDeviceUsage(db, slot.id);
         } catch (err) {
-            console.error(`[activer] bumpDeviceUsage failed for slot ${slot.id}:`, err);
+            logger.error("bumpDeviceUsage failed", {
+                action: "slot.device_quota.bump_failed",
+                metadata: {
+                    slotId: slot.id,
+                    error: err instanceof Error ? err.message : String(err),
+                },
+            });
+        }
+        if (!secured) {
+            const fresh = await db.query.digitalCodeSlots
+                .findFirst({ where: eq(digitalCodeSlots.id, slot.id) })
+                .catch(() => null);
+            const recheck = fresh ? checkDeviceQuota(fresh) : { ok: false as const };
+            if (!recheck.ok) {
+                return <DeviceLimitScreen max={slot.maxDevices ?? 0} />;
+            }
         }
     }
 
@@ -91,5 +100,21 @@ export default async function ActivationPage(props: { params: Promise<{ token: s
             hasExtraMember={account.hasExtraMember === true}
             validUntil={resolved.tokenRow.validUntil.toISOString()}
         />
+    );
+}
+
+function DeviceLimitScreen({ max }: { max: number }) {
+    return (
+        <main className="min-h-screen flex items-center justify-center bg-neutral-950 text-neutral-200 px-6">
+            <div className="max-w-md text-center">
+                <div className="text-5xl mb-4">📵</div>
+                <h1 className="text-2xl font-semibold mb-2">Limite d&apos;appareils atteinte</h1>
+                <p className="text-neutral-400">
+                    Vous avez activé {max} appareil{max > 1 ? "s" : ""} avec ce
+                    lien — c&apos;est le maximum prévu pour votre abonnement.
+                    Pour activer un appareil supplémentaire, contactez votre vendeur.
+                </p>
+            </div>
+        </main>
     );
 }
