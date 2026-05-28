@@ -483,7 +483,15 @@ export const checkoutResellerAction = withAuth(
                     throw new Error("Portefeuille introuvable");
                 }
 
-                const currentBalance = parseFloat(lockedReseller.wallet.balance || "0");
+                // Verrou réel de la ligne wallet : tx.query ne pose AUCUN lock ;
+                // sans ce SELECT ... FOR UPDATE deux checkouts concurrents passent
+                // tous deux le contrôle de solde et débitent → balance négative.
+                const [lockedWallet] = await tx
+                    .select({ balance: resellerWallets.balance })
+                    .from(resellerWallets)
+                    .where(eq(resellerWallets.id, lockedReseller.wallet.id))
+                    .for("update");
+                const currentBalance = parseFloat(lockedWallet?.balance ?? "0");
                 if (currentBalance < totalAmount) {
                     throw new Error("Solde insuffisant (Concurrence bloquée)");
                 }
@@ -690,7 +698,13 @@ async function handleBsvCheckout({
             if (!lockedReseller || !lockedReseller.wallet) {
                 throw new Error("Portefeuille introuvable");
             }
-            const currentBalance = parseFloat(lockedReseller.wallet.balance || "0");
+            // Verrou réel de la ligne wallet (la relational query ne verrouille pas)
+            const [lockedWallet] = await tx
+                .select({ balance: resellerWallets.balance })
+                .from(resellerWallets)
+                .where(eq(resellerWallets.id, lockedReseller.wallet.id))
+                .for("update");
+            const currentBalance = parseFloat(lockedWallet?.balance ?? "0");
             if (currentBalance < totalAmount) {
                 throw new Error("Solde insuffisant");
             }
@@ -914,7 +928,13 @@ async function handleG2BulkCheckout({
             if (!lockedReseller || !lockedReseller.wallet) {
                 throw new Error("Portefeuille introuvable");
             }
-            const currentBalance = parseFloat(lockedReseller.wallet.balance || "0");
+            // Verrou réel de la ligne wallet (la relational query ne verrouille pas)
+            const [lockedWallet] = await tx
+                .select({ balance: resellerWallets.balance })
+                .from(resellerWallets)
+                .where(eq(resellerWallets.id, lockedReseller.wallet.id))
+                .for("update");
+            const currentBalance = parseFloat(lockedWallet?.balance ?? "0");
             if (currentBalance < totalAmount) {
                 throw new Error("Solde insuffisant");
             }
