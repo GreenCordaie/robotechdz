@@ -1,4 +1,9 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
+// The client imports @/lib/logger -> @/lib/telegram -> @/db, whose module
+// throws "DATABASE_URL must be set" at import time. Stub the db module so this
+// pure HTTP-client test can load without a real database (matches the pattern
+// used by the other unit tests).
+vi.mock("@/db", () => ({ db: {} }));
 import { callLoadBrainAutoApprove } from "@/services/loadbrain-auto-approve.client";
 
 const PAYLOAD = {
