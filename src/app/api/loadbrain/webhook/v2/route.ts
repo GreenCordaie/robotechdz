@@ -137,10 +137,21 @@ async function handleG2BulkDelivered(event: G2BulkDeliveredEvent): Promise<void>
         return;
     }
 
-    await db.transaction(async (tx) => {
+    const processed = await db.transaction(async (tx) => {
+        // Idempotency guard: re-read the row under FOR UPDATE and only act on a
+        // still-pending order. A replayed/duplicate webhook (already COMPLETED or
+        // REFUNDED) becomes a no-op — prevents duplicate delivered-code rows and
+        // races with the reconciler. Mirrors g2bulk-reconciler.markDelivered.
+        const [fresh] = await tx
+            .select()
+            .from(g2bulkOrders)
+            .where(eq(g2bulkOrders.id, localG2bulkOrder.id))
+            .for("update");
+        if (!fresh || fresh.status !== "PENDING_LOADBRAIN") return false;
+
         for (const c of codes) {
             await tx.insert(g2bulkDeliveredCodes).values({
-                g2bulkOrderId: localG2bulkOrder.id,
+                g2bulkOrderId: fresh.id,
                 code: encrypt(c.code),
                 redemptionUrl: c.redemptionUrl ?? null,
                 pin: c.pin ? encrypt(c.pin) : null,
@@ -156,18 +167,27 @@ async function handleG2BulkDelivered(event: G2BulkDeliveredEvent): Promise<void>
                 // for game top-ups) survive when upstream sends its own snapshot.
                 wonSnapshot: wonSnapshot
                     ? {
-                          ...((localG2bulkOrder.wonSnapshot as Record<string, unknown> | null) ?? {}),
+                          ...((fresh.wonSnapshot as Record<string, unknown> | null) ?? {}),
                           ...(wonSnapshot as Record<string, unknown>),
                       }
                     : undefined,
             })
-            .where(eq(g2bulkOrders.id, localG2bulkOrder.id));
+            .where(eq(g2bulkOrders.id, fresh.id));
 
         await tx
             .update(orders)
             .set({ status: "LIVRE", isDelivered: true })
-            .where(eq(orders.id, localG2bulkOrder.localOrderId));
+            .where(eq(orders.id, fresh.localOrderId));
+        return true;
     });
+
+    if (!processed) {
+        console.warn(
+            "[v2-webhook] g2bulk.order.delivered ignored (already processed):",
+            lbOrderId,
+        );
+        return;
+    }
 
     // Best-effort WhatsApp notification — non-blocking.
     try {
@@ -225,18 +245,34 @@ async function handleG2BulkFailed(event: G2BulkFailedEvent): Promise<void> {
     }
 
     await db.transaction(async (tx) => {
+        // Idempotency guard: re-read under FOR UPDATE and only refund a still-pending
+        // order. Already COMPLETED or REFUNDED → no-op, so a retried `failed`/`refunded`
+        // webhook can't credit the wallet twice. Mirrors g2bulk-reconciler.markRefunded.
+        const [fresh] = await tx
+            .select()
+            .from(g2bulkOrders)
+            .where(eq(g2bulkOrders.id, localG2bulkOrder.id))
+            .for("update");
+        if (!fresh || fresh.status !== "PENDING_LOADBRAIN") return;
+
         await tx
             .update(g2bulkOrders)
             .set({ status: "REFUNDED", completedAt: new Date() })
-            .where(eq(g2bulkOrders.id, localG2bulkOrder.id));
+            .where(eq(g2bulkOrders.id, fresh.id));
 
         const reseller = await tx.query.resellers.findFirst({
-            where: eq(resellers.id, localG2bulkOrder.resellerId),
+            where: eq(resellers.id, fresh.resellerId),
             with: { wallet: true },
         });
 
         if (reseller?.wallet) {
-            const refundAmount = parseFloat(localG2bulkOrder.pricePaidDzd);
+            const refundAmount = parseFloat(fresh.pricePaidDzd);
+            // Lock the wallet row before crediting (consistency with reconciler).
+            await tx
+                .select()
+                .from(resellerWallets)
+                .where(eq(resellerWallets.id, reseller.wallet.id))
+                .for("update");
             await tx
                 .update(resellerWallets)
                 .set({
@@ -249,7 +285,7 @@ async function handleG2BulkFailed(event: G2BulkFailedEvent): Promise<void> {
                 walletId: reseller.wallet.id,
                 type: "REFUND",
                 amount: refundAmount.toString(),
-                orderId: localG2bulkOrder.localOrderId,
+                orderId: fresh.localOrderId,
                 description: `Remboursement G2Bulk - échec livraison: ${errorMsg}`,
             });
         }
@@ -257,7 +293,7 @@ async function handleG2BulkFailed(event: G2BulkFailedEvent): Promise<void> {
         await tx
             .update(orders)
             .set({ status: "ANNULE" })
-            .where(eq(orders.id, localG2bulkOrder.localOrderId));
+            .where(eq(orders.id, fresh.localOrderId));
     });
 
     // Best-effort failure notification
@@ -410,7 +446,18 @@ const handler = createWebhookHandler({
                 return;
             }
 
-            await db.transaction(async (tx) => {
+            const processed = await db.transaction(async (tx) => {
+                // Idempotency guard: re-read under FOR UPDATE and only act on a
+                // still-pending order. A replayed/duplicate webhook (already
+                // COMPLETED or REFUNDED) is a no-op — prevents duplicate code rows
+                // and reconciler races. Mirrors g2bulk-reconciler.markDelivered.
+                const [fresh] = await tx
+                    .select()
+                    .from(bsvOrders)
+                    .where(eq(bsvOrders.id, localBsvOrder.id))
+                    .for("update");
+                if (!fresh || fresh.status !== "PENDING_LOADBRAIN") return false;
+
                 for (const c of codes) {
                     // Codes are sensitive — encrypt at rest.
                     const enriched = c as unknown as {
@@ -419,7 +466,7 @@ const handler = createWebhookHandler({
                         pin?: string | null;
                     };
                     await tx.insert(bsvDeliveredCodes).values({
-                        bsvOrderId: localBsvOrder.id,
+                        bsvOrderId: fresh.id,
                         code: encrypt(enriched.code),
                         redemptionUrl: enriched.redemptionUrl ?? null,
                         pin: enriched.pin ? encrypt(enriched.pin) : null,
@@ -433,7 +480,7 @@ const handler = createWebhookHandler({
                         completedAt: new Date(),
                         wonSnapshot: wonSnapshot ?? undefined,
                     })
-                    .where(eq(bsvOrders.id, localBsvOrder.id));
+                    .where(eq(bsvOrders.id, fresh.id));
 
                 await tx
                     .update(orders)
@@ -441,8 +488,17 @@ const handler = createWebhookHandler({
                         status: "LIVRE",
                         isDelivered: true,
                     })
-                    .where(eq(orders.id, localBsvOrder.localOrderId));
+                    .where(eq(orders.id, fresh.localOrderId));
+                return true;
             });
+
+            if (!processed) {
+                console.warn(
+                    "[v2-webhook] giftcards.order.delivered ignored (already processed):",
+                    lbOrderId
+                );
+                return;
+            }
 
             // Best-effort WhatsApp notification — non-blocking.
             try {
@@ -502,20 +558,37 @@ const handler = createWebhookHandler({
 
             // Refund the wallet for the price paid and mark order REFUNDED.
             await db.transaction(async (tx) => {
+                // Idempotency guard: re-read under FOR UPDATE and only refund a
+                // still-pending order. Already COMPLETED or REFUNDED → no-op, so a
+                // retried `failed` webhook can't credit the wallet twice. Mirrors
+                // g2bulk-reconciler.markRefunded.
+                const [fresh] = await tx
+                    .select()
+                    .from(bsvOrders)
+                    .where(eq(bsvOrders.id, localBsvOrder.id))
+                    .for("update");
+                if (!fresh || fresh.status !== "PENDING_LOADBRAIN") return;
+
                 await tx
                     .update(bsvOrders)
                     .set({ status: "REFUNDED", completedAt: new Date() })
-                    .where(eq(bsvOrders.id, localBsvOrder.id));
+                    .where(eq(bsvOrders.id, fresh.id));
 
                 const reseller = await tx.query.resellers.findFirst({
-                    where: eq(resellers.id, localBsvOrder.resellerId),
+                    where: eq(resellers.id, fresh.resellerId),
                     with: { wallet: true },
                 });
 
                 if (reseller?.wallet) {
                     const refundAmount = parseFloat(
-                        localBsvOrder.pricePaidDzd
+                        fresh.pricePaidDzd
                     );
+                    // Lock the wallet row before crediting (consistency with reconciler).
+                    await tx
+                        .select()
+                        .from(resellerWallets)
+                        .where(eq(resellerWallets.id, reseller.wallet.id))
+                        .for("update");
                     await tx
                         .update(resellerWallets)
                         .set({
@@ -528,7 +601,7 @@ const handler = createWebhookHandler({
                         walletId: reseller.wallet.id,
                         type: "REFUND",
                         amount: refundAmount.toString(),
-                        orderId: localBsvOrder.localOrderId,
+                        orderId: fresh.localOrderId,
                         description: `Remboursement BSV - échec livraison: ${errorMsg}`,
                     });
                 }
@@ -536,7 +609,7 @@ const handler = createWebhookHandler({
                 await tx
                     .update(orders)
                     .set({ status: "ANNULE" })
-                    .where(eq(orders.id, localBsvOrder.localOrderId));
+                    .where(eq(orders.id, fresh.localOrderId));
             });
 
             console.warn(

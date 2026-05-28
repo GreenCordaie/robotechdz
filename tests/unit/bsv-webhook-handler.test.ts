@@ -58,7 +58,18 @@ const fakeBsvOrder = {
     createdAt: new Date(),
 };
 
+// Row returned by the in-transaction `SELECT ... FOR UPDATE` idempotency guard.
+// Tests mutate this to simulate a replayed webhook (already COMPLETED/REFUNDED).
+let txFreshOrder: { status: string; [k: string]: unknown } = fakeBsvOrder;
+
 const txApi = {
+    select: () => ({
+        from: () => ({
+            where: () => ({
+                for: async () => [txFreshOrder],
+            }),
+        }),
+    }),
     insert: (table: { _tableName?: string }) => ({
         values: async (v: unknown) => {
             const key = table._tableName ?? "unknown";
@@ -148,6 +159,7 @@ describe("v2 webhook handler — BSV branches", () => {
     beforeEach(async () => {
         captured.inserts = {};
         captured.updates = {};
+        txFreshOrder = fakeBsvOrder;
         // Import once so capturedHandlers is populated
         await import("@/app/api/loadbrain/webhook/v2/route");
     });
@@ -218,6 +230,29 @@ describe("v2 webhook handler — BSV branches", () => {
             status?: string;
         };
         expect(orderUpdate?.status).toBe("ANNULE");
+    });
+
+    it("on replayed delivered (order already COMPLETED): no duplicate codes, no status flip", async () => {
+        txFreshOrder = { ...fakeBsvOrder, status: "COMPLETED" };
+        await capturedHandlers["giftcards.order.delivered"]({
+            data: {
+                orderId: "lb_abc",
+                codes: [{ index: 0, code: "DUP-DUP-DUP" }],
+            },
+        });
+        expect(captured.inserts["bsv_delivered_codes"]).toBeUndefined();
+        expect(captured.updates["bsv_orders"]).toBeUndefined();
+        expect(captured.updates["orders"]).toBeUndefined();
+    });
+
+    it("on replayed failed (order already REFUNDED): no double wallet refund", async () => {
+        txFreshOrder = { ...fakeBsvOrder, status: "REFUNDED" };
+        await capturedHandlers["giftcards.order.failed"]({
+            data: { orderId: "lb_abc", error: "retry" },
+        });
+        expect(captured.updates["reseller_wallets"]).toBeUndefined();
+        expect(captured.inserts["reseller_transactions"]).toBeUndefined();
+        expect(captured.updates["bsv_orders"]).toBeUndefined();
     });
 
     it("ignores unknown lbOrderId gracefully", async () => {
