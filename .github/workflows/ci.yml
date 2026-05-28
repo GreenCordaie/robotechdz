@@ -8,7 +8,7 @@
 #   - Aucun deploy déclenché (deploy.yml est sur master/avant-netflix-n8n
 #     uniquement et ce workflow n'y push pas)
 #
-# Trigger : push + pull_request (toutes branches)
+# Trigger : push + pull_request sur master, avant-netflix-n8n, epic-** et feat-**
 # Concurrence : annule les runs précédents sur la même branche pour économiser
 # les minutes GitHub Actions.
 
@@ -20,11 +20,13 @@ on:
       - master
       - avant-netflix-n8n
       - 'epic-**'
+      - 'feat/**'
   pull_request:
     branches:
       - master
       - avant-netflix-n8n
       - 'epic-**'
+      - 'feat/**'
 
 concurrency:
   group: ci-${{ github.ref }}
