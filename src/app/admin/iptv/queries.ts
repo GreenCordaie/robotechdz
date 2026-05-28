@@ -1,11 +1,19 @@
 import "server-only";
 import { db } from "@/db";
-import { iptvProvisions } from "@/db/schema";
-import { desc } from "drizzle-orm";
+import { iptvProvisions, orders } from "@/db/schema";
+import { desc, exists, and, eq, isNull, sql } from "drizzle-orm";
 import { decrypt } from "@/lib/encryption";
 
 export async function fetchIptvProvisions() {
+    // B2C scoping: only kiosk-side provisions (orders.resellerId IS NULL).
+    // Reseller IPTV orders have their own surface (/reseller/iptv).
     const provisions = await db.query.iptvProvisions.findMany({
+        where: exists(
+            db.select({ _: sql`1` }).from(orders).where(and(
+                eq(orders.id, iptvProvisions.orderId),
+                isNull(orders.resellerId)
+            ))
+        ),
         with: {
             order: { with: { client: true } },
             orderItem: true,
