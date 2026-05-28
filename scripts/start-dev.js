@@ -2,6 +2,26 @@ const { spawn, execSync } = require('child_process');
 const fs = require('fs');
 const postgres = require('postgres');
 const path = require('path');
+const crypto = require('crypto');
+
+// Minimal mirror of src/lib/encryption.ts decrypt() — telegram_bot_token is now
+// encrypted at rest, but this dev script reads it via raw SQL (bypassing the
+// Drizzle decrypt). Returns cleartext unchanged when it isn't in our format.
+function decryptSecret(value) {
+    if (!value || typeof value !== 'string' || !value.includes('.')) return value;
+    const [ivHex, authTagHex, dataHex] = value.split('.');
+    if (!ivHex || !authTagHex || !dataHex) return value;
+    const secret = process.env.ENCRYPTION_KEY || process.env.SESSION_SECRET;
+    if (!secret) return value;
+    try {
+        const key = crypto.createHash('sha256').update(secret).digest();
+        const decipher = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(ivHex, 'hex'));
+        decipher.setAuthTag(Buffer.from(authTagHex, 'hex'));
+        return decipher.update(Buffer.from(dataHex, 'hex'), undefined, 'utf8') + decipher.final('utf8');
+    } catch {
+        return value;
+    }
+}
 
 /**
  * ROBOTECH ORCHESTRATOR v6.1 (Resilient)
@@ -264,10 +284,11 @@ async function syncAll(forceWaha = false) {
             `;
             console.log("   ✅ DB → Réglages URLs mis à jour sur Supabase");
 
-            if (shopSettings.telegram_bot_token) {
+            const tgBotToken = decryptSecret(shopSettings.telegram_bot_token);
+            if (tgBotToken) {
                 const tgWebhookUrl = `${appUrl}/api/telegram/webhook`;
                 const tgRes = await fetchJson(
-                    `https://api.telegram.org/bot${shopSettings.telegram_bot_token}/setWebhook?url=${tgWebhookUrl}&secret_token=${TELEGRAM_SECRET}`
+                    `https://api.telegram.org/bot${tgBotToken}/setWebhook?url=${tgWebhookUrl}&secret_token=${TELEGRAM_SECRET}`
                 );
                 console.log(`   ${tgRes.ok ? '✅' : '❌'} Telegram webhook → ${tgWebhookUrl}`);
             }
