@@ -26,6 +26,7 @@ import {
 } from "@/db/schema";
 import { and, eq, ilike, or, desc, sql, count } from "drizzle-orm";
 import type { db as defaultDb } from "@/db";
+import { sanitizeProviderError } from "@/lib/sanitize-provider-error";
 
 export type DbLike = typeof defaultDb;
 type Tx = Parameters<Parameters<DbLike["transaction"]>[0]>[0];
@@ -339,6 +340,12 @@ export async function markIptvOrderFailed(
             return { updated: false, refunded: false, reason: "already_terminal" };
         }
 
+        // Reseller-facing: lastError is rendered in IptvLineDetailModal and the
+        // refund line shows in their ledger. Sanitize the raw upstream reason so
+        // we never leak provider names / internal URLs (same treatment as the
+        // B2C provision path in iptv-webhook-processor).
+        const safeReason = sanitizeProviderError(reason);
+
         const amount = parseFloat(fresh.pricePaidDzd);
         let refunded = false;
         // H1: refund ONLY never-delivered (PENDING_LOADBRAIN) lines. A delivered
@@ -363,7 +370,7 @@ export async function markIptvOrderFailed(
                     type: "REFUND",
                     amount: amount.toFixed(2),
                     orderId: fresh.localOrderId,
-                    description: `Remboursement IPTV (${fresh.provider}) — ${reason}`.slice(
+                    description: `Remboursement IPTV (${fresh.provider}) — ${safeReason}`.slice(
                         0,
                         500,
                     ),
@@ -379,7 +386,7 @@ export async function markIptvOrderFailed(
                 status: "FAILED",
                 lastStatusAt: now,
                 lastSyncedAt: now,
-                lastError: reason.slice(0, 1000),
+                lastError: safeReason,
                 refundedAt: refunded ? now : fresh.refundedAt,
                 updatedAt: now,
             })
