@@ -17,6 +17,8 @@
  * Hard 8s timeout — the auto-approve job is queued asynchronously inside
  * LoadBrain, so a 202 means "accepted" not "completed".
  */
+import { logger } from "@/lib/logger";
+
 export interface AutoApprovePayload {
     accountId: string;
     codeId: string;
@@ -56,17 +58,19 @@ export async function callLoadBrainAutoApprove(
             signal: controller.signal,
         });
         if (!res.ok) {
-            console.warn(
-                `[LoadBrainAutoApprove] HTTP ${res.status} — caller will fall back`,
-            );
+            logger.warn("[LoadBrainAutoApprove] non-2xx — caller will fall back", {
+                action: "loadbrain.auto_approve.http_error",
+                metadata: { status: res.status },
+            });
             return false;
         }
         return true;
-    } catch (err: any) {
-        console.warn(
-            "[LoadBrainAutoApprove] call failed:",
-            err?.message ?? err,
-        );
+    } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        logger.warn("[LoadBrainAutoApprove] call failed", {
+            action: "loadbrain.auto_approve.call_failed",
+            metadata: { error: msg },
+        });
         return false;
     } finally {
         clearTimeout(timer);
