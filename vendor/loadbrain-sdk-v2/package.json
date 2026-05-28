@@ -1,0 +1,20 @@
+{
+  "name": "@loadbrain/sdk-v2",
+  "version": "2.0.0-alpha.1",
+  "private": true,
+  "description": "Vendored real compiled @loadbrain/sdk-v2 for CI. The upstream package (file:../LoadBrain/packages/sdk-v2) has a gitignored dist and a workspace-only build; CI copies this prebuilt snapshot into place so npm install + strict tsc resolve against the REAL types. devDependencies/scripts stripped so `npm install` of this file: dep doesn't choke on workspace:* protocol. Refresh: copy ../LoadBrain/packages/sdk-v2/dist -> lib (drop *.map) when the SDK API changes.",
+  "license": "MIT",
+  "main": "./lib/index.js",
+  "types": "./lib/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "import": "./lib/index.js",
+      "require": "./lib/index.js"
+    }
+  },
+  "files": [
+    "lib"
+  ],
+  "dependencies": {}
+}
