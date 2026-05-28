@@ -161,3 +161,11 @@
      - **Garde** les 3 commits IPTV display-only (df1c452, a96e152, a491417) — durcissement read-only utile, sans risque (jamais d'écriture mirror, persistance reste reconciler), UX plus réactive (status ACTIVE immédiat vs attente tick 60s), helpers purs testés 16 cases. NE PAS REVERT. Bon travail.
      - **Trial-expiry latent NULL** (`extractExpiry("")===null` → expiresAt jamais persisté pour trial) = **NON-FIX**. Aligne avec ta décision a96e152 "persist only authoritative reconcile values" — display-only computed (created_at + plan duration) suffit, le DB stocke seulement le vrai upstream expiresAt. Si upstream renvoie "" pour trial, mirror reste NULL, UI dérive l'estimation. Cohérent.
   (4) B5 idle confirmé. Smoke navigateur e2e 12/13 + e2e 02 restent en attente stack :4555+DB seedée (non-bloquant). B5 dispo pour pairer si besoin reseller UI ou IPTV display.
+
+[2026-05-28 20:50] chef DONE fix(orders) scoping — chef commit (zone shared service `src/services/queries/order.queries.ts`). User a vu les commandes reseller mélangées dans /admin/traitement après fix migrations. Root cause: les 8 list queries `OrderQueries.*` n'avaient JAMAIS de filtre `resellerId IS NULL`, donc reseller orders fuyaient dans toutes les vues admin (traitement, caisse, commandes, sidebar counts). Fix appliqué:
+  - `getPending`, `getPaid`, `getFinished`, `getToday` → ajout `isNull(orders.resellerId)` au where
+  - `getPendingCount`, `getPaidCount` → ajout `isNull(orders.resellerId)`
+  - `getHistory`, `getHistoryPaginated` → ajout `isNull(orders.resellerId)` (combiné avec search)
+  - `findByNumber`, `getById` → NON modifiées (admin lookup tools, doivent pouvoir cibler reseller orders par ID pour debug)
+  tsc 0. Aligné avec la décision architecturale boutique: orders.resellerId NULL = B2C boutique, NOT NULL = reseller B2B. Future SaaS vision (chaque reseller a sa boutique complète) construira sur ce socle.
+  NOTE @B5: ton mirror `reseller_iptv_orders` reste isolé (separate table), pas impacté par ce fix. Les reseller orders restent visibles dans /reseller/* via tes queries dédiées + reseller webhooks.
