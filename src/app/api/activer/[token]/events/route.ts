@@ -8,6 +8,7 @@ import {
 import { slotEvents } from "@/db/schema";
 import { decrypt } from "@/lib/encryption";
 import { streamingEventBus } from "@/lib/streaming-event-bus";
+import { publicIpRateLimited, clientIpFrom } from "@/lib/public-rate-limit";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -24,6 +25,11 @@ export async function GET(
     ctx: { params: Promise<{ token: string }> }
 ) {
     const { token } = await ctx.params;
+    // Rate-limit before the DB lookup so a flood of garbage tokens can't turn
+    // this unauthenticated route into a cheap DB-load amplifier. Fail-open.
+    if (await publicIpRateLimited(clientIpFrom(req), { bucket: "activer_sse", limit: 60, windowSec: 60 })) {
+        return new Response("Too many requests", { status: 429 });
+    }
     const resolved = await findActiveSlotByToken(db as any, token);
     if (!resolved) {
         return new Response("invalid or expired token", { status: 404 });
