@@ -15,6 +15,8 @@
 [2026-05-28 11:00] chef DONE src/services/loadbrain-auto-approve.client.ts + slot-device-quota.service.ts shippés. Boutique appelle LoadBrain auto-approve.
 [2026-05-28 11:00] chef NOTE B1-B4 ont push, B5 peut-être en cours (lib/loadbrain-whatsapp.ts +115 lignes vu dans diff).
 [2026-05-28 11:00] chef NOTE TOCTOU fix /activer/[token] par B3 — atomic bumpDeviceUsage + secondary re-check intégré. Excellent.
+[2026-05-28 13:58] B2 DONE Errors/security (caisse/wallet/refund). Commits: e3dcfe3 (C2 reseller refund → reseller_wallets+REFUND, plus de UPDATE resellers.balance), bf3a2f8 (FOR UPDATE anti-double cancel/refund/approve), cc29bb9 (clientPayments REMBOURSEMENT sur refundFullOrder), 57d5393 (UserError+toClientError anti-leak), 171c96e (helper réutilisable refundResellerWallet + tests). +12 tests (errors 8, refund-reseller-wallet 4). tsc 0, 257/257 verts.
+[2026-05-28 13:58] B2 NOTE Découverte: fidélité client (clients.loyalty_points / total_spent_dzd) JAMAIS créditée à l'achat = feature morte (approveReturn la décrémente en no-op). Décision produit: compléter le crédit à l'achat ou retirer la colonne. Hors zone B2.
 ```
 
 ## Conflits détectés
