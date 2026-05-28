@@ -18,7 +18,7 @@ import { z } from "zod";
 import { allocateOrderStock } from "@/lib/orders";
 import { OrderService } from "@/services/order.service";
 import { TierService } from "@/services/tier.service";
-import { ResellerNotifications } from "@/services/reseller-notifications.service";
+import { ResellerNotifications, notifyLowBalanceAfterDebit } from "@/services/reseller-notifications.service";
 
 export const getCurrentResellerAction = withAuth(
     { roles: [UserRole.RESELLER] },
@@ -576,6 +576,12 @@ export const checkoutResellerAction = withAuth(
                 console.warn("[checkout] notification failed (non-bloquant):", err);
             });
 
+            // Low-balance alert (edge-triggered, opt-in via reseller threshold).
+            notifyLowBalanceAfterDebit(
+                { id: reseller.id, companyName: reseller.companyName, contactPhone: reseller.contactPhone },
+                totalAmount,
+            ).catch(() => {});
+
             // 9. EPIC 1 / Phase G — dispatch outbound webhooks (no-op si pas d'abonnement)
             const { dispatchResellerEvent } = await import("@/services/webhook-dispatcher.service");
             dispatchResellerEvent(reseller.id, "order.paid", {
@@ -788,6 +794,12 @@ async function handleBsvCheckout({
         }).catch((err) => {
             console.warn("[bsv-checkout] notify failed (non-bloquant):", err);
         });
+
+        // Low-balance alert (edge-triggered, opt-in via reseller threshold).
+        notifyLowBalanceAfterDebit(
+            { id: reseller.id, companyName: reseller.companyName, contactPhone: reseller.contactPhone },
+            totalAmount,
+        ).catch(() => {});
 
         revalidatePath("/reseller/orders");
 
@@ -1013,6 +1025,12 @@ async function handleG2BulkCheckout({
         }).catch((err) => {
             console.warn("[g2bulk-checkout] notify failed (non-bloquant):", err);
         });
+
+        // Low-balance alert (edge-triggered, opt-in via reseller threshold).
+        notifyLowBalanceAfterDebit(
+            { id: reseller.id, companyName: reseller.companyName, contactPhone: reseller.contactPhone },
+            totalAmount,
+        ).catch(() => {});
 
         revalidatePath("/reseller/orders");
 

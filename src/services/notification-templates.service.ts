@@ -55,6 +55,19 @@ export const TEMPLATE_DEFAULTS: Record<string, string> = {
         "Bouton \"Envoyer au client\" disponible.\n\n" +
         "_FLEXBOX DIRECT — partenaire B2B_",
 
+    "wallet.low_balance":
+        "🔔 *{{companyName}}* — Solde bas\n\n" +
+        "Votre solde est de *{{balance}}* (seuil d'alerte : {{threshold}}).\n\n" +
+        "Pensez à recharger pour continuer à commander sans interruption.\n" +
+        "_FLEXBOX DIRECT — partenaire B2B_",
+
+    "support.reply":
+        "💬 *{{companyName}}* — Réponse support\n\n" +
+        "Ticket : *{{ticketRef}}*\n\n" +
+        "{{preview}}\n\n" +
+        "Répondez depuis le portail : /reseller/support\n" +
+        "_FLEXBOX DIRECT — partenaire B2B_",
+
     "streaming.netflix.delivered":
         "🎬 *{{brandName}}* — Tes accès\n\n" +
         "📧 Email : {{accountEmail}}\n" +
@@ -83,6 +96,8 @@ export const TEMPLATE_VARIABLES: Record<string, string[]> = {
     "signup.rejected": ["companyName", "email", "reason"],
     "order.confirmed": ["companyName", "orderNumber", "itemCount", "totalAmount", "deliveryStatus"],
     "order.credentials.ready": ["companyName", "orderNumber", "credentialSummary"],
+    "wallet.low_balance": ["companyName", "balance", "threshold"],
+    "support.reply": ["companyName", "ticketRef", "preview"],
     "streaming.netflix.delivered": [
         "brandName",
         "accountEmail",

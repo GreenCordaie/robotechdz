@@ -45,7 +45,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
+          # No `cache:` — repo is pnpm-only (no package-lock.json); CI installs
+          # via `npm install` (regenerates an ephemeral lock to absorb the
+          # LoadBrain stub sha mismatch), so there is no npm lockfile to cache.
       - name: Pack LoadBrain stubs into expected tgz paths
         # Le package.json référence ../LoadBrain/dist-packages/*.tgz (privés, non
         # commités). En CI on remplace par des stubs no-op du repo qui satisfont
@@ -136,7 +138,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
+          # No `cache:` — repo is pnpm-only (no package-lock.json); CI installs
+          # via `npm install` (regenerates an ephemeral lock to absorb the
+          # LoadBrain stub sha mismatch), so there is no npm lockfile to cache.
       - name: Pack LoadBrain stubs into expected tgz paths
         run: bash scripts/ci-pack-loadbrain-stubs.sh
       - name: Install deps (inclure devDeps malgré NODE_ENV=production)
@@ -246,7 +250,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
+          # No `cache:` — repo is pnpm-only (no package-lock.json); CI installs
+          # via `npm install` (regenerates an ephemeral lock to absorb the
+          # LoadBrain stub sha mismatch), so there is no npm lockfile to cache.
 
       - name: Pack LoadBrain stubs into expected tgz paths
         run: bash scripts/ci-pack-loadbrain-stubs.sh
@@ -264,7 +270,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: pw-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          key: pw-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
 
       - name: Install Playwright browsers
         if: steps.pw-cache.outputs.cache-hit != 'true'

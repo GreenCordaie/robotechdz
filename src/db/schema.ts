@@ -352,6 +352,9 @@ export const resellers = pgTable("resellers", {
     // Shape : { "wallet.recharged": false, "order.confirmed": true, ... }
     // Si une clé manque → opt-in par défaut (true). Webhooks gèrent leurs events séparément.
     notificationPreferences: jsonb("notification_preferences").$type<Record<string, boolean>>().notNull().default({}),
+    // Seuil d'alerte solde bas (DZD). NULL ou <= 0 → pas d'alerte (opt-in).
+    // Quand un débit fait passer le solde sous ce seuil → notif wallet.low_balance (edge-triggered).
+    lowBalanceThreshold: numeric("low_balance_threshold", { precision: 12, scale: 2 }),
     createdAt: timestamp("created_at", { mode: 'date' }).defaultNow(),
 });
 

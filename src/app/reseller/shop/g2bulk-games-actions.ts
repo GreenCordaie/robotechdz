@@ -18,7 +18,7 @@ import {
     g2bulkPricingService,
     type ComputedPrice,
 } from "@/services/g2bulk-pricing.service";
-import { ResellerNotifications } from "@/services/reseller-notifications.service";
+import { ResellerNotifications, notifyLowBalanceAfterDebit } from "@/services/reseller-notifications.service";
 import { markRefunded } from "@/services/g2bulk-reconciler.service";
 import { buildGameWonSnapshot } from "./game-snapshot";
 
@@ -423,6 +423,12 @@ export const createG2BulkGameOrderAction = withAuth(
                 itemCount: quantity,
                 hasInstantDelivery: true,
             }).catch(() => {});
+
+            // Low-balance alert (edge-triggered, opt-in via reseller threshold).
+            notifyLowBalanceAfterDebit(
+                { id: reseller.id, companyName: reseller.companyName, contactPhone: reseller.contactPhone },
+                totalAmount,
+            ).catch(() => {});
 
             revalidatePath("/reseller/orders");
             return { success: true as const, orderNumber: res.orderNumber };
