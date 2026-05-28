@@ -17,7 +17,7 @@ export default function LoginPage() {
     const [error, setError] = useState<string | null>(null);
 
     const [mfaRequired, setMfaRequired] = useState(false);
-    const [tempUserId, setTempUserId] = useState<number | null>(null);
+    const [mfaTicket, setMfaTicket] = useState<string | null>(null);
     const [mfaCode, setMfaCode] = useState("");
 
     const setUser = useAuthStore((state) => state.setUser);
@@ -45,7 +45,7 @@ export default function LoginPage() {
                 setIsLoading(false);
             } else if (result.mfaRequired) {
                 setMfaRequired(true);
-                setTempUserId(result.tempUserId!);
+                setMfaTicket(result.mfaTicket!);
                 setIsLoading(false);
             } else {
                 if (result.user) {
@@ -61,12 +61,12 @@ export default function LoginPage() {
 
     const handleMfaSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!tempUserId) return;
+        if (!mfaTicket) return;
         setIsLoading(true);
         setError(null);
 
         try {
-            const result = await verifyMfaAction(tempUserId, mfaCode);
+            const result = await verifyMfaAction(mfaTicket, mfaCode);
             if (result.success) {
                 if (result.user) setUser(result.user as any);
                 router.push("/admin/dashboard");

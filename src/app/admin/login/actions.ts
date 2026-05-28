@@ -12,9 +12,10 @@ async function getDeps() {
     const { logSecurityAction } = await import("@/lib/security");
     const { encrypt, decrypt } = await import("@/lib/encryption");
     const { checkRateLimit, recordFailure, resetRateLimit } = await import("@/lib/rate-limit");
+    const { issueMfaTicket, verifyMfaTicket } = await import("@/lib/mfa-ticket");
     const turnstileSecret = process.env.TURNSTILE_SECRET_KEY;
 
-    return { db, users, eq, bcrypt, createSession, deleteSession, getSession, logSecurityAction, encrypt, decrypt, checkRateLimit, recordFailure, resetRateLimit, turnstileSecret };
+    return { db, users, eq, bcrypt, createSession, deleteSession, getSession, logSecurityAction, encrypt, decrypt, checkRateLimit, recordFailure, resetRateLimit, issueMfaTicket, verifyMfaTicket, turnstileSecret };
 }
 
 async function verifyTurnstile(token: string, secret: string) {
@@ -37,7 +38,7 @@ export async function loginAction(formData: FormData) {
     const password = formData.get("password") as string;
     const honeypot = formData.get("website_url") as string;
 
-    const { db, users, eq, bcrypt, createSession, logSecurityAction, checkRateLimit, recordFailure, resetRateLimit, turnstileSecret } = await getDeps();
+    const { db, users, eq, bcrypt, createSession, logSecurityAction, checkRateLimit, recordFailure, resetRateLimit, issueMfaTicket, turnstileSecret } = await getDeps();
 
     // 0. Turnstile check — verify if token is provided (skip if widget didn't load)
     const turnstileToken = formData.get("cf-turnstile-response") as string;
@@ -104,12 +105,13 @@ export async function loginAction(formData: FormData) {
         // Reset on success
         await resetRateLimit(email);
 
-        // 2FA CHECK
+        // 2FA CHECK — hand back a signed step-2 ticket bound to this user, not
+        // a raw userId the client could swap (verified in verifyMfaAction).
         if (user.twoFactorSecret) {
             return {
                 success: true,
                 mfaRequired: true,
-                tempUserId: user.id
+                mfaTicket: await issueMfaTicket(user.id, user.role)
             };
         }
 
@@ -137,9 +139,15 @@ export async function loginAction(formData: FormData) {
     }
 }
 
-export async function verifyMfaAction(userId: number, code: string) {
+export async function verifyMfaAction(ticket: string, code: string) {
     try {
-        const { db, users, eq, createSession, logSecurityAction, encrypt, decrypt, checkRateLimit, recordFailure, resetRateLimit } = await getDeps();
+        const { db, users, eq, createSession, logSecurityAction, encrypt, decrypt, checkRateLimit, recordFailure, resetRateLimit, verifyMfaTicket } = await getDeps();
+
+        // Resolve the user from the SIGNED step-1 ticket — never trust a raw
+        // client-supplied userId for the second factor (closes the IDOR/bypass).
+        const claims = await verifyMfaTicket(ticket);
+        if (!claims) return { success: false, error: "Session expirée, reconnectez-vous." };
+        const userId = claims.userId;
 
         // 0. Rate Limit Check (MFA)
         const limit = await checkRateLimit(`mfa:${userId}`);
@@ -174,7 +182,7 @@ export async function verifyMfaAction(userId: number, code: string) {
                 userId: user.id,
                 action: "AUTH_MFA_FAILED",
                 entityType: "AUTH",
-                newData: { code }
+                newData: { reason: "invalid_code" }
             });
             await recordFailure(`mfa:${user.id}`);
             return { success: false, error: "Code invalide" };
