@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
     canTransition,
     isTerminal,
+    shouldAutoRefundOnFail,
     type IptvOrderStatus,
 } from "@/services/iptv-reseller.service";
 
@@ -92,5 +93,25 @@ describe("iptv-reseller state machine", () => {
         expect(isTerminal("FROZEN")).toBe(false);
         expect(isTerminal("EXPIRED")).toBe(false);
         expect(isTerminal("PENDING_LOADBRAIN")).toBe(false);
+    });
+});
+
+describe("shouldAutoRefundOnFail (H1 — no refund for delivered lines)", () => {
+    it("auto-refunds ONLY never-delivered lines (PENDING_LOADBRAIN)", () => {
+        expect(shouldAutoRefundOnFail("PENDING_LOADBRAIN")).toBe(true);
+    });
+
+    it("does NOT auto-refund already-delivered lines on a late upstream cancel", () => {
+        const delivered: IptvOrderStatus[] = ["ACTIVE", "FROZEN", "EXPIRED"];
+        for (const s of delivered) {
+            expect(shouldAutoRefundOnFail(s)).toBe(false);
+        }
+    });
+
+    it("does NOT auto-refund terminal states", () => {
+        const terminal: IptvOrderStatus[] = ["CANCELLED", "FAILED", "REFUNDED"];
+        for (const s of terminal) {
+            expect(shouldAutoRefundOnFail(s)).toBe(false);
+        }
     });
 });

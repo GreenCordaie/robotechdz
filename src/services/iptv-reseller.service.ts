@@ -299,7 +299,19 @@ export async function markIptvOrderDelivered(
 }
 
 /**
- * PENDING_LOADBRAIN/ACTIVE/FROZEN/etc. -> FAILED + automatic wallet refund.
+ * Auto-refund on failure is reserved for NEVER-DELIVERED lines. Mirrors the
+ * G2Bulk reconciler (markRefunded only acts on PENDING_LOADBRAIN).
+ */
+export function shouldAutoRefundOnFail(status: IptvOrderStatus): boolean {
+    return status === "PENDING_LOADBRAIN";
+}
+
+/**
+ * Marks an IPTV reseller order FAILED (terminal). Automatic wallet refund is
+ * applied ONLY when the line was never delivered (PENDING_LOADBRAIN);
+ * already-delivered lines (ACTIVE/FROZEN/EXPIRED) are marked FAILED WITHOUT a
+ * refund — refunding a consumed service would lose money. A genuine refund for
+ * a delivered line goes through the manual return workflow.
  * Idempotent: if already FAILED or REFUNDED, returns without re-crediting.
  */
 export async function markIptvOrderFailed(
@@ -329,7 +341,9 @@ export async function markIptvOrderFailed(
 
         const amount = parseFloat(fresh.pricePaidDzd);
         let refunded = false;
-        if (Number.isFinite(amount) && amount > 0) {
+        // H1: refund ONLY never-delivered (PENDING_LOADBRAIN) lines. A delivered
+        // line cancelled upstream is still marked FAILED below, but not refunded.
+        if (shouldAutoRefundOnFail(current) && Number.isFinite(amount) && amount > 0) {
             const [wallet] = await tx
                 .select()
                 .from(resellerWallets)
