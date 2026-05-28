@@ -26,8 +26,11 @@
 | **B3** | Streaming watcher + TOCTOU quota | `src/workers/streaming-mailbox-watcher.worker.ts`, `src/app/activer/[token]/page.tsx` (rendering+quota), `src/services/slot-device-quota.service.ts` (bumpDeviceUsage DB call) | 🟢 Fini | `e6eb6d2` skip accounts without msAccountEmail |
 | **B4** | Specs + CI | `docs/superpowers/specs/**`, `.github/workflows/**` | 🟢 Fini (2 commits) | `aee45f6` drop npm cache |
 | **B5** | LoadBrain WhatsApp client + notifications | `src/lib/loadbrain-whatsapp.ts`, `src/lib/notification-events.ts`, `src/services/reseller-notifications.service.ts`, `src/services/notification-templates.service.ts` | 🟡 Possible WIP | inconnu |
+| **B6** | Credentials encrypted-at-rest (spec 045f90a) | `src/db/encrypted-column.ts`, `src/db/schema.ts` (8 col. secrets), `src/lib/encryption.ts`, `src/app/admin/settings/actions.ts`, `scripts/backfill-encrypt-settings.ts`, `vitest.config.ts`, `scripts/start-dev.js` | 🟢 Fini Phase 1 (5 commits) — Phase 2 UI deferred | `b0e43c1` status |
 
 🟢 = Done • 🟡 = In progress • 🔒 = Locked • ❌ = Blocked
+
+> **⚠️ DEPLOY (B6)** : lancer `npx tsx scripts/backfill-encrypt-settings.ts` avant/avec le déploiement des commits `98d9459`..`b0e43c1` (chiffre les secrets cleartext existants ; idempotent).
 
 ---
 
