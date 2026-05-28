@@ -9,6 +9,7 @@ import { logSecurityAction } from "@/lib/security";
 import { verify } from "otplib";
 import { encrypt, decrypt } from "@/lib/encryption";
 import { checkRateLimit, recordFailure, resetRateLimit } from "@/lib/rate-limit";
+import { issueMfaTicket, verifyMfaTicket } from "@/lib/mfa-ticket";
 
 async function verifyTurnstile(token: string, secret: string) {
     try {
@@ -109,12 +110,13 @@ export async function loginResellerAction(email: string, pin: string, honeypot?:
         // Reset on success
         await resetRateLimit(email);
 
-        // 2FA CHECK
+        // 2FA CHECK — signed step-2 ticket bound to this user, not a raw userId
+        // the client could swap (verified in verifyResellerMfaAction).
         if (user.twoFactorSecret) {
             return {
                 success: true,
                 mfaRequired: true,
-                tempUserId: user.id
+                mfaTicket: await issueMfaTicket(user.id, user.role)
             };
         }
 
@@ -143,8 +145,16 @@ export async function loginResellerAction(email: string, pin: string, honeypot?:
     }
 }
 
-export async function verifyResellerMfaAction(userId: number, code: string) {
+export async function verifyResellerMfaAction(ticket: string, code: string) {
     try {
+        // Resolve the user from the SIGNED step-1 ticket — never trust a raw
+        // client-supplied userId for the second factor (closes the IDOR/bypass).
+        const claims = await verifyMfaTicket(ticket);
+        if (!claims || claims.role !== "RESELLER") {
+            return { success: false, error: "Session expirée, reconnectez-vous." };
+        }
+        const userId = claims.userId;
+
         // Rate limit (MFA) — a 6-digit TOTP is trivially brute-forced without this.
         // Parity with the admin verifyMfaAction.
         const limit = await checkRateLimit(`mfa:${userId}`);
