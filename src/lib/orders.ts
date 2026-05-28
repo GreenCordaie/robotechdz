@@ -6,7 +6,9 @@ import {
     orderItems,
     suppliers,
     supplierTransactions,
-    productVariantSuppliers
+    productVariantSuppliers,
+    resellerWallets,
+    resellerTransactions
 } from "@/db/schema";
 import { eq, and, sql, inArray, exists } from "drizzle-orm";
 import { checkStockAndAlert } from "@/lib/stock-alerts";
@@ -357,4 +359,46 @@ export async function reverseSupplierDebits(
         // Mémorise pour bloquer un autre ACHAT_STOCK du même fournisseur dans la même boucle
         reversedSupplierIds.add(st.supplierId);
     }
+}
+
+/**
+ * Credits a reseller's wallet for a refund and traces it in reseller_transactions.
+ *
+ * `resellers` has NO balance column — the balance lives on `reseller_wallets`.
+ * (The old approveReturn wrote `UPDATE resellers SET balance` against a column
+ * that doesn't exist, which threw and rolled back the whole approval.)
+ *
+ * Locks the wallet row FOR UPDATE. No-op (returns false) if the reseller has no
+ * wallet row. Reusable by every refund path (admin returns, IPTV/G2Bulk/BSV).
+ */
+export async function refundResellerWallet(
+    tx: Transaction,
+    { resellerId, montant, orderId, description }: {
+        resellerId: number;
+        montant: number;
+        orderId: number;
+        description?: string;
+    }
+): Promise<boolean> {
+    const [wallet] = await tx
+        .select({ id: resellerWallets.id })
+        .from(resellerWallets)
+        .where(eq(resellerWallets.resellerId, resellerId))
+        .for("update");
+
+    if (!wallet) return false;
+
+    await tx.update(resellerWallets)
+        .set({ balance: sql`${resellerWallets.balance} + ${montant}`, updatedAt: new Date() })
+        .where(eq(resellerWallets.id, wallet.id));
+
+    await tx.insert(resellerTransactions).values({
+        walletId: wallet.id,
+        type: "REFUND",
+        amount: String(montant),
+        orderId,
+        description: description ?? `Remboursement Commande #${orderId}`,
+    });
+
+    return true;
 }
