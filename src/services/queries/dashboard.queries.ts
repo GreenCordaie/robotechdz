@@ -1,7 +1,7 @@
 import "server-only";
 import { db } from "@/db";
 import { orders, orderItems, products, digitalCodes, shopSettings, supportTickets } from "@/db/schema";
-import { eq, sql, and, gte, lte, desc, count } from "drizzle-orm";
+import { eq, sql, and, gte, lte, desc, count, isNull } from "drizzle-orm";
 import { cache } from "react";
 import { OrderStatus, DigitalCodeStatus, DigitalCodeSlotStatus } from "@/lib/constants";
 
@@ -42,9 +42,11 @@ export class DashboardQueries {
         }
 
         const fetchStatsInRange = async (start: Date, end?: Date) => {
+            // B2C scoping: dashboard KPIs exclude reseller orders (separate surface).
             const filters = [
                 sql`status IN (${OrderStatus.PAYE}, ${OrderStatus.TERMINE}, ${OrderStatus.LIVRE}, ${OrderStatus.PARTIEL})`,
-                gte(orders.createdAt, start)
+                gte(orders.createdAt, start),
+                isNull(orders.resellerId)
             ];
             if (end) filters.push(lte(orders.createdAt, end));
 
@@ -112,6 +114,7 @@ export class DashboardQueries {
             .where(eq(supportTickets.status, "OUVERT"));
 
         const latestOrders = await db.query.orders.findMany({
+            where: (orders, { isNull }) => isNull(orders.resellerId),
             limit: 10,
             orderBy: [desc(orders.createdAt)],
             with: { items: true }
@@ -119,7 +122,10 @@ export class DashboardQueries {
 
         const pendingCountResult = await db.select({ count: count() })
             .from(orders)
-            .where(eq(orders.status, OrderStatus.EN_ATTENTE));
+            .where(and(
+                eq(orders.status, OrderStatus.EN_ATTENTE),
+                isNull(orders.resellerId)
+            ));
 
         const settings = await db.query.shopSettings.findFirst();
 
@@ -136,7 +142,8 @@ export class DashboardQueries {
                 .where(and(
                     sql`status IN (${OrderStatus.PAYE}, ${OrderStatus.TERMINE}, ${OrderStatus.LIVRE}, ${OrderStatus.PARTIEL})`,
                     gte(orders.createdAt, day),
-                    lte(orders.createdAt, nextDay)
+                    lte(orders.createdAt, nextDay),
+                    isNull(orders.resellerId)
                 ));
 
             const dayNames = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
@@ -204,6 +211,7 @@ export class DashboardQueries {
      */
     static getRecentOrders = cache(async (limit = 10) => {
         return await db.query.orders.findMany({
+            where: (orders, { isNull }) => isNull(orders.resellerId),
             limit,
             orderBy: [desc(orders.createdAt)],
             with: {
