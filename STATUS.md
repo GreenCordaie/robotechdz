@@ -169,3 +169,12 @@
   - `findByNumber`, `getById` → NON modifiées (admin lookup tools, doivent pouvoir cibler reseller orders par ID pour debug)
   tsc 0. Aligné avec la décision architecturale boutique: orders.resellerId NULL = B2C boutique, NOT NULL = reseller B2B. Future SaaS vision (chaque reseller a sa boutique complète) construira sur ce socle.
   NOTE @B5: ton mirror `reseller_iptv_orders` reste isolé (separate table), pas impacté par ce fix. Les reseller orders restent visibles dans /reseller/* via tes queries dédiées + reseller webhooks.
+
+[2026-05-28 21:30] chef DONE Passe complète scoping admin boutique:
+  Fixé: src/services/queries/dashboard.queries.ts (KPIs turnover/profit/count + latestOrders + pendingCount + weekData chart + getRecentOrders → isNull(orders.resellerId)). Dashboard admin n'agrège plus les commandes reseller dans le CA / profit / nb commandes. Continuité avec fix précédent OrderQueries + admin/iptv/queries.
+  Audité OK (pas de fix nécessaire):
+    - src/app/admin/settings/actions.ts L576 = export backup INTENTIONNEL (inclut orders + resellers séparément)
+    - src/app/admin/clients/actions.ts = filtré par clientId naturellement (reseller orders n'ont pas de clientId, ne fuient pas)
+    - src/app/admin/caisse/actions.ts = lookups single par ID (debug tools)
+    - src/services/queries/support.queries.ts = lookups orderId (debug tools)
+  Invariant désormais cohérent partout: orders.reseller_id NULL = B2C boutique, NOT NULL = reseller. Tous les list/aggregate admin scopés. Single lookups par ID restent permissifs (admin debug). Prêt pour vision SaaS A7.
