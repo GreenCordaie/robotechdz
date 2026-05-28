@@ -145,6 +145,13 @@ export async function loginResellerAction(email: string, pin: string, honeypot?:
 
 export async function verifyResellerMfaAction(userId: number, code: string) {
     try {
+        // Rate limit (MFA) — a 6-digit TOTP is trivially brute-forced without this.
+        // Parity with the admin verifyMfaAction.
+        const limit = await checkRateLimit(`mfa:${userId}`);
+        if (limit.isBlocked) {
+            return { success: false, error: "Trop de tentatives MFA. Réessayez dans 15 minutes." };
+        }
+
         const user = await db.query.users.findFirst({
             where: eq(users.id, userId)
         });
@@ -171,14 +178,17 @@ export async function verifyResellerMfaAction(userId: number, code: string) {
         }
 
         if (!isValid) {
+            await recordFailure(`mfa:${user.id}`);
             await logSecurityAction({
                 userId: user.id,
                 action: "AUTH_MFA_FAILED",
                 entityType: "AUTH",
-                newData: { role: "RESELLER", code }
+                newData: { role: "RESELLER" }
             });
             return { success: false, error: "Code invalide" };
         }
+
+        await resetRateLimit(`mfa:${user.id}`);
 
         await createSession({
             id: user.id,
