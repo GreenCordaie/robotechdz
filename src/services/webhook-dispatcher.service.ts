@@ -3,6 +3,7 @@ import crypto from "crypto";
 import { db } from "@/db";
 import { resellerWebhooks, webhookDeliveryAttempts } from "@/db/schema";
 import { eq, and, sql } from "drizzle-orm";
+import { isBlockedWebhookUrl } from "@/lib/webhook-url-guard";
 
 /**
  * Service d'envoi de webhooks sortants aux resellers.
@@ -110,6 +111,12 @@ export async function attemptDelivery(
     body: string,
     event: string
 ): Promise<{ ok: boolean; statusCode: number | null; errorMessage: string | null }> {
+    // Defense-in-depth SSRF : revalide l'URL à l'envoi (une row insérée hors
+    // createMyWebhookAction ne doit pas contourner le garde). Jamais de fetch sur cible bloquée.
+    if (isBlockedWebhookUrl(hook.url)) {
+        return { ok: false, statusCode: null, errorMessage: "URL bloquée (SSRF guard)" };
+    }
+
     const deliveryId = generateDeliveryId();
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), DELIVERY_TIMEOUT_MS);
@@ -120,6 +127,8 @@ export async function attemptDelivery(
     try {
         const res = await fetch(hook.url, {
             method: "POST",
+            // Pas de suivi de redirection : empêche un bypass SSRF par 30x public → interne.
+            redirect: "error",
             headers: {
                 "Content-Type": "application/json",
                 "X-Robotech-Event": event,
