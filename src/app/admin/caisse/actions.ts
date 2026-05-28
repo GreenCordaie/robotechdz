@@ -398,6 +398,18 @@ export const refundFullOrder = withAuth(
                     );
                 }
 
+                // Record a REMBOURSEMENT entry in the client's payment ledger so a
+                // full refund leaves the same audit trail as an approved return.
+                const refundedAmount = parseFloat(String((order as any).montantPaye || "0"));
+                if ((order as any).clientId && refundedAmount > 0) {
+                    await tx.insert(clientPayments).values({
+                        clientId: (order as any).clientId,
+                        orderId: id,
+                        montantDzd: String(refundedAmount),
+                        typeAction: ClientActionType.REMBOURSEMENT,
+                    });
+                }
+
                 // --- 🔄 BALANCE REVERSAL LOGIC ---
                 await reverseSupplierDebits(tx, { orderId: id }, "Remboursement Commande Totale");
             });
