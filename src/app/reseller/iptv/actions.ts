@@ -569,20 +569,13 @@ export const getMyIptvLinesLiveAction = withAuth(
             });
             const settled = await runWithConcurrency(tasks, 8);
 
-            // Reconcile patches to flush back to the mirror after building the
-            // response. The webhook (`processCompletedTask`) only ever touches
-            // the kiosk tables (orders / digital_codes / iptv_provisions) — it
-            // never updates `reseller_iptv_orders`, so without this lazy
-            // reconcile a completed line stays PENDING_LOADBRAIN forever and
-            // its username/expiry never land. This is the live poll doing what
-            // the webhook omits for the reseller mirror.
-            const reconcilePatches: Array<{
-                id: number;
-                status?: IptvOrderStatus;
-                providerAccountId?: string;
-                expiresAt?: Date;
-            }> = [];
-
+            // DISPLAY-ONLY mapping. Persisting the PENDING_LOADBRAIN → ACTIVE
+            // transition (+ username/expiry) is owned by the in-process
+            // reconciler (`iptv-reseller-reconciler.service.ts` via
+            // instrumentation.ts, 60s) — see STATUS chef 20:10 zone split. Here
+            // we only DERIVE the live values so the table is correct immediately
+            // instead of waiting for the next 60s reconciler tick (the webhook
+            // `processCompletedTask` never touches the reseller mirror).
             const items = rows.map((row, i) => {
                 const r = settled[i];
                 const upstream = r.status === "fulfilled" ? r.value : null;
@@ -591,8 +584,9 @@ export const getMyIptvLinesLiveAction = withAuth(
                     pickStr(upstream, ["status"]),
                 );
 
-                // Bug 1 — transition the mirror PENDING_LOADBRAIN → ACTIVE once
-                // the upstream task reports completion (with credentials).
+                // Bug 1 (display) — show ACTIVE as soon as the upstream task
+                // reports completion, rather than the stale PENDING_LOADBRAIN
+                // the mirror still holds until the next 60s reconciler tick.
                 const effectiveStatus: IptvOrderStatus =
                     row.status === "PENDING_LOADBRAIN" &&
                     upstreamCompleted &&
@@ -600,20 +594,20 @@ export const getMyIptvLinesLiveAction = withAuth(
                         ? "ACTIVE"
                         : (row.status as IptvOrderStatus);
 
+                // Bug 3 (display) — username from the live screen (full value),
+                // falling back to the mirror's stored account id.
                 const username = screen.username ?? row.providerAccountId ?? null;
 
-                // Real upstream expiry (authoritative — safe to persist).
                 const liveExpires = screen.expiresAt ? new Date(screen.expiresAt) : null;
                 const liveExpiresDate =
                     liveExpires && !Number.isNaN(liveExpires.getTime())
                         ? liveExpires
                         : null;
 
-                // Bug 4 — trial lines come back with an empty upstream expiry,
-                // and the 60s reconciler also leaves it null (tryParse("")===null).
-                // Compute a display-only estimate from created_at + plan duration.
-                // NOT persisted — it's an estimate; only a real upstream expiry
-                // is written back to the mirror.
+                // Bug 4 (display) — trial lines come back with an empty upstream
+                // expiry, and the 60s reconciler also leaves it null
+                // (tryParse("") === null). Compute a display estimate from
+                // created_at + plan duration. Display-only — never persisted.
                 let displayExpires: Date | string | null = liveExpiresDate ?? row.expiresAt;
                 if (!displayExpires && upstreamCompleted) {
                     const durationDays = parsePlanDurationDays(
@@ -631,25 +625,6 @@ export const getMyIptvLinesLiveAction = withAuth(
                             );
                         }
                     }
-                }
-
-                // Queue a mirror patch when the live feed yields fresher state.
-                // Persist only authoritative values (status, real username, real
-                // expiry) — never the computed estimate.
-                const patch: (typeof reconcilePatches)[number] = { id: row.id };
-                if (effectiveStatus !== row.status) patch.status = effectiveStatus;
-                if (username && username !== row.providerAccountId) {
-                    patch.providerAccountId = username;
-                }
-                if (
-                    liveExpiresDate &&
-                    (!row.expiresAt ||
-                        row.expiresAt.getTime() !== liveExpiresDate.getTime())
-                ) {
-                    patch.expiresAt = liveExpiresDate;
-                }
-                if (patch.status || patch.providerAccountId || patch.expiresAt) {
-                    reconcilePatches.push(patch);
                 }
 
                 return {
@@ -679,35 +654,6 @@ export const getMyIptvLinesLiveAction = withAuth(
                     lbTaskId: row.lbTaskId,
                 };
             });
-
-            // Best-effort flush — never let a mirror write failure break the
-            // read. Scoped by reseller_id so a patch can't touch another tenant.
-            if (reconcilePatches.length > 0) {
-                await Promise.allSettled(
-                    reconcilePatches.map((p) =>
-                        db
-                            .update(resellerIptvOrders)
-                            .set({
-                                ...(p.status ? { status: p.status } : {}),
-                                ...(p.providerAccountId
-                                    ? { providerAccountId: p.providerAccountId }
-                                    : {}),
-                                ...(p.expiresAt ? { expiresAt: p.expiresAt } : {}),
-                                ...(p.status === "ACTIVE"
-                                    ? { completedAt: new Date(), lastStatusAt: new Date() }
-                                    : {}),
-                                lastSyncedAt: new Date(),
-                                updatedAt: new Date(),
-                            })
-                            .where(
-                                and(
-                                    eq(resellerIptvOrders.id, p.id),
-                                    eq(resellerIptvOrders.resellerId, ctx.reseller.id),
-                                ),
-                            ),
-                    ),
-                );
-            }
 
             return {
                 success: true as const,
