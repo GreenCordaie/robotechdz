@@ -602,14 +602,20 @@ export const getMyIptvLinesLiveAction = withAuth(
 
                 const username = screen.username ?? row.providerAccountId ?? null;
 
-                // Bug 4 — trial lines come back with an empty upstream expiry;
-                // compute it client/server-side from created_at + plan duration.
+                // Real upstream expiry (authoritative — safe to persist).
                 const liveExpires = screen.expiresAt ? new Date(screen.expiresAt) : null;
-                let expiresAt: Date | string | null =
+                const liveExpiresDate =
                     liveExpires && !Number.isNaN(liveExpires.getTime())
                         ? liveExpires
-                        : row.expiresAt;
-                if (!expiresAt && upstreamCompleted) {
+                        : null;
+
+                // Bug 4 — trial lines come back with an empty upstream expiry,
+                // and the 60s reconciler also leaves it null (tryParse("")===null).
+                // Compute a display-only estimate from created_at + plan duration.
+                // NOT persisted — it's an estimate; only a real upstream expiry
+                // is written back to the mirror.
+                let displayExpires: Date | string | null = liveExpiresDate ?? row.expiresAt;
+                if (!displayExpires && upstreamCompleted) {
                     const durationDays = parsePlanDurationDays(
                         row.productId,
                         row.productName,
@@ -620,7 +626,7 @@ export const getMyIptvLinesLiveAction = withAuth(
                                 ? row.createdAt
                                 : new Date(row.createdAt);
                         if (!Number.isNaN(base.getTime())) {
-                            expiresAt = new Date(
+                            displayExpires = new Date(
                                 base.getTime() + durationDays * 24 * 60 * 60 * 1000,
                             );
                         }
@@ -628,17 +634,19 @@ export const getMyIptvLinesLiveAction = withAuth(
                 }
 
                 // Queue a mirror patch when the live feed yields fresher state.
+                // Persist only authoritative values (status, real username, real
+                // expiry) — never the computed estimate.
                 const patch: (typeof reconcilePatches)[number] = { id: row.id };
                 if (effectiveStatus !== row.status) patch.status = effectiveStatus;
                 if (username && username !== row.providerAccountId) {
                     patch.providerAccountId = username;
                 }
                 if (
-                    expiresAt instanceof Date &&
+                    liveExpiresDate &&
                     (!row.expiresAt ||
-                        row.expiresAt.getTime() !== expiresAt.getTime())
+                        row.expiresAt.getTime() !== liveExpiresDate.getTime())
                 ) {
-                    patch.expiresAt = expiresAt;
+                    patch.expiresAt = liveExpiresDate;
                 }
                 if (patch.status || patch.providerAccountId || patch.expiresAt) {
                     reconcilePatches.push(patch);
@@ -655,10 +663,10 @@ export const getMyIptvLinesLiveAction = withAuth(
                     hasPassword: !!screen.password,
                     m3uUrl: screen.m3uUrl,
                     epgUrl: screen.epgUrl,
-                    expiresAt: expiresAt
-                        ? expiresAt instanceof Date
-                            ? expiresAt.toISOString()
-                            : expiresAt
+                    expiresAt: displayExpires
+                        ? displayExpires instanceof Date
+                            ? displayExpires.toISOString()
+                            : displayExpires
                         : null,
                     customerLabel: row.customerLabel,
                     customerPhone: row.customerPhone,
