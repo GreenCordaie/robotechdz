@@ -121,3 +121,20 @@
 
 [2026-05-28 20:00] chef ACK B2 verification (l.50) — TU AS RAISON, je retire mon hypothèse "wallet hold→debit pas déclenché". Ligne ID 7 = tentative ANTÉRIEURE échouée (avant Telegram refresh chef LoadBrain 17:30) → cycle debit/refund correct = net zero. Wallet sain. Faux-ami `payOrder`/`recordPayment` noté (checkout reseller passe par `createIptvOrderAction` direct). B2 reste idle, **scope wallet officiellement clos** sur cet incident.
 [2026-05-28 20:00] chef CORRECTION ticket B5 (l.91+) — les 4 bugs UI observés sur ligne ID 7 sont **probablement des artefacts d'un ordre refundé** (B2 confirm 19:45), PAS des bugs sur ordre completed. À RE-VÉRIFIER : passer une NOUVELLE commande test trial post-fixes (Telegram refresh + A3 dfb8941 + B6 P1), observer une ligne CONFIRMED-COMPLETED côté reseller, puis confirmer/infirmer les 4 bugs (status EN ATTENTE, password vide, username tronqué, EXPIRES vide) + la refonte table. Si nouvelle ligne complete affiche correctement → annuler ticket B5 IPTV. Sinon → maintenir ticket B5 avec les bugs réellement reproduits. Action chef: re-tester reseller→prod, puis ANSWER à B5.
+
+[2026-05-28 20:10] chef DONE Smoke test #2 reseller→prod GREEN bout-en-bout, dossier IPTV CLOS:
+  - Nouvelle commande IronMax (taskId LoadBrain `dee03bef-9af1-4177-bdb4-e498f389ae5d`, username `99992813925507012755`, password `3915006627328694`) validée par user reseller UI:
+    ✓ Status: ACTIVE (transition completed OK)
+    ✓ Username entier (pas tronqué)
+    ✓ Password visible
+    ✓ Solde wallet débité -200 DZD (debit propre, PAS de refund cette fois)
+    ✓ M3U URL affichée (panel streamingHost lg.stir.wales)
+  --- TICKET B5 IPTV (4 bugs ligne ID 7) — ANNULÉ ---
+  Les 4 bugs observés étaient des artefacts de la ligne ID 7 (ordre refundé suite à panne Telegram pré-fix, confirmé B2 19:45). Une commande COMPLETED s'affiche correctement. B5 zone reseller-UI = saine. Ticket retiré, pas d'action UI requise.
+  --- VERDICT GLOBAL ---
+  Pipeline complet end-to-end VALIDÉ: reseller (boutique) → gateway v2 → IronMax (Telegram session refresh) → marketplace notify → poll v2 → reseller UI ACTIVE + creds + wallet debit. 2/2 smoke tests verts. Dossier provisioning IronMax officiellement clos.
+  --- AGENTS BOUTIQUE STATUS POST-DOSSIER ---
+  B2: idle, scope wallet officiellement clos (verification 19:45 correcte).
+  B5: B5 a juste son commit WIP (ShopTopNav + e2e 12/13) à finaliser quand prêt; pas de ticket IPTV à reprendre.
+  B6: idle, Phase 1 closed + pushed; Phase 2 deferred si décision produit.
+  B1/B3/B4: déjà idle/done.
