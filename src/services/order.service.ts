@@ -6,6 +6,7 @@ import { decrypt, encrypt } from "@/lib/encryption";
 import { OrderStatus, UserRole, ClientActionType, DigitalCodeStatus, OrderSource, DeliveryMethod } from "@/lib/constants";
 import { eventBus, SystemEvent } from "@/lib/events";
 import { isPayableStatus } from "@/lib/order-finance";
+import { UserError } from "@/lib/errors";
 
 export class OrderService {
     /**
@@ -30,11 +31,11 @@ export class OrderService {
             // montantPaye and lose one another's increment.
             const [order] = await tx.select().from(orders).where(eq(orders.id, id)).for("update");
 
-            if (!order) throw new Error("Commande introuvable");
+            if (!order) throw new UserError("Commande introuvable");
 
             // A cancelled or refunded order must never accept a payment.
             if (!isPayableStatus(order.status)) {
-                throw new Error("Cette commande ne peut plus être encaissée (annulée ou remboursée)");
+                throw new UserError("Cette commande ne peut plus être encaissée (annulée ou remboursée)");
             }
 
             const currentCumulativePaid = parseFloat(order.montantPaye || "0");
@@ -196,7 +197,7 @@ export class OrderService {
     static async processOrder(id: number, codesData: { id: number; codes: string[] }[]) {
         const result = await db.transaction(async (tx) => {
             const current = await tx.query.orders.findFirst({ where: eq(orders.id, id) });
-            if (!current) throw new Error("Commande introuvable");
+            if (!current) throw new UserError("Commande introuvable");
 
             const nextStatus = current.status === OrderStatus.PAYE ? OrderStatus.TERMINE : current.status;
             const isWhatsApp = (current as any).deliveryMethod === DeliveryMethod.WHATSAPP;
@@ -258,7 +259,7 @@ export class OrderService {
                 where: (o, { eq }) => eq(o.id, orderId),
                 with: { items: true }
             });
-            if (!order) throw new Error("Commande introuvable");
+            if (!order) throw new UserError("Commande introuvable");
 
             let codeIndex = 0;
             let insertedCount = 0;
@@ -300,7 +301,7 @@ export class OrderService {
 
                 return { success: true, nextStatus, insertedCount };
             }
-            throw new Error("Aucun code mappé");
+            throw new UserError("Aucun code mappé");
         });
     }
 

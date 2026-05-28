@@ -10,6 +10,7 @@ import { withAuth, logSecurityAction } from "@/lib/security";
 import { z } from "zod";
 import { allocateOrderStock, reverseSupplierDebits } from "@/lib/orders";
 import { orderOutstandingDebt, isCancellable, isRefundable, canMarkDelivered, NON_PAYABLE_STATUSES } from "@/lib/order-finance";
+import { UserError, toClientError } from "@/lib/errors";
 import { sendPushToRole, sendPushToUser } from "@/lib/push-sender";
 import { decrypt } from "@/lib/encryption";
 import { OrderService } from "@/services/order.service";
@@ -70,7 +71,7 @@ export const payOrder = withAuth(
             // 0. Rate Limit Check (Payment is sensitive)
             const limit = await checkRateLimit(rateLimitKey, 20); // 20 tentatives max pour le paiement
             if (limit.isBlocked) {
-                throw new Error(`Trop de tentatives de paiement. Veuillez patienter.`);
+                throw new UserError(`Trop de tentatives de paiement. Veuillez patienter.`);
             }
 
             const result = await OrderService.payOrder(id, user.id, options);
@@ -83,7 +84,7 @@ export const payOrder = withAuth(
         } catch (error) {
             await recordFailure(rateLimitKey); // Incrémenter le compteur en cas d'erreur
             logger.error((error as Error).message, { userId: user.id, action: "PAY_ORDER_FAILED", metadata: { orderId: id } });
-            return { success: false, error: (error as Error).message };
+            return { success: false, error: toClientError(error) };
         }
     }
 );
@@ -98,7 +99,7 @@ export const requeueForPrint = withAuth(
             await db.update(orders).set({ printStatus: "print_pending" }).where(eq(orders.id, orderId));
             return { success: true };
         } catch (error) {
-            return { success: false, error: (error as Error).message };
+            return { success: false, error: toClientError(error) };
         }
     }
 );
@@ -117,7 +118,7 @@ export const markOrderPrintedAction = withAuth(
             await db.update(orders).set({ printStatus: "printed" }).where(eq(orders.id, orderId));
             return { success: true };
         } catch (error) {
-            return { success: false, error: (error as Error).message };
+            return { success: false, error: toClientError(error) };
         }
     }
 );
@@ -171,7 +172,7 @@ export const processOrder = withAuth(
 
             return result;
         } catch (error) {
-            return { error: (error as Error).message };
+            return { error: toClientError(error) };
         }
     }
 );
@@ -193,12 +194,12 @@ export const markOrderAsTermine = withAuth(
         const OrderQueries = await getQueries();
         const order = await OrderQueries.getById(id);
 
-        if (!order) throw new Error("Commande introuvable");
+        if (!order) throw new UserError("Commande introuvable");
 
         // Garde : on ne marque « prête/livrée » qu'une commande payée — pas une
         // commande non payée, ni une commande déjà terminale.
         if (!canMarkDelivered(order.status)) {
-            throw new Error("Commande non payée ou déjà clôturée — impossible de marquer comme prête.");
+            throw new UserError("Commande non payée ou déjà clôturée — impossible de marquer comme prête.");
         }
 
         await db.update(orders).set({ status: OrderStatus.TERMINE, isDelivered: true }).where(eq(orders.id, id));
@@ -250,7 +251,7 @@ export const replaceOrderItemCode = withAuth(
         try {
             // Rate limit to prevent rapid code cycling
             const limit = await checkRateLimit(rateLimitKey, 10);
-            if (limit.isBlocked) throw new Error("Trop de tentatives de remplacement. Veuillez patienter.");
+            if (limit.isBlocked) throw new UserError("Trop de tentatives de remplacement. Veuillez patienter.");
 
             return await db.transaction(async (tx) => {
                 const item = await tx.query.orderItems.findFirst({
@@ -258,7 +259,7 @@ export const replaceOrderItemCode = withAuth(
                     with: { variant: true }
                 });
 
-                if (!item) throw new Error("Article introuvable");
+                if (!item) throw new UserError("Article introuvable");
 
                 // 1. Mark old code/slot as DEFECTUEUX
                 if (oldCodeId) {
@@ -285,7 +286,7 @@ export const replaceOrderItemCode = withAuth(
                         .limit(1)
                         .for("update", { skipLocked: true });
 
-                    if (!newSlot) throw new Error("Plus de slots disponibles en stock");
+                    if (!newSlot) throw new UserError("Plus de slots disponibles en stock");
 
                     await tx.update(digitalCodeSlots)
                         .set({ status: DigitalCodeSlotStatus.VENDU, orderItemId: item.id })
@@ -302,7 +303,7 @@ export const replaceOrderItemCode = withAuth(
                         .limit(1)
                         .for("update", { skipLocked: true });
 
-                    if (!newCode) throw new Error("Plus de codes disponibles en stock");
+                    if (!newCode) throw new UserError("Plus de codes disponibles en stock");
 
                     await tx.update(digitalCodes)
                         .set({ status: DigitalCodeStatus.VENDU, orderItemId: item.id })
@@ -313,7 +314,7 @@ export const replaceOrderItemCode = withAuth(
                 }
             });
         } catch (error) {
-            return { success: false, error: (error as Error).message };
+            return { success: false, error: toClientError(error) };
         }
     }
 );
@@ -331,7 +332,7 @@ export const refundOrderItem = withAuth(
                     with: { codes: true, slots: true }
                 });
 
-                if (!item) throw new Error("Article introuvable");
+                if (!item) throw new UserError("Article introuvable");
 
                 const status = returnToStock ? DigitalCodeStatus.DISPONIBLE : DigitalCodeStatus.DEFECTUEUX;
 
@@ -354,7 +355,7 @@ export const refundOrderItem = withAuth(
             revalidatePath("/admin/caisse");
             return { success: true };
         } catch (error) {
-            return { success: false, error: (error as Error).message };
+            return { success: false, error: toClientError(error) };
         }
     }
 );
@@ -371,15 +372,15 @@ export const refundFullOrder = withAuth(
                 // second blocks here, then reads the REMBOURSE status the first set
                 // and is rejected by the guard (no double stock-restore / reversal).
                 const [locked] = await tx.select({ status: orders.status }).from(orders).where(eq(orders.id, id)).for("update");
-                if (!locked) throw new Error("Commande introuvable");
+                if (!locked) throw new UserError("Commande introuvable");
                 if (!isRefundable(locked.status)) {
-                    throw new Error("Cette commande ne peut pas être remboursée (non payée ou déjà remboursée/annulée).");
+                    throw new UserError("Cette commande ne peut pas être remboursée (non payée ou déjà remboursée/annulée).");
                 }
 
                 const { OrderQueries } = await import("@/services/queries/order.queries");
                 const order = await OrderQueries.getById(id);
 
-                if (!order) throw new Error("Commande introuvable");
+                if (!order) throw new UserError("Commande introuvable");
 
                 for (const item of (order as any).items) {
                     const status = returnToStock ? DigitalCodeStatus.DISPONIBLE : DigitalCodeStatus.DEFECTUEUX;
@@ -417,7 +418,7 @@ export const refundFullOrder = withAuth(
             revalidatePath("/admin/caisse");
             return { success: true };
         } catch (error) {
-            return { success: false, error: (error as Error).message };
+            return { success: false, error: toClientError(error) };
         }
     }
 );
@@ -433,20 +434,20 @@ export const cancelOrderAction = withAuth(
                 // Lock the order row first so a concurrent cancel/pay serializes and
                 // the read below reflects the committed status.
                 const [locked] = await tx.select({ id: orders.id }).from(orders).where(eq(orders.id, orderId)).for("update");
-                if (!locked) throw new Error("Commande introuvable");
+                if (!locked) throw new UserError("Commande introuvable");
 
                 const order = await tx.query.orders.findFirst({
                     where: eq(orders.id, orderId),
                     with: { items: { with: { codes: true, slots: true } } }
                 }) as any;
 
-                if (!order) throw new Error("Commande introuvable");
+                if (!order) throw new UserError("Commande introuvable");
 
                 // Garde : on n'annule qu'une commande non livrée et non terminale.
                 // Annuler libère les codes en stock — interdit sur une commande
                 // déjà livrée (TERMINE/LIVRE) ou déjà clôturée (ANNULE/REMBOURSE).
                 if (!isCancellable(order.status)) {
-                    throw new Error("Cette commande ne peut pas être annulée (déjà livrée, annulée ou remboursée).");
+                    throw new UserError("Cette commande ne peut pas être annulée (déjà livrée, annulée ou remboursée).");
                 }
 
                 await tx.update(orders).set({ status: OrderStatus.ANNULE }).where(eq(orders.id, orderId));
@@ -482,7 +483,7 @@ export const cancelOrderAction = withAuth(
             revalidatePath("/admin/caisse");
             return { success: true };
         } catch (error) {
-            return { success: false, error: (error as Error).message };
+            return { success: false, error: toClientError(error) };
         }
     }
 );
@@ -523,7 +524,7 @@ export const resendWhatsAppAction = withAuth(
             await triggerOrderDelivery(orderId, { forceManual: true });
             return { success: true };
         } catch (error) {
-            return { success: false, error: (error as Error).message };
+            return { success: false, error: toClientError(error) };
         }
     }
 );
@@ -542,7 +543,7 @@ export const initiateReturn = withAuth(
         try {
             // Rate limit return initiation
             const limit = await checkRateLimit(rateLimitKey, 10);
-            if (limit.isBlocked) throw new Error("Trop de demandes de retour. Veuillez patienter.");
+            if (limit.isBlocked) throw new UserError("Trop de demandes de retour. Veuillez patienter.");
 
             const order = await db.query.orders.findFirst({ where: eq(orders.id, orderId) });
             if (!order) return { success: false, error: "Commande introuvable" };
@@ -586,7 +587,7 @@ export const initiateReturn = withAuth(
             revalidatePath("/admin/caisse");
             return { success: true, orderId };
         } catch (error) {
-            return { success: false, error: (error as Error).message };
+            return { success: false, error: toClientError(error) };
         }
     }
 );
@@ -724,7 +725,7 @@ export const approveReturn = withAuth(
             });
         } catch (error) {
             logger.error((error as Error).message, { userId: user.id, action: "APPROVE_RETURN_FAILED", metadata: { orderId } });
-            return { success: false, error: (error as Error).message };
+            return { success: false, error: toClientError(error) };
         }
     }
 );
@@ -775,7 +776,7 @@ export const rejectReturn = withAuth(
             revalidatePath("/admin/caisse");
             return { success: true };
         } catch (error) {
-            return { success: false, error: (error as Error).message };
+            return { success: false, error: toClientError(error) };
         }
     }
 );
@@ -791,7 +792,7 @@ export const notifyTraiteurAction = withAuth(
             const OrderQueries = await getQueries();
             const order = await OrderQueries.getById(orderId);
 
-            if (!order) throw new Error("Commande introuvable");
+            if (!order) throw new UserError("Commande introuvable");
 
             // Notify Processor via n8n
             await N8nService.notifyTraiteur(order);
@@ -805,7 +806,7 @@ export const notifyTraiteurAction = withAuth(
 
             return { success: true };
         } catch (error) {
-            return { success: false, error: (error as Error).message };
+            return { success: false, error: toClientError(error) };
         }
     }
 );
@@ -827,14 +828,14 @@ export const updateItemPurchasePrice = withAuth(
                     where: eq(orderItems.id, orderItemId)
                 });
 
-                if (!item) throw new Error("Article introuvable");
-                if (!item.supplierId) throw new Error("Cet article n'est pas associé à un fournisseur");
+                if (!item) throw new UserError("Article introuvable");
+                if (!item.supplierId) throw new UserError("Cet article n'est pas associé à un fournisseur");
 
                 const supplier = await tx.query.suppliers.findFirst({
                     where: eq(suppliers.id, item.supplierId)
                 });
 
-                if (!supplier) throw new Error("Fournisseur introuvable");
+                if (!supplier) throw new UserError("Fournisseur introuvable");
 
                 const settings = await tx.query.shopSettings.findFirst();
                 const EXCHANGE_RATE = settings?.usdExchangeRate ? parseFloat(settings.usdExchangeRate) : 245;
@@ -904,7 +905,7 @@ export const updateItemPurchasePrice = withAuth(
             });
         } catch (error) {
             console.error("Failed to update purchase price:", error);
-            return { success: false, error: (error as Error).message };
+            return { success: false, error: toClientError(error) };
         }
     }
 );
