@@ -34,6 +34,9 @@
 [2026-05-28 14:55] chef NOTE loyalty_points / total_spent_dzd dead feature (signalé par B2 13:58) → produit decision, hors zone agents. Marquée comme tech-debt à arbitrer avec produit.
 [2026-05-28 14:55] chef NOTE Production reseller 02/12/13 e2e ROUGE = B5 zone (reseller UI notifications + sidebar 'Mes Webhooks' + lien notif-prefs). À investiguer dès que B5 finit son travail en cours sur lib/loadbrain-whatsapp.ts.
 [2026-05-28 14:55] chef DECISION discipline ALL AGENTS (boutique aussi) : `git commit -- <paths>` mandatory, plus de `git add .`. Sweep race observée côté LoadBrain (commit 4e2d029). Cf. LoadBrain STATUS.md 14:50 chef ACK.
+[2026-05-28 15:12] chef DONE Diag IPTV IronMax: 3 commandes reseller FAILED (orders 659/661/662) + 14 provisions B2C failed. ROOT CAUSE = UPSTREAM (worker LoadBrain IronMax), PAS notre repo. Mon cote correct: les 3 ont ete AUTO-REMBOURSEES (PURCHASE->REFUND verifie, orders=REMBOURSE, wallet equilibre, 0 perte). markIptvOrderFailed fail-closed + refund OK.
+[2026-05-28 15:12] chef DONE fix(iptv) 3ca8e99: markIptvOrderFailed sanitise desormais le lastError reseller (sanitizeProviderError) — avant, l'erreur brute upstream (nom provider + hint interne 'run tg-onestep.js') fuyait au reseller dans IptvLineDetailModal + ligne de refund.
+[2026-05-28 15:12] chef NOTE POUR LE CHEF-PROJET / A3 (LoadBrain modules/ironmax): la commande IronMax la plus recente (order 662, today) echoue car le worker IronMax n'a PAS de session Telegram (@MYIRON_BOT) -> 'run tg-onestep.js to create one'. Fix = INTERACTIF (phone + OTP + 2FA), repo LoadBrain infra/deploy/tg-onestep.js, puis set TELEGRAM_SESSION sur le VPS + recreate container. NON faisable par un agent (auth Telegram interactive). Bonus: l'erreur upstream ne devrait pas exposer 'run tg-onestep.js' aux surfaces client (hygiene message cote LoadBrain).
 ```
 
 ## Conflits détectés
