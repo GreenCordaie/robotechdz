@@ -269,17 +269,29 @@ export async function reverseSupplierDebits(
     { orderId, orderItemId }: { orderId?: number, orderItemId?: number },
     reason: string = "Remboursement"
 ) {
-    if (!orderId && !orderItemId) return;
+    // supplier_transactions has NO orderItemId column, so a reversal can only be
+    // scoped by orderId. Called with only orderItemId, the old code fell back to
+    // matching EVERY ACHAT_STOCK row in the table — crediting every supplier.
+    // Refuse instead (per-item supplier reversal is unsupported by the schema).
+    if (!orderId) {
+        if (orderItemId) {
+            await logSecurityAction({
+                userId: null,
+                action: "SUPPLIER_REVERSAL_SKIPPED_UNSCOPED",
+                entityType: "SUPPLIER",
+                entityId: "0",
+                newData: { orderItemId, reason },
+            });
+        }
+        return;
+    }
 
     // Determine which ACHAT_STOCK transactions belong to this order
     const relatedTransactions = await tx.query.supplierTransactions.findMany({
-        where: (table: any, { and, eq }: any) => {
-            const conditions = [eq(table.type, SupplierTransactionType.ACHAT_STOCK)];
-            if (orderId) conditions.push(eq(table.orderId, orderId));
-            // Note : la colonne orderItemId n'existe pas sur supplierTransactions,
-            // on retombe donc sur orderId même quand orderItemId est fourni.
-            return and(...conditions);
-        }
+        where: (table: any, { and, eq }: any) => and(
+            eq(table.type, SupplierTransactionType.ACHAT_STOCK),
+            eq(table.orderId, orderId),
+        ),
     });
 
     if (relatedTransactions.length === 0) return;
@@ -313,7 +325,7 @@ export async function reverseSupplierDebits(
                 entityId: st.supplierId.toString(),
                 newData: { orderId: st.orderId, reason, achatStockId: st.id }
             });
-            return;
+            continue; // skip THIS supplier only — not the whole reversal (was: return)
         }
 
         // 1. Credit supplier balance
