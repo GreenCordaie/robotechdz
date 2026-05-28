@@ -367,16 +367,19 @@ export const refundFullOrder = withAuth(
     async ({ id, returnToStock }) => {
         try {
             await db.transaction(async (tx) => {
+                // Lock the order row first so two concurrent refunds serialize: the
+                // second blocks here, then reads the REMBOURSE status the first set
+                // and is rejected by the guard (no double stock-restore / reversal).
+                const [locked] = await tx.select({ status: orders.status }).from(orders).where(eq(orders.id, id)).for("update");
+                if (!locked) throw new Error("Commande introuvable");
+                if (!isRefundable(locked.status)) {
+                    throw new Error("Cette commande ne peut pas être remboursée (non payée ou déjà remboursée/annulée).");
+                }
+
                 const { OrderQueries } = await import("@/services/queries/order.queries");
                 const order = await OrderQueries.getById(id);
 
                 if (!order) throw new Error("Commande introuvable");
-
-                // Garde : on ne rembourse qu'une commande payée et non déjà
-                // remboursée/annulée (évite le double-remboursement).
-                if (!isRefundable((order as any).status)) {
-                    throw new Error("Cette commande ne peut pas être remboursée (non payée ou déjà remboursée/annulée).");
-                }
 
                 for (const item of (order as any).items) {
                     const status = returnToStock ? DigitalCodeStatus.DISPONIBLE : DigitalCodeStatus.DEFECTUEUX;
@@ -415,6 +418,11 @@ export const cancelOrderAction = withAuth(
     async ({ orderId }) => {
         try {
             await db.transaction(async (tx) => {
+                // Lock the order row first so a concurrent cancel/pay serializes and
+                // the read below reflects the committed status.
+                const [locked] = await tx.select({ id: orders.id }).from(orders).where(eq(orders.id, orderId)).for("update");
+                if (!locked) throw new Error("Commande introuvable");
+
                 const order = await tx.query.orders.findFirst({
                     where: eq(orders.id, orderId),
                     with: { items: { with: { codes: true, slots: true } } }
@@ -579,6 +587,12 @@ export const approveReturn = withAuth(
     async ({ orderId }, user) => {
         try {
             return await db.transaction(async (tx) => {
+                // Lock the order row first so two concurrent approvals serialize: the
+                // second reads the APPROUVE returnRequest the first set and is rejected
+                // by the guard below (no double refund).
+                const [locked] = await tx.select({ id: orders.id }).from(orders).where(eq(orders.id, orderId)).for("update");
+                if (!locked) return { success: false, error: "Commande introuvable" };
+
                 const order = await tx.query.orders.findFirst({
                     where: eq(orders.id, orderId),
                     with: { items: true }
