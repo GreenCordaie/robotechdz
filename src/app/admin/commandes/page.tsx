@@ -3,8 +3,12 @@ import { OrderQueries } from "@/services/queries/order.queries";
 import { CommandesContent } from "./CommandesContent";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/security";
+import { UserRole } from "@/lib/constants";
 
 export const dynamic = "force-dynamic";
+
+// L'historique expose les codes déchiffrés — réservé aux admins.
+const ALLOWED_ROLES: string[] = [UserRole.ADMIN, UserRole.SUPER_ADMIN];
 
 export default async function CommandesPage({
     searchParams,
@@ -13,6 +17,7 @@ export default async function CommandesPage({
 }) {
     const user = await getCurrentUser();
     if (!user) redirect("/admin/login");
+    if (!ALLOWED_ROLES.includes(user.role)) redirect("/admin/caisse");
 
     const page = Math.max(1, parseInt(searchParams.page || "1", 10));
     const search = searchParams.search || "";

@@ -9,7 +9,7 @@ import { triggerOrderDelivery } from "@/lib/delivery";
 import { withAuth, logSecurityAction } from "@/lib/security";
 import { z } from "zod";
 import { allocateOrderStock, reverseSupplierDebits } from "@/lib/orders";
-import { orderOutstandingDebt } from "@/lib/order-finance";
+import { orderOutstandingDebt, isCancellable, isRefundable, canMarkDelivered, NON_PAYABLE_STATUSES } from "@/lib/order-finance";
 import { sendPushToRole, sendPushToUser } from "@/lib/push-sender";
 import { decrypt } from "@/lib/encryption";
 import { OrderService } from "@/services/order.service";
@@ -128,6 +128,21 @@ export const updateOrderStatus = withAuth(
         schema: z.object({ id: z.number(), status: z.enum(Object.values(OrderStatus) as [string, ...string[]]) })
     },
     async ({ id, status }) => {
+        const current = await db.query.orders.findFirst({ where: eq(orders.id, id), columns: { status: true } });
+        if (!current) return { success: false, error: "Commande introuvable" };
+        // Ces statuts ont des effets argent/stock gérés par des actions dédiées
+        // (payOrder, cancelOrderAction, refundFullOrder, markOrderAsTermine).
+        // Les poser via ce setter brut désynchroniserait stock/dette/fournisseur.
+        const PROTECTED_STATUSES: string[] = [
+            OrderStatus.PAYE, OrderStatus.TERMINE, OrderStatus.LIVRE, OrderStatus.ANNULE, OrderStatus.REMBOURSE,
+        ];
+        if (PROTECTED_STATUSES.includes(status)) {
+            return { success: false, error: "Ce statut doit passer par l'action dédiée (paiement/annulation/remboursement/traitement)." };
+        }
+        // Une commande déjà clôturée n'est plus modifiable.
+        if (NON_PAYABLE_STATUSES.includes(current.status)) {
+            return { success: false, error: "Commande clôturée : statut non modifiable." };
+        }
         await db.update(orders).set({ status }).where(eq(orders.id, id));
         revalidatePath("/admin/caisse");
         return { success: true };
@@ -179,6 +194,12 @@ export const markOrderAsTermine = withAuth(
         const order = await OrderQueries.getById(id);
 
         if (!order) throw new Error("Commande introuvable");
+
+        // Garde : on ne marque « prête/livrée » qu'une commande payée — pas une
+        // commande non payée, ni une commande déjà terminale.
+        if (!canMarkDelivered(order.status)) {
+            throw new Error("Commande non payée ou déjà clôturée — impossible de marquer comme prête.");
+        }
 
         await db.update(orders).set({ status: OrderStatus.TERMINE, isDelivered: true }).where(eq(orders.id, id));
         revalidatePath("/admin/traitement");
@@ -351,6 +372,12 @@ export const refundFullOrder = withAuth(
 
                 if (!order) throw new Error("Commande introuvable");
 
+                // Garde : on ne rembourse qu'une commande payée et non déjà
+                // remboursée/annulée (évite le double-remboursement).
+                if (!isRefundable((order as any).status)) {
+                    throw new Error("Cette commande ne peut pas être remboursée (non payée ou déjà remboursée/annulée).");
+                }
+
                 for (const item of (order as any).items) {
                     const status = returnToStock ? DigitalCodeStatus.DISPONIBLE : DigitalCodeStatus.DEFECTUEUX;
                     await tx.update(digitalCodes).set({ status, orderItemId: null }).where(eq(digitalCodes.orderItemId, item.id));
@@ -394,6 +421,13 @@ export const cancelOrderAction = withAuth(
                 }) as any;
 
                 if (!order) throw new Error("Commande introuvable");
+
+                // Garde : on n'annule qu'une commande non livrée et non terminale.
+                // Annuler libère les codes en stock — interdit sur une commande
+                // déjà livrée (TERMINE/LIVRE) ou déjà clôturée (ANNULE/REMBOURSE).
+                if (!isCancellable(order.status)) {
+                    throw new Error("Cette commande ne peut pas être annulée (déjà livrée, annulée ou remboursée).");
+                }
 
                 await tx.update(orders).set({ status: OrderStatus.ANNULE }).where(eq(orders.id, orderId));
 

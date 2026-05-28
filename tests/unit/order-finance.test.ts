@@ -1,7 +1,11 @@
 import { describe, it, expect } from "vitest";
 import {
     NON_PAYABLE_STATUSES,
+    DELIVERED_STATUSES,
     isPayableStatus,
+    isCancellable,
+    isRefundable,
+    canMarkDelivered,
     orderOutstandingDebt,
 } from "@/lib/order-finance";
 import { OrderStatus } from "@/lib/constants";
@@ -63,6 +67,73 @@ describe("order-finance helpers", () => {
 
         it("treats non-numeric resteAPayer as zero", () => {
             expect(orderOutstandingDebt({ clientId: 7, resteAPayer: "abc" })).toBe(0);
+        });
+    });
+
+    describe("isCancellable", () => {
+        it("allows cancelling pre-delivery orders", () => {
+            expect(isCancellable(OrderStatus.EN_ATTENTE)).toBe(true);
+            expect(isCancellable(OrderStatus.NON_PAYE)).toBe(true);
+            expect(isCancellable(OrderStatus.PARTIEL)).toBe(true);
+            expect(isCancellable(OrderStatus.PAYE)).toBe(true);
+        });
+        it("blocks cancelling a delivered order (codes already in customer hands)", () => {
+            expect(isCancellable(OrderStatus.TERMINE)).toBe(false);
+            expect(isCancellable(OrderStatus.LIVRE)).toBe(false);
+        });
+        it("blocks cancelling a terminal order (double-cancel/refund)", () => {
+            expect(isCancellable(OrderStatus.ANNULE)).toBe(false);
+            expect(isCancellable(OrderStatus.REMBOURSE)).toBe(false);
+        });
+        it("fail-closed on unknown/empty status", () => {
+            expect(isCancellable(null)).toBe(false);
+            expect(isCancellable(undefined)).toBe(false);
+            expect(isCancellable("")).toBe(false);
+        });
+        it("exposes the delivered set", () => {
+            expect(DELIVERED_STATUSES).toContain(OrderStatus.TERMINE);
+            expect(DELIVERED_STATUSES).toContain(OrderStatus.LIVRE);
+        });
+    });
+
+    describe("isRefundable", () => {
+        it("allows refunding paid/delivered orders", () => {
+            expect(isRefundable(OrderStatus.PARTIEL)).toBe(true);
+            expect(isRefundable(OrderStatus.PAYE)).toBe(true);
+            expect(isRefundable(OrderStatus.LIVRE)).toBe(true);
+            expect(isRefundable(OrderStatus.TERMINE)).toBe(true);
+        });
+        it("blocks refunding an unpaid order (nothing to refund)", () => {
+            expect(isRefundable(OrderStatus.EN_ATTENTE)).toBe(false);
+            expect(isRefundable(OrderStatus.NON_PAYE)).toBe(false);
+        });
+        it("blocks double-refund of a terminal order", () => {
+            expect(isRefundable(OrderStatus.ANNULE)).toBe(false);
+            expect(isRefundable(OrderStatus.REMBOURSE)).toBe(false);
+        });
+        it("fail-closed on unknown/empty status", () => {
+            expect(isRefundable(null)).toBe(false);
+            expect(isRefundable("")).toBe(false);
+        });
+    });
+
+    describe("canMarkDelivered", () => {
+        it("allows marking a paid order delivered", () => {
+            expect(canMarkDelivered(OrderStatus.PAYE)).toBe(true);
+            expect(canMarkDelivered(OrderStatus.PARTIEL)).toBe(true);
+            expect(canMarkDelivered(OrderStatus.LIVRE)).toBe(true);
+        });
+        it("blocks marking an unpaid order delivered", () => {
+            expect(canMarkDelivered(OrderStatus.EN_ATTENTE)).toBe(false);
+            expect(canMarkDelivered(OrderStatus.NON_PAYE)).toBe(false);
+        });
+        it("blocks re-marking a terminal/already-done order", () => {
+            expect(canMarkDelivered(OrderStatus.TERMINE)).toBe(false);
+            expect(canMarkDelivered(OrderStatus.ANNULE)).toBe(false);
+            expect(canMarkDelivered(OrderStatus.REMBOURSE)).toBe(false);
+        });
+        it("fail-closed on unknown/empty status", () => {
+            expect(canMarkDelivered(null)).toBe(false);
         });
     });
 });

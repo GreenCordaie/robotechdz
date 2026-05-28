@@ -15,6 +15,12 @@ export const NON_PAYABLE_STATUSES: readonly string[] = [
     OrderStatus.REMBOURSE,
 ];
 
+/** States where codes are already in the customer's hands. */
+export const DELIVERED_STATUSES: readonly string[] = [
+    OrderStatus.TERMINE,
+    OrderStatus.LIVRE,
+];
+
 /**
  * Whether an order in the given status may still be paid.
  * Fail-closed: an unknown/empty status is treated as not payable.
@@ -22,6 +28,42 @@ export const NON_PAYABLE_STATUSES: readonly string[] = [
 export function isPayableStatus(status: string | null | undefined): boolean {
     if (!status) return false;
     return !NON_PAYABLE_STATUSES.includes(status);
+}
+
+/**
+ * Whether an order may be cancelled. Only pre-delivery, non-terminal orders:
+ * cancelling frees codes back to sellable stock, so a delivered order
+ * (TERMINE/LIVRE) must go through the return workflow instead, and a terminal
+ * order (ANNULE/REMBOURSE) must not be touched again. Fail-closed.
+ */
+export function isCancellable(status: string | null | undefined): boolean {
+    if (!status) return false;
+    return !NON_PAYABLE_STATUSES.includes(status) && !DELIVERED_STATUSES.includes(status);
+}
+
+/**
+ * Whether an order may be fully refunded: money must have been taken
+ * (PARTIEL/PAYE/LIVRE/TERMINE) and it must not already be terminal. Fail-closed.
+ */
+export function isRefundable(status: string | null | undefined): boolean {
+    return (
+        status === OrderStatus.PARTIEL ||
+        status === OrderStatus.PAYE ||
+        status === OrderStatus.LIVRE ||
+        status === OrderStatus.TERMINE
+    );
+}
+
+/**
+ * Whether an order may be marked delivered/done: only from a paid state.
+ * Blocks marking an unpaid order delivered or re-marking a terminal one.
+ */
+export function canMarkDelivered(status: string | null | undefined): boolean {
+    return (
+        status === OrderStatus.PAYE ||
+        status === OrderStatus.PARTIEL ||
+        status === OrderStatus.LIVRE
+    );
 }
 
 /**
