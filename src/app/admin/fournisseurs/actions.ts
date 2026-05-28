@@ -2,7 +2,7 @@
 
 import { db } from "@/db";
 import { suppliers, supplierTransactions } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { withAuth } from "@/lib/security";
 import { z } from "zod";
@@ -60,9 +60,12 @@ export const rechargeSupplierAction = withAuth(
                 const supplier = await tx.query.suppliers.findFirst({ where: eq(suppliers.id, data.supplierId) });
                 if (!supplier) throw new Error("Fournisseur introuvable");
 
-                const newBalance = (parseFloat(supplier.balance || "0") + parseFloat(data.amount)).toString();
-
-                await tx.update(suppliers).set({ balance: newBalance }).where(eq(suppliers.id, data.supplierId));
+                // Atomic increment (matches allocateOrderStock / reverseSupplierDebits /
+                // updateItemPurchasePrice). A JS read-modify-write here would lose a
+                // concurrent sale debit (which updates balance via sql`balance - x`).
+                await tx.update(suppliers)
+                    .set({ balance: sql`${suppliers.balance} + ${parseFloat(data.amount)}` })
+                    .where(eq(suppliers.id, data.supplierId));
                 await tx.insert(supplierTransactions).values({
                     supplierId: data.supplierId,
                     type: "RECHARGE",
