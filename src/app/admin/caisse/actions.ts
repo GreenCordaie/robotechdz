@@ -1,7 +1,7 @@
 ﻿"use server";
 
 import { db } from "@/db";
-import { orders, digitalCodes, digitalCodeSlots, orderItems, suppliers, supplierTransactions, productVariantSuppliers, clients, clientPayments, shopSettings, resellers } from "@/db/schema";
+import { orders, digitalCodes, digitalCodeSlots, orderItems, suppliers, supplierTransactions, productVariantSuppliers, clients, clientPayments, shopSettings, resellers, resellerWallets, resellerTransactions } from "@/db/schema";
 import { eq, sql, desc, exists, and, inArray, count, gte, asc } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { sendTelegramNotification } from "@/lib/telegram";
@@ -617,23 +617,26 @@ export const approveReturn = withAuth(
                     }
                 }
 
-                // 4. Handle Reseller Balance Restoration
+                // 4. Reseller refund — `resellers` has no balance column; credit the
+                // reseller WALLET and trace it in reseller_transactions (fix certified by module ②).
                 if (order.resellerId) {
-                    await tx.execute(
-                        sql`UPDATE resellers SET balance = balance + ${returnReq.montant} WHERE id = ${order.resellerId}`
-                    );
-
-                    // Log transaction for traceability
-                    await tx.insert(supplierTransactions).values({
-                        resellerId: order.resellerId,
-                        orderId: order.id,
-                        type: SupplierTransactionType.RECHARGE,
-                        paymentStatus: "PAID",
-                        paidAt: new Date(),
-                        amount: returnReq.montant,
-                        currency: "DZD",
-                        reason: `Remboursement Commande #${order.id} (Retour Approuvé)`
-                    } as any);
+                    const [wallet] = await tx
+                        .select({ id: resellerWallets.id })
+                        .from(resellerWallets)
+                        .where(eq(resellerWallets.resellerId, order.resellerId))
+                        .for("update");
+                    if (wallet) {
+                        await tx.update(resellerWallets)
+                            .set({ balance: sql`${resellerWallets.balance} + ${returnReq.montant}`, updatedAt: new Date() })
+                            .where(eq(resellerWallets.id, wallet.id));
+                        await tx.insert(resellerTransactions).values({
+                            walletId: wallet.id,
+                            type: "REFUND",
+                            amount: String(returnReq.montant),
+                            orderId: order.id,
+                            description: `Remboursement Commande #${order.id} (Retour Approuvé)`,
+                        });
+                    }
                 }
 
                 // 5. Restore VENDU digital codes → DISPONIBLE
