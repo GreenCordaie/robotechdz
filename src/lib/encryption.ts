@@ -71,3 +71,30 @@ export function decrypt(encryptedText: string): string | null {
         return null;
     }
 }
+
+/**
+ * True only for values produced by `encrypt`: `iv(24 hex).authTag(32 hex).data(hex)`
+ * AND that decrypt successfully (GCM auth passes). Cleartext — even dotted —
+ * won't satisfy all three, so this safely distinguishes ciphertext from plaintext.
+ * Used by the settings backfill to stay idempotent.
+ */
+export function isEncrypted(value: string | null | undefined): boolean {
+    if (!value || typeof value !== "string") return false;
+    const parts = value.split(".");
+    if (parts.length !== 3) return false;
+    const [iv, authTag, data] = parts;
+    if (!/^[0-9a-f]{24}$/i.test(iv)) return false;
+    if (!/^[0-9a-f]{32}$/i.test(authTag)) return false;
+    if (!/^[0-9a-f]+$/i.test(data)) return false;
+    return decrypt(value) !== null;
+}
+
+/**
+ * Idempotent plan for the one-shot secret backfill: encrypt cleartext, leave
+ * already-encrypted / empty / null values untouched.
+ */
+export function planSecretEncryption(value: string | null | undefined): { changed: boolean; next: string | null } {
+    if (value == null || value === "") return { changed: false, next: value ?? null };
+    if (isEncrypted(value)) return { changed: false, next: value };
+    return { changed: true, next: encrypt(value) };
+}

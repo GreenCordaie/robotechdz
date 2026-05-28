@@ -18,6 +18,21 @@ import { encrypt } from "@/lib/encryption";
 // Dynamic Query imports are handled inside actions to prevent client-side leakage
 import { UserRole } from "@/lib/constants";
 
+// Columns encrypted at rest (see src/db/encrypted-column.ts). Their values must
+// never be written to the audit log, and a blank submission means "keep current".
+const SECRET_SETTING_KEYS = [
+    "telegramBotToken", "whatsappToken", "whatsappApiKey", "whatsappVerifyToken",
+    "geminiApiKey", "vapidPrivateKey", "microsoftClientSecret", "netflixResolverPassword",
+] as const;
+
+function redactSecretSettings<T extends Record<string, unknown>>(obj: T): Record<string, unknown> {
+    const cleaned: Record<string, unknown> = { ...obj };
+    for (const key of SECRET_SETTING_KEYS) {
+        if (cleaned[key] != null && cleaned[key] !== "") cleaned[key] = "[REDACTED]";
+    }
+    return cleaned;
+}
+
 export const getShopSettingsAction = withAuth(
     { roles: [UserRole.ADMIN] },
     async () => {
@@ -99,17 +114,27 @@ export const saveShopSettingsAction = withAuth(
     async (data, user) => {
         const { SystemQueries } = await import("@/services/queries/system.queries");
         const settings = await SystemQueries.getSettings();
-        const oldData = { ...settings };
 
-        await db.update(shopSettings).set(data).where(eq(shopSettings.id, settings.id));
+        // Blank secret field on save = "keep current": never overwrite an encrypted
+        // secret with an empty string (which would wipe it).
+        const updatePayload = { ...data };
+        for (const key of SECRET_SETTING_KEYS) {
+            const v = (updatePayload as Record<string, unknown>)[key];
+            if (v === "" || v === null || v === undefined) {
+                delete (updatePayload as Record<string, unknown>)[key];
+            }
+        }
 
+        await db.update(shopSettings).set(updatePayload).where(eq(shopSettings.id, settings.id));
+
+        // Audit the change but never persist secret values (redacted to a marker).
         await logSecurityAction({
             userId: user.id,
             action: "UPDATE_SETTINGS",
             entityType: "SHOP_SETTINGS",
             entityId: settings.id.toString(),
-            oldData,
-            newData: data
+            oldData: redactSecretSettings(settings as Record<string, unknown>),
+            newData: redactSecretSettings(updatePayload as Record<string, unknown>),
         });
 
         revalidatePath("/admin/settings");

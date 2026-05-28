@@ -1,6 +1,7 @@
 import { pgTable, serial, text, timestamp, numeric, integer, boolean, jsonb, pgEnum, index, uniqueIndex, uuid, varchar } from "drizzle-orm/pg-core";
 import { relations, sql } from "drizzle-orm";
 import { OrderStatus, UserRole, ClientActionType, DeliveryMethod, SupplierTransactionType, DigitalCodeStatus, DigitalCodeSlotStatus, OrderSource } from "@/lib/constants";
+import { encryptedText } from "./encrypted-column";
 
 export const orderStatusEnum = pgEnum("order_status", Object.values(OrderStatus) as [string, ...string[]]);
 export const userRoleEnum = pgEnum("user_role", Object.values(UserRole) as [string, ...string[]]);
@@ -257,13 +258,13 @@ export const shopSettings = pgTable("shop_settings", {
     logoUrl: text("logo_url"),
     dashboardLogoUrl: text("dashboard_logo_url"),
     faviconUrl: text("favicon_url"),
-    telegramBotToken: text("telegram_bot_token"),
+    telegramBotToken: encryptedText("telegram_bot_token"),
     telegramChatId: text("telegram_chat_id"),
     telegramChatIdAdmin: text("telegram_chat_id_admin"),
     telegramChatIdCaisse: text("telegram_chat_id_caisse"),
     telegramChatIdTraiteur: text("telegram_chat_id_traiteur"),
     webhookUrl: text("webhook_url"),
-    whatsappToken: text("whatsapp_token"),
+    whatsappToken: encryptedText("whatsapp_token"),
     whatsappPhoneId: text("whatsapp_phone_id"),
     isB2bEnabled: boolean("is_b2b_enabled").default(false).notNull(),
     defaultResellerDiscount: numeric("default_reseller_discount", { precision: 5, scale: 2 }).default("5.00"),
@@ -271,7 +272,7 @@ export const shopSettings = pgTable("shop_settings", {
     isMaintenanceMode: boolean("is_maintenance_mode").default(false).notNull(),
     allowedIps: text("allowed_ips"),
     whatsappApiUrl: text("whatsapp_api_url").default("http://localhost:3001"),
-    whatsappApiKey: text("whatsapp_api_key"),
+    whatsappApiKey: encryptedText("whatsapp_api_key"),
     whatsappInstanceName: text("whatsapp_instance_name").default("FLEXBOX_BOT"),
     // EPIC 2 / Phase A — Toggle global pour l'envoi auto WhatsApp post-paiement kiosk.
     // Default true = comportement historique préservé. False = le caissier doit
@@ -282,19 +283,19 @@ export const shopSettings = pgTable("shop_settings", {
     chatbotEnabled: boolean("chatbot_enabled").default(false).notNull(),
     chatbotGreeting: text("chatbot_greeting"),
     whatsappWebhookUrl: text("whatsapp_webhook_url"),
-    whatsappVerifyToken: text("whatsapp_verify_token"),
-    geminiApiKey: text("gemini_api_key"),
+    whatsappVerifyToken: encryptedText("whatsapp_verify_token"),
+    geminiApiKey: encryptedText("gemini_api_key"),
     chatbotRole: text("chatbot_role"),
     n8nWebhookUrl: text("n8n_webhook_url"),
     usdExchangeRate: numeric("usd_exchange_rate", { precision: 10, scale: 2 }).default("245.00").notNull(),
     vapidPublicKey: text("vapid_public_key"),
-    vapidPrivateKey: text("vapid_private_key"),
+    vapidPrivateKey: encryptedText("vapid_private_key"),
     stockAlertThreshold: integer("stock_alert_threshold").default(5).notNull(),
     netflixResolverEmail: text("netflix_resolver_email"),
-    netflixResolverPassword: text("netflix_resolver_password"),
+    netflixResolverPassword: encryptedText("netflix_resolver_password"),
     microsoftClientId: text("microsoft_client_id"),
     microsoftTenantId: text("microsoft_tenant_id"),
-    microsoftClientSecret: text("microsoft_client_secret"),
+    microsoftClientSecret: encryptedText("microsoft_client_secret"),
     microsoftRedirectUri: text("microsoft_redirect_uri"),
 });
 
