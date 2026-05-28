@@ -191,6 +191,35 @@ crontab -e
 
 ---
 
+## 7b. Tâches planifiées (cron) — fiabilité LoadBrain
+
+Trois endpoints (protégés par `CRON_SECRET`) doivent tourner périodiquement, sinon
+des livraisons ratées ne sont jamais réessayées et des commandes peuvent rester
+bloquées en `PENDING_LOADBRAIN` quand un webhook entrant est manqué :
+
+| Endpoint | Rôle | Cadence conseillée |
+|----------|------|--------------------|
+| `GET /api/admin/cron/webhook-retries` (header `Authorization: Bearer $CRON_SECRET`) | Rejoue la DLQ des webhooks sortants reseller | toutes les minutes |
+| `POST /api/admin/g2bulk/reconcile` (header `x-cron-secret: $CRON_SECRET`) | Rattrape les commandes G2Bulk dont le webhook a été manqué | toutes les ~10 min |
+| `POST /api/admin/iptv/reconcile` (header `x-cron-secret: $CRON_SECRET`) | Idem pour l'IPTV reseller | toutes les ~10 min |
+
+Le script `scripts/cron-tick.sh` appelle ces endpoints avec les bons headers. Ils
+sont idempotents (verrous `FOR UPDATE` + gardes de statut / `SKIP LOCKED`), donc les
+faire tourner en parallèle d'un autre scheduler (n8n) est sans risque.
+
+```bash
+crontab -e
+# Ajouter (adapter CRON_APP_URL au domaine public de l'app) :
+* * * * *    CRON_SECRET=xxxx CRON_APP_URL=https://app.example.com /var/www/100-pc-ia/scripts/cron-tick.sh retries   >> /var/log/robotech-cron.log 2>&1
+*/10 * * * * CRON_SECRET=xxxx CRON_APP_URL=https://app.example.com /var/www/100-pc-ia/scripts/cron-tick.sh reconcile >> /var/log/robotech-cron.log 2>&1
+```
+
+`CRON_SECRET` doit être identique à la variable d'environnement de l'app. Variante
+Docker : `docker exec robotech-app sh scripts/cron-tick.sh reconcile` (le conteneur
+a déjà `CRON_SECRET` + `NEXT_PUBLIC_APP_URL`).
+
+---
+
 ## 8. Monitoring / Updates
 
 ```bash
