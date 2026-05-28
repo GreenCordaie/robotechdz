@@ -19,6 +19,7 @@ import {
     type ComputedPrice,
 } from "@/services/g2bulk-pricing.service";
 import { ResellerNotifications } from "@/services/reseller-notifications.service";
+import { markRefunded } from "@/services/g2bulk-reconciler.service";
 import { buildGameWonSnapshot } from "./game-snapshot";
 
 /* ----------------------------------------------------------------------
@@ -291,7 +292,13 @@ export const createG2BulkGameOrderAction = withAuth(
             const orderNumber = `G2G-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
             const externalOrderId = `${orderNumber}-0`;
 
-            const res = await db.transaction(async (tx) => {
+            // Phase 1 — débit atomique + ordre + miroir PENDING (lbOrderId=null).
+            // L'appel HTTP upstream est SORTI de la transaction : sinon le verrou
+            // FOR UPDATE du wallet est tenu pendant tout le timeout réseau et
+            // sérialise les checkouts du reseller. Le reconciler ne ramasse que
+            // les lignes lbOrderId NOT NULL, donc une ligne PENDING sans lbOrderId
+            // n'est jamais polled tant que la phase 2 n'a pas réussi.
+            const created = await db.transaction(async (tx) => {
                 const lockedWallet = await tx
                     .select()
                     .from(resellerWallets)
@@ -326,13 +333,37 @@ export const createG2BulkGameOrderAction = withAuth(
                 await tx.insert(resellerTransactions).values({
                     walletId: reseller.wallet!.id,
                     type: "PURCHASE",
-                    amount: totalAmount.toString(),
+                    amount: totalAmount.toFixed(2),
                     orderId: newOrder.id,
                     description: `Top-up ${gameCode} - ${orderNumber}`,
                 });
 
-                // Place the upstream top-up order.
-                const lb = await lbGames<{ orderId?: string; status?: string }>(
+                const [g2bRow] = await tx
+                    .insert(g2bulkOrders)
+                    .values({
+                        localOrderId: newOrder.id,
+                        resellerId: reseller.id,
+                        productId: `game:${catalogueId}`,
+                        quantity,
+                        pricePaidDzd: totalAmount.toFixed(2),
+                        lbOrderId: null,
+                        status: "PENDING_LOADBRAIN",
+                        wonSnapshot: buildGameWonSnapshot({
+                            gameCode,
+                            catalogueId,
+                            packageName: pkg.name,
+                            player,
+                        }),
+                    })
+                    .returning();
+
+                return { id: newOrder.id, orderNumber, g2bRow };
+            });
+
+            // Phase 2 — appel HTTP upstream HORS transaction (aucun verrou tenu).
+            let lb: { orderId?: string; status?: string };
+            try {
+                lb = await lbGames<{ orderId?: string; status?: string }>(
                     "/api/v2/g2bulk/games/orders",
                     {
                         method: "POST",
@@ -345,26 +376,43 @@ export const createG2BulkGameOrderAction = withAuth(
                         }),
                     },
                 );
+            } catch (httpErr) {
+                // Compensation : la commande n'a jamais été placée upstream → on
+                // recrédite le wallet et on marque l'ordre REFUNDED. Réutilise le
+                // chemin éprouvé du reconciler (idempotent via la garde de statut).
+                await markRefunded(db, created.g2bRow, "placement_failed");
+                const msg = httpErr instanceof Error ? httpErr.message : String(httpErr);
+                console.error("[createG2BulkGameOrderAction] upstream placement failed, refunded:", msg);
+                return {
+                    success: false as const,
+                    error: "Commande fournisseur indisponible — votre solde a été recrédité.",
+                };
+            }
 
-                await tx.insert(g2bulkOrders).values({
-                    localOrderId: newOrder.id,
-                    resellerId: reseller.id,
-                    productId: `game:${catalogueId}`,
-                    quantity,
-                    pricePaidDzd: totalAmount.toFixed(2),
-                    lbOrderId: lb.orderId ?? null,
-                    status: "PENDING_LOADBRAIN",
-                    wonSnapshot: buildGameWonSnapshot({
-                        gameCode,
-                        catalogueId,
-                        packageName: pkg.name,
-                        player,
-                        lb,
-                    }),
-                });
-
-                return { id: newOrder.id, orderNumber };
+            // Phase 3 — succès upstream : enregistre lbOrderId + snapshot complet.
+            await db.transaction(async (tx) => {
+                const [fresh] = await tx
+                    .select()
+                    .from(g2bulkOrders)
+                    .where(eq(g2bulkOrders.id, created.g2bRow.id))
+                    .for("update");
+                if (!fresh || fresh.status !== "PENDING_LOADBRAIN") return; // déjà réconcilié
+                await tx
+                    .update(g2bulkOrders)
+                    .set({
+                        lbOrderId: lb.orderId ?? null,
+                        wonSnapshot: buildGameWonSnapshot({
+                            gameCode,
+                            catalogueId,
+                            packageName: pkg.name,
+                            player,
+                            lb,
+                        }),
+                    })
+                    .where(eq(g2bulkOrders.id, created.g2bRow.id));
             });
+
+            const res = { id: created.id, orderNumber: created.orderNumber };
 
             ResellerNotifications.notifyOrderConfirmed({
                 resellerId: reseller.id,

@@ -7,7 +7,7 @@ import {
     resellerWallets,
     resellerTransactions,
 } from "@/db/schema";
-import { eq, and, isNotNull, inArray, sql } from "drizzle-orm";
+import { eq, and, isNotNull, isNull, inArray, sql } from "drizzle-orm";
 import { lbV2 } from "@/lib/loadbrain-v2";
 import { encrypt } from "@/lib/encryption";
 
@@ -66,6 +66,36 @@ export async function reconcilePendingG2BulkOrders(
             result.errors.push({
                 g2bulkOrderId: row.id,
                 lbOrderId: row.lbOrderId,
+                reason: err instanceof Error ? err.message : String(err),
+            });
+        }
+    }
+
+    // Orphan sweep — rows debited whose upstream placement never recorded an
+    // lbOrderId (e.g. a crash in the checkout between the debit commit and the
+    // HTTP call). After a safety delay they cannot still be a legit in-flight
+    // placement → refund (markRefunded is idempotent on the status guard).
+    const STALE_ORPHAN_MINUTES = 15;
+    const orphans = await db
+        .select()
+        .from(g2bulkOrders)
+        .where(
+            and(
+                eq(g2bulkOrders.status, "PENDING_LOADBRAIN"),
+                isNull(g2bulkOrders.lbOrderId),
+                sql`${g2bulkOrders.createdAt} < NOW() - (${STALE_ORPHAN_MINUTES}::int * INTERVAL '1 minute')`,
+            ),
+        )
+        .limit(limit);
+    for (const row of orphans) {
+        result.scanned++;
+        try {
+            await markRefunded(db, row, "placement_orphan");
+            result.refunded++;
+        } catch (err) {
+            result.errors.push({
+                g2bulkOrderId: row.id,
+                lbOrderId: null,
                 reason: err instanceof Error ? err.message : String(err),
             });
         }
@@ -146,7 +176,7 @@ async function markDelivered(
     });
 }
 
-async function markRefunded(
+export async function markRefunded(
     db: DbLike,
     g2bRow: typeof g2bulkOrders.$inferSelect,
     upstreamStatus: string,
