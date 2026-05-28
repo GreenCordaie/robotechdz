@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { isNetflixHouseholdUrl } from "@/lib/netflix-url";
 
 interface Props {
     token: string;
@@ -165,22 +166,31 @@ export function ActivationClient(props: Props) {
 
                     {latest?.type === "HOUSEHOLD_LINK" && (
                         <div className="py-2">
-                            <div className="mb-4 text-sm text-neutral-300">
-                                📺 Netflix demande de mettre à jour le foyer. Clique sur le bouton ci-dessous
-                                pour valider.
-                            </div>
-                            <a
-                                href={latest.value}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="block w-full text-center bg-red-600 hover:bg-red-500 text-white font-semibold py-4 rounded-xl transition"
-                            >
-                                Mettre à jour le foyer
-                            </a>
-                            <div className="mt-4 rounded-lg bg-amber-500/10 border border-amber-500/30 px-3 py-2 text-xs text-amber-200">
-                                ⚠️ Important : ouvre ce lien sur ton mobile en <b>4G/5G</b> (pas en Wi-Fi)
-                                pour que la validation fonctionne du premier coup.
-                            </div>
+                            {isNetflixHouseholdUrl(latest.value) ? (
+                                <>
+                                    <div className="mb-4 text-sm text-neutral-300">
+                                        📺 Netflix demande de mettre à jour le foyer. Clique sur le bouton ci-dessous
+                                        pour valider.
+                                    </div>
+                                    <a
+                                        href={latest.value}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="block w-full text-center bg-red-600 hover:bg-red-500 text-white font-semibold py-4 rounded-xl transition"
+                                    >
+                                        Mettre à jour le foyer
+                                    </a>
+                                    <div className="mt-4 rounded-lg bg-amber-500/10 border border-amber-500/30 px-3 py-2 text-xs text-amber-200">
+                                        ⚠️ Important : ouvre ce lien sur ton mobile en <b>4G/5G</b> (pas en Wi-Fi)
+                                        pour que la validation fonctionne du premier coup.
+                                    </div>
+                                </>
+                            ) : (
+                                <div className="rounded-lg bg-amber-500/10 border border-amber-500/30 px-3 py-3 text-sm text-amber-200">
+                                    📺 Une demande de mise à jour du foyer est en cours de traitement.
+                                    Contacte ton vendeur si l&apos;accès reste bloqué.
+                                </div>
+                            )}
                         </div>
                     )}
                 </section>

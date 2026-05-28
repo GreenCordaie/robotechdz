@@ -1,4 +1,5 @@
 import { MicrosoftAuthService } from "./microsoft-auth.service";
+import { isNetflixHouseholdUrl, isNetflixSenderAddress } from "@/lib/netflix-url";
 
 export interface GraphEmail {
     id: string;
@@ -16,12 +17,6 @@ export interface GraphEmail {
 }
 
 export class MicrosoftGraphService {
-    private static readonly NETFLIX_SENDERS = [
-        'info@account.netflix.com',
-        'noreply@mailer.netflix.com',
-        'info@mailer.netflix.com'
-    ];
-
     /**
      * Récupère le dernier email Netflix via Microsoft Graph API.
      * @param digitalCodeId Si fourni, sauvegarde le nouveau refresh_token si Microsoft en retourne un.
@@ -38,10 +33,12 @@ export class MicrosoftGraphService {
                 digitalCodeId
             );
 
+            // Strict sender check: only genuine *.netflix.com senders. A loose
+            // substring match on the address or subject (the old behaviour) let
+            // an attacker drop a crafted "netflix" email into the watched mailbox
+            // and have its body parsed for a (malicious) household link.
             const isNetflixEmail = (m: GraphEmail) =>
-                this.NETFLIX_SENDERS.includes(m.from?.emailAddress?.address?.toLowerCase()) ||
-                m.from?.emailAddress?.address?.toLowerCase().includes('netflix') ||
-                m.subject?.toLowerCase().includes('netflix');
+                isNetflixSenderAddress(m.from?.emailAddress?.address);
 
             // Dossiers à scanner : inbox + junkemail (spam) + deleteditems
             const folders = ['inbox', 'junkemail', 'deleteditems'];
@@ -108,7 +105,16 @@ export class MicrosoftGraphService {
         const linkRegex = /https:\/\/www\.netflix\.com[^\s"<>]*(?:update-household|manage-household|verify|ilum|approuver|signin)[^\s"<>]*/i;
         const linkMatch = content.match(linkRegex);
         if (linkMatch) {
-            return { type: 'LINK', value: linkMatch[0].replace(/&amp;/g, '&') };
+            const value = linkMatch[0].replace(/&amp;/g, '&');
+            // The regex anchors on a www.netflix.com PREFIX only, so userinfo
+            // (www.netflix.com@evil.com) or subdomain (www.netflix.com.evil.com)
+            // confusion would slip a non-Netflix host through to the auto-approve
+            // click and the customer's href. Parse + verify the real host.
+            if (isNetflixHouseholdUrl(value)) {
+                return { type: 'LINK', value };
+            }
+            // Not a real Netflix host → ignore the link, fall through to code
+            // detection below.
         }
 
         // 2. Code affiché avec espaces entre chiffres : "1 2 3 4" → "1234"
