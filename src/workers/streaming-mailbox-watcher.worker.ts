@@ -373,6 +373,7 @@ export async function runOnePass(db: any, deps: PollDeps = {}): Promise<{
 }
 
 let _interval: NodeJS.Timeout | null = null;
+let _running = false;
 
 export function initStreamingMailboxWatcher() {
     if (process.env.STREAMING_DEEPLINK_MODE !== "true") {
@@ -381,6 +382,15 @@ export function initStreamingMailboxWatcher() {
     }
     if (_interval) return;
     const tick = async () => {
+        // Re-entrancy guard: a slow pass (many accounts / slow MS Graph) can run
+        // longer than the 30s interval. Without this, a second tick would start
+        // while the first is still polling → double MS Graph calls + a self-race
+        // on msLastSync. Overlapping ticks simply skip until the current ends.
+        if (_running) {
+            console.warn("[StreamingWatcher] previous pass still running — skipping tick");
+            return;
+        }
+        _running = true;
         try {
             const { db } = await import("@/db");
             const { streamingEventBus } = await import("@/lib/streaming-event-bus");
