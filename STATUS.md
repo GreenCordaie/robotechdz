@@ -26,6 +26,14 @@
 [2026-05-28 14:13] B3 DONE Audit streaming clos — 6 commits: a1c3b09 (C1/H4 validation host www.netflix.com via netflix-url.ts + filtre sender strict), cc9777f (H2 quota fail-closed bump-avant-rendu + re-check), dfbfb24 (H1 rate-limit /api/activer events+heartbeat), 8b1d10f (SSE livraison exactly-once), e6eb6d2 (guard msAccountEmail), 7303f38 (re-entrance setInterval watcher). tsc 0, 245 tests verts. Zone B3 = FINI.
 [2026-05-28 14:13] B3 DONE Côté B1/MFA (pairing, même session): primitive mfa-ticket.ts (2c241d1, 7 tests) + admin câblé (ddf370a, fuite TOTP retirée des logs) + reseller câblé (d42199a, check claims.role===RESELLER). Étape 2 MFA exige le ticket signé étape-1 (plus de userId client). Zone B1 = FINI. CAVEAT: smoke-test 2FA navigateur NON fait (pas de TOTP live générable) — à valider avant prod.
 [2026-05-28 14:13] B3 QUESTION → Chef: scripts/check-zone.sh (référencé dans le protocole pull→check-zone→STATUS→push) est ABSENT du repo → step 2 infaisable pour tous les agents. À committer ou ajuster le protocole.
+[2026-05-28 14:55] chef ACK B2 errors/security DONE 5 commits, 257 tests verts, anti-leak + double-refund FOR UPDATE + reseller_wallets refund. Excellent travail. B2 idle.
+[2026-05-28 14:55] chef ACK B3 streaming audit DONE 6 commits (a1c3b09..dfbfb24), validation host www.netflix.com + quota fail-closed + rate-limit + SSE exactly-once + setInterval re-entrance. CAVEAT 2FA smoke-test pris en compte — à ajouter à la checklist deploy prod.
+[2026-05-28 14:55] chef ACK B1 MFA hardening DONE via B3 pairing (mfa-ticket.ts + admin + reseller). Ticket signé étape-1 → étape-2. Pattern à propager si futur flow multi-step.
+[2026-05-28 14:55] chef ANSWER B3 question check-zone.sh: le script n'existe que côté LoadBrain (LoadBrain/scripts/check-zone.sh, commit 55bd5f1). Côté boutique, protocole simplifié = juste `git diff --name-only` pour vérifier ta zone manuellement, puis `git commit <paths>` (pas `git add`). Si besoin d'un script boutique, je le drop en suivant — pour l'instant les 5 zones B1-B5 sont assez disjointes que le risque est faible.
+[2026-05-28 14:55] chef ANSWER B2 question credentials-settings page: feature stratégique (centraliser secrets WAHA, MS Graph, n8n, OAuth, Stripe). OWNER = nouvel agent B6 ou réassignement B2 (idle). Scope multi-zone (schema chef + admin/settings non-assigné + secrets B5) donc nécessite COORDINATION explicite avant code. Spec déjà écrite (045f90a) — bonne base. DÉCISION : on garde la spec sur la branche, on assignera B6 après le deploy actuel. Bloquant : non.
+[2026-05-28 14:55] chef NOTE loyalty_points / total_spent_dzd dead feature (signalé par B2 13:58) → produit decision, hors zone agents. Marquée comme tech-debt à arbitrer avec produit.
+[2026-05-28 14:55] chef NOTE Production reseller 02/12/13 e2e ROUGE = B5 zone (reseller UI notifications + sidebar 'Mes Webhooks' + lien notif-prefs). À investiguer dès que B5 finit son travail en cours sur lib/loadbrain-whatsapp.ts.
+[2026-05-28 14:55] chef DECISION discipline ALL AGENTS (boutique aussi) : `git commit -- <paths>` mandatory, plus de `git add .`. Sweep race observée côté LoadBrain (commit 4e2d029). Cf. LoadBrain STATUS.md 14:50 chef ACK.
 ```
 
 ## Conflits détectés
@@ -42,6 +50,19 @@
 2. **MFA step transition** : signed HMAC ticket avec TTL (B1) — utiliser pour tout flow multi-step futur.
 3. **Errors client** : ne JAMAIS leak les messages d'erreur bruts. `toClientError(err)` (B2) à utiliser partout.
 4. **Streaming watcher** : guard sur `ms_account_email` IS NOT NULL (B3) — évite gaspillage de refresh MS Graph.
+5. **LoadBrain client SDK** : tous les appels vers LoadBrain passent par `src/lib/loadbrain-*.ts` avec `LOADBRAIN_INTERNAL_TOKEN` header (chef).
+6. **Netflix URL validation** : helper centralisé `src/lib/netflix-url.ts` pour valider host www.netflix.com avant tout fetch/redirect (B3).
+7. **Rate-limit** : `/api/activer/*` rate-limité par token (B3 dfbfb24).
+8. **SSE livraison** : exactly-once via dedup index (B3 8b1d10f).
+9. **Git discipline** : `git commit -- <paths>` mandatory (sweep race observée côté LoadBrain 14:50).
+
+## Next actions (chef)
+
+- [ ] **Réassigner B2** (idle) sur durcissement auth ou audit caisse remaining.
+- [ ] **Assigner B6 (futur)** à la spec credentials-settings page (045f90a).
+- [ ] **Investiguer e2e ROUGES** : 02-reseller-flow + 12-sidebar + 13-notif-prefs (zone B5 quand finit).
+- [ ] **Smoke test 2FA navigateur** avant deploy prod (CAVEAT B3).
+- [ ] **Reset loyalty_points** : décision produit avant le prochain release.
 5. **LoadBrain client SDK** : tous les appels vers LoadBrain passent par `src/lib/loadbrain-*.ts` avec `LOADBRAIN_INTERNAL_TOKEN` header (chef).
 
 ## Sync events
