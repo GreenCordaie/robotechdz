@@ -76,15 +76,22 @@ export async function GET(
                 for (const evt of pending) {
                     const value = decrypt(evt.valueEncrypted);
                     if (!value) continue;
+                    // Atomically CLAIM the event before sending it. The guarded
+                    // UPDATE (deliveredToSession=false) lets only ONE concurrent
+                    // SSE connection win each row, so two tabs / two slots of the
+                    // same account can't both deliver the same OTP/household
+                    // event (exactly-once delivery).
+                    const claimed = await db
+                        .update(slotEvents)
+                        .set({ deliveredToSession: true, deliveredAt: new Date(), slotId })
+                        .where(and(eq(slotEvents.id, evt.id), eq(slotEvents.deliveredToSession, false)))
+                        .returning({ id: slotEvents.id });
+                    if (claimed.length === 0) continue; // another connection won
                     send("slot_event", {
                         type: evt.eventType,
                         value,
                         timestamp: (evt.receivedAt ?? new Date()).toISOString(),
                     });
-                    await db
-                        .update(slotEvents)
-                        .set({ deliveredToSession: true, deliveredAt: new Date(), slotId })
-                        .where(eq(slotEvents.id, evt.id));
                 }
             } catch (err: any) {
                 console.error("[SSE replay] failed:", err?.message);
