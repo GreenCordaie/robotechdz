@@ -250,7 +250,7 @@ export const IptvCheckoutModal: React.FC<IptvCheckoutModalProps> = ({
                         isDisabled={isSubmitting || missingApp}
                         className="bg-[#FACC15] text-black font-black"
                     >
-                        Confirmer l'achat
+                        Confirmer l&apos;achat
                     </Button>
                 </ModalFooter>
             </ModalContent>
