@@ -72,16 +72,20 @@
 
 ## Next actions (chef)
 
-- [ ] **Réassigner B2** (idle) sur durcissement auth ou audit caisse remaining.
-- [ ] **Assigner B6 (futur)** à la spec credentials-settings page (045f90a).
-- [ ] **Investiguer e2e ROUGES** : 02-reseller-flow + 12-sidebar + 13-notif-prefs (zone B5 quand finit).
+- [x] **B2** : audit caisse remaining (payOrder/recordPayment tests) en cours par B2. + nouveau ticket wallet hold→debit ligne ID 7 IPTV (chef SYNC-LOADBRAIN 19:50, sync depuis LoadBrain).
+- [x] **B6** : Phase 1 credentials encrypted-at-rest DONE (commits 98d9459→b0e43c1, push origin ec6f6e0). Phase 2 UI hardening (SUPER_ADMIN reveal-on-demand + hasX badges) DEFERRED.
+- [x] **e2e 12/13 ROUGES** : B5 root-cause + fix DONE (commit WIP en attente B5, ResellerSidebar→ShopTopNav dropdown). Smoke navigateur à confirmer en CI une fois stack :4555+DB seedée levée.
+- [ ] **e2e 02-reseller-flow ROUGE** : environnemental (seed OK selon B5, manque serveur :4555 + DB seedée en CI). NON-bug code, à confirmer en CI une fois stack levée.
+- [ ] **NOUVEAU: 4 bugs ligne IPTV trial ID 7** (chef SYNC-LOADBRAIN 19:50): wallet B2 + table reseller refonte B5. Voir log 19:50.
 - [ ] **Smoke test 2FA navigateur** avant deploy prod (CAVEAT B3).
+- [ ] **Backfill credentials encrypted-at-rest** : `npx tsx scripts/backfill-encrypt-settings.ts` AVANT/AVEC le deploy boutique (idempotent, B6 ACTION-REQUISE 15:45). AJOUTÉ AU RUNBOOK.
 - [ ] **Reset loyalty_points** : décision produit avant le prochain release.
-5. **LoadBrain client SDK** : tous les appels vers LoadBrain passent par `src/lib/loadbrain-*.ts` avec `LOADBRAIN_INTERNAL_TOKEN` header (chef).
 
 ## Sync events
 
-(none)
+- 2026-05-28 19:50 chef SYNC-LOADBRAIN : 4 bugs IPTV ligne ID 7 broadcastés @B2 (wallet) + @B5 (UI table refonte). Voir log 19:50. Cross-link LoadBrain commit 99821c4 ↔ boutique commit ec6f6e0.
+- 2026-05-28 19:50 chef ACK B6 Phase 1 DONE + branche `feat/bsv-mirror-integrated` pushée à origin (commit ec6f6e0). Backfill ajouté runbook deploy.
+- 2026-05-28 19:50 chef ACK B5 e2e 12/13 root-cause + adapt DONE — B5 doit commit son WIP (ShopTopNav.tsx + e2e 12/13 specs + suppr ResellerSidebar.tsx) avant de prendre le nouveau ticket IPTV.
 
 [2026-05-28 19:50] chef SYNC-LOADBRAIN — relais coord LoadBrain → boutique. Smoke test reseller→prod E2E VALIDÉ à 19:20 (LoadBrain STATUS commit 99821c4). Ligne ID 7 trial 2j IronMax depuis localhost:3050/reseller via LOADBRAIN_URL=https://api.loadbrain.shop = chaîne LoadBrain green bout-en-bout (Telegram session refresh chef 17:30, A3 ironmax fix dfb8941 LIVE, gateway v2 A5 745bcb6 LIVE, marketplace notify 200, poll v2 60s = 200 OK). MAIS 4 bugs reseller-side identifiés (LoadBrain payload complet+correct, consumer reseller ne mappe/débite/transitionne pas):
   --- @B2 wallet/caisse ---
