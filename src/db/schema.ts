@@ -59,9 +59,24 @@ export const suppliers = pgTable("suppliers", {
     id: serial("id").primaryKey(),
     name: text("name").notNull(),
     balance: numeric("balance", { precision: 12, scale: 2 }).default("0"),
-    currency: text("currency").default("DZD"), // 'USD' or 'DZD'
+    currency: text("currency").default("DZD"), // 'USD', 'EUR', 'DZD'
     status: text("status").default("ACTIVE").notNull(), // 'ACTIVE' or 'INACTIVE'
-});
+    // External balance tracking (migration 0024). INTERNAL_STOCK keeps the
+    // legacy behavior; EXTERNAL_API rows are auto-refreshed by the cron and
+    // surface low-balance alerts on /admin/fournisseurs.
+    type: text("type").default("INTERNAL_STOCK").notNull(), // 'INTERNAL_STOCK' | 'EXTERNAL_API'
+    providerKind: text("provider_kind"), // 'capsolver' | 'twocaptcha' | 'anticaptcha' | 'mudfish' | 'lb_bsv' | 'lb_g2bulk' | 'lb_kinguin' | 'lb_ironmax' | ...
+    externalConfig: jsonb("external_config").$type<{
+        endpoint?: string;
+        apiKeyEnv?: string;     // name of env var holding the secret (never store the secret itself here)
+        refreshIntervalS?: number;
+        notes?: string;
+    } | null>(),
+    alertThreshold: numeric("alert_threshold", { precision: 12, scale: 2 }),
+    lastBalanceAt: timestamp("last_balance_at", { mode: "date" }),
+}, (table) => ({
+    typeIdx: index("suppliers_type_idx").on(table.type),
+}));
 
 export const clients = pgTable("clients", {
     id: serial("id").primaryKey(),
