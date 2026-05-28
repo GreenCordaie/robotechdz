@@ -414,7 +414,10 @@ export const IptvLinesTable: React.FC<IptvLinesTableProps> = ({
                                                 </span>
                                             </Td>
                                             <Td>
-                                                <span className="font-mono text-white">
+                                                <span
+                                                    title={row.username ?? ""}
+                                                    className="font-mono text-white tabular-nums"
+                                                >
                                                     {row.username ?? "—"}
                                                 </span>
                                             </Td>

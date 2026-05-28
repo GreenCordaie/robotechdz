@@ -43,6 +43,12 @@ import {
     type IptvOrderStatus,
 } from "@/services/iptv-reseller.service";
 import { checkActionGuard } from "./rate-limit";
+import {
+    pickStr,
+    extractScreen,
+    isUpstreamCompleted,
+    parsePlanDurationDays,
+} from "./screen-extract";
 
 /* ──────────────────────────────────────────────────────────────────────── */
 /* Helpers                                                                 */
@@ -475,73 +481,8 @@ export const listMyIptvOrdersAction = withAuth(
 /* Live lines (admin-panel style table)                                    */
 /* ──────────────────────────────────────────────────────────────────────── */
 
-/** Pick the first non-empty string/number from a candidate key list. */
-function pickStr(obj: unknown, keys: ReadonlyArray<string>): string | null {
-    if (!obj || typeof obj !== "object") return null;
-    const o = obj as Record<string, unknown>;
-    for (const k of keys) {
-        const v = o[k];
-        if (typeof v === "string" && v.trim().length > 0) return v;
-        if (typeof v === "number" && Number.isFinite(v)) return String(v);
-    }
-    return null;
-}
-
-/**
- * Walk the upstream task payload and extract the first screen's
- * `{ username, password, m3uUrl, epgUrl, expiresAt }`. Defensive against
- * missing credentials / screens.
- */
-function extractScreen(upstream: unknown): {
-    username: string | null;
-    password: string | null;
-    m3uUrl: string | null;
-    epgUrl: string | null;
-    expiresAt: string | null;
-} {
-    const empty = {
-        username: null,
-        password: null,
-        m3uUrl: null,
-        epgUrl: null,
-        expiresAt: null,
-    };
-    if (!upstream || typeof upstream !== "object") return empty;
-    const up = upstream as Record<string, unknown>;
-    const creds = (up.credentials ?? up.result ?? null) as
-        | Record<string, unknown>
-        | null;
-    if (!creds || typeof creds !== "object") {
-        // Some providers expose username/m3u at root.
-        return {
-            username: pickStr(up, ["username", "user", "login"]),
-            password: pickStr(up, ["password"]),
-            m3uUrl: pickStr(up, ["m3uUrl", "m3u", "playlist"]),
-            epgUrl: pickStr(up, ["epgUrl", "epg"]),
-            expiresAt: pickStr(up, ["expiresAt", "expiry", "expire_date"]),
-        };
-    }
-    const screens = (creds.screens ?? null) as unknown;
-    if (Array.isArray(screens) && screens.length > 0) {
-        const first = screens[0] as Record<string, unknown>;
-        return {
-            username: pickStr(first, ["username", "user", "login"]),
-            password: pickStr(first, ["password"]),
-            m3uUrl: pickStr(first, ["m3uUrl", "m3u", "playlist"]),
-            epgUrl: pickStr(first, ["epgUrl", "epg"]),
-            expiresAt:
-                pickStr(first, ["expiresAt", "expiry", "expire_date"]) ??
-                pickStr(creds, ["expiresAt", "expiry", "expire_date"]),
-        };
-    }
-    return {
-        username: pickStr(creds, ["username", "user", "login"]),
-        password: pickStr(creds, ["password"]),
-        m3uUrl: pickStr(creds, ["m3uUrl", "m3u", "playlist"]),
-        epgUrl: pickStr(creds, ["epgUrl", "epg"]),
-        expiresAt: pickStr(creds, ["expiresAt", "expiry", "expire_date"]),
-    };
-}
+/* Screen extraction + plan-duration helpers live in ./screen-extract (pure,
+ * unit-tested) — imported above. */
 
 /** Run an array of async producers with bounded concurrency. */
 async function runWithConcurrency<T>(
@@ -628,26 +569,88 @@ export const getMyIptvLinesLiveAction = withAuth(
             });
             const settled = await runWithConcurrency(tasks, 8);
 
+            // Reconcile patches to flush back to the mirror after building the
+            // response. The webhook (`processCompletedTask`) only ever touches
+            // the kiosk tables (orders / digital_codes / iptv_provisions) — it
+            // never updates `reseller_iptv_orders`, so without this lazy
+            // reconcile a completed line stays PENDING_LOADBRAIN forever and
+            // its username/expiry never land. This is the live poll doing what
+            // the webhook omits for the reseller mirror.
+            const reconcilePatches: Array<{
+                id: number;
+                status?: IptvOrderStatus;
+                providerAccountId?: string;
+                expiresAt?: Date;
+            }> = [];
+
             const items = rows.map((row, i) => {
                 const r = settled[i];
                 const upstream = r.status === "fulfilled" ? r.value : null;
                 const screen = extractScreen(upstream);
-                const liveExpires = screen.expiresAt
-                    ? new Date(screen.expiresAt)
-                    : null;
-                const expiresAt =
+                const upstreamCompleted = isUpstreamCompleted(
+                    pickStr(upstream, ["status"]),
+                );
+
+                // Bug 1 — transition the mirror PENDING_LOADBRAIN → ACTIVE once
+                // the upstream task reports completion (with credentials).
+                const effectiveStatus: IptvOrderStatus =
+                    row.status === "PENDING_LOADBRAIN" &&
+                    upstreamCompleted &&
+                    !!screen.username
+                        ? "ACTIVE"
+                        : (row.status as IptvOrderStatus);
+
+                const username = screen.username ?? row.providerAccountId ?? null;
+
+                // Bug 4 — trial lines come back with an empty upstream expiry;
+                // compute it client/server-side from created_at + plan duration.
+                const liveExpires = screen.expiresAt ? new Date(screen.expiresAt) : null;
+                let expiresAt: Date | string | null =
                     liveExpires && !Number.isNaN(liveExpires.getTime())
                         ? liveExpires
                         : row.expiresAt;
+                if (!expiresAt && upstreamCompleted) {
+                    const durationDays = parsePlanDurationDays(
+                        row.productId,
+                        row.productName,
+                    );
+                    if (durationDays) {
+                        const base =
+                            row.createdAt instanceof Date
+                                ? row.createdAt
+                                : new Date(row.createdAt);
+                        if (!Number.isNaN(base.getTime())) {
+                            expiresAt = new Date(
+                                base.getTime() + durationDays * 24 * 60 * 60 * 1000,
+                            );
+                        }
+                    }
+                }
+
+                // Queue a mirror patch when the live feed yields fresher state.
+                const patch: (typeof reconcilePatches)[number] = { id: row.id };
+                if (effectiveStatus !== row.status) patch.status = effectiveStatus;
+                if (username && username !== row.providerAccountId) {
+                    patch.providerAccountId = username;
+                }
+                if (
+                    expiresAt instanceof Date &&
+                    (!row.expiresAt ||
+                        row.expiresAt.getTime() !== expiresAt.getTime())
+                ) {
+                    patch.expiresAt = expiresAt;
+                }
+                if (patch.status || patch.providerAccountId || patch.expiresAt) {
+                    reconcilePatches.push(patch);
+                }
+
                 return {
                     id: row.id,
-                    displayId:
-                        row.upstreamLineId ?? String(row.id),
+                    displayId: row.upstreamLineId ?? String(row.id),
                     provider: row.provider,
-                    status: row.status,
+                    status: effectiveStatus,
                     productName: row.productName,
-                    username:
-                        screen.username ?? row.providerAccountId ?? null,
+                    username,
                     // SECURITY: never ship the password in the bulk endpoint
                     hasPassword: !!screen.password,
                     m3uUrl: screen.m3uUrl,
@@ -668,6 +671,35 @@ export const getMyIptvLinesLiveAction = withAuth(
                     lbTaskId: row.lbTaskId,
                 };
             });
+
+            // Best-effort flush — never let a mirror write failure break the
+            // read. Scoped by reseller_id so a patch can't touch another tenant.
+            if (reconcilePatches.length > 0) {
+                await Promise.allSettled(
+                    reconcilePatches.map((p) =>
+                        db
+                            .update(resellerIptvOrders)
+                            .set({
+                                ...(p.status ? { status: p.status } : {}),
+                                ...(p.providerAccountId
+                                    ? { providerAccountId: p.providerAccountId }
+                                    : {}),
+                                ...(p.expiresAt ? { expiresAt: p.expiresAt } : {}),
+                                ...(p.status === "ACTIVE"
+                                    ? { completedAt: new Date(), lastStatusAt: new Date() }
+                                    : {}),
+                                lastSyncedAt: new Date(),
+                                updatedAt: new Date(),
+                            })
+                            .where(
+                                and(
+                                    eq(resellerIptvOrders.id, p.id),
+                                    eq(resellerIptvOrders.resellerId, ctx.reseller.id),
+                                ),
+                            ),
+                    ),
+                );
+            }
 
             return {
                 success: true as const,
