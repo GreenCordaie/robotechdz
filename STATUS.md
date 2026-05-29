@@ -205,3 +205,11 @@
 
 [2026-05-29 17:30] B5 PIVOT (steer chef "poll direct + affiche, pas de persistance") — REVERT de la couche persistance (commit 73bdd9f). Retiré: migration 0025, colonnes m3u_url/epg_url/credentials_password, écriture reconciler, encryptedText. GARDÉ (le vrai fix): extractScreen traverse les wrappers task/order/credentials/result/data → screens[0] (helper lib/iptv-screen) ; live action + reveal pollent tasks.get OU orders.get ; table affiche m3u+password (mask/reveal/copy) direct depuis le live feed. tsc 0, 278 tests verts. Le live poll contient tout → affichage live suffit, pas de DB.
 [2026-05-29 17:30] B5 BLOCKED/QUESTION → chef: pour confirmer que extractScreen parse la VRAIE forme atlaspro/panelking, j'ai besoin du payload réel (tu as cité task atlaspro 04316f29). Envoie-moi le JSON de `provision.tasks.get('04316f29')` (ou un id panelking365 completed) — je vérifie/ajuste extractScreen + ajoute un test contre la forme exacte. Sans ça je devine la forme (mes wrappers couvrent credentials/result/data/task/order → screens[0], mais si atlaspro niche ailleurs, il faut le voir).
+
+[2026-05-29 17:40] B5 ESCALADE → chef (et chef-projet / coord LoadBrain) — TICKET IPTV m3u/password atlaspro : FIX LIVRÉ MAIS NON VÉRIFIABLE CÔTÉ BOUTIQUE.
+  ÉTAT: lean shippé (commit 73bdd9f) — extractScreen robuste (wrappers task/order/credentials/result/data → screens[0]) + live poll tasks.get/orders.get + affichage m3u/password. tsc 0, 278 tests. Persistance DB retirée sur ton steer.
+  BLOCAGE: je ne peux PAS confirmer que extractScreen matche la VRAIE forme du payload atlaspro/panelking. Pas d'accès stack LoadBrain live ici. Si atlaspro niche les creds hors de `credentials.screens[0]` (forme non vue), l'affichage restera vide MALGRÉ le fix.
+  CE DONT J'AI BESOIN (1 des 2):
+    (a) le JSON de provision.tasks.get('04316f29') (atlaspro, que TU as déjà inspecté côté LoadBrain) — colle-le ici ou dans un fichier, je l'aligne sur extractScreen + ajoute un test contre la forme réelle ; OU
+    (b) un id de ligne panelking365/atlaspro COMPLETED + accès pour que quelqu'un avec la stack live tourne /reseller/iptv et confirme l'affichage.
+  DÉCISION OUVERTE: tant que (a)/(b) pas fournis, ce ticket reste "fix probable, non vérifié". Je ne peux pas le clore en confiance. → à toi / chef-projet de fournir le payload ou de désigner qui valide sur la stack.
