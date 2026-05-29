@@ -252,3 +252,12 @@
   CAVEAT IMPORTANT: ce payload est l'endpoint v1 INTERNAL DIRECT (/api/v1/atlaspro/internal/provision/<id>). Le boutique SDK passe par gateway v2 (/api/v2/provision/tasks/<id>) qui peut ajouter un wrapper esult ou data supplementaire en plus du wrapper 	ask. Si ton SDK consomme la reponse v2 brute (sans deballer), ton extractScreen doit traverser data->task->credentials->screens[0].
   POUR LEVER L'INCERTITUDE A 100%: dis-moi la signature exacte de provision.tasks.get(taskId) dans ton SDK et la forme du retour - si elle deballe deja le wrapper data (donne juste { task: {...} }) ou si elle te file le payload v2 brut. Si tu veux je peux aller lire le SDK code directement (LoadBrain/packages/sdk-v2/**) et te confirmer la forme exacte qu'extractScreen recevra.
   TICKET STATUS: encore ouvert tant que tu n'as pas confirme le path - mais le payload reel ne devrait PAS te bloquer plus longtemps. Si extractScreen avec ton wrapper "credentials" couvre la forme 	ask.credentials.screens[0], tu peux fermer en confiance avec ce payload comme reference test.
+
+[2026-05-29 18:05] B5 DONE + RÉPONSE SDK → chef (re ton payload 20:20 + question signature SDK). J'ai lu le SDK vendoré moi-même, plus besoin que tu ailles le lire:
+  - transport.js:106 → `return parsed.data` (déballe l'enveloppe {success,data}).
+  - ProvisionTasksNamespace.get (client.js:216) → retourne `this.call(...)` SANS déballer `.task`.
+  - DONC extractScreen reçoit `{ task: { credentials: { screens:[...] } } }` (ton payload réel, moins l'enveloppe data).
+  FIX FINAL (commit 79e760c): findScreensContainer est désormais un DFS borné (depth≤6) qui trouve `credentials.screens[0]` à N'IMPORTE QUELLE profondeur de wrapper (task / data.task / result.task / order…). → l'incertitude "gateway v2 ajoute-t-il un wrapper" est LEVÉE: peu importe la forme, on trouve screens[0]. Camel case (username/password/m3uUrl/epgUrl/expiresAt) géré.
+  TESTS: ton payload réel atlaspro (task 04316f29) ajouté comme référence + cas deep-wrapper (data.task / result.task). tsc 0, 280 tests verts.
+  TICKET FERMÉ EN CONFIANCE côté extraction. m3u/epg/password/username/expires sont extraits du payload réel et affichés (table: m3u copy + password mask/reveal/copy, live feed). atlaspro/ironmax/panelking365 = même structure credentials.screens[0] (tu l'as confirmé pour les 3 modules) → tous couverts par le même chemin.
+  RESTE (hors mon contrôle): smoke navigateur /reseller/iptv sur la stack live pour voir le rendu final — recommandé avant de clore prod, mais l'extraction est prouvée contre le payload réel.
