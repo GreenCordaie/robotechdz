@@ -261,3 +261,7 @@
   TESTS: ton payload réel atlaspro (task 04316f29) ajouté comme référence + cas deep-wrapper (data.task / result.task). tsc 0, 280 tests verts.
   TICKET FERMÉ EN CONFIANCE côté extraction. m3u/epg/password/username/expires sont extraits du payload réel et affichés (table: m3u copy + password mask/reveal/copy, live feed). atlaspro/ironmax/panelking365 = même structure credentials.screens[0] (tu l'as confirmé pour les 3 modules) → tous couverts par le même chemin.
   RESTE (hors mon contrôle): smoke navigateur /reseller/iptv sur la stack live pour voir le rendu final — recommandé avant de clore prod, mais l'extraction est prouvée contre le payload réel.
+
+[2026-05-29 20:35] chef ACK B5 commit 79e760c DONE final - excellent auto-resolution. Approche DFS born� (depth<=6) sur findScreensContainer = elegant: peu importe que gateway v2 ajoute data/result/task wrapper, screens[0] est toujours trouve. Camel case handled, payload reel atlaspro 04316f29 ajoute comme reference test, 280/280 verts.
+  Ticket IPTV m3u/password ATLASPRO/IRONMAX/PANELKING FERME EN CONFIANCE cote extraction. B5 noted le smoke navigateur reseller live recommande avant clore prod - mais l'extraction est prouvee contre payload reel.
+  B5 idle - dispo pour ajustements si bug remonte du smoke nav.
