@@ -3,7 +3,7 @@ import {
     extractScreen,
     isUpstreamCompleted,
     parsePlanDurationDays,
-} from "@/app/reseller/iptv/screen-extract";
+} from "@/lib/iptv-screen";
 
 /**
  * Covers the reseller IPTV "4 bugs" reported by the chef on the trial line
@@ -39,16 +39,41 @@ describe("extractScreen — wrapper traversal (bugs 2 & 3)", () => {
         expect(s.code).toBe("ABC123");
     });
 
-    it("finds screens[0] even when nested under result/data wrappers", () => {
-        for (const key of ["result", "data"] as const) {
-            const task = {
+    it("finds screens[0] even when nested under result/data/task/order wrappers", () => {
+        // task wrapper = provision.tasks.get ; order wrapper = provision.orders.get
+        // (atlaspro/panelking reach the line via lb_order_id).
+        for (const key of ["result", "data", "task", "order"] as const) {
+            const payload = {
                 status: "completed",
                 [key]: { credentials: { screens: [{ username: "u", password: "p" }] } },
             };
-            const s = extractScreen(task);
+            const s = extractScreen(payload);
             expect(s.username).toBe("u");
             expect(s.password).toBe("p");
         }
+    });
+
+    it("extracts m3u/epg/password for an atlaspro order payload (orders.get shape)", () => {
+        const orderPayload = {
+            order: {
+                status: "completed",
+                credentials: {
+                    screens: [
+                        {
+                            username: CHEF_USERNAME,
+                            password: CHEF_PASSWORD,
+                            m3uUrl: "http://lg.stir.wales:8080/get.php?username=x&password=y&type=m3u_plus",
+                            epgUrl: "http://lg.stir.wales:8080/xmltv.php",
+                        },
+                    ],
+                },
+            },
+        };
+        const s = extractScreen(orderPayload);
+        expect(s.username).toBe(CHEF_USERNAME);
+        expect(s.password).toBe(CHEF_PASSWORD);
+        expect(s.m3uUrl).toContain("get.php");
+        expect(s.epgUrl).toContain("xmltv");
     });
 
     it("does not corrupt an all-digit username (string preserved verbatim)", () => {

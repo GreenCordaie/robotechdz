@@ -19,6 +19,7 @@ import {
     markIptvOrderFailed,
     type DbLike,
 } from "@/services/iptv-reseller.service";
+import { extractScreen } from "@/lib/iptv-screen";
 
 export type IptvReconcileResult = {
     scanned: number;
@@ -219,6 +220,10 @@ async function reconcileOne(
         // probes hit credentials.* one level up rather than missing them.
         const ids = extractIdentifiers(inner);
         const expiry = extractExpiry(inner);
+        // Persist the delivered credentials so the lines table can show
+        // m3u/password without a live per-row poll (atlaspro/ironmax come
+        // back via lb_order_id, which the live read used to skip).
+        const screen = extractScreen(inner);
         await markIptvOrderDelivered(db, {
             id: row.id,
             resellerId: row.resellerId,
@@ -226,6 +231,9 @@ async function reconcileOne(
             providerAccountId: ids.providerAccountId,
             expiresAt: expiry,
             snapshot: payload,
+            m3uUrl: screen.m3uUrl,
+            epgUrl: screen.epgUrl,
+            credentialsPassword: screen.password,
         });
         return "delivered";
     }
