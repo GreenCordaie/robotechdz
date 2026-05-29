@@ -237,10 +237,6 @@ export interface MarkDeliveredInput {
     providerAccountId?: string | null;
     expiresAt?: Date | null;
     snapshot?: unknown;
-    /** LoadBrain-delivered credentials (encrypted at rest by the column type). */
-    m3uUrl?: string | null;
-    epgUrl?: string | null;
-    credentialsPassword?: string | null;
 }
 
 /**
@@ -291,12 +287,6 @@ export async function markIptvOrderDelivered(
                     input.snapshot !== undefined
                         ? (input.snapshot as object | null)
                         : (fresh.productSnapshot as object | null),
-                // Keep an existing stored value when the upstream omits it
-                // (?? falls through undefined AND null → never clobber with null).
-                m3uUrl: input.m3uUrl ?? fresh.m3uUrl,
-                epgUrl: input.epgUrl ?? fresh.epgUrl,
-                credentialsPassword:
-                    input.credentialsPassword ?? fresh.credentialsPassword,
                 lastError: null,
                 updatedAt: now,
             })

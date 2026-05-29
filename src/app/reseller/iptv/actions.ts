@@ -48,7 +48,6 @@ import {
     extractScreen,
     isUpstreamCompleted,
     parsePlanDurationDays,
-    EMPTY_SCREEN,
 } from "@/lib/iptv-screen";
 
 /* ──────────────────────────────────────────────────────────────────────── */
@@ -557,9 +556,11 @@ export const getMyIptvLinesLiveAction = withAuth(
                 .limit(200);
 
             const tasks = rows.map((row) => async () => {
-                // atlaspro/panelking are reached via lb_order_id; ironmax/ibosol
-                // via lb_task_id. Probe whichever this row carries so the live
-                // credentials feed isn't blank for order-based providers.
+                // Reseller checkout attaches lb_task_id (all providers incl.
+                // panelking365/atlaspro); renew/order flows may carry lb_order_id
+                // instead. Probe whichever this row holds so the live credentials
+                // feed is never blank. Credentials come from the same
+                // `credentials.screens[0]` shape regardless of provider.
                 try {
                     if (row.lbTaskId) {
                         return await sdk.provision.tasks.get(row.lbTaskId);
@@ -636,13 +637,6 @@ export const getMyIptvLinesLiveAction = withAuth(
                     }
                 }
 
-                // Prefer the live payload, fall back to the credentials the
-                // reconciler persisted (atlaspro/ironmax may have no lb_task_id
-                // → no live payload here; the stored columns fill the gap).
-                const m3uUrl = screen.m3uUrl ?? row.m3uUrl ?? null;
-                const epgUrl = screen.epgUrl ?? row.epgUrl ?? null;
-                const hasPassword = !!(screen.password ?? row.credentialsPassword);
-
                 return {
                     id: row.id,
                     displayId: row.upstreamLineId ?? String(row.id),
@@ -651,9 +645,9 @@ export const getMyIptvLinesLiveAction = withAuth(
                     productName: row.productName,
                     username,
                     // SECURITY: never ship the password in the bulk endpoint
-                    hasPassword,
-                    m3uUrl,
-                    epgUrl,
+                    hasPassword: !!screen.password,
+                    m3uUrl: screen.m3uUrl,
+                    epgUrl: screen.epgUrl,
                     expiresAt: displayExpires
                         ? displayExpires instanceof Date
                             ? displayExpires.toISOString()
@@ -712,38 +706,26 @@ export const getMyIptvLineCredentialsAction = withAuth(
                     error: "Ligne IPTV introuvable",
                 };
             }
-            // Try the live payload (task or order), then fall back to the
-            // credentials the reconciler persisted — so reveal works for
-            // order-based providers (atlaspro) and after the upstream task has
-            // aged out.
-            let screen = EMPTY_SCREEN;
-            try {
-                if (row.lbTaskId) {
-                    screen = extractScreen(await sdk.provision.tasks.get(row.lbTaskId));
-                } else if (row.lbOrderId) {
-                    screen = extractScreen(await sdk.provision.orders.get(row.lbOrderId));
-                }
-            } catch (lbErr) {
-                console.warn(
-                    `[iptv:getMyIptvLineCredentialsAction] live fetch failed for line ${row.id}, using stored creds`,
-                    lbErr,
-                );
-            }
-            const password = screen.password ?? row.credentialsPassword ?? null;
-            if (!password) {
+            // Probe the live payload (task OR order) — order-based providers
+            // (atlaspro/panelking) may carry only lb_order_id.
+            if (!row.lbTaskId && !row.lbOrderId) {
                 return {
                     success: false as const,
-                    error: "Mot de passe indisponible",
+                    error: "Aucun identifiant LoadBrain associé",
                 };
             }
+            const upstream = row.lbTaskId
+                ? await sdk.provision.tasks.get(row.lbTaskId)
+                : await sdk.provision.orders.get(row.lbOrderId!);
+            const screen = extractScreen(upstream);
             return {
                 success: true as const,
                 data: {
                     username:
                         screen.username ?? row.providerAccountId ?? null,
-                    password,
-                    m3uUrl: screen.m3uUrl ?? row.m3uUrl ?? null,
-                    epgUrl: screen.epgUrl ?? row.epgUrl ?? null,
+                    password: screen.password,
+                    m3uUrl: screen.m3uUrl,
+                    epgUrl: screen.epgUrl,
                 },
             };
         } catch (err) {

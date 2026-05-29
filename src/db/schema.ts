@@ -1055,17 +1055,6 @@ export const resellerIptvOrders = pgTable("reseller_iptv_orders", {
     /** Xtream username / device MAC / app identifier — whatever the customer needs. */
     providerAccountId: text("provider_account_id"),
 
-    /**
-     * LoadBrain-delivered credentials, encrypted at rest (transparent via
-     * `encryptedText` — Drizzle reads return plaintext). Persisted by the
-     * reconciler on completion so the lines table shows m3u/password without a
-     * live per-row poll. `m3u_url` embeds the password in its query string, so
-     * it is encrypted too. Username lives in `provider_account_id`.
-     */
-    m3uUrl: encryptedText("m3u_url"),
-    epgUrl: encryptedText("epg_url"),
-    credentialsPassword: encryptedText("credentials_password"),
-
     productId: text("product_id").notNull(),
     productName: text("product_name").notNull(),
     productSnapshot: jsonb("product_snapshot").$type<unknown>(),
