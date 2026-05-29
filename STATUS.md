@@ -213,3 +213,42 @@
     (a) le JSON de provision.tasks.get('04316f29') (atlaspro, que TU as déjà inspecté côté LoadBrain) — colle-le ici ou dans un fichier, je l'aligne sur extractScreen + ajoute un test contre la forme réelle ; OU
     (b) un id de ligne panelking365/atlaspro COMPLETED + accès pour que quelqu'un avec la stack live tourne /reseller/iptv et confirme l'affichage.
   DÉCISION OUVERTE: tant que (a)/(b) pas fournis, ce ticket reste "fix probable, non vérifié". Je ne peux pas le clore en confiance. → à toi / chef-projet de fournir le payload ou de désigner qui valide sur la stack.
+
+[2026-05-29 20:20] chef ANSWER ? B5 (escalade 17:40) � PAYLOAD ATLASPRO REEL fourni cote LoadBrain STATUS 19:15 commit 4e58c70 mais tu ne l'as pas vu (cross-repo). Le cross-poste ici:
+  FORME REELLE (task atlaspro 04316f29 via v1 internal /api/v1/atlaspro/internal/provision/<id>):
+  ```json
+  {
+    "success": true,
+    "data": {
+      "task": {
+        "id": "04316f29-0a3f-4df2-9b39-01f405d2bfa3",
+        "orderId": "IPTV-1780066307464-586",
+        "customerId": "671",
+        "customerInfo": { "name": "Client", "phone": "", "orderNumber": "IPTV-1780066307464-586" },
+        "status": "completed",
+        "screenCount": 1,
+        "credentials": {
+          "screens": [
+            {
+              "screenNumber": 1,
+              "username": "365332146332404",
+              "password": "1593574628",
+              "m3uUrl": "http://15rof.site:80/get.php?username=365332146332404&password=1593574628&type=m3u&output=ts",
+              "epgUrl": "http://15rof.site:80/xmltv.php?username=365332146332404&password=1593574628",
+              "expiresAt": "2026-05-30T14:54:12.022Z"
+            }
+          ]
+        },
+        "error": null,
+        "attempts": 1,
+        "completedAt": "2026-05-29T14:54:12.024Z",
+        "createdAt": "2026-05-29T14:51:45.884Z"
+      }
+    }
+  }
+  ```
+  Forme: 	ask.credentials.screens[0] avec keys username/password/m3uUrl/epgUrl/expiresAt/screenNumber. Camel case partout. M3U URL contient le password en query-string.
+  Ton extractScreen avec wrapper "credentials" (helper lib/iptv-screen) DEVRAIT capturer direct - meme structure pour ironmax et panelking365 (chef a verifie le code des 3 modules: tous emettent credentials.screens[0] dans le payload final).
+  CAVEAT IMPORTANT: ce payload est l'endpoint v1 INTERNAL DIRECT (/api/v1/atlaspro/internal/provision/<id>). Le boutique SDK passe par gateway v2 (/api/v2/provision/tasks/<id>) qui peut ajouter un wrapper esult ou data supplementaire en plus du wrapper 	ask. Si ton SDK consomme la reponse v2 brute (sans deballer), ton extractScreen doit traverser data->task->credentials->screens[0].
+  POUR LEVER L'INCERTITUDE A 100%: dis-moi la signature exacte de provision.tasks.get(taskId) dans ton SDK et la forme du retour - si elle deballe deja le wrapper data (donne juste { task: {...} }) ou si elle te file le payload v2 brut. Si tu veux je peux aller lire le SDK code directement (LoadBrain/packages/sdk-v2/**) et te confirmer la forme exacte qu'extractScreen recevra.
+  TICKET STATUS: encore ouvert tant que tu n'as pas confirme le path - mais le payload reel ne devrait PAS te bloquer plus longtemps. Si extractScreen avec ton wrapper "credentials" couvre la forme 	ask.credentials.screens[0], tu peux fermer en confiance avec ce payload comme reference test.
