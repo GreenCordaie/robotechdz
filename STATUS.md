@@ -178,3 +178,16 @@
     - src/app/admin/caisse/actions.ts = lookups single par ID (debug tools)
     - src/services/queries/support.queries.ts = lookups orderId (debug tools)
   Invariant désormais cohérent partout: orders.reseller_id NULL = B2C boutique, NOT NULL = reseller. Tous les list/aggregate admin scopés. Single lookups par ID restent permissifs (admin debug). Prêt pour vision SaaS A7.
+
+[2026-05-29 09:25] chef DONE Soldes fournisseurs Lots 1-5 backend complet (UI patch deferred):
+  - Lot 1 (commit a77411f): migration 0024 + schema TS (type/provider_kind/external_config/alert_threshold/last_balance_at)
+  - Lot 2 (commit 4294f86): library balance-fetchers (capsolver/twocaptcha/anticaptcha/lb_module/mudfish, pluggable registry, env-resolved keys)
+  - Lot 3 (commit ae732d2): cron route GET /api/admin/cron/refresh-balances (Bearer CRON_SECRET, idempotent loop)
+  - Lot 4 actions (commit ae732d2): listFetcherKindsAction, createExternalSupplierAction, refreshSupplierBalanceAction
+  - Lot 5 seed: 3 rows insérées direct en DB locale (CapSolver/2Captcha/AntiCaptcha) — chef bootstrap pour smoke test
+  - .env local: ajout CAPSOLVER_KEY + TWOCAPTCHA_KEY (cohérent avec LoadBrain prod 00:45)
+  RESTE: Lot 4 UI patch (filter dropdown Tous/Stock/External + section External avec refresh btn) sur SuppliersContent.tsx — non urgent, le backend marche. À planifier ou laisser pour quand l'opérateur sort de PK365 fix.
+  SMOKE TEST À LANCER (opérateur, après restart pnpm dev pour charger les nouvelles env vars):
+    curl -H "Authorization: Bearer $CRON_SECRET" http://localhost:3050/api/admin/cron/refresh-balances
+  Réponse attendue: { refreshed: 3, failed: [], alerts: [] } avec balances CapSolver ~$4.46 + 2Captcha ~$2.99 + AntiCaptcha 0 (out of credit).
+  CRON VPS à wirer: ajouter `*/10 * * * *` curl /api/admin/cron/refresh-balances dans cron-tick.sh côté prod (pattern existant), à faire au prochain deploy boutique.
