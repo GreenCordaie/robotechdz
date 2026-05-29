@@ -14,8 +14,9 @@ export default async function FournisseursPage() {
         redirect("/admin/login");
     }
 
-    const [suppliers, history, settings, stats] = await Promise.all([
+    const [suppliers, externalSuppliers, history, settings, stats] = await Promise.all([
         SupplierQueries.getAll(),
+        SupplierQueries.getExternal(),
         SupplierQueries.getHistory(0),
         SystemQueries.getSettings(),
         SupplierQueries.getFinancialStats()
@@ -24,6 +25,7 @@ export default async function FournisseursPage() {
     return (
         <SuppliersViewSwitcher
             initialSuppliers={suppliers}
+            initialExternalSuppliers={externalSuppliers}
             initialHistory={history}
             shopSettings={settings}
             initialStats={stats}

@@ -7,12 +7,25 @@ import { OrderStatus } from "@/lib/constants";
 export class SupplierQueries {
 
     /**
-     * Gets all suppliers with their last 5 transactions.
+     * Gets all INTERNAL_STOCK suppliers with their last 5 transactions.
+     * External-API suppliers (CapSolver, 2Captcha, ...) are excluded; use
+     * `getExternal()` to fetch those for the dedicated UI section.
      */
     static getAll = cache(async () => {
         return await db.query.suppliers.findMany({
+            where: eq(suppliers.type, "INTERNAL_STOCK"),
             orderBy: [desc(suppliers.id)],
             with: { transactions: { limit: 5, orderBy: [desc(supplierTransactions.createdAt)] } }
+        });
+    });
+
+    /**
+     * Gets external-API balance-tracked suppliers (auto-refreshed by cron).
+     */
+    static getExternal = cache(async () => {
+        return await db.query.suppliers.findMany({
+            where: eq(suppliers.type, "EXTERNAL_API"),
+            orderBy: [desc(suppliers.id)],
         });
     });
 

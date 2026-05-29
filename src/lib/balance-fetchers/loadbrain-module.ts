@@ -16,32 +16,32 @@ export const loadbrainModuleFetcher: BalanceFetcher = {
     kind: "lb_module",
     label: "LoadBrain module (generic credit)",
     async fetchBalance(config: BalanceFetcherConfig): Promise<BalanceResult> {
-        const module = (config as { module?: string }).module;
-        if (!module) throw new BalanceFetchError("lb_module", "externalConfig.module missing");
+        const moduleName = (config as { module?: string }).module;
+        if (!moduleName) throw new BalanceFetchError("lb_module", "externalConfig.module missing");
 
         const base = process.env.LOADBRAIN_URL;
         const token = process.env.LOADBRAIN_INTERNAL_TOKEN;
         if (!base) throw new BalanceFetchError("lb_module", "LOADBRAIN_URL not set");
         if (!token) throw new BalanceFetchError("lb_module", "LOADBRAIN_INTERNAL_TOKEN not set");
 
-        const url = config.endpoint || `${base.replace(/\/$/, "")}/api/v1/${module}/admin/credit`;
+        const url = config.endpoint || `${base.replace(/\/$/, "")}/api/v1/${moduleName}/admin/credit`;
         const res = await fetch(url, {
             method: "GET",
             headers: { "X-Internal-Token": token },
             signal: AbortSignal.timeout(15_000),
         });
-        if (!res.ok) throw new BalanceFetchError("lb_module", `HTTP ${res.status} on ${module}`, res.status);
+        if (!res.ok) throw new BalanceFetchError("lb_module", `HTTP ${res.status} on ${moduleName}`, res.status);
 
         const json = (await res.json()) as { balance?: number; credit?: number; value?: number; currency?: string };
         const value = json.balance ?? json.credit ?? json.value;
         if (typeof value !== "number") {
-            throw new BalanceFetchError("lb_module", `no numeric balance/credit/value field in ${module} response`);
+            throw new BalanceFetchError("lb_module", `no numeric balance/credit/value field in ${moduleName} response`);
         }
         return {
             value,
             currency: json.currency ?? "USD",
             fetchedAt: new Date(),
-            raw: { module, schema: "balance|credit|value" },
+            raw: { module: moduleName, schema: "balance|credit|value" },
         };
     },
 };
