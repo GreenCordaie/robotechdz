@@ -52,38 +52,32 @@ function readScreenFields(obj: Record<string, unknown>): ExtractedScreen {
 }
 
 /**
- * Locate the first `screens[0]` credentials object anywhere in the task
- * payload across the wrapper shapes the gateway emits. This is the root of the
- * "password vide / username = fallback" symptom when the wrapper doesn't match.
+ * Locate the first `screens[0]` credentials object anywhere in the payload.
+ *
+ * The gateway wraps `credentials.screens[0]` under varying envelopes
+ * (`task`, `data.task`, `result.task`, …) and the boutique SDK strips a `data`
+ * layer but not always the rest. Rather than enumerate the wrapper
+ * combinations, we bounded-DFS for the first `screens[]` array anywhere — so
+ * extractScreen is correct regardless of how deep the gateway nests it. This
+ * was the root of the "password vide / username = fallback" symptom.
  */
 function findScreensContainer(
-    root: Record<string, unknown>,
+    root: unknown,
+    depth = 0,
 ): Record<string, unknown> | null {
-    const asObj = (v: unknown): Record<string, unknown> | undefined =>
-        v && typeof v === "object" ? (v as Record<string, unknown>) : undefined;
-    // `tasks.get` returns `{ ...task }` or `{ task }`; `orders.get` returns
-    // `{ ...order }` or `{ order }` — probe both wrappers and their credentials.
-    const candidates: Array<unknown> = [
-        root,
-        root.credentials,
-        root.result,
-        root.data,
-        root.task,
-        root.order,
-        asObj(root.result)?.credentials,
-        asObj(root.data)?.credentials,
-        asObj(root.task)?.credentials,
-        asObj(root.order)?.credentials,
-    ];
-    for (const c of candidates) {
-        if (c && typeof c === "object") {
-            const screens = (c as Record<string, unknown>).screens;
-            if (Array.isArray(screens) && screens.length > 0) {
-                const first = screens[0];
-                if (first && typeof first === "object") {
-                    return first as Record<string, unknown>;
-                }
-            }
+    if (!root || typeof root !== "object" || depth > 6) return null;
+    const obj = root as Record<string, unknown>;
+    const screens = obj.screens;
+    if (Array.isArray(screens) && screens.length > 0) {
+        const first = screens[0];
+        if (first && typeof first === "object") {
+            return first as Record<string, unknown>;
+        }
+    }
+    for (const value of Object.values(obj)) {
+        if (value && typeof value === "object") {
+            const found = findScreensContainer(value, depth + 1);
+            if (found) return found;
         }
     }
     return null;

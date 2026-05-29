@@ -53,6 +53,45 @@ describe("extractScreen — wrapper traversal (bugs 2 & 3)", () => {
         }
     });
 
+    it("parses the REAL atlaspro task payload (STATUS 20:20 / task 04316f29)", () => {
+        // Exact shape the SDK delivers: transport strips the `{success,data}`
+        // envelope (transport.js returns parsed.data), so tasks.get yields
+        // `{ task: { credentials: { screens: [...] } } }`.
+        const sdkReturn = {
+            task: {
+                id: "04316f29-0a3f-4df2-9b39-01f405d2bfa3",
+                status: "completed",
+                credentials: {
+                    screens: [
+                        {
+                            screenNumber: 1,
+                            username: "365332146332404",
+                            password: "1593574628",
+                            m3uUrl: "http://15rof.site:80/get.php?username=365332146332404&password=1593574628&type=m3u&output=ts",
+                            epgUrl: "http://15rof.site:80/xmltv.php?username=365332146332404&password=1593574628",
+                            expiresAt: "2026-05-30T14:54:12.022Z",
+                        },
+                    ],
+                },
+            },
+        };
+        const s = extractScreen(sdkReturn);
+        expect(s.username).toBe("365332146332404");
+        expect(s.password).toBe("1593574628");
+        expect(s.m3uUrl).toContain("get.php");
+        expect(s.epgUrl).toContain("xmltv.php");
+        expect(s.expiresAt).toBe("2026-05-30T14:54:12.022Z");
+    });
+
+    it("survives an extra gateway wrapper (data.task / result.task nesting)", () => {
+        // If the v2 gateway adds a layer the SDK doesn't strip, the bounded-DFS
+        // still finds credentials.screens[0].
+        const screens = [{ username: "u", password: "p", m3uUrl: "http://x/get.php" }];
+        expect(extractScreen({ data: { task: { credentials: { screens } } } }).password).toBe("p");
+        expect(extractScreen({ result: { task: { credentials: { screens } } } }).username).toBe("u");
+        expect(extractScreen({ data: { result: { credentials: { screens } } } }).m3uUrl).toContain("get.php");
+    });
+
     it("extracts m3u/epg/password for an atlaspro order payload (orders.get shape)", () => {
         const orderPayload = {
             order: {
