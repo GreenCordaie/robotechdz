@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
     NON_PAYABLE_STATUSES,
     DELIVERED_STATUSES,
@@ -9,6 +9,68 @@ import {
     orderOutstandingDebt,
 } from "@/lib/order-finance";
 import { OrderStatus } from "@/lib/constants";
+
+// --- Mocks for the markIptvDispatchFailed test below ---------------------
+// Module-scoped vi.mock() hoists ABOVE imports; safe because the pure-helper
+// tests above only touch @/lib/order-finance + @/lib/constants.
+vi.mock("server-only", () => ({}));
+vi.mock("@/lib/encryption", () => ({ encrypt: (s: string) => s, decrypt: (s: string) => s }));
+vi.mock("@/lib/orders", () => ({ allocateOrderStock: vi.fn() }));
+vi.mock("@/lib/events", () => ({
+    eventBus: { publish: vi.fn() },
+    SystemEvent: { ORDER_PAID: "ORDER_PAID", ORDER_DELIVERED: "ORDER_DELIVERED", ORDER_PRINTED: "ORDER_PRINTED" },
+}));
+vi.mock("@/db/schema", () => ({
+    orders: { _name: "orders", id: { _c: "id" } },
+    clients: { _name: "clients" },
+    clientPayments: { _name: "client_payments" },
+    digitalCodes: { _name: "digital_codes" },
+    orderItems: { _name: "order_items" },
+    auditLogs: { _name: "audit_logs" },
+}));
+vi.mock("drizzle-orm", () => ({
+    eq: (...a: unknown[]) => ({ _op: "eq", a }),
+    and: (...a: unknown[]) => ({ _op: "and", a }),
+    or: (...a: unknown[]) => ({ _op: "or", a }),
+    sql: Object.assign(
+        (strings: TemplateStringsArray, ...vals: unknown[]) => ({ _op: "sql", strings, vals }),
+        { param: (v: unknown) => ({ _op: "param", v }) },
+    ),
+}));
+
+type Captured = { table: { _name?: string }; v: Record<string, unknown> };
+
+function makeOrderTx(orderRow: { id: number; status: string } | null) {
+    const updates: Captured[] = [];
+    const inserts: Captured[] = [];
+    const tx = {
+        select: () => ({
+            from: () => ({
+                where: () => ({
+                    for: async () => (orderRow ? [orderRow] : []),
+                }),
+            }),
+        }),
+        update: (table: { _name?: string }) => ({
+            set: (v: Record<string, unknown>) => ({
+                where: async () => { updates.push({ table, v }); return []; },
+            }),
+        }),
+        insert: (table: { _name?: string }) => ({
+            values: async (v: Record<string, unknown>) => { inserts.push({ table, v }); return []; },
+        }),
+    };
+    return { tx, updates, inserts };
+}
+
+vi.mock("@/db", () => ({
+    db: {
+        transaction: async (fn: (tx: unknown) => Promise<unknown>) => {
+            // The fixture overrides this per-test by re-mocking; default is a noop tx.
+            return await fn({});
+        },
+    },
+}));
 
 describe("order-finance helpers", () => {
     describe("isPayableStatus", () => {
@@ -135,5 +197,65 @@ describe("order-finance helpers", () => {
         it("fail-closed on unknown/empty status", () => {
             expect(canMarkDelivered(null)).toBe(false);
         });
+    });
+});
+
+/**
+ * B2 audit fix: fire-and-forget IPTV dispatch in OrderService.payOrder() leaves
+ * the order PAYE without credentials when provisioning throws or returns zero.
+ * `markIptvDispatchFailed(orderId, reason)` is the compensating action: it
+ * flips PAYE/TERMINE → EN_ATTENTE (NOT ANNULE — manual review path) and writes
+ * an `auditLogs` row "IPTV_DISPATCH_FAILED".
+ */
+describe("OrderService.markIptvDispatchFailed", () => {
+    it("rolls a PAYE order back to EN_ATTENTE and writes an audit row", async () => {
+        const { tx, updates, inserts } = makeOrderTx({ id: 42, status: OrderStatus.PAYE });
+        const dbMod = await import("@/db");
+        (dbMod.db as unknown as { transaction: (fn: (tx: unknown) => Promise<unknown>) => Promise<unknown> })
+            .transaction = async (fn) => await fn(tx);
+
+        const { OrderService } = await import("@/services/order.service");
+        const result = await OrderService.markIptvDispatchFailed(42, "Provider 503");
+
+        expect(result).toEqual({ rolledBack: true });
+
+        const orderUpdate = updates.find((u) => u.table._name === "orders");
+        expect(orderUpdate?.v.status).toBe(OrderStatus.EN_ATTENTE);
+
+        const audit = inserts.find((i) => i.table._name === "audit_logs");
+        expect(audit?.v).toMatchObject({
+            action: "IPTV_DISPATCH_FAILED",
+            entityType: "ORDER",
+            entityId: "42",
+        });
+        expect((audit?.v.newData as { reason?: string })?.reason).toContain("Provider 503");
+    });
+
+    it("is a no-op when the order is already in a non-PAYE/TERMINE state (idempotence)", async () => {
+        const { tx, updates, inserts } = makeOrderTx({ id: 42, status: OrderStatus.ANNULE });
+        const dbMod = await import("@/db");
+        (dbMod.db as unknown as { transaction: (fn: (tx: unknown) => Promise<unknown>) => Promise<unknown> })
+            .transaction = async (fn) => await fn(tx);
+
+        const { OrderService } = await import("@/services/order.service");
+        const result = await OrderService.markIptvDispatchFailed(42, "Provider 503");
+
+        expect(result).toEqual({ rolledBack: false });
+        expect(updates).toHaveLength(0);
+        expect(inserts).toHaveLength(0);
+    });
+
+    it("is a no-op when the order is not found", async () => {
+        const { tx, updates, inserts } = makeOrderTx(null);
+        const dbMod = await import("@/db");
+        (dbMod.db as unknown as { transaction: (fn: (tx: unknown) => Promise<unknown>) => Promise<unknown> })
+            .transaction = async (fn) => await fn(tx);
+
+        const { OrderService } = await import("@/services/order.service");
+        const result = await OrderService.markIptvDispatchFailed(999, "Reason");
+
+        expect(result).toEqual({ rolledBack: false });
+        expect(updates).toHaveLength(0);
+        expect(inserts).toHaveLength(0);
     });
 });

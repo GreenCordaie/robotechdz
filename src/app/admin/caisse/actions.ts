@@ -646,13 +646,20 @@ export const approveReturn = withAuth(
 
                 // 4. Reseller refund — `resellers` has no balance column; credit the
                 // wallet via the shared helper (FOR UPDATE lock + reseller_transactions REFUND).
+                // B2 audit: the helper returns `false` when the reseller wallet row is
+                // missing. For a reseller-owned order, that means we'd "approve" the
+                // refund with zero credit on the reseller side. Fail loudly and roll
+                // back the whole approval — the admin must seed the wallet first.
                 if (order.resellerId) {
-                    await refundResellerWallet(tx, {
+                    const walletCredited = await refundResellerWallet(tx, {
                         resellerId: order.resellerId,
                         montant: returnReq.montant,
                         orderId: order.id,
                         description: `Remboursement Commande #${order.id} (Retour Approuvé)`,
                     });
+                    if (!walletCredited) {
+                        throw new Error("Wallet revendeur introuvable — refund annulé");
+                    }
                 }
 
                 // 5. Restore VENDU digital codes → DISPONIBLE

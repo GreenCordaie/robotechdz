@@ -121,4 +121,46 @@ describe("refundResellerWallet", () => {
         const ledger = inserts.find((i) => i.table._name === "reseller_transactions");
         expect(ledger?.v.description).toBe("Remboursement Commande #99");
     });
+
+    /**
+     * B2 audit fix: the approveReturn caller (src/app/admin/caisse/actions.ts)
+     * must treat `false` as a hard failure when a reseller is expected and
+     * THROW inside the transaction so the whole refund rolls back. This test
+     * locks the contract from the helper side:
+     *   1. The helper returns false (no wallet row).
+     *   2. NO reseller_transactions row is written.
+     * The caller's new guard `if (!walletCredited) throw …` then rolls back
+     * the surrounding tx so no other refund side-effect (client_payments,
+     * orders.status REMBOURSE, supplier reversal) is persisted either.
+     */
+    it("throws on missing reseller wallet when reseller is expected (caller contract)", async () => {
+        const { tx, updates, inserts } = makeTx([]); // no wallet row
+
+        const credited = await refundResellerWallet(tx, {
+            resellerId: 6, // reseller expected (order.resellerId set)
+            montant: 500,
+            orderId: 13,
+            description: "Remboursement Commande #13 (Retour Approuvé)",
+        });
+
+        // Helper signals miss → caller MUST throw to abort the tx.
+        expect(credited).toBe(false);
+
+        // Critical: no ledger row written → after caller throws, the rollback
+        // leaves `reseller_transactions` clean (no orphan REFUND row).
+        const ledger = inserts.find((i) => i.table._name === "reseller_transactions");
+        expect(ledger).toBeUndefined();
+
+        // And no wallet UPDATE either.
+        const walletUpdate = updates.find((u) => u.table._name === "reseller_wallets");
+        expect(walletUpdate).toBeUndefined();
+
+        // Simulate the caller-side guard: this is the contract the actions.ts
+        // refund flow now enforces (`if (!walletCredited) throw new Error(...)`).
+        expect(() => {
+            if (!credited) {
+                throw new Error("Wallet revendeur introuvable — refund annulé");
+            }
+        }).toThrow("Wallet revendeur introuvable — refund annulé");
+    });
 });

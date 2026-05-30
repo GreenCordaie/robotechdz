@@ -1,5 +1,5 @@
 import { db } from "@/db";
-import { orders, clients, clientPayments, digitalCodes, orderItems } from "@/db/schema";
+import { orders, clients, clientPayments, digitalCodes, orderItems, auditLogs } from "@/db/schema";
 import { eq, and, sql, or } from "drizzle-orm";
 import { allocateOrderStock } from "@/lib/orders";
 import { decrypt, encrypt } from "@/lib/encryption";
@@ -163,24 +163,33 @@ export class OrderService {
             eventBus.publish(SystemEvent.ORDER_DELIVERED, { orderId: result.id });
         }
 
-        // Dispatch IPTV provisioning — webhook handles completion
+        // Dispatch IPTV provisioning — webhook handles completion.
+        // Fire-and-forget by design (the provisioner can take several seconds and
+        // we don't want to block the cashier UI). When the dispatch fails or
+        // provisions zero items, the order would otherwise stay PAYE without
+        // credentials forever; markIptvDispatchFailed() flips it back to
+        // EN_ATTENTE so an operator can retry (NOT ANNULE — manual review path).
         if (hasIptvProducts && (result.status === OrderStatus.PAYE || result.status === OrderStatus.TERMINE)) {
             import("@/lib/iptv").then(async ({ provisionIptvOrder }) => {
                 try {
                     const iptvResult = await provisionIptvOrder(result.id);
                     if (iptvResult.provisioned === 0) {
                         console.error(`[IPTV] Zero items provisioned for order #${result.id}`);
+                        await OrderService.markIptvDispatchFailed(result.id, "Zero items provisioned");
                         const { sendTelegramNotification } = await import("@/lib/telegram");
                         sendTelegramNotification(
-                            `⚠️ *IPTV — 0 items provisionnés*\n\nCommande: \`${(result as any).orderNumber}\`\nVérifiez LoadBrain et les slugs produits.`,
+                            `⚠️ *IPTV — 0 items provisionnés*\n\nCommande: \`${(result as any).orderNumber}\`\nVérifiez LoadBrain et les slugs produits.\nStatut remis à EN_ATTENTE.`,
                             ["ADMIN"]
                         ).catch(() => {});
                     }
                 } catch (err: any) {
                     console.error(`[IPTV] Fatal dispatch error for order #${result.id}:`, err.message);
+                    await OrderService.markIptvDispatchFailed(result.id, err?.message ?? "Unknown error").catch(rollbackErr => {
+                        console.error(`[IPTV] markIptvDispatchFailed failed for order #${result.id}:`, rollbackErr);
+                    });
                     const { sendTelegramNotification } = await import("@/lib/telegram");
                     sendTelegramNotification(
-                        `🔴 *IPTV — Erreur fatale provisioning*\n\nCommande: \`${(result as any).orderNumber}\`\nErreur: ${err.message}`,
+                        `🔴 *IPTV — Erreur fatale provisioning*\n\nCommande: \`${(result as any).orderNumber}\`\nErreur: ${err.message}\nStatut remis à EN_ATTENTE.`,
                         ["ADMIN"]
                     ).catch(() => {});
                 }
@@ -339,6 +348,43 @@ export class OrderService {
         if (isFullyAuto || hasCodesOrSlots || isWhatsAppPaid) {
             eventBus.publish(SystemEvent.ORDER_DELIVERED, { orderId: order.id });
         }
+    }
+
+    /**
+     * Compensating action for the fire-and-forget IPTV dispatch in payOrder().
+     *
+     * When provisionIptvOrder() throws or returns zero items, the order is still
+     * `PAYE` (the payment transaction committed before dispatch) but the customer
+     * has no credentials. We flip it back to EN_ATTENTE — NOT ANNULE — so an
+     * operator can retry from the admin, and we record an `auditLogs` row so the
+     * failure is traceable. Idempotent: only acts on a PAYE/TERMINE row.
+     */
+    static async markIptvDispatchFailed(orderId: number, reason: string) {
+        return await db.transaction(async (tx) => {
+            const [order] = await tx.select().from(orders).where(eq(orders.id, orderId)).for("update");
+            if (!order) return { rolledBack: false };
+
+            // Only roll back if the order is still in the post-payment IPTV window.
+            // If an operator already moved it, leave it alone.
+            if (order.status !== OrderStatus.PAYE && order.status !== OrderStatus.TERMINE) {
+                return { rolledBack: false };
+            }
+
+            await tx.update(orders)
+                .set({ status: OrderStatus.EN_ATTENTE })
+                .where(eq(orders.id, orderId));
+
+            await tx.insert(auditLogs).values({
+                userId: null,
+                action: "IPTV_DISPATCH_FAILED",
+                entityType: "ORDER",
+                entityId: String(orderId),
+                oldData: { status: order.status },
+                newData: { status: OrderStatus.EN_ATTENTE, reason: `IPTV dispatch failed: ${reason}` },
+            });
+
+            return { rolledBack: true };
+        });
     }
 
     /**
