@@ -114,7 +114,12 @@ export class SupplierQueries {
             const groupRate = g.exchangeRate ? parseFloat(g.exchangeRate) : exchangeRate;
             const dzdAmount = g.currency === "USD" ? groupAmount * groupRate : groupAmount;
 
-            if (g.type === "RECHARGE") {
+            if (g.type === "RECHARGE" || g.type === "AJUSTEMENT") {
+                // AJUSTEMENT mirrors RECHARGE: PAID rows = settled adjustment
+                // (e.g. caisse price-diff recorded as PAID), non-PAID = pending
+                // balance correction (e.g. fournisseurs forcedBalance change).
+                // Previously silent-dropped, which under-counted both the paid
+                // and unpaid pools whenever an adjustment was recorded.
                 if (g.paymentStatus === "PAID") {
                     totalPaidDzd += dzdAmount;
                 } else {
