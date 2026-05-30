@@ -291,3 +291,18 @@
   Tests: 9 nouveaux pour le helper, 296/296 verts module-wide, tsc clean.
   Open follow-up (optionnel): persister EXPIRED cote mirror via reconciler. Boutique-side
     display logic = bon endroit pour fix immediat, reconciler enhancement = separate ticket.
+
+[2026-05-30 chef ACK Sprint Perf] 3 commits pushes sur feat/bsv-mirror-integrated:
+  - 0989767 perf(queries): SupportQueries.getConversations N+1 (600+ => ~12 round-trips constants) +
+    DashboardQueries.getStats 7-loop => single GROUP BY date_trunc + JS day-fill + shopSettings dedupe.
+  - 3011867 perf(queries): order.getHistory cap [1, 500] + supplier.getHistory default 200 / max 1000 +
+    getFinancialStats full-table findMany => SUM/COUNT GROUP BY (exchangeRate in GROUP BY key, 1 multiply
+    par group). supplierId=0 cross-supplier sentinel preserve, negatif throw. 6 new tests.
+  - 1d834be perf(workers,db): BullMQ NOTIFICATION_QUEUE retention bornee (1k/24h completes, 5k/7j fails),
+    4 notification handlers silent-swallow => retry queue, B2C partial index orders_b2c_created_idx
+    declare en schema (drizzle-kit generate par ops).
+
+  306/306 tests verts, type-check clean. Sprint Perf complet.
+
+  Open follow-up: schema.ts:333 type 'RECHARGE'|'DEBIT' diverge du code live 'RECHARGE'|'PAYMENT'|
+  'AJUSTEMENT'. AJUSTEMENT silent-drop dans getFinancialStats preserve. Ticket separe si chef veut fix.
