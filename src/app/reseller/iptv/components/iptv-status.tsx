@@ -1,15 +1,14 @@
 "use client";
 
 import React from "react";
+import {
+    deriveEffectiveStatus as deriveEffectiveStatusImpl,
+    type IptvStatus as IptvStatusType,
+} from "@/lib/iptv-effective-status";
 
-export type IptvStatus =
-    | "PENDING_LOADBRAIN"
-    | "ACTIVE"
-    | "FROZEN"
-    | "EXPIRED"
-    | "CANCELLED"
-    | "FAILED"
-    | "REFUNDED";
+export type IptvStatus = IptvStatusType;
+
+export const deriveEffectiveStatus = deriveEffectiveStatusImpl;
 
 export type IptvProvider = "panelking365" | "atlaspro" | "ironmax" | "ibosol";
 
@@ -36,12 +35,11 @@ export const STATUS_COLOR_CLASS: Record<IptvStatus, string> = {
 
 interface StatusPillProps {
     readonly status: IptvStatus | string;
+    readonly expiresAt?: Date | string | null;
 }
 
-export const StatusPill: React.FC<StatusPillProps> = ({ status }) => {
-    const key = (status as IptvStatus) in STATUS_LABELS
-        ? (status as IptvStatus)
-        : "PENDING_LOADBRAIN";
+export const StatusPill: React.FC<StatusPillProps> = ({ status, expiresAt }) => {
+    const key = deriveEffectiveStatus(status, expiresAt ?? null);
     const label = STATUS_LABELS[key] ?? String(status);
     const cls = STATUS_COLOR_CLASS[key] ?? STATUS_COLOR_CLASS.PENDING_LOADBRAIN;
     return (

@@ -245,7 +245,7 @@ export const IptvLineDetailModal: React.FC<IptvLineDetailModalProps> = ({
                 <ModalHeader className="flex flex-col gap-1">
                     <div className="flex items-center gap-2">
                         <ProviderBadgeChip provider={provider} />
-                        <StatusPill status={status} />
+                        <StatusPill status={status} expiresAt={local?.expiresAt ?? null} />
                     </div>
                     <span className="text-base font-black text-white">
                         {local?.productName ?? "Ligne IPTV"}

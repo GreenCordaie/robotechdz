@@ -597,10 +597,26 @@ export const getMyIptvLinesLiveAction = withAuth(
                 // Bug 1 (display) — show ACTIVE as soon as the upstream task
                 // reports completion, rather than the stale PENDING_LOADBRAIN
                 // the mirror still holds until the next 60s reconciler tick.
+                //
+                // Provider-agnostic flip: King365 / Atlas / IronMax / IBOSol
+                // each return slightly different credentials shapes — King365
+                // notably ships some plans without `screens[0].username` (only
+                // a code / m3uUrl). Requiring `username` left King365 lines
+                // stuck on "En attente" after delivery. Flip to ACTIVE on
+                // upstream completion + ANY signal that credentials shipped
+                // (username, m3u, code, or persisted expiresAt). Falls back
+                // to the mirror status when upstream is still in flight.
+                const hasDeliverySignal =
+                    !!screen.username ||
+                    !!screen.m3uUrl ||
+                    !!screen.code ||
+                    !!screen.expiresAt ||
+                    !!row.upstreamLineId ||
+                    !!row.providerAccountId;
                 const effectiveStatus: IptvOrderStatus =
                     row.status === "PENDING_LOADBRAIN" &&
                     upstreamCompleted &&
-                    !!screen.username
+                    hasDeliverySignal
                         ? "ACTIVE"
                         : (row.status as IptvOrderStatus);
 

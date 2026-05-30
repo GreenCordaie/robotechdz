@@ -33,6 +33,7 @@ import { toast } from "react-hot-toast";
 
 import {
     StatusPill,
+    deriveEffectiveStatus,
     formatExpiresShort,
     formatDaysLeft,
     type IptvProvider,
@@ -231,11 +232,16 @@ export const IptvLinesTable: React.FC<IptvLinesTableProps> = ({
                 const hay = `${r.displayId} ${r.username ?? ""} ${r.customerLabel ?? ""} ${r.customerPhone ?? ""} ${r.productName}`.toLowerCase();
                 if (!hay.includes(q)) return false;
             }
+            // Bug #2 — filter against the EXPIRY-AWARE derived status so a
+            // line whose mirror still says ACTIVE but whose expiresAt is in
+            // the past appears under the EXPIRED tab (and disappears from
+            // the ACTIVE tab). Provider-agnostic.
+            const effective = deriveEffectiveStatus(r.status, r.expiresAt);
             switch (topTab) {
                 case "ACTIVE":
-                    return r.status === "ACTIVE";
+                    return effective === "ACTIVE";
                 case "EXPIRED":
-                    return r.status === "EXPIRED";
+                    return effective === "EXPIRED";
                 case "TRIAL":
                     return isTrial(r);
                 case "ALL":
@@ -364,8 +370,13 @@ export const IptvLinesTable: React.FC<IptvLinesTableProps> = ({
                 />
             </div>
 
-            {/* Table ──────────────────────────────────────────────── */}
-            <div className="bg-[#0a0a0a] border border-[#262626] rounded-xl overflow-hidden">
+            {/* Cards grid ──────────────────────────────────────────
+                Bug #3 — previously a 16-column table forced a horizontal
+                scrollbar even on 1440px. Replaced with a responsive card
+                grid: 1 col on mobile, 2 on md, 3 on xl. Every meaningful
+                field is visible per card; long values (username, M3U URL)
+                wrap with `break-all` instead of clipping. No `overflow-x`. */}
+            <div className="bg-[#0a0a0a] border border-[#262626] rounded-xl">
                 {isFetchingLive && liveRows.length === 0 ? (
                     <div className="py-16 flex justify-center">
                         <Spinner color="warning" size="sm" />
@@ -375,204 +386,21 @@ export const IptvLinesTable: React.FC<IptvLinesTableProps> = ({
                         Aucune ligne pour ce filtre.
                     </div>
                 ) : (
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-xs">
-                            <thead className="bg-[#0f0f0f] border-b border-[#262626]">
-                                <tr className="text-slate-500 text-[10px] uppercase font-black tracking-wider">
-                                    <Th>ID</Th>
-                                    <Th>Username</Th>
-                                    <Th>Password</Th>
-                                    <Th>Expires</Th>
-                                    <Th>Left</Th>
-                                    <Th>Status</Th>
-                                    <Th>Trial</Th>
-                                    <Th>Online</Th>
-                                    <Th>Conn</Th>
-                                    <Th>ISP Lock</Th>
-                                    <Th>Country</Th>
-                                    <Th>Speed</Th>
-                                    <Th>Owner</Th>
-                                    <Th>Notes</Th>
-                                    <Th>Created</Th>
-                                    <Th>M3U</Th>
-                                    <Th>{""}</Th>
-                                    <Th>Actions</Th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {filtered.map((row) => {
-                                    const trial = isTrial(row);
-                                    const pwd = revealed[row.id];
-                                    return (
-                                        <tr
-                                            key={row.id}
-                                            className="border-b border-[#1a1a1a] last:border-0 hover:bg-[#101010] transition-colors"
-                                        >
-                                            <Td>
-                                                <span className="font-mono text-slate-300">
-                                                    {row.displayId}
-                                                </span>
-                                            </Td>
-                                            <Td>
-                                                <span
-                                                    title={row.username ?? ""}
-                                                    className="font-mono text-white tabular-nums"
-                                                >
-                                                    {row.username ?? "—"}
-                                                </span>
-                                            </Td>
-                                            <Td>
-                                                <div className="flex items-center gap-1">
-                                                    <span className="font-mono text-slate-300 tabular-nums">
-                                                        {pwd ?? "******"}
-                                                    </span>
-                                                    {row.hasPassword && (
-                                                        <button
-                                                            type="button"
-                                                            onClick={() =>
-                                                                handleReveal(row.id)
-                                                            }
-                                                            disabled={busyReveal === row.id}
-                                                            aria-label={
-                                                                pwd ? "Masquer" : "Afficher"
-                                                            }
-                                                            className="size-6 rounded hover:bg-[#1a1a1a] flex items-center justify-center text-slate-500 hover:text-white disabled:opacity-50"
-                                                        >
-                                                            {pwd ? (
-                                                                <EyeOff size={11} />
-                                                            ) : (
-                                                                <Eye size={11} />
-                                                            )}
-                                                        </button>
-                                                    )}
-                                                    {pwd && (
-                                                        <button
-                                                            type="button"
-                                                            onClick={() =>
-                                                                copyText(pwd, "Password")
-                                                            }
-                                                            aria-label="Copier"
-                                                            className="size-6 rounded hover:bg-[#1a1a1a] flex items-center justify-center text-slate-500 hover:text-[#FACC15]"
-                                                        >
-                                                            <Copy size={11} />
-                                                        </button>
-                                                    )}
-                                                </div>
-                                            </Td>
-                                            <Td>
-                                                <span className="text-slate-300 whitespace-nowrap">
-                                                    {formatExpiresShort(row.expiresAt)}
-                                                </span>
-                                            </Td>
-                                            <Td>
-                                                <span
-                                                    className={
-                                                        formatDaysLeft(row.expiresAt) ===
-                                                        "Expired"
-                                                            ? "text-red-400 font-bold"
-                                                            : "text-slate-300"
-                                                    }
-                                                >
-                                                    {formatDaysLeft(row.expiresAt)}
-                                                </span>
-                                            </Td>
-                                            <Td>
-                                                <StatusPill status={row.status} />
-                                            </Td>
-                                            <Td>
-                                                {trial ? (
-                                                    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-black uppercase bg-amber-500/15 text-amber-300 border border-amber-500/30">
-                                                        Trial
-                                                    </span>
-                                                ) : (
-                                                    <span className="text-slate-600">—</span>
-                                                )}
-                                            </Td>
-                                            <Td>
-                                                <span className="text-slate-600">—</span>
-                                            </Td>
-                                            <Td>
-                                                <span className="text-slate-600 font-mono">
-                                                    —
-                                                </span>
-                                            </Td>
-                                            <Td>
-                                                <span className="text-slate-600">—</span>
-                                            </Td>
-                                            <Td>
-                                                <span className="text-slate-600">—</span>
-                                            </Td>
-                                            <Td>
-                                                <span className="text-slate-600">—</span>
-                                            </Td>
-                                            <Td>
-                                                <span className="text-slate-300 truncate max-w-[120px] inline-block">
-                                                    {row.customerLabel ??
-                                                        "karimrobot"}
-                                                </span>
-                                            </Td>
-                                            <Td>
-                                                <span
-                                                    title={row.notes ?? ""}
-                                                    className="text-slate-400 truncate max-w-[140px] inline-block"
-                                                >
-                                                    {row.notes ?? "—"}
-                                                </span>
-                                            </Td>
-                                            <Td>
-                                                <span className="text-slate-400 whitespace-nowrap">
-                                                    {formatExpiresShort(row.createdAt)}
-                                                </span>
-                                            </Td>
-                                            <Td>
-                                                <button
-                                                    type="button"
-                                                    onClick={() =>
-                                                        copyText(row.m3uUrl, "M3U")
-                                                    }
-                                                    disabled={!row.m3uUrl}
-                                                    aria-label="Copier M3U"
-                                                    className="size-7 rounded-md bg-[#161616] border border-[#262626] hover:border-[#FACC15]/40 text-slate-400 hover:text-[#FACC15] flex items-center justify-center disabled:opacity-40"
-                                                >
-                                                    <Copy size={12} />
-                                                </button>
-                                            </Td>
-                                            <Td>
-                                                <Button
-                                                    isIconOnly
-                                                    size="sm"
-                                                    onPress={() => onManage(row.id)}
-                                                    className="bg-[#FACC15]/10 border border-[#FACC15]/30 text-[#FACC15] h-7 w-7 min-w-7"
-                                                    aria-label="Gérer"
-                                                >
-                                                    <Settings2 size={12} />
-                                                </Button>
-                                            </Td>
-                                            <Td>
-                                                <IptvLineActionsMenu
-                                                    row={{
-                                                        id: row.id,
-                                                        provider: row.provider,
-                                                        status: row.status,
-                                                        productName: row.productName,
-                                                        pricePaidDzd: row.pricePaidDzd,
-                                                        customerLabel:
-                                                            row.customerLabel,
-                                                        customerPhone:
-                                                            row.customerPhone,
-                                                        expiresAt: row.expiresAt,
-                                                        createdAt: row.createdAt,
-                                                    }}
-                                                    capabilities={capabilities}
-                                                    onChanged={fetchLive}
-                                                    onShowHistory={onManage}
-                                                />
-                                            </Td>
-                                        </tr>
-                                    );
-                                })}
-                            </tbody>
-                        </table>
+                    <div className="p-3 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                        {filtered.map((row) => (
+                            <IptvLineCard
+                                key={row.id}
+                                row={row}
+                                trial={isTrial(row)}
+                                pwd={revealed[row.id]}
+                                isRevealing={busyReveal === row.id}
+                                capabilities={capabilities}
+                                onReveal={handleReveal}
+                                onCopy={copyText}
+                                onManage={onManage}
+                                onChanged={fetchLive}
+                            />
+                        ))}
                     </div>
                 )}
             </div>
@@ -612,12 +440,194 @@ export const IptvLinesTable: React.FC<IptvLinesTableProps> = ({
     );
 };
 
-const Th: React.FC<{ readonly children: React.ReactNode }> = ({ children }) => (
-    <th className="px-3 py-2.5 text-left whitespace-nowrap">{children}</th>
-);
+/* ── Card sub-component ────────────────────────────────────────────────
+   Self-contained per-line card. All fields are visible in a
+   responsive 2-column micro-grid; long values (M3U URL, codes)
+   wrap with `break-all`. No fixed widths → never overflows the
+   viewport, so the parent grid never needs horizontal scroll. */
+interface IptvLineCardProps {
+    readonly row: LiveLineRow;
+    readonly trial: boolean;
+    readonly pwd: string | undefined;
+    readonly isRevealing: boolean;
+    readonly capabilities: ReadonlySet<string>;
+    readonly onReveal: (id: number) => void;
+    readonly onCopy: (value: string | null, label: string) => void;
+    readonly onManage: (id: number) => void;
+    readonly onChanged: () => void;
+}
 
-const Td: React.FC<{ readonly children: React.ReactNode }> = ({ children }) => (
-    <td className="px-3 py-2 whitespace-nowrap">{children}</td>
-);
+const IptvLineCard: React.FC<IptvLineCardProps> = ({
+    row,
+    trial,
+    pwd,
+    isRevealing,
+    capabilities,
+    onReveal,
+    onCopy,
+    onManage,
+    onChanged,
+}) => {
+    const expiredLabel = formatDaysLeft(row.expiresAt) === "Expired";
+    return (
+        <article className="bg-[#0f0f0f] border border-[#1f1f1f] rounded-lg p-3 hover:border-[#FACC15]/30 transition-colors flex flex-col gap-2.5">
+            {/* Header — ID + status pill + trial badge */}
+            <header className="flex items-start justify-between gap-2">
+                <div className="flex flex-col min-w-0">
+                    <span className="text-[10px] text-slate-500 uppercase font-black tracking-wider">
+                        Ligne
+                    </span>
+                    <span className="font-mono text-white text-xs break-all">
+                        {row.displayId}
+                    </span>
+                </div>
+                <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                    {trial && (
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-black uppercase bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                            Trial
+                        </span>
+                    )}
+                    <StatusPill status={row.status} expiresAt={row.expiresAt} />
+                </div>
+            </header>
+
+            {/* Credentials block */}
+            <dl className="grid grid-cols-[auto,1fr] gap-x-2 gap-y-1.5 text-[11px]">
+                <dt className="text-slate-500 uppercase text-[10px] font-black tracking-wider self-center">
+                    Username
+                </dt>
+                <dd className="flex items-center gap-1 min-w-0">
+                    <span className="font-mono text-white tabular-nums break-all">
+                        {row.username ?? "—"}
+                    </span>
+                    {row.username && (
+                        <button
+                            type="button"
+                            onClick={() => onCopy(row.username, "Username")}
+                            aria-label="Copier username"
+                            className="size-5 shrink-0 rounded hover:bg-[#1a1a1a] flex items-center justify-center text-slate-500 hover:text-[#FACC15]"
+                        >
+                            <Copy size={10} />
+                        </button>
+                    )}
+                </dd>
+
+                <dt className="text-slate-500 uppercase text-[10px] font-black tracking-wider self-center">
+                    Password
+                </dt>
+                <dd className="flex items-center gap-1 min-w-0">
+                    <span className="font-mono text-slate-300 tabular-nums break-all">
+                        {pwd ?? "••••••"}
+                    </span>
+                    {row.hasPassword && (
+                        <button
+                            type="button"
+                            onClick={() => onReveal(row.id)}
+                            disabled={isRevealing}
+                            aria-label={pwd ? "Masquer mot de passe" : "Afficher mot de passe"}
+                            className="size-5 shrink-0 rounded hover:bg-[#1a1a1a] flex items-center justify-center text-slate-500 hover:text-white disabled:opacity-50"
+                        >
+                            {pwd ? <EyeOff size={10} /> : <Eye size={10} />}
+                        </button>
+                    )}
+                    {pwd && (
+                        <button
+                            type="button"
+                            onClick={() => onCopy(pwd, "Password")}
+                            aria-label="Copier mot de passe"
+                            className="size-5 shrink-0 rounded hover:bg-[#1a1a1a] flex items-center justify-center text-slate-500 hover:text-[#FACC15]"
+                        >
+                            <Copy size={10} />
+                        </button>
+                    )}
+                </dd>
+
+                <dt className="text-slate-500 uppercase text-[10px] font-black tracking-wider self-center">
+                    Expire
+                </dt>
+                <dd className="flex items-center gap-2 flex-wrap">
+                    <span className="text-slate-300">
+                        {formatExpiresShort(row.expiresAt)}
+                    </span>
+                    <span
+                        className={
+                            expiredLabel
+                                ? "text-red-400 font-bold text-[10px]"
+                                : "text-slate-500 text-[10px]"
+                        }
+                    >
+                        {formatDaysLeft(row.expiresAt)}
+                    </span>
+                </dd>
+
+                <dt className="text-slate-500 uppercase text-[10px] font-black tracking-wider self-center">
+                    Créé
+                </dt>
+                <dd className="text-slate-400">
+                    {formatExpiresShort(row.createdAt)}
+                </dd>
+
+                <dt className="text-slate-500 uppercase text-[10px] font-black tracking-wider self-center">
+                    Client
+                </dt>
+                <dd className="text-slate-300 break-words">
+                    {row.customerLabel ?? "—"}
+                    {row.customerPhone ? (
+                        <span className="text-slate-500"> · {row.customerPhone}</span>
+                    ) : null}
+                </dd>
+
+                {row.notes && (
+                    <>
+                        <dt className="text-slate-500 uppercase text-[10px] font-black tracking-wider self-start">
+                            Notes
+                        </dt>
+                        <dd className="text-slate-400 break-words">{row.notes}</dd>
+                    </>
+                )}
+            </dl>
+
+            {/* Footer — actions row */}
+            <footer className="flex items-center justify-between gap-2 pt-1 border-t border-[#1a1a1a]">
+                <button
+                    type="button"
+                    onClick={() => onCopy(row.m3uUrl, "M3U")}
+                    disabled={!row.m3uUrl}
+                    aria-label="Copier M3U"
+                    className="h-7 px-2 rounded-md bg-[#161616] border border-[#262626] hover:border-[#FACC15]/40 text-slate-400 hover:text-[#FACC15] flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider disabled:opacity-40"
+                >
+                    <Copy size={11} /> M3U
+                </button>
+                <div className="flex items-center gap-1.5">
+                    <Button
+                        isIconOnly
+                        size="sm"
+                        onPress={() => onManage(row.id)}
+                        className="bg-[#FACC15]/10 border border-[#FACC15]/30 text-[#FACC15] h-7 w-7 min-w-7"
+                        aria-label="Gérer"
+                    >
+                        <Settings2 size={12} />
+                    </Button>
+                    <IptvLineActionsMenu
+                        row={{
+                            id: row.id,
+                            provider: row.provider,
+                            status: row.status,
+                            productName: row.productName,
+                            pricePaidDzd: row.pricePaidDzd,
+                            customerLabel: row.customerLabel,
+                            customerPhone: row.customerPhone,
+                            expiresAt: row.expiresAt,
+                            createdAt: row.createdAt,
+                        }}
+                        capabilities={capabilities}
+                        onChanged={onChanged}
+                        onShowHistory={onManage}
+                    />
+                </div>
+            </footer>
+        </article>
+    );
+};
 
 export default IptvLinesTable;
