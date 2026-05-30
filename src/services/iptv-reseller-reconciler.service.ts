@@ -257,6 +257,62 @@ async function reconcileOne(
     return "pending";
 }
 
+/**
+ * Bulk-flip ACTIVE / FROZEN rows whose `expiresAt` is in the past to EXPIRED.
+ * Display-layer logic (deriveEffectiveStatus) already presents these rows as
+ * expired, but listings, exports, and any consumer that reads the raw `status`
+ * column should not depend on the display layer. Persisting the terminal state
+ * at the mirror keeps the DB as the source of truth.
+ *
+ * Safe to run on every reconciler tick — bounded by `limit` and a single
+ * UPDATE…IN. Idempotent (no-op once a row is already EXPIRED).
+ *
+ * Authorized by user 2026-05-30 as the documented follow-up to the reseller
+ * IPTV bug fix lot (commit a047517).
+ */
+export type IptvExpireResult = { expired: number };
+
+export async function markExpiredIptvOrders(
+    options: { dbInstance?: DbLike; limit?: number } = {},
+): Promise<IptvExpireResult> {
+    const db = options.dbInstance ?? defaultDb;
+    const limit = Math.max(1, Math.min(options.limit ?? 500, 5_000));
+
+    // Two-step: SELECT ids to cap fan-out, then UPDATE WHERE id IN (...). One
+    // round-trip per cycle. The ACTIVE / FROZEN gate prevents clobbering any
+    // already-terminal state (CANCELLED / FAILED / REFUNDED / EXPIRED) or any
+    // still-provisioning state (PENDING_LOADBRAIN — handled by the live
+    // reconciler above).
+    const candidates = await db
+        .select({ id: resellerIptvOrders.id })
+        .from(resellerIptvOrders)
+        .where(
+            and(
+                or(
+                    eq(resellerIptvOrders.status, "ACTIVE"),
+                    eq(resellerIptvOrders.status, "FROZEN"),
+                ),
+                isNotNull(resellerIptvOrders.expiresAt),
+                sql`${resellerIptvOrders.expiresAt} < NOW()`,
+            ),
+        )
+        .limit(limit);
+
+    if (candidates.length === 0) return { expired: 0 };
+
+    const ids = candidates.map((c) => c.id);
+    await db
+        .update(resellerIptvOrders)
+        .set({
+            status: "EXPIRED",
+            lastStatusAt: new Date(),
+            updatedAt: new Date(),
+        })
+        .where(sql`${resellerIptvOrders.id} IN ${ids}`);
+
+    return { expired: ids.length };
+}
+
 export async function reconcileIptvOrderById(
     id: number,
     options: { dbInstance?: DbLike } = {},

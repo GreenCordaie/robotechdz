@@ -73,12 +73,18 @@ export async function register() {
             globalAny.__iptvReconcilerScheduled = true;
             const runIptvReconcile = async () => {
                 try {
-                    const { reconcilePendingIptvOrders } = await import(
+                    const { reconcilePendingIptvOrders, markExpiredIptvOrders } = await import(
                         './services/iptv-reseller-reconciler.service'
                     );
                     const r = await reconcilePendingIptvOrders({ limit: 100 });
                     if (r.delivered > 0 || r.refunded > 0 || r.errors.length > 0) {
                         console.log('[IptvReconciler]', JSON.stringify(r));
+                    }
+                    // Persist EXPIRED on mirror rows whose expiresAt is in the past
+                    // so listings/exports don't depend on the display layer.
+                    const e = await markExpiredIptvOrders({ limit: 500 });
+                    if (e.expired > 0) {
+                        console.log('[IptvExpiry]', JSON.stringify(e));
                     }
                 } catch (e: any) {
                     console.error('[IptvReconciler] error:', e?.message);
