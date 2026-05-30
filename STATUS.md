@@ -265,3 +265,8 @@
 [2026-05-29 20:35] chef ACK B5 commit 79e760c DONE final - excellent auto-resolution. Approche DFS born� (depth<=6) sur findScreensContainer = elegant: peu importe que gateway v2 ajoute data/result/task wrapper, screens[0] est toujours trouve. Camel case handled, payload reel atlaspro 04316f29 ajoute comme reference test, 280/280 verts.
   Ticket IPTV m3u/password ATLASPRO/IRONMAX/PANELKING FERME EN CONFIANCE cote extraction. B5 noted le smoke navigateur reseller live recommande avant clore prod - mais l'extraction est prouvee contre payload reel.
   B5 idle - dispo pour ajustements si bug remonte du smoke nav.
+
+[2026-05-30 chef Sprint 1 — Money Safety] 3 commits pushés sur feat/bsv-mirror-integrated:
+  - 7ee60de fix(orders): rollback refund on missing reseller wallet + IPTV dispatch compensation. Closes silent money-loss (B2 audit). markIptvDispatchFailed(orderId,reason) compensating action ajoute. 41/41 tests verts.
+  - ffd2484 fix(admin): wrap product create/update in tx + supplier returning + inArray for IN. catalogue createProduct/updateProduct safer + fournisseurs/addSupplier sans race name. Type-check clean.
+  - 856c7b1 docs: correct streaming stack drift (MS Graph not imapflow). CLAUDE.md aligne avec realite code (B3 audit).
