@@ -274,3 +274,20 @@
 [2026-05-30 chef Sprint 2 — Correctness V2] 2 commits pushés sur feat/bsv-mirror-integrated:
   - fdd5c45 fix(admin/auth): admin MFA step-2 ADMIN_SIDE_ROLES allowlist (closes role-gate parity gap vs reseller) + Turnstile fail-closed pattern (CF test keys preserved). 10/10 tests verts.
   - 9437dd3 fix(admin,db): getSharedAccountsInventory wrapped in withAuth (last admin export bypassing the wrapper) + 4 partial indexes declared dans schema.ts (rio_expires_idx, rio_upstream_line_idx, rio_pending_idx + suppliers_last_balance_idx) — fin du drift drizzle-kit. Pas de migration. Type-check clean.
+
+[2026-05-30 chef ACK user-report 3 bugs reseller IPTV] commit a047517 fix(reseller-iptv).
+  Bug #1 King365 status drift: actions.ts getMyIptvLinesLiveAction exigeait screen.username
+    truthy pour flipper PENDING_LOADBRAIN => ACTIVE. King365 ship code+m3uUrl sans username
+    parfois. Replace par hasDeliverySignal predicate provider-agnostic (any of username,
+    m3uUrl, code, expiresAt, upstreamLineId, providerAccountId). Marche pour
+    king/atlas/iron/ibo.
+  Bug #2 Label "actif" sur lignes expirees: nouveau helper deriveEffectiveStatus dans
+    src/lib/iptv-effective-status.ts. Provider-agnostic: terminal states preserves,
+    PENDING_LOADBRAIN preserve, expiresAt < now() => EXPIRED systematique. Wire dans
+    StatusPill + IptvLinesTable tab filter + IptvLineDetailModal.
+  Bug #3 Table truncation + scroll horizontal: replace <table> 16-col par responsive
+    card grid (1/2/3 col selon viewport). Long values break-all/break-words. Pas de
+    overflow-x. Lisible sur 320/375/768/1024/1440 sans scroll lateral.
+  Tests: 9 nouveaux pour le helper, 296/296 verts module-wide, tsc clean.
+  Open follow-up (optionnel): persister EXPIRED cote mirror via reconciler. Boutique-side
+    display logic = bon endroit pour fix immediat, reconciler enhancement = separate ticket.
