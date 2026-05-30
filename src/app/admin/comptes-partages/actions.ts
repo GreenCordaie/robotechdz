@@ -4,7 +4,7 @@ import { db } from "@/db";
 import { digitalCodes, productVariants, products, digitalCodeSlots, auditLogs } from "@/db/schema";
 import { eq, and, sql, desc, exists } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { withAuth, logSecurityAction, getAuthenticatedUser } from "@/lib/security";
+import { withAuth, logSecurityAction } from "@/lib/security";
 import { z } from "zod";
 import { encrypt, decrypt } from "@/lib/encryption";
 import { N8nService } from "@/services/n8n.service";
@@ -16,79 +16,78 @@ import { createTokenForSlot } from "@/services/slot-activation-token.service";
 
 const MASKED = "***";
 
-export async function getSharedAccountsInventory(opts?: { revealPasswords?: boolean }) {
-    const user = await getAuthenticatedUser();
-    if (!user || user.role !== UserRole.ADMIN) {
-        return [];
-    }
-    const reveal = !!opts?.revealPasswords;
+export const getSharedAccountsInventory = withAuth(
+    { roles: [UserRole.ADMIN], schema: z.object({ revealPasswords: z.boolean().optional() }).optional() },
+    async (input, user) => {
+        const reveal = !!input?.revealPasswords;
 
-    const results = await db.query.productVariants.findMany({
-        where: eq(productVariants.isSharing, true),
-        with: {
-            product: true,
-            digitalCodes: {
-                where: eq(digitalCodes.status, "DISPONIBLE"),
-                with: {
-                    slots: {
-                        with: {
-                            orderItem: {
-                                with: {
-                                    order: { with: { client: true } }
+        const results = await db.query.productVariants.findMany({
+            where: eq(productVariants.isSharing, true),
+            with: {
+                product: true,
+                digitalCodes: {
+                    where: eq(digitalCodes.status, "DISPONIBLE"),
+                    with: {
+                        slots: {
+                            with: {
+                                orderItem: {
+                                    with: {
+                                        order: { with: { client: true } }
+                                    }
                                 }
                             }
                         }
-                    }
-                },
-                orderBy: [desc(digitalCodes.createdAt)]
+                    },
+                    orderBy: [desc(digitalCodes.createdAt)]
+                }
             }
+        });
+
+        const variantIds: number[] = [];
+        let accountCount = 0;
+        let slotCount = 0;
+
+        const mapped = results.map(v => {
+            variantIds.push(v.id);
+            return {
+                ...v,
+                digitalCodes: v.digitalCodes.map(dc => {
+                    accountCount++;
+                    slotCount += dc.slots.length;
+                    const decryptedCode = decrypt(dc.code) || dc.code;
+                    const decryptedOutlook = dc.outlookPassword ? (decrypt(dc.outlookPassword) || undefined) : undefined;
+                    // Mask code: split email | pass and keep email visible always
+                    const [email, ...rest] = (decryptedCode || "").split("|").map(s => s.trim());
+                    const fullCode = reveal ? decryptedCode : `${email} | ${MASKED}`;
+                    return {
+                        ...dc,
+                        code: fullCode,
+                        outlookPassword: reveal ? decryptedOutlook : (decryptedOutlook ? MASKED : undefined),
+                        hasOutlookPassword: !!dc.outlookPassword,
+                        msStatus: dc.msStatus,
+                        slots: dc.slots.map(s => ({
+                            ...s,
+                            code: reveal && s.code ? (decrypt(s.code) || s.code) : (s.code ? MASKED : null)
+                        }))
+                    };
+                })
+            };
+        });
+
+        if (reveal) {
+            await logSecurityAction({
+                userId: user.id,
+                action: "SHARED_ACCOUNT_PASSWORDS_REVEALED",
+                entityType: "SHARED_ACCOUNT",
+                newData: { variantIds, accountCount, slotCount }
+            }).catch(() => { });
         }
-    });
 
-    const variantIds: number[] = [];
-    let accountCount = 0;
-    let slotCount = 0;
-
-    const mapped = results.map(v => {
-        variantIds.push(v.id);
-        return {
-            ...v,
-            digitalCodes: v.digitalCodes.map(dc => {
-                accountCount++;
-                slotCount += dc.slots.length;
-                const decryptedCode = decrypt(dc.code) || dc.code;
-                const decryptedOutlook = dc.outlookPassword ? (decrypt(dc.outlookPassword) || undefined) : undefined;
-                // Mask code: split email | pass and keep email visible always
-                const [email, ...rest] = (decryptedCode || "").split("|").map(s => s.trim());
-                const fullCode = reveal ? decryptedCode : `${email} | ${MASKED}`;
-                return {
-                    ...dc,
-                    code: fullCode,
-                    outlookPassword: reveal ? decryptedOutlook : (decryptedOutlook ? MASKED : undefined),
-                    hasOutlookPassword: !!dc.outlookPassword,
-                    msStatus: dc.msStatus,
-                    slots: dc.slots.map(s => ({
-                        ...s,
-                        code: reveal && s.code ? (decrypt(s.code) || s.code) : (s.code ? MASKED : null)
-                    }))
-                };
-            })
-        };
-    });
-
-    if (reveal) {
-        await logSecurityAction({
-            userId: user.id,
-            action: "SHARED_ACCOUNT_PASSWORDS_REVEALED",
-            entityType: "SHARED_ACCOUNT",
-            newData: { variantIds, accountCount, slotCount }
-        }).catch(() => { });
+        // Attach a marker on the array (frontend reads via length === N pattern; keep shape stable)
+        (mapped as any).passwordsRevealed = reveal;
+        return mapped;
     }
-
-    // Attach a marker on the array (frontend reads via length === N pattern; keep shape stable)
-    (mapped as any).passwordsRevealed = reveal;
-    return mapped;
-}
+);
 
 export const sweepSharedAccountSlots = withAuth(
     { roles: [UserRole.ADMIN] },

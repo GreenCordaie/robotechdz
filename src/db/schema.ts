@@ -76,6 +76,11 @@ export const suppliers = pgTable("suppliers", {
     lastBalanceAt: timestamp("last_balance_at", { mode: "date" }),
 }, (table) => ({
     typeIdx: index("suppliers_type_idx").on(table.type),
+    // Partial index (mirrors migration 0024). Declared here so drizzle-kit is
+    // aware of it and won't drop it on the next generate.
+    lastBalanceIdx: index("suppliers_last_balance_idx")
+        .on(table.lastBalanceAt)
+        .where(sql`type = 'EXTERNAL_API'`),
 }));
 
 export const clients = pgTable("clients", {
@@ -1090,6 +1095,17 @@ export const resellerIptvOrders = pgTable("reseller_iptv_orders", {
     resellerStatusIdx: index("rio_reseller_status_idx").on(table.resellerId, table.status),
     providerIdx: index("rio_provider_idx").on(table.provider),
     lbOrderIdx: index("rio_lb_order_idx").on(table.lbOrderId),
+    // Partial indexes (mirror migration 0020). Declared here so drizzle-kit is
+    // aware of them and won't drop them on the next generate.
+    expiresIdx: index("rio_expires_idx")
+        .on(table.expiresAt)
+        .where(sql`expires_at IS NOT NULL`),
+    upstreamLineIdx: index("rio_upstream_line_idx")
+        .on(table.provider, table.upstreamLineId)
+        .where(sql`upstream_line_id IS NOT NULL`),
+    pendingIdx: index("rio_pending_idx")
+        .on(table.resellerId, table.createdAt)
+        .where(sql`status = 'PENDING_LOADBRAIN'`),
 }));
 
 export const resellerIptvOrdersRelations = relations(resellerIptvOrders, ({ one }) => ({

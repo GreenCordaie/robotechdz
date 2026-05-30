@@ -78,7 +78,7 @@ export default function SharedAccountsMobile() {
         if (!silent) setIsLoading(true);
         try {
             const [invData, varData, linkData] = await Promise.all([
-                getSharedAccountsInventory() as Promise<any>,
+                getSharedAccountsInventory({}) as Promise<any>,
                 getSharingVariants({}) as Promise<any>,
                 getAvailableVariantsForLinking({}) as Promise<any>
             ]);
