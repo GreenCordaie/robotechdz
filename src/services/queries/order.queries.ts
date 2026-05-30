@@ -5,6 +5,15 @@ import { eq, sql, desc, exists, and, inArray, count, gte, asc, or, ilike, isNull
 import { cache } from "react";
 import { decrypt } from "@/lib/encryption";
 import { OrderStatus } from "@/lib/constants";
+import { logger } from "@/lib/logger";
+
+// Hard server-side ceiling on caller-controlled `limit` for the unpaginated
+// history reader. The paginated reader (`getHistoryPaginated`) is the normal
+// path; this cap exists so a caller can't trigger a full-table scan by passing
+// e.g. `limit=99999`. No current caller asks above the default (audit grep
+// 2026-05-30: only `getHistoryPaginated` is wired in pages/actions), so 500 is
+// generously above any realistic admin "all recent" view.
+const ORDER_HISTORY_MAX_LIMIT = 500;
 
 /**
  * OrderQueries Service
@@ -307,6 +316,15 @@ export class OrderQueries {
      * Gets all orders for the history view.
      */
     static getHistory = cache(async (limit = 100) => {
+        const requested = Number.isFinite(limit) ? Math.floor(limit) : 100;
+        const effectiveLimit = Math.min(Math.max(requested, 1), ORDER_HISTORY_MAX_LIMIT);
+        if (requested > ORDER_HISTORY_MAX_LIMIT) {
+            logger.warn("OrderQueries.getHistory: caller-requested limit capped", {
+                action: "OrderQueries.getHistory",
+                metadata: { requested, capped: effectiveLimit, ceiling: ORDER_HISTORY_MAX_LIMIT },
+            });
+        }
+
         const results = await db.query.orders.findMany({
             where: (orders, { isNull }) => isNull(orders.resellerId),
             with: {
@@ -318,7 +336,7 @@ export class OrderQueries {
                 },
                 client: true
             },
-            limit,
+            limit: effectiveLimit,
             orderBy: (orders, { desc }) => [desc(orders.createdAt)]
         });
 
