@@ -1,6 +1,6 @@
 "use server";
 
-import { eq, and, ilike, count, sql, inArray } from "drizzle-orm";
+import { eq, and, ilike, count, inArray } from "drizzle-orm";
 import { db } from "@/db";
 import { categories, products, productVariants, productVariantSuppliers, digitalCodes, digitalCodeSlots } from "@/db/schema";
 import { revalidatePath } from "next/cache";
@@ -74,38 +74,41 @@ export const createProductAction = withAuth(
                 }
             }
 
-            // 1. Create the product
-            const [newProduct] = await db.insert(products).values({
-                name: formData.name,
-                description: formData.description,
-                categoryId: formData.categoryId,
-                imageUrl: formData.imageUrl,
-                requiresPlayerId: formData.requiresPlayerId ?? false,
-                isManualDelivery: formData.isManualDelivery ?? true,
-            }).returning();
-
-            // 2. Create variants and their supplier links
-            for (const v of formData.variants) {
-                const [newVariant] = await db.insert(productVariants).values({
-                    productId: newProduct.id,
-                    name: v.name,
-                    salePriceDzd: v.salePriceDzd,
-                    isSharing: v.isSharing ?? false,
-                    totalSlots: v.totalSlots ?? 1,
-                    loadbrainSlug: v.loadbrainSlug || null,
+            // 1-2. Create product + variants + supplier links atomically.
+            // Without a tx, a failure mid-loop leaves an orphan product (and possibly
+            // orphan variants). Pattern mirrors `bulkInsertCodes` below.
+            await db.transaction(async (tx) => {
+                const [newProduct] = await tx.insert(products).values({
+                    name: formData.name,
+                    description: formData.description,
+                    categoryId: formData.categoryId,
+                    imageUrl: formData.imageUrl,
+                    requiresPlayerId: formData.requiresPlayerId ?? false,
+                    isManualDelivery: formData.isManualDelivery ?? true,
                 }).returning();
 
-                if (v.linkedSuppliers.length > 0) {
-                    await db.insert(productVariantSuppliers).values(
-                        v.linkedSuppliers.map(ls => ({
-                            variantId: newVariant.id,
-                            supplierId: ls.supplierId,
-                            purchasePrice: ls.purchasePrice,
-                            currency: ls.currency
-                        }))
-                    );
+                for (const v of formData.variants) {
+                    const [newVariant] = await tx.insert(productVariants).values({
+                        productId: newProduct.id,
+                        name: v.name,
+                        salePriceDzd: v.salePriceDzd,
+                        isSharing: v.isSharing ?? false,
+                        totalSlots: v.totalSlots ?? 1,
+                        loadbrainSlug: v.loadbrainSlug || null,
+                    }).returning();
+
+                    if (v.linkedSuppliers.length > 0) {
+                        await tx.insert(productVariantSuppliers).values(
+                            v.linkedSuppliers.map(ls => ({
+                                variantId: newVariant.id,
+                                supplierId: ls.supplierId,
+                                purchasePrice: ls.purchasePrice,
+                                currency: ls.currency
+                            }))
+                        );
+                    }
                 }
-            }
+            });
 
             revalidatePath("/admin/catalogue");
             await cacheDel(CACHE_KEYS.KIOSK_CATALOGUE);
@@ -147,17 +150,8 @@ export const updateProductAction = withAuth(
     },
     async ({ id, formData }) => {
         try {
-            // 1. Update the product basic info
-            await db.update(products).set({
-                name: formData.name,
-                description: formData.description,
-                categoryId: formData.categoryId,
-                imageUrl: formData.imageUrl,
-                requiresPlayerId: formData.requiresPlayerId ?? false,
-                isManualDelivery: formData.isManualDelivery ?? true,
-            }).where(eq(products.id, id));
-
-            // 2. Synchronize variants (UPSERT pattern)
+            // Pre-tx safety check: refuse to delete variants that already appear in orders.
+            // (Done outside the tx so we can short-circuit cleanly; the actual mutations are wrapped.)
             const incomingVariants = formData.variants;
             const incomingVariantIds = incomingVariants
                 .map(v => v.id)
@@ -169,13 +163,15 @@ export const updateProductAction = withAuth(
 
             const variantsToDelete = currentVariants.filter(cv => !incomingVariantIds.includes(cv.id));
 
-            // 3. Safety Check: Prevent deletion of variants already sold
             if (variantsToDelete.length > 0) {
                 const deleteIds = variantsToDelete.map(v => v.id);
-                // Check if any variant has been sold (exists in order_items)
-                // We'll import orderItems if needed, but it's in schema
+                // deleteIds is non-empty here, so inArray is safe.
                 const { orderItems } = await import("@/db/schema");
-                const [soldItems] = await db.select().from(orderItems).where(sql`${orderItems.variantId} IN ${deleteIds}`).limit(1);
+                const [soldItems] = await db
+                    .select()
+                    .from(orderItems)
+                    .where(inArray(orderItems.variantId, deleteIds))
+                    .limit(1);
 
                 if (soldItems) {
                     return {
@@ -183,50 +179,65 @@ export const updateProductAction = withAuth(
                         error: "Impossible de supprimer une variante déjà vendue."
                     };
                 }
+            }
 
+            // All variant mutations happen atomically — an orphaned partial variant
+            // set (or supplier links pointing at a deleted variant) is impossible.
+            await db.transaction(async (tx) => {
+                // 1. Update the product basic info
+                await tx.update(products).set({
+                    name: formData.name,
+                    description: formData.description,
+                    categoryId: formData.categoryId,
+                    imageUrl: formData.imageUrl,
+                    requiresPlayerId: formData.requiresPlayerId ?? false,
+                    isManualDelivery: formData.isManualDelivery ?? true,
+                }).where(eq(products.id, id));
+
+                // 2. Delete removed variants
                 for (const v of variantsToDelete) {
-                    await db.delete(productVariants).where(eq(productVariants.id, v.id));
-                }
-            }
-
-            // 4. Update or Create variants
-            for (const v of incomingVariants) {
-                let finalVariantId: number;
-
-                if (v.id) {
-                    await db.update(productVariants).set({
-                        name: v.name,
-                        salePriceDzd: v.salePriceDzd,
-                        isSharing: v.isSharing ?? false,
-                        totalSlots: v.totalSlots ?? 1,
-                        loadbrainSlug: v.loadbrainSlug || null,
-                    }).where(eq(productVariants.id, v.id));
-                    finalVariantId = v.id;
-                } else {
-                    const [newV] = await db.insert(productVariants).values({
-                        productId: id,
-                        name: v.name,
-                        salePriceDzd: v.salePriceDzd,
-                        isSharing: v.isSharing ?? false,
-                        totalSlots: v.totalSlots ?? 1,
-                        loadbrainSlug: v.loadbrainSlug || null,
-                    }).returning();
-                    finalVariantId = newV.id;
+                    await tx.delete(productVariants).where(eq(productVariants.id, v.id));
                 }
 
-                await db.delete(productVariantSuppliers).where(eq(productVariantSuppliers.variantId, finalVariantId));
+                // 3. Update or Create variants + replace supplier links
+                for (const v of incomingVariants) {
+                    let finalVariantId: number;
 
-                if (v.linkedSuppliers && v.linkedSuppliers.length > 0) {
-                    await db.insert(productVariantSuppliers).values(
-                        v.linkedSuppliers.map(ls => ({
-                            variantId: finalVariantId,
-                            supplierId: ls.supplierId,
-                            purchasePrice: ls.purchasePrice,
-                            currency: ls.currency
-                        }))
-                    );
+                    if (v.id) {
+                        await tx.update(productVariants).set({
+                            name: v.name,
+                            salePriceDzd: v.salePriceDzd,
+                            isSharing: v.isSharing ?? false,
+                            totalSlots: v.totalSlots ?? 1,
+                            loadbrainSlug: v.loadbrainSlug || null,
+                        }).where(eq(productVariants.id, v.id));
+                        finalVariantId = v.id;
+                    } else {
+                        const [newV] = await tx.insert(productVariants).values({
+                            productId: id,
+                            name: v.name,
+                            salePriceDzd: v.salePriceDzd,
+                            isSharing: v.isSharing ?? false,
+                            totalSlots: v.totalSlots ?? 1,
+                            loadbrainSlug: v.loadbrainSlug || null,
+                        }).returning();
+                        finalVariantId = newV.id;
+                    }
+
+                    await tx.delete(productVariantSuppliers).where(eq(productVariantSuppliers.variantId, finalVariantId));
+
+                    if (v.linkedSuppliers && v.linkedSuppliers.length > 0) {
+                        await tx.insert(productVariantSuppliers).values(
+                            v.linkedSuppliers.map(ls => ({
+                                variantId: finalVariantId,
+                                supplierId: ls.supplierId,
+                                purchasePrice: ls.purchasePrice,
+                                currency: ls.currency
+                            }))
+                        );
+                    }
                 }
-            }
+            });
 
             revalidatePath("/admin/catalogue");
             await cacheDel(CACHE_KEYS.KIOSK_CATALOGUE);
@@ -252,8 +263,13 @@ export const deleteProductAction = withAuth(
 
             if (variants.length > 0) {
                 const variantIds = variants.map(v => v.id);
+                // variantIds is non-empty here, so inArray is safe.
                 const { orderItems } = await import("@/db/schema");
-                const [hasSales] = await db.select().from(orderItems).where(sql`${orderItems.variantId} IN ${variantIds}`).limit(1);
+                const [hasSales] = await db
+                    .select()
+                    .from(orderItems)
+                    .where(inArray(orderItems.variantId, variantIds))
+                    .limit(1);
 
                 if (hasSales) {
                     return {

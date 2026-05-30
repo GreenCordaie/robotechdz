@@ -117,11 +117,17 @@ export const addSupplierAction = withAuth(
         schema: z.object({ name: z.string().min(1), currency: z.enum(["USD", "DZD"]), initialBalance: z.string().optional() })
     },
     async (data) => {
-        await db.insert(suppliers).values({ name: data.name, currency: data.currency, balance: data.initialBalance || "0" });
+        // Use .returning() instead of a second findFirst-by-name. The name lookup was
+        // both racy (two concurrent creates with the same name would pick the wrong row)
+        // and unnecessary — Postgres already hands the inserted row back.
+        const [supplier] = await db.insert(suppliers).values({
+            name: data.name,
+            currency: data.currency,
+            balance: data.initialBalance || "0"
+        }).returning();
         revalidatePath("/admin/fournisseurs");
 
         // Sync new supplier to CRM
-        const supplier = await db.query.suppliers.findFirst({ where: eq(suppliers.name, data.name) });
         if (supplier) {
             const { N8nService } = await import("@/services/n8n.service");
             N8nService.syncSupplierToCRM(supplier, 'CREATED').catch(() => { });
