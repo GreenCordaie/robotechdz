@@ -270,3 +270,7 @@
   - 7ee60de fix(orders): rollback refund on missing reseller wallet + IPTV dispatch compensation. Closes silent money-loss (B2 audit). markIptvDispatchFailed(orderId,reason) compensating action ajoute. 41/41 tests verts.
   - ffd2484 fix(admin): wrap product create/update in tx + supplier returning + inArray for IN. catalogue createProduct/updateProduct safer + fournisseurs/addSupplier sans race name. Type-check clean.
   - 856c7b1 docs: correct streaming stack drift (MS Graph not imapflow). CLAUDE.md aligne avec realite code (B3 audit).
+
+[2026-05-30 chef Sprint 2 — Correctness V2] 2 commits pushés sur feat/bsv-mirror-integrated:
+  - fdd5c45 fix(admin/auth): admin MFA step-2 ADMIN_SIDE_ROLES allowlist (closes role-gate parity gap vs reseller) + Turnstile fail-closed pattern (CF test keys preserved). 10/10 tests verts.
+  - 9437dd3 fix(admin,db): getSharedAccountsInventory wrapped in withAuth (last admin export bypassing the wrapper) + 4 partial indexes declared dans schema.ts (rio_expires_idx, rio_upstream_line_idx, rio_pending_idx + suppliers_last_balance_idx) — fin du drift drizzle-kit. Pas de migration. Type-check clean.
