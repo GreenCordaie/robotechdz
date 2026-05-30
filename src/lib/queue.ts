@@ -40,10 +40,10 @@ export async function addNotificationJob(type: NotificationJobType, data: any) {
         const queue = new Queue(NOTIFICATION_QUEUE, {
             connection,
             defaultJobOptions: {
-                attempts: 5,
-                backoff: { type: 'exponential', delay: 5000 },
-                removeOnComplete: true,
-                removeOnFail: false,
+                attempts: 3,
+                backoff: { type: 'exponential', delay: 10_000 }, // 10s, 20s, 40s
+                removeOnComplete: { count: 1_000, age: 24 * 60 * 60 }, // keep last 1k or 24h
+                removeOnFail: { count: 5_000, age: 7 * 24 * 60 * 60 }, // keep last 5k or 7d
             }
         });
 

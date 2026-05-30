@@ -121,6 +121,13 @@ export const orders = pgTable("orders", {
         createdAtIdx: index("orders_created_at_idx").on(table.createdAt),
         statusIdx: index("orders_status_idx").on(table.status),
         clientIdIdx: index("orders_client_id_idx").on(table.clientId),
+        // Partial index for B2C scans (reseller_id IS NULL).
+        // Almost every B2C query filters with isNull(orders.resellerId);
+        // this avoids full-filter on the table once it grows.
+        // Ops: run `drizzle-kit generate` (or apply manual DDL) to materialize.
+        ordersB2cCreatedIdx: index("orders_b2c_created_idx")
+            .on(table.createdAt)
+            .where(sql`reseller_id IS NULL`),
     };
 });
 
