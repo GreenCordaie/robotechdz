@@ -63,4 +63,27 @@ describe("mfa-ticket", () => {
             .sign(key);
         expect(await verifyMfaTicket(badUid)).toBeNull();
     });
+
+    // The role claim is what step-2 (`verifyMfaAction` / `verifyResellerMfaAction`)
+    // gates against to refuse a cross-surface ticket (e.g. a RESELLER ticket on
+    // the admin verify, or vice versa). Pin the round-trip so a future change to
+    // the claim shape can't silently drop the role.
+    it("preserves a RESELLER role claim end-to-end", async () => {
+        const ticket = await issueMfaTicket(7, "RESELLER");
+        expect(await verifyMfaTicket(ticket)).toEqual({ userId: 7, role: "RESELLER" });
+    });
+
+    it("preserves a SUPER_ADMIN role claim end-to-end", async () => {
+        const ticket = await issueMfaTicket(1, "SUPER_ADMIN");
+        expect(await verifyMfaTicket(ticket)).toEqual({ userId: 1, role: "SUPER_ADMIN" });
+    });
+
+    it("normalizes a missing role claim to an empty string (callers must allowlist)", async () => {
+        const noRole = await new SignJWT({ uid: 9, purpose: "mfa-step2" })
+            .setProtectedHeader({ alg: "HS256" })
+            .setIssuedAt()
+            .setExpirationTime("5m")
+            .sign(key);
+        expect(await verifyMfaTicket(noRole)).toEqual({ userId: 9, role: "" });
+    });
 });
