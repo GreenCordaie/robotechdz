@@ -40,6 +40,24 @@ export function ActivationClient(props: Props) {
                 es.close();
                 setTimeout(connect, 3_000); // graceful reconnect
             };
+            // The server emits NAMED events (`event: slot_event\ndata: ...`).
+            // EventSource.onmessage ONLY fires for events with no `event:`
+            // field — using addEventListener("slot_event", ...) is required.
+            const handleSlotEvent = (msg: MessageEvent) => {
+                try {
+                    const parsed = JSON.parse(msg.data);
+                    // Server wraps payload as { event: "slot_event", data: { type, value, timestamp } }
+                    const payload = parsed?.data ?? parsed;
+                    if (payload && (payload.type || payload.value)) {
+                        setLatest(payload as LiveEvent);
+                    }
+                } catch {
+                    // ignore non-JSON heartbeats
+                }
+            };
+            es.addEventListener("slot_event", handleSlotEvent);
+            // Keep the default onmessage as a safety net for any future
+            // unnamed events.
             es.onmessage = (msg) => {
                 try {
                     const parsed = JSON.parse(msg.data);
@@ -47,7 +65,7 @@ export function ActivationClient(props: Props) {
                         setLatest(parsed.data as LiveEvent);
                     }
                 } catch {
-                    // ignore non-JSON heartbeats
+                    /* ignore */
                 }
             };
         }
