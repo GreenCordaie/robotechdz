@@ -292,6 +292,28 @@ export const replaceOrderItemCode = withAuth(
                         .set({ status: DigitalCodeSlotStatus.VENDU, orderItemId: item.id })
                         .where(eq(digitalCodeSlots.id, newSlot.id));
 
+                    // Mint a fresh streaming activation deeplink so the
+                    // re-issued slot also exposes the magic link. Same
+                    // best-effort guard as the main allocator in lib/orders.ts.
+                    try {
+                        const { createTokenForSlot } = await import("@/services/slot-activation-token.service");
+                        const baseUrl =
+                            process.env.NEXT_PUBLIC_APP_URL ||
+                            process.env.PUBLIC_URL ||
+                            "https://boutique.nexusbox.tech";
+                        const { token } = await createTokenForSlot(tx, newSlot.id);
+                        const activationUrl = `${baseUrl.replace(/\/$/, "")}/activer/${token}`;
+                        await tx
+                            .update(digitalCodeSlots)
+                            .set({ activationUrl })
+                            .where(eq(digitalCodeSlots.id, newSlot.id));
+                    } catch (err: any) {
+                        console.error(
+                            `[caisse-replace] activation token mint failed for slot ${newSlot.id}:`,
+                            err?.message,
+                        );
+                    }
+
                     revalidatePath("/admin/caisse");
                     return { success: true };
                 } else {

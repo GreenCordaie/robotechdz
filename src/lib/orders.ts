@@ -92,6 +92,39 @@ export async function allocateOrderStock(
                     .set({ status: DigitalCodeSlotStatus.VENDU, orderItemId: item.id })
                     .where(inArray(digitalCodeSlots.id, slotIds));
 
+                // Mint the streaming activation deeplink token for each
+                // assigned slot. Without this, the WhatsApp delivery message
+                // would carry only email/password/PIN — no magic link — and
+                // the customer would have to use the "reply CODE" fallback
+                // every time Netflix asks for a household code. Mirrors what
+                // attribuerSlotAutomatiqueAction does in /admin/comptes-partages.
+                // Best-effort per slot: a single failure can't block the
+                // whole order allocation.
+                try {
+                    const { createTokenForSlot } = await import("@/services/slot-activation-token.service");
+                    const baseUrl =
+                        process.env.NEXT_PUBLIC_APP_URL ||
+                        process.env.PUBLIC_URL ||
+                        "https://boutique.nexusbox.tech";
+                    for (const slotId of slotIds) {
+                        try {
+                            const { token } = await createTokenForSlot(tx, slotId);
+                            const activationUrl = `${baseUrl.replace(/\/$/, "")}/activer/${token}`;
+                            await tx
+                                .update(digitalCodeSlots)
+                                .set({ activationUrl })
+                                .where(eq(digitalCodeSlots.id, slotId));
+                        } catch (err: any) {
+                            console.error(
+                                `[stock-alloc] activation token mint failed for slot ${slotId}:`,
+                                err?.message,
+                            );
+                        }
+                    }
+                } catch (err: any) {
+                    console.error("[stock-alloc] activation token service unavailable:", err?.message);
+                }
+
                 // Mark parent codes as VENDU if all slots are gone
                 const parentCodeIds = Array.from(new Set(availableSlots.map((s: any) => s.digitalCodeId)));
                 for (const pid of parentCodeIds) {
