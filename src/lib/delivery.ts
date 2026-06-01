@@ -221,7 +221,8 @@ function buildWhatsAppMessage(order: any, shopName: string, appUrl: string, tota
                 return {
                     parentCode: decrypt(s.digitalCode.code),
                     slotNumber: s.slotNumber,
-                    pin: s.code ? decrypt(s.code) : null
+                    pin: s.code ? decrypt(s.code) : null,
+                    activationUrl: s.activationUrl ?? null,
                 };
             } catch { return null; }
         }).filter(Boolean) as any[];
@@ -286,6 +287,16 @@ function buildWhatsAppMessage(order: any, shopName: string, appUrl: string, tota
             lines.push(`👤 *Profil${slots.length > 1 ? 's' : ''} :*`);
             for (const slot of slots) {
                 lines.push(`• Profil N°${slot.slotNumber} — \`${slot.parentCode}\`${slot.pin ? `  |  PIN : *${slot.pin}*` : ''}`);
+            }
+            // Streaming activation deeplink (one per slot). Only present when
+            // attribuerSlotAutomatiqueAction (or the caisse equivalent) minted
+            // a token at slot assignment. Surfacing it lets the customer skip
+            // the "reply CODE" WhatsApp dance and get the OTP via SSE.
+            const slotWithUrl = slots.find(s => s.activationUrl);
+            if (slotWithUrl) {
+                lines.push(``);
+                lines.push(`📺 *Code TV auto* (quand Netflix demande un code de foyer) :`);
+                lines.push(slotWithUrl.activationUrl);
             }
         }
 
