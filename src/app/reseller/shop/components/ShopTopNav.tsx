@@ -25,6 +25,7 @@ import {
     BookOpen,
     Receipt,
     Tv,
+    KeyRound,
 } from "lucide-react";
 import {
     Dropdown,
@@ -48,6 +49,7 @@ const NAV_ITEMS: ReadonlyArray<NavItem> = [
     { href: "/reseller/shop?type=giftcard", label: "Gift Cards & Vouchers", icon: Gift },
     { href: "/reseller/shop/games", label: "Game Top Up", icon: Gamepad2 },
     { href: "/reseller/iptv", label: "IPTV", icon: Tv },
+    { href: "/reseller/shop/active-code", label: "Active Code", icon: KeyRound },
     { href: "/reseller/wallet", label: "Wallet", icon: Wallet },
 ];
 
