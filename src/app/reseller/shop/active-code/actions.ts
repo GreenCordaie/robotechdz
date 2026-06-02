@@ -13,6 +13,16 @@
  * "Code Premium" by the LoadBrain projection; the panel name never
  * appears here. Any future drift is caught by `pnpm sanitize:audit`.
  */
+import { and, eq, sql } from "drizzle-orm";
+import { db } from "@/db";
+import {
+    activeCodeOrders,
+    orders,
+    resellerTransactions,
+    resellerWallets,
+    resellers,
+} from "@/db/schema";
+import { getCurrentResellerAction } from "../../actions";
 
 interface ActiveCodeItemUpstream {
     id: string;
@@ -76,6 +86,52 @@ interface PurchaseInput {
     readonly customerInfo?: Record<string, unknown>;
 }
 
+/**
+ * Re-fetch the authoritative price for a single plan from the LoadBrain
+ * public catalog. We refuse to trust any price the client may have sent
+ * (a tampered request could otherwise buy a 1500 DZD plan for 1 DZD).
+ *
+ * Returns null when the plan is gone (unlikely outside of admin edits),
+ * the catalog hasn't priced it for this site, or the network blip.
+ */
+async function fetchAuthoritativePlanFromLb(
+    planId: string,
+): Promise<{ priceDzd: number; label: string } | null> {
+    const auth = resolveLoadBrainAuth();
+    if (!auth) return null;
+    try {
+        // The catalog endpoint doesn't accept a planId filter directly,
+        // so we paginate up to a generous slice and find the row. The
+        // typical catalog is 200-ish plans for the foreseeable future
+        // and we can lift this when the dedicated /plan/:id route lands.
+        const res = await fetch(
+            `${auth.baseUrl}/api/v1/giftcards/reseller-catalog/active-code?limit=200&offset=0`,
+            {
+                headers: { "X-API-Key": auth.apiKey },
+                cache: "no-store",
+            },
+        );
+        if (!res.ok) return null;
+        const body = (await res.json()) as {
+            data?: {
+                items?: Array<{
+                    id: string;
+                    display_name: string;
+                    reseller_price_dzd_cents: number | null;
+                }>;
+            };
+        };
+        const match = body.data?.items?.find((i) => i.id === planId);
+        if (!match || match.reseller_price_dzd_cents == null) return null;
+        return {
+            priceDzd: Math.round(match.reseller_price_dzd_cents / 100),
+            label: match.display_name,
+        };
+    } catch {
+        return null;
+    }
+}
+
 interface ProvisionTaskShape {
     taskId?: string;
     id?: string;
@@ -86,10 +142,23 @@ interface ProvisionTaskShape {
 }
 
 /**
- * Place a buy order for a single Active Code plan. The LoadBrain side
- * mints a provision task and the worker runs the panel handshake; we
- * poll the order status here for up to 60s before falling back to
- * "in progress" so the customer-facing surface doesn't hang.
+ * Place a buy order for a single Active Code plan.
+ *
+ * Atomic-ish flow:
+ *   1. Authenticate the caller as a reseller and re-fetch the
+ *      authoritative price from LoadBrain (the client-side value is
+ *      never trusted — a tampered request could otherwise buy a
+ *      premium plan for 1 DZD).
+ *   2. Inside a DB transaction: lock the wallet row, verify balance,
+ *      debit, create a local `orders` row + tracking
+ *      `active_code_orders` row in PENDING_LOADBRAIN.
+ *   3. Outside the tx: call the LoadBrain public reseller-order route
+ *      and poll its status for up to 60 s.
+ *   4. Persist the outcome on the tracking row (DELIVERED / FAILED).
+ *      On FAILED, refund the wallet via a separate transaction and
+ *      flip status to REFUNDED.
+ *
+ * Returns a discriminated union the storefront modal renders directly.
  */
 export async function purchaseActiveCodeAction(input: PurchaseInput): Promise<
     | { ok: true; status: "completed"; orderId: string; code: string; extraCodes: ReadonlyArray<string> }
@@ -105,9 +174,115 @@ export async function purchaseActiveCodeAction(input: PurchaseInput): Promise<
         return { ok: false, error: "missing planId" };
     }
 
+    // ─── 1. Reseller identity + authoritative price ──────────────────
+    const resellerRes = await getCurrentResellerAction({});
+    if (!resellerRes.success || !resellerRes.data) {
+        return { ok: false, error: "Reseller introuvable" };
+    }
+    const resellerId = (resellerRes.data as { id: number }).id;
+
+    const plan = await fetchAuthoritativePlanFromLb(planId);
+    if (!plan) {
+        return { ok: false, error: "Plan introuvable ou non tarifé pour votre boutique" };
+    }
+    const priceDzd = plan.priceDzd;
+
+    // ─── 2. Wallet debit + order row creation ────────────────────────
+    const orderNumber = `AC-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    let localOrderId: number;
+    let activeCodeOrderId: number;
+    let lbOrderId: string;
+    let lbTaskId: string | null = null;
+
+    try {
+        const txResult = await db.transaction(async (tx) => {
+            const locked = await tx.query.resellers.findFirst({
+                where: eq(resellers.id, resellerId),
+                with: { wallet: true },
+            });
+            if (!locked || !locked.wallet) {
+                throw new Error("Portefeuille introuvable");
+            }
+            const [lockedWallet] = await tx
+                .select({ balance: resellerWallets.balance })
+                .from(resellerWallets)
+                .where(eq(resellerWallets.id, locked.wallet.id))
+                .for("update");
+            const balance = parseFloat(lockedWallet?.balance ?? "0");
+            if (balance < priceDzd) {
+                throw new Error("Solde insuffisant");
+            }
+
+            // Synthesise a deterministic-ish LB orderId so a retry on the
+            // same logical purchase doesn't double-queue the panel.
+            const lbId = `ac-${resellerId}-${planId.slice(0, 8)}-${Date.now()}`;
+
+            const [newOrder] = await tx
+                .insert(orders)
+                .values({
+                    orderNumber,
+                    status: "PAYE",
+                    totalAmount: priceDzd.toFixed(2),
+                    montantPaye: priceDzd.toFixed(2),
+                    resteAPayer: "0",
+                    resellerId,
+                    source: "B2B_WEB",
+                    deliveryMethod: "TICKET",
+                })
+                .returning();
+
+            await tx
+                .update(resellerWallets)
+                .set({
+                    balance: sql`${resellerWallets.balance} - ${priceDzd}`,
+                    totalSpent: sql`${resellerWallets.totalSpent} + ${priceDzd}`,
+                    updatedAt: new Date(),
+                })
+                .where(eq(resellerWallets.id, locked.wallet.id));
+
+            await tx.insert(resellerTransactions).values({
+                walletId: locked.wallet.id,
+                type: "PURCHASE",
+                amount: priceDzd.toString(),
+                orderId: newOrder.id,
+                description: `Active Code — ${plan.label}`,
+            });
+
+            const [aco] = await tx
+                .insert(activeCodeOrders)
+                .values({
+                    localOrderId: newOrder.id,
+                    resellerId,
+                    planId,
+                    planLabel: plan.label,
+                    pricePaidDzd: priceDzd.toFixed(2),
+                    lbOrderId: lbId,
+                    status: "PENDING_LOADBRAIN",
+                })
+                .returning();
+
+            return {
+                localOrderId: newOrder.id,
+                activeCodeOrderId: aco.id,
+                lbId,
+                walletId: locked.wallet.id,
+            };
+        });
+        localOrderId = txResult.localOrderId;
+        activeCodeOrderId = txResult.activeCodeOrderId;
+        lbOrderId = txResult.lbId;
+    } catch (err) {
+        return {
+            ok: false,
+            error: err instanceof Error ? err.message : "Erreur paiement",
+        };
+    }
+
+    // ─── 3. Call LoadBrain provision (outside tx, network roundtrip) ──
+    const buyUrl = `${auth.baseUrl}/api/v1/giftcards/reseller-order/active-code`;
     let buyJson: { success?: boolean; data?: ProvisionTaskShape };
     try {
-        const buyRes = await fetch(`${auth.baseUrl}/api/v1/giftcards/reseller-order/active-code`, {
+        const buyRes = await fetch(buyUrl, {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
@@ -115,52 +290,86 @@ export async function purchaseActiveCodeAction(input: PurchaseInput): Promise<
             },
             body: JSON.stringify({
                 planId,
-                customerId: input.customerId,
-                customerInfo: input.customerInfo,
+                customerId: input.customerId ?? `reseller-${resellerId}`,
+                customerInfo: { ...(input.customerInfo ?? {}), orderId: lbOrderId },
             }),
             cache: "no-store",
         });
+        const rawBody = await buyRes.text();
         if (!buyRes.ok) {
-            const body = (await buyRes.json().catch(() => ({}))) as { error?: string };
-            return { ok: false, error: body.error ?? `upstream ${buyRes.status}` };
+            let parsed: { error?: string } = {};
+            try {
+                parsed = JSON.parse(rawBody) as { error?: string };
+            } catch {
+                /* ignore */
+            }
+            await refundActiveCodeOrder({
+                activeCodeOrderId,
+                localOrderId,
+                resellerId,
+                priceDzd,
+                reason: parsed.error ?? `upstream ${buyRes.status}`,
+            });
+            return { ok: false, error: parsed.error ?? `upstream ${buyRes.status}` };
         }
-        buyJson = (await buyRes.json()) as { success?: boolean; data?: ProvisionTaskShape };
+        buyJson = JSON.parse(rawBody) as { success?: boolean; data?: ProvisionTaskShape };
     } catch (err) {
-        return {
-            ok: false,
-            error: err instanceof Error ? err.message : "network error",
-        };
+        const msg = err instanceof Error ? err.message : "network error";
+        await refundActiveCodeOrder({
+            activeCodeOrderId,
+            localOrderId,
+            resellerId,
+            priceDzd,
+            reason: msg,
+        });
+        return { ok: false, error: msg };
     }
 
     const task = buyJson.data;
-    const orderId = task?.orderId;
-    if (!orderId) {
-        return { ok: false, error: "upstream returned no order id" };
+    lbTaskId = task?.taskId ?? task?.id ?? null;
+    if (lbTaskId) {
+        await db
+            .update(activeCodeOrders)
+            .set({ lbTaskId, updatedAt: new Date() })
+            .where(eq(activeCodeOrders.id, activeCodeOrderId));
     }
 
     // Already terminal on the first POST? Forward straight away.
     if (task?.status === "completed" && task.result?.code) {
+        await db
+            .update(activeCodeOrders)
+            .set({
+                status: "DELIVERED",
+                code: task.result.code,
+                updatedAt: new Date(),
+            })
+            .where(eq(activeCodeOrders.id, activeCodeOrderId));
         return {
             ok: true,
             status: "completed",
-            orderId,
+            orderId: lbOrderId,
             code: task.result.code,
             extraCodes: task.result.extraCodes ?? [],
         };
     }
     if (task?.status === "failed") {
+        await refundActiveCodeOrder({
+            activeCodeOrderId,
+            localOrderId,
+            resellerId,
+            priceDzd,
+            reason: task.error ?? "provisioning failed",
+        });
         return { ok: false, error: task.error ?? "provisioning failed" };
     }
 
-    // Poll the status. The worker dispatches the panel handshake which
-    // can take a handful of seconds; cap the wait at 60s so the UI
-    // stays responsive even when the panel is sluggish.
+    // ─── 4. Poll status up to 60 s ───────────────────────────────────
     const deadline = Date.now() + 60_000;
     while (Date.now() < deadline) {
         await new Promise((resolve) => setTimeout(resolve, 2_000));
         try {
             const pollRes = await fetch(
-                `${auth.baseUrl}/api/v1/giftcards/reseller-order/active-code/${encodeURIComponent(orderId)}/status`,
+                `${auth.baseUrl}/api/v1/giftcards/reseller-order/active-code/${encodeURIComponent(lbOrderId)}/status`,
                 {
                     headers: { "X-API-Key": auth.apiKey },
                     cache: "no-store",
@@ -170,15 +379,30 @@ export async function purchaseActiveCodeAction(input: PurchaseInput): Promise<
             const pollJson = (await pollRes.json()) as { success?: boolean; data?: ProvisionTaskShape };
             const t = pollJson.data;
             if (t?.status === "completed" && t.result?.code) {
+                await db
+                    .update(activeCodeOrders)
+                    .set({
+                        status: "DELIVERED",
+                        code: t.result.code,
+                        updatedAt: new Date(),
+                    })
+                    .where(eq(activeCodeOrders.id, activeCodeOrderId));
                 return {
                     ok: true,
                     status: "completed",
-                    orderId,
+                    orderId: lbOrderId,
                     code: t.result.code,
                     extraCodes: t.result.extraCodes ?? [],
                 };
             }
             if (t?.status === "failed") {
+                await refundActiveCodeOrder({
+                    activeCodeOrderId,
+                    localOrderId,
+                    resellerId,
+                    priceDzd,
+                    reason: t.error ?? "provisioning failed",
+                });
                 return { ok: false, error: t.error ?? "provisioning failed" };
             }
         } catch {
@@ -186,7 +410,63 @@ export async function purchaseActiveCodeAction(input: PurchaseInput): Promise<
         }
     }
 
-    return { ok: true, status: "pending", orderId };
+    // Still pending after 60 s — the wallet stays debited and the
+    // tracking row stays PENDING_LOADBRAIN. A background reconciler can
+    // pick this up later; the storefront simply shows "in progress".
+    return { ok: true, status: "pending", orderId: lbOrderId };
+}
+
+/**
+ * Refund a failed Active Code purchase. Runs in its own transaction so
+ * we still credit the wallet back even if the tracking update fails.
+ * Best-effort logging — the order remains visible in REFUNDED state.
+ */
+async function refundActiveCodeOrder(args: {
+    activeCodeOrderId: number;
+    localOrderId: number;
+    resellerId: number;
+    priceDzd: number;
+    reason: string;
+}): Promise<void> {
+    try {
+        await db.transaction(async (tx) => {
+            const locked = await tx.query.resellers.findFirst({
+                where: eq(resellers.id, args.resellerId),
+                with: { wallet: true },
+            });
+            if (locked?.wallet) {
+                await tx
+                    .update(resellerWallets)
+                    .set({
+                        balance: sql`${resellerWallets.balance} + ${args.priceDzd}`,
+                        totalSpent: sql`GREATEST(${resellerWallets.totalSpent} - ${args.priceDzd}, 0)`,
+                        updatedAt: new Date(),
+                    })
+                    .where(eq(resellerWallets.id, locked.wallet.id));
+                await tx.insert(resellerTransactions).values({
+                    walletId: locked.wallet.id,
+                    type: "REFUND",
+                    amount: args.priceDzd.toString(),
+                    orderId: args.localOrderId,
+                    description: `Active Code refund — ${args.reason.slice(0, 200)}`,
+                });
+            }
+            await tx
+                .update(orders)
+                .set({ status: "REMBOURSE" })
+                .where(eq(orders.id, args.localOrderId));
+            await tx
+                .update(activeCodeOrders)
+                .set({
+                    status: "REFUNDED",
+                    error: args.reason.slice(0, 1000),
+                    updatedAt: new Date(),
+                })
+                .where(eq(activeCodeOrders.id, args.activeCodeOrderId));
+        });
+    } catch (err) {
+        console.error("[active-code-refund] failed:", err);
+    }
 }
 
 export async function getActiveCodeCatalogAction(

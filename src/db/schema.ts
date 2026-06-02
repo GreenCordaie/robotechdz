@@ -1012,6 +1012,53 @@ export const g2bulkDeliveredCodes = pgTable("g2bulk_delivered_codes", {
     g2bulkOrderIdx: index("g2bulk_delivered_codes_g2bulk_order_idx").on(table.g2bulkOrderId),
 }));
 
+/**
+ * activeCodeOrders — per-line tracking for Niveausat-backed purchases
+ * placed via /reseller/shop/active-code. Mirrors the g2bulkOrders shape:
+ * linked to a local `orders` row (wallet debit, reseller context) and to
+ * the LoadBrain provisioning task on the side so the storefront can
+ * resync status after the in-page polling window.
+ */
+export const activeCodeOrderStatusEnum = pgEnum("active_code_order_status", [
+    "PENDING_LOADBRAIN",
+    "DELIVERED",
+    "FAILED",
+    "REFUNDED",
+]);
+
+export const activeCodeOrders = pgTable("active_code_orders", {
+    id: serial("id").primaryKey(),
+    localOrderId: integer("local_order_id")
+        .references(() => orders.id, { onDelete: "cascade" })
+        .notNull(),
+    resellerId: integer("reseller_id")
+        .references(() => resellers.id, { onDelete: "cascade" })
+        .notNull(),
+    planId: text("plan_id").notNull(),
+    planLabel: text("plan_label").notNull(),
+    pricePaidDzd: numeric("price_paid_dzd", { precision: 12, scale: 2 }).notNull(),
+    lbOrderId: text("lb_order_id").notNull(),
+    lbTaskId: text("lb_task_id"),
+    code: text("code"),
+    status: activeCodeOrderStatusEnum("status")
+        .notNull()
+        .default("PENDING_LOADBRAIN"),
+    error: text("error"),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow(),
+});
+
+export const activeCodeOrdersRelations = relations(activeCodeOrders, ({ one }) => ({
+    localOrder: one(orders, {
+        fields: [activeCodeOrders.localOrderId],
+        references: [orders.id],
+    }),
+    reseller: one(resellers, {
+        fields: [activeCodeOrders.resellerId],
+        references: [resellers.id],
+    }),
+}));
+
 export const g2bulkOrdersRelations = relations(g2bulkOrders, ({ one, many }) => ({
     localOrder: one(orders, {
         fields: [g2bulkOrders.localOrderId],
