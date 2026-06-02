@@ -86,6 +86,12 @@ NEXTAUTH_URL="https://boutique.nexusbox.tech"
 NEXT_PUBLIC_BASE_URL="https://boutique.nexusbox.tech"
 PUBLIC_URL="https://boutique.nexusbox.tech"
 MICROSOFT_REDIRECT_URI="https://boutique.nexusbox.tech/api/auth/microsoft/callback"
+
+# Pont boutique ↔ LoadBrain — REQUIS, sinon WhatsApp centralisé / auto-approve /
+# balance fetcher lb_module sont KO. Le token et le site_id sont fournis par
+# l'admin LoadBrain (`/admin/sites` côté LB).
+LOADBRAIN_INTERNAL_TOKEN="..."                 # X-Internal-Token partagé
+LOADBRAIN_SITE_ID="AGENT007"                   # id de cette boutique côté LB
 ```
 
 ---
@@ -243,6 +249,9 @@ bloquées en `PENDING_LOADBRAIN` quand un webhook entrant est manqué :
 | `POST /api/admin/g2bulk/reconcile` (header `x-cron-secret: $CRON_SECRET`) | Rattrape les commandes G2Bulk dont le webhook a été manqué | toutes les ~10 min |
 | `POST /api/admin/iptv/reconcile` (header `x-cron-secret: $CRON_SECRET`) | Idem pour l'IPTV reseller | toutes les ~10 min |
 | `GET /api/admin/cron/refresh-balances` (header `Authorization: Bearer $CRON_SECRET`) | Rafraîchit les soldes des fournisseurs externes (CapSolver / 2Captcha / AntiCaptcha) et déclenche les alertes de seuil bas | toutes les ~10 min |
+| `GET /api/admin/cron/iptv-expiry` (header `Authorization: Bearer $CRON_SECRET`) | Alerte Telegram sur les lignes IPTV qui expirent bientôt | une fois par jour |
+| `GET /api/admin/cron/scan-expiry` (header `Authorization: Bearer $CRON_SECRET`) | Scan des codes digitaux / slots arrivés à expiration + notification n8n | une fois par jour |
+| `GET /api/admin/cron/webhook-cleanup` (header `Authorization: Bearer $CRON_SECRET`) | Purge des anciennes lignes `webhook_delivery_attempts` + `notification_logs` | une fois par jour |
 
 Le script `scripts/cron-tick.sh` appelle ces endpoints avec les bons headers. Ils
 sont idempotents (verrous `FOR UPDATE` + gardes de statut / `SKIP LOCKED`), donc les
@@ -250,10 +259,12 @@ faire tourner en parallèle d'un autre scheduler (n8n) est sans risque.
 
 ```bash
 crontab -e
-# Ajouter :
+# Ajouter (court — toutes les minutes / 10 min) :
 * * * * *    CRON_SECRET=xxxx CRON_APP_URL=https://boutique.nexusbox.tech /var/www/100-pc-ia/scripts/cron-tick.sh retries   >> /var/log/robotech-cron.log 2>&1
 */10 * * * * CRON_SECRET=xxxx CRON_APP_URL=https://boutique.nexusbox.tech /var/www/100-pc-ia/scripts/cron-tick.sh reconcile >> /var/log/robotech-cron.log 2>&1
 */10 * * * * CRON_SECRET=xxxx CRON_APP_URL=https://boutique.nexusbox.tech /var/www/100-pc-ia/scripts/cron-tick.sh balances  >> /var/log/robotech-cron.log 2>&1
+# Quotidien (3h du matin) — alertes expiry + cleanup :
+0 3 * * *    CRON_SECRET=xxxx CRON_APP_URL=https://boutique.nexusbox.tech /var/www/100-pc-ia/scripts/cron-tick.sh daily     >> /var/log/robotech-cron.log 2>&1
 ```
 
 `CRON_SECRET` doit être identique à la variable d'environnement de l'app. Variante
