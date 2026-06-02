@@ -70,6 +70,125 @@ function resolveLoadBrainAuth(): { baseUrl: string; apiKey: string } | null {
     return { baseUrl: baseUrl.replace(/\/$/, ""), apiKey };
 }
 
+interface PurchaseInput {
+    readonly planId: string;
+    readonly customerId?: string;
+    readonly customerInfo?: Record<string, unknown>;
+}
+
+interface ProvisionTaskShape {
+    taskId?: string;
+    id?: string;
+    orderId?: string;
+    status?: "queued" | "processing" | "completed" | "failed";
+    result?: { code?: string; extraCodes?: readonly string[] } | null;
+    error?: string | null;
+}
+
+/**
+ * Place a buy order for a single Active Code plan. The LoadBrain side
+ * mints a provision task and the worker runs the panel handshake; we
+ * poll the order status here for up to 60s before falling back to
+ * "in progress" so the customer-facing surface doesn't hang.
+ */
+export async function purchaseActiveCodeAction(input: PurchaseInput): Promise<
+    | { ok: true; status: "completed"; orderId: string; code: string; extraCodes: ReadonlyArray<string> }
+    | { ok: true; status: "pending"; orderId: string }
+    | { ok: false; error: string }
+> {
+    const auth = resolveLoadBrainAuth();
+    if (!auth) {
+        return { ok: false, error: "LoadBrain not configured" };
+    }
+    const planId = input.planId.trim();
+    if (!planId) {
+        return { ok: false, error: "missing planId" };
+    }
+
+    let buyJson: { success?: boolean; data?: ProvisionTaskShape };
+    try {
+        const buyRes = await fetch(`${auth.baseUrl}/api/v1/giftcards/reseller-order/active-code`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "X-API-Key": auth.apiKey,
+            },
+            body: JSON.stringify({
+                planId,
+                customerId: input.customerId,
+                customerInfo: input.customerInfo,
+            }),
+            cache: "no-store",
+        });
+        if (!buyRes.ok) {
+            const body = (await buyRes.json().catch(() => ({}))) as { error?: string };
+            return { ok: false, error: body.error ?? `upstream ${buyRes.status}` };
+        }
+        buyJson = (await buyRes.json()) as { success?: boolean; data?: ProvisionTaskShape };
+    } catch (err) {
+        return {
+            ok: false,
+            error: err instanceof Error ? err.message : "network error",
+        };
+    }
+
+    const task = buyJson.data;
+    const orderId = task?.orderId;
+    if (!orderId) {
+        return { ok: false, error: "upstream returned no order id" };
+    }
+
+    // Already terminal on the first POST? Forward straight away.
+    if (task?.status === "completed" && task.result?.code) {
+        return {
+            ok: true,
+            status: "completed",
+            orderId,
+            code: task.result.code,
+            extraCodes: task.result.extraCodes ?? [],
+        };
+    }
+    if (task?.status === "failed") {
+        return { ok: false, error: task.error ?? "provisioning failed" };
+    }
+
+    // Poll the status. The worker dispatches the panel handshake which
+    // can take a handful of seconds; cap the wait at 60s so the UI
+    // stays responsive even when the panel is sluggish.
+    const deadline = Date.now() + 60_000;
+    while (Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 2_000));
+        try {
+            const pollRes = await fetch(
+                `${auth.baseUrl}/api/v1/giftcards/reseller-order/active-code/${encodeURIComponent(orderId)}/status`,
+                {
+                    headers: { "X-API-Key": auth.apiKey },
+                    cache: "no-store",
+                },
+            );
+            if (!pollRes.ok) continue;
+            const pollJson = (await pollRes.json()) as { success?: boolean; data?: ProvisionTaskShape };
+            const t = pollJson.data;
+            if (t?.status === "completed" && t.result?.code) {
+                return {
+                    ok: true,
+                    status: "completed",
+                    orderId,
+                    code: t.result.code,
+                    extraCodes: t.result.extraCodes ?? [],
+                };
+            }
+            if (t?.status === "failed") {
+                return { ok: false, error: t.error ?? "provisioning failed" };
+            }
+        } catch {
+            // Transient — keep polling.
+        }
+    }
+
+    return { ok: true, status: "pending", orderId };
+}
+
 export async function getActiveCodeCatalogAction(
     params: ListParams = {},
 ): Promise<{ ok: true; data: ActiveCodeListResult } | { ok: false; error: string }> {

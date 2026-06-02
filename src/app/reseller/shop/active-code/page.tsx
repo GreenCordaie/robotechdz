@@ -7,6 +7,7 @@ import { ArrowLeft, Search, KeyRound, Sparkles, Globe2, AlertTriangle } from "lu
 import { ALL_REGION, RegionPills } from "../components/Denomination";
 import {
     getActiveCodeCatalogAction,
+    purchaseActiveCodeAction,
     type ActiveCodeListResult,
 } from "./actions";
 
@@ -23,18 +24,23 @@ import {
  * appear in this surface.
  */
 
-type SubCategoryValue = "" | "iptv" | "test" | "vod" | "mango" | "server" | "internet" | "legacy";
+type SubCategoryValue = "" | "iptv" | "test" | "vod" | "server" | "internet" | "legacy";
 
 const CATEGORY_CHIPS: ReadonlyArray<{ value: SubCategoryValue; label: string }> = [
     { value: "",          label: "Tous" },
     { value: "iptv",      label: "IPTV" },
     { value: "test",      label: "Test" },
     { value: "vod",       label: "VOD" },
-    { value: "mango",     label: "Adulte" },
     { value: "server",    label: "Serveur" },
     { value: "internet",  label: "Internet" },
     { value: "legacy",    label: "Legacy" },
 ];
+
+// Categories explicitly hidden from the reseller storefront. The server
+// route returns them but we filter client-side so the resulting list
+// stays in sync with the chip strip (no orphan rows from a removed
+// chip). Easier to evolve than touching the SQL filter.
+const HIDDEN_SUB_CATEGORIES: ReadonlySet<string> = new Set(["mango"]);
 
 function formatDzd(amount: number): string {
     return new Intl.NumberFormat("fr-FR").format(amount);
@@ -50,6 +56,18 @@ export default function ResellerShopActiveCodePage() {
     const [items, setItems] = useState<ActiveCodeListResult["items"]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+
+    // Purchase modal state — one mounted row at a time, no concurrent
+    // checkouts since the action polls for up to 60s.
+    const [selected, setSelected] =
+        useState<ActiveCodeListResult["items"][number] | null>(null);
+    const [isBuying, setIsBuying] = useState(false);
+    const [purchaseResult, setPurchaseResult] = useState<
+        | { kind: "success"; code: string; orderId: string }
+        | { kind: "pending"; orderId: string }
+        | { kind: "error"; message: string }
+        | null
+    >(null);
 
     // Debounce the search input by 250ms — same UX as /reseller/shop/all.
     useEffect(() => {
@@ -82,10 +100,11 @@ export default function ResellerShopActiveCodePage() {
         };
     }, [subCategory, debouncedQuery]);
 
-    const filteredByRegion =
-        region === ALL_REGION
-            ? items
-            : items.filter((row) => row.region === region);
+    const filteredByRegion = items
+        .filter((row) => !HIDDEN_SUB_CATEGORIES.has(row.subCategory))
+        .filter((row) =>
+            region === ALL_REGION ? true : row.region === region,
+        );
 
     return (
         <main className="min-h-screen bg-black text-white">
@@ -196,9 +215,17 @@ export default function ResellerShopActiveCodePage() {
                                 key={row.id}
                                 type="button"
                                 onClick={() => {
-                                    // Phase 3 will route to a purchase modal.
+                                    if (row.priceDzd === null) return;
+                                    setSelected(row);
+                                    setPurchaseResult(null);
                                 }}
-                                className="w-full flex items-center justify-between gap-4 px-5 py-4 rounded-xl bg-neutral-900 border border-neutral-800 hover:border-[#FACC15]/40 hover:bg-neutral-900/80 transition text-left"
+                                disabled={row.priceDzd === null}
+                                className={[
+                                    "w-full flex items-center justify-between gap-4 px-5 py-4 rounded-xl bg-neutral-900 border border-neutral-800 transition text-left",
+                                    row.priceDzd === null
+                                        ? "opacity-60 cursor-not-allowed"
+                                        : "hover:border-[#FACC15]/40 hover:bg-neutral-900/80",
+                                ].join(" ")}
                             >
                                 <div className="min-w-0 flex-1">
                                     <div className="flex items-center gap-2">
@@ -233,6 +260,172 @@ export default function ResellerShopActiveCodePage() {
                     </div>
                 )}
             </div>
+
+            {/* ─── Purchase modal ─────────────────────────────────────── */}
+            {selected && (
+                <div
+                    role="dialog"
+                    aria-modal="true"
+                    aria-labelledby="active-code-purchase-title"
+                    className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 p-4"
+                    onClick={() => {
+                        if (isBuying) return;
+                        setSelected(null);
+                        setPurchaseResult(null);
+                    }}
+                >
+                    <div
+                        className="w-full max-w-md rounded-2xl bg-neutral-950 border border-neutral-800 p-6"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <h2
+                            id="active-code-purchase-title"
+                            className="text-lg font-semibold mb-1"
+                        >
+                            {purchaseResult?.kind === "success"
+                                ? "Code livré"
+                                : purchaseResult?.kind === "pending"
+                                    ? "Provisioning en cours"
+                                    : purchaseResult?.kind === "error"
+                                        ? "Échec de la commande"
+                                        : `Acheter ${selected.title} ?`}
+                        </h2>
+                        {!purchaseResult && (
+                            <>
+                                <p className="text-sm text-neutral-400">
+                                    Confirmer l&apos;achat à{" "}
+                                    <span className="text-white font-bold">
+                                        {selected.priceDzd !== null
+                                            ? `${formatDzd(selected.priceDzd)} DZD`
+                                            : ""}
+                                    </span>{" "}
+                                    ?
+                                </p>
+                                <p className="text-[11px] text-neutral-600 mt-2 mb-6">
+                                    Le code est livré instantanément. Aucun
+                                    remboursement après livraison.
+                                </p>
+                                <div className="flex gap-3 justify-end">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setSelected(null);
+                                            setPurchaseResult(null);
+                                        }}
+                                        className="px-4 py-2 rounded-lg text-neutral-300 hover:text-white transition"
+                                    >
+                                        Annuler
+                                    </button>
+                                    <button
+                                        type="button"
+                                        disabled={isBuying}
+                                        onClick={async () => {
+                                            setIsBuying(true);
+                                            const res = await purchaseActiveCodeAction({
+                                                planId: selected.id,
+                                            });
+                                            setIsBuying(false);
+                                            if (res.ok && res.status === "completed") {
+                                                setPurchaseResult({
+                                                    kind: "success",
+                                                    code: res.code,
+                                                    orderId: res.orderId,
+                                                });
+                                            } else if (res.ok && res.status === "pending") {
+                                                setPurchaseResult({
+                                                    kind: "pending",
+                                                    orderId: res.orderId,
+                                                });
+                                            } else {
+                                                setPurchaseResult({
+                                                    kind: "error",
+                                                    message: res.ok
+                                                        ? "unknown"
+                                                        : res.error,
+                                                });
+                                            }
+                                        }}
+                                        className="px-5 py-2 rounded-lg bg-[#FACC15] hover:bg-[#FBD138] text-black font-semibold transition disabled:opacity-60"
+                                    >
+                                        {isBuying ? "Achat en cours…" : "Confirmer"}
+                                    </button>
+                                </div>
+                            </>
+                        )}
+
+                        {purchaseResult?.kind === "success" && (
+                            <div className="mt-2">
+                                <p className="text-xs text-neutral-400 mb-2">
+                                    Code :
+                                </p>
+                                <div className="text-2xl font-mono font-bold tracking-wider text-[#FACC15] bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-3 text-center break-all">
+                                    {purchaseResult.code}
+                                </div>
+                                <p className="text-[11px] text-neutral-500 mt-3">
+                                    Commande : {purchaseResult.orderId}
+                                </p>
+                                <div className="flex gap-3 justify-end mt-5">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setSelected(null);
+                                            setPurchaseResult(null);
+                                        }}
+                                        className="px-4 py-2 rounded-lg bg-neutral-800 text-white hover:bg-neutral-700 transition"
+                                    >
+                                        Fermer
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
+                        {purchaseResult?.kind === "pending" && (
+                            <div className="mt-2">
+                                <p className="text-sm text-neutral-300">
+                                    Le panel met plus de temps que prévu. La
+                                    commande est en cours. Vérifie l&apos;onglet
+                                    Commandes dans quelques minutes.
+                                </p>
+                                <p className="text-[11px] text-neutral-500 mt-3">
+                                    Commande : {purchaseResult.orderId}
+                                </p>
+                                <div className="flex gap-3 justify-end mt-5">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setSelected(null);
+                                            setPurchaseResult(null);
+                                        }}
+                                        className="px-4 py-2 rounded-lg bg-neutral-800 text-white hover:bg-neutral-700 transition"
+                                    >
+                                        OK
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
+                        {purchaseResult?.kind === "error" && (
+                            <div className="mt-2">
+                                <p className="text-sm text-red-300">
+                                    {purchaseResult.message}
+                                </p>
+                                <div className="flex gap-3 justify-end mt-5">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setSelected(null);
+                                            setPurchaseResult(null);
+                                        }}
+                                        className="px-4 py-2 rounded-lg bg-neutral-800 text-white hover:bg-neutral-700 transition"
+                                    >
+                                        Fermer
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
         </main>
     );
 }
