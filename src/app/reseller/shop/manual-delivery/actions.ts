@@ -19,6 +19,7 @@ import {
     resellers,
 } from "@/db/schema";
 import { getCurrentResellerAction } from "../../actions";
+import { notifyLowBalanceAfterDebit } from "@/services/reseller-notifications.service";
 
 export interface ManualProductRow {
     readonly id: number;
@@ -64,7 +65,12 @@ export async function purchaseManualProductAction(input: BuyManualInput): Promis
     if (!resellerRes.success || !resellerRes.data) {
         return { ok: false, error: "Reseller introuvable" };
     }
-    const resellerId = (resellerRes.data as { id: number }).id;
+    const resellerData = resellerRes.data as {
+        id: number;
+        companyName: string;
+        contactPhone: string | null;
+    };
+    const resellerId = resellerData.id;
 
     // Re-fetch the product server-side — never trust the client price.
     const product = await db.query.manualProducts.findFirst({
@@ -147,6 +153,17 @@ export async function purchaseManualProductAction(input: BuyManualInput): Promis
 
             return { id: newOrder.id, orderNumber };
         });
+
+        // Low-balance alert (edge-triggered, opt-in via reseller threshold).
+        // Fire-and-forget — must never block the buy flow.
+        notifyLowBalanceAfterDebit(
+            {
+                id: resellerData.id,
+                companyName: resellerData.companyName,
+                contactPhone: resellerData.contactPhone,
+            },
+            priceDzd,
+        ).catch(() => {});
 
         return { ok: true, orderId: res.id, orderNumber: res.orderNumber };
     } catch (err) {

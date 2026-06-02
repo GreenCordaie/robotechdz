@@ -56,13 +56,28 @@ export default function ResellerDashboard() {
         );
     }
 
+    const tier = reseller?.tier ?? null;
+    const nextTier = reseller?.nextTier ?? null;
+    const monthlyVolume = Number(reseller?.monthlyVolume ?? 0);
+    const tierDiscountPct = tier ? parseFloat(tier.discountPct) : 0;
+    const customDiscountPct = reseller?.customDiscount
+        ? parseFloat(reseller.customDiscount)
+        : 0;
+    // Effective discount surfaced to the partner = tier base + any custom
+    // bonus the chef granted (capped at 100% by the server).
+    const effectiveDiscountPct = tierDiscountPct + customDiscountPct;
+
     const partnerInfo = {
         name: reseller?.companyName || "...",
         id: reseller?.id ? `B2B-${reseller.id}` : "...",
         balance: Number(reseller?.wallet?.balance || 0),
-        discount: parseFloat(reseller?.customDiscount || "5.00"),
+        discount: effectiveDiscountPct,
+        // Real monthly DZD volume (replaces orders.length as "Volume Total").
+        monthlyVolumeDzd: monthlyVolume,
         totalOrders: orders.length,
         pendingOrders: orders.filter(o => o.status === "EN_ATTENTE").length,
+        tierName: tier?.name ?? "—",
+        tierColor: tier?.color ?? "#94a3b8",
     };
 
     const recentOrders = orders.slice(0, 3).map(o => ({
@@ -117,9 +132,9 @@ export default function ResellerDashboard() {
                             <Percent className="size-20" />
                         </div>
                         <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-4">Remise Partenaire</p>
-                        <h3 className="text-3xl font-black text-[var(--primary)] mb-2">{partnerInfo.discount}%</h3>
-                        <div className="flex items-center gap-1.5 text-slate-500 text-xs font-bold">
-                            <span>Niveau SILVER</span>
+                        <h3 className="text-3xl font-black text-[var(--primary)] mb-2">{partnerInfo.discount.toFixed(0)}%</h3>
+                        <div className="flex items-center gap-1.5 text-xs font-bold" style={{ color: partnerInfo.tierColor }}>
+                            <span>Palier {partnerInfo.tierName}</span>
                         </div>
                     </CardBody>
                 </Card>
@@ -129,10 +144,10 @@ export default function ResellerDashboard() {
                         <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
                             <ShoppingBag className="size-20" />
                         </div>
-                        <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-4">Volume Total</p>
-                        <h3 className="text-3xl font-black text-white mb-2">{partnerInfo.totalOrders}</h3>
+                        <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-4">Volume du mois</p>
+                        <h3 className="text-3xl font-black text-white mb-2">{formatCurrency(partnerInfo.monthlyVolumeDzd, 'DZD')}</h3>
                         <div className="flex items-center gap-1.5 text-slate-500 text-xs font-bold">
-                            <span>Commandes effectuées</span>
+                            <span>{partnerInfo.totalOrders} commande{partnerInfo.totalOrders > 1 ? 's' : ''} au total</span>
                         </div>
                     </CardBody>
                 </Card>
@@ -200,8 +215,8 @@ export default function ResellerDashboard() {
                         <div className="absolute -top-10 -right-10 size-40 bg-[var(--primary)]/5 blur-[60px] rounded-full"></div>
                         <h3 className="text-lg font-black text-white mb-4">Besoin d&apos;aide ?</h3>
                         <p className="text-sm text-slate-400 leading-relaxed mb-8">
-                            Votre remise de 5% est appliquée automatiquement sur tous vos achats.
-                            Le solde minimum de recharge est de 1000 DZD.
+                            Votre remise de {partnerInfo.discount.toFixed(0)}% est appliquée automatiquement
+                            sur tous vos achats. Le solde minimum de recharge est de 1000 DZD.
                         </p>
                         <Link
                             href="/reseller/support"
@@ -213,14 +228,72 @@ export default function ResellerDashboard() {
                     </div>
 
                     <div className="bg-gradient-to-br from-[var(--primary)] to-orange-700 rounded-[32px] p-8 text-white shadow-2xl shadow-orange-950/20">
-                        <p className="text-[10px] font-black uppercase tracking-[0.3em] opacity-80 mb-2">Promotion</p>
-                        <h3 className="text-xl font-black mb-4 leading-tight">Augmentez votre marge bénéficiaire !</h3>
-                        <p className="text-sm text-white/80 leading-relaxed mb-6 font-medium">
-                            Passez au niveau GOLD en atteignant 200,000 DZD de volume mensuel et bénéficiez de 7% de remise.
-                        </p>
-                        <button className="w-full py-3 bg-white text-[var(--primary)] rounded-xl font-black text-sm active:scale-95 transition-all">
-                            En savoir plus
-                        </button>
+                        <p className="text-[10px] font-black uppercase tracking-[0.3em] opacity-80 mb-2">Progression</p>
+                        {nextTier ? (
+                            <>
+                                <h3 className="text-xl font-black mb-4 leading-tight">
+                                    Passez au palier {nextTier.name} !
+                                </h3>
+                                <p className="text-sm text-white/80 leading-relaxed mb-4 font-medium">
+                                    Atteignez {formatCurrency(parseFloat(nextTier.minMonthlyVolumeDzd), 'DZD')} de volume mensuel
+                                    et bénéficiez de {parseFloat(nextTier.discountPct).toFixed(0)}% de remise.
+                                </p>
+                                <div className="mb-6">
+                                    <div className="flex justify-between text-[10px] uppercase font-black opacity-80 mb-1.5">
+                                        <span>Mois en cours</span>
+                                        <span>
+                                            {Math.min(
+                                                100,
+                                                Math.round(
+                                                    (monthlyVolume /
+                                                        Math.max(parseFloat(nextTier.minMonthlyVolumeDzd), 1)) *
+                                                        100
+                                                )
+                                            )}
+                                            %
+                                        </span>
+                                    </div>
+                                    <div className="h-1.5 bg-white/20 rounded-full overflow-hidden">
+                                        <div
+                                            className="h-full bg-white"
+                                            style={{
+                                                width: `${Math.min(
+                                                    100,
+                                                    (monthlyVolume /
+                                                        Math.max(
+                                                            parseFloat(nextTier.minMonthlyVolumeDzd),
+                                                            1
+                                                        )) *
+                                                        100
+                                                )}%`,
+                                            }}
+                                        />
+                                    </div>
+                                </div>
+                                <Link
+                                    href="/reseller/wallet?tab=stats"
+                                    className="block w-full py-3 bg-white text-[var(--primary)] rounded-xl font-black text-sm text-center active:scale-95 transition-all"
+                                >
+                                    Voir détails
+                                </Link>
+                            </>
+                        ) : (
+                            <>
+                                <h3 className="text-xl font-black mb-4 leading-tight">
+                                    Palier maximum atteint
+                                </h3>
+                                <p className="text-sm text-white/80 leading-relaxed mb-6 font-medium">
+                                    Vous êtes au palier le plus haut — {partnerInfo.discount.toFixed(0)}% de
+                                    remise automatique sur tous vos achats.
+                                </p>
+                                <Link
+                                    href="/reseller/wallet?tab=stats"
+                                    className="block w-full py-3 bg-white text-[var(--primary)] rounded-xl font-black text-sm text-center active:scale-95 transition-all"
+                                >
+                                    Voir le détail
+                                </Link>
+                            </>
+                        )}
                     </div>
                 </div>
             </div>

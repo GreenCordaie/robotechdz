@@ -43,6 +43,7 @@ import {
     type IptvOrderStatus,
 } from "@/services/iptv-reseller.service";
 import { checkActionGuard } from "./rate-limit";
+import { notifyLowBalanceAfterDebit } from "@/services/reseller-notifications.service";
 import {
     pickStr,
     extractScreen,
@@ -391,6 +392,17 @@ export const createIptvOrderAction = withAuth(
 
                 return { localOrderId: newOrder.id, iptvOrderId };
             });
+
+            // Low-balance alert (edge-triggered, opt-in via reseller threshold).
+            // Fire-and-forget — never block the provisioning path.
+            notifyLowBalanceAfterDebit(
+                {
+                    id: reseller.id,
+                    companyName: reseller.companyName,
+                    contactPhone: reseller.contactPhone,
+                },
+                totalAmount,
+            ).catch(() => {});
 
             // Stage 2 — provision via the SAME path the kiosk uses. The v2
             // gateway provision/tasks endpoint expects per-module schemas
@@ -1322,6 +1334,17 @@ export const renewIptvLineAction = withAuth(
                 });
                 return { localOrderId: newOrder.id, iptvOrderId };
             });
+
+            // Low-balance alert (edge-triggered, opt-in via reseller threshold).
+            // Fire-and-forget — never block the renew path.
+            notifyLowBalanceAfterDebit(
+                {
+                    id: reseller.id,
+                    companyName: reseller.companyName,
+                    contactPhone: reseller.contactPhone,
+                },
+                totalAmount,
+            ).catch(() => {});
 
             // Trigger upstream renew. We prefer lbOrderId; fall back to lbTaskId.
             const lbId = row.lbOrderId ?? row.lbTaskId;

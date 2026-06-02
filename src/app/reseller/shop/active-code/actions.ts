@@ -23,6 +23,7 @@ import {
     resellers,
 } from "@/db/schema";
 import { getCurrentResellerAction } from "../../actions";
+import { notifyLowBalanceAfterDebit } from "@/services/reseller-notifications.service";
 
 interface ActiveCodeItemUpstream {
     id: string;
@@ -179,7 +180,12 @@ export async function purchaseActiveCodeAction(input: PurchaseInput): Promise<
     if (!resellerRes.success || !resellerRes.data) {
         return { ok: false, error: "Reseller introuvable" };
     }
-    const resellerId = (resellerRes.data as { id: number }).id;
+    const resellerData = resellerRes.data as {
+        id: number;
+        companyName: string;
+        contactPhone: string | null;
+    };
+    const resellerId = resellerData.id;
 
     const plan = await fetchAuthoritativePlanFromLb(planId);
     if (!plan) {
@@ -278,6 +284,17 @@ export async function purchaseActiveCodeAction(input: PurchaseInput): Promise<
             error: err instanceof Error ? err.message : "Erreur paiement",
         };
     }
+
+    // Low-balance alert (edge-triggered, opt-in via reseller threshold).
+    // Fire-and-forget — must never block the buy flow.
+    notifyLowBalanceAfterDebit(
+        {
+            id: resellerData.id,
+            companyName: resellerData.companyName,
+            contactPhone: resellerData.contactPhone,
+        },
+        priceDzd,
+    ).catch(() => {});
 
     // ─── 3. Call LoadBrain provision (outside tx, network roundtrip) ──
     const buyUrl = `${auth.baseUrl}/api/v1/giftcards/reseller-order/active-code`;

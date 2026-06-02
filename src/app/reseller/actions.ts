@@ -36,12 +36,23 @@ export const getCurrentResellerAction = withAuth(
             const effectiveTier = reseller.tier ?? (await TierService.getDefaultTier());
             const monthlyVolume = await TierService.getMonthlyPurchaseVolume(reseller.id);
 
+            // Surface the next tier so the client can render real progression
+            // (replaces the SILVER/GOLD hardcodes on /reseller/dashboard).
+            const allTiers = await TierService.listAll();
+            const currentRank = effectiveTier?.rank ?? 0;
+            const nextTier =
+                allTiers
+                    .slice()
+                    .sort((a, b) => a.rank - b.rank)
+                    .find((t) => t.rank > currentRank) ?? null;
+
             return {
                 success: true,
                 data: {
                     ...reseller,
                     tier: effectiveTier,
                     monthlyVolume,
+                    nextTier,
                 },
             };
         } catch (error) {

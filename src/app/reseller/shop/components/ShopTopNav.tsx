@@ -75,21 +75,57 @@ export const ShopTopNav: React.FC<ShopTopNavProps> = ({ shopName: shopNameProp }
         }
     }, [shopNameStore, fetchSettings]);
 
+    // Balance refresh strategy:
+    //  - Initial load on mount.
+    //  - Re-fetch on window focus + tab becoming visible (catches the
+    //    "buy in tab A, navigate in tab B" race).
+    //  - Re-fetch on every client-side navigation (pathname change), which
+    //    covers checkout → wallet without a full reload.
+    //  - Soft poll every 30 s as a safety net for long-idle tabs.
+    // Last-write-wins via a monotonic seq counter so an in-flight stale
+    // fetch never overwrites a fresher value.
     useEffect(() => {
-        let active = true;
-        getCurrentResellerAction({}).then((res) => {
-            if (!active || !res?.success || !res.data) return;
-            const r = res.data as {
-                companyName?: string;
-                wallet?: { balance?: string | number };
-            };
-            setCompanyName(r.companyName ?? "Partenaire");
-            setBalance(Number(r.wallet?.balance ?? 0));
-        });
-        return () => {
-            active = false;
+        let cancelled = false;
+        let seq = 0;
+        let latest = 0;
+
+        const refresh = async () => {
+            const myTurn = ++seq;
+            try {
+                const res = await getCurrentResellerAction({});
+                if (cancelled || myTurn < latest) return;
+                latest = myTurn;
+                if (!res?.success || !res.data) return;
+                const r = res.data as {
+                    companyName?: string;
+                    wallet?: { balance?: string | number };
+                };
+                setCompanyName(r.companyName ?? "Partenaire");
+                setBalance(Number(r.wallet?.balance ?? 0));
+            } catch {
+                /* swallow — non-blocking pill */
+            }
         };
-    }, []);
+
+        refresh();
+
+        const onFocus = () => {
+            refresh();
+        };
+        const onVisibility = () => {
+            if (document.visibilityState === "visible") refresh();
+        };
+        window.addEventListener("focus", onFocus);
+        document.addEventListener("visibilitychange", onVisibility);
+        const interval = window.setInterval(refresh, 30_000);
+
+        return () => {
+            cancelled = true;
+            window.removeEventListener("focus", onFocus);
+            document.removeEventListener("visibilitychange", onVisibility);
+            window.clearInterval(interval);
+        };
+    }, [pathname]);
 
     const handleLogout = () => router.push("/reseller/login");
 
@@ -189,14 +225,14 @@ export const ShopTopNav: React.FC<ShopTopNavProps> = ({ shopName: shopNameProp }
                             <DropdownItem
                                 key="orders"
                                 startContent={<Receipt size={14} />}
-                                onPress={() => router.push("/reseller/orders")}
+                                onPress={() => router.push("/reseller/wallet?tab=orders")}
                             >
                                 Mes Achats
                             </DropdownItem>
                             <DropdownItem
                                 key="wallet"
                                 startContent={<History size={14} />}
-                                onPress={() => router.push("/reseller/wallet")}
+                                onPress={() => router.push("/reseller/wallet?tab=activity")}
                             >
                                 Historique Wallet
                             </DropdownItem>
