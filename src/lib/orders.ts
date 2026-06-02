@@ -431,6 +431,7 @@ export async function refundResellerWallet(
         amount: String(montant),
         orderId,
         description: description ?? `Remboursement Commande #${orderId}`,
+        source: "LEGACY",
     });
 
     return true;

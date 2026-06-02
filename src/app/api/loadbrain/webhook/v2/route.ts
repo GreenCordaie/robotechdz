@@ -287,6 +287,7 @@ async function handleG2BulkFailed(event: G2BulkFailedEvent): Promise<void> {
                 amount: refundAmount.toString(),
                 orderId: fresh.localOrderId,
                 description: `Remboursement G2Bulk - échec livraison: ${errorMsg}`,
+                source: "UPSTREAM_REFUND",
             });
         }
 
@@ -603,6 +604,7 @@ const handler = createWebhookHandler({
                         amount: refundAmount.toString(),
                         orderId: fresh.localOrderId,
                         description: `Remboursement BSV - échec livraison: ${errorMsg}`,
+                        source: "UPSTREAM_REFUND",
                     });
                 }
 

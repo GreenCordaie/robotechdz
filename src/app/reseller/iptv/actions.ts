@@ -373,6 +373,7 @@ export const createIptvOrderAction = withAuth(
                     amount: totalAmount.toFixed(2),
                     orderId: newOrder.id,
                     description: `IPTV ${provider} — ${orderNumber}`,
+                    source: "IPTV",
                 });
 
                 const iptvOrderId = await insertPendingIptvOrder(tx, {
@@ -1305,6 +1306,7 @@ export const renewIptvLineAction = withAuth(
                     amount: totalAmount.toFixed(2),
                     orderId: newOrder.id,
                     description: `IPTV ${provider} renew — ${orderNumber}`,
+                    source: "IPTV",
                 });
                 const iptvOrderId = await insertPendingIptvOrder(tx, {
                     localOrderId: newOrder.id,

@@ -131,6 +131,7 @@ export async function purchaseManualProductAction(input: BuyManualInput): Promis
                 amount: priceDzd.toString(),
                 orderId: newOrder.id,
                 description: `Manual — ${product.title}`,
+                source: "MANUAL",
             });
 
             await tx.insert(manualOrders).values({

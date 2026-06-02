@@ -212,6 +212,7 @@ export async function markRefunded(
             amount: amount.toFixed(2),
             description: `Remboursement G2Bulk (upstream ${upstreamStatus})`,
             orderId: g2bRow.localOrderId,
+            source: "UPSTREAM_REFUND",
         });
         await tx
             .update(g2bulkOrders)

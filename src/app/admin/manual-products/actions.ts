@@ -257,6 +257,7 @@ export const refundManualOrderAction = withAuth(
                         amount: refund.toString(),
                         orderId: row.localOrderId,
                         description: `Manual refund — ${(input.reason || row.productTitleSnapshot).slice(0, 200)}`,
+                        source: "MANUAL",
                     });
                 }
                 await tx

@@ -336,6 +336,7 @@ export const createG2BulkGameOrderAction = withAuth(
                     amount: totalAmount.toFixed(2),
                     orderId: newOrder.id,
                     description: `Top-up ${gameCode} - ${orderNumber}`,
+                    source: "G2BULK",
                 });
 
                 const [g2bRow] = await tx

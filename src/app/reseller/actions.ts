@@ -544,7 +544,8 @@ export const checkoutResellerAction = withAuth(
                     type: "PURCHASE",
                     amount: totalAmount.toString(),
                     orderId: newOrder.id,
-                    description: `Achat B2B - ${orderNumber}${tierLabel}`
+                    description: `Achat B2B - ${orderNumber}${tierLabel}`,
+                    source: "LEGACY",
                 });
 
                 return { id: newOrder.id, orderNumber };
@@ -744,6 +745,7 @@ async function handleBsvCheckout({
                 amount: totalAmount.toString(),
                 orderId: newOrder.id,
                 description: `Achat BSV - ${orderNumber}`,
+                source: "BSV",
             });
 
             // 3. For each BSV cart line:
@@ -979,6 +981,7 @@ async function handleG2BulkCheckout({
                 amount: totalAmount.toString(),
                 orderId: newOrder.id,
                 description: `Achat G2Bulk - ${orderNumber}`,
+                source: "G2BULK",
             });
 
             // 3. Per-cart-line: POST to LoadBrain g2bulk + insert g2bulk_orders row

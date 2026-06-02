@@ -260,6 +260,7 @@ export const adminRechargeWalletAction = withAuth(
                         type: "RECHARGE",
                         amount: amountStr,
                         description,
+                        source: "ADMIN_RECHARGE",
                     })
                     .returning();
 

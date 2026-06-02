@@ -246,6 +246,7 @@ export async function purchaseActiveCodeAction(input: PurchaseInput): Promise<
                 amount: priceDzd.toString(),
                 orderId: newOrder.id,
                 description: `Active Code — ${plan.label}`,
+                source: "ACTIVE_CODE",
             });
 
             const [aco] = await tx
@@ -449,6 +450,7 @@ async function refundActiveCodeOrder(args: {
                     amount: args.priceDzd.toString(),
                     orderId: args.localOrderId,
                     description: `Active Code refund — ${args.reason.slice(0, 200)}`,
+                    source: "ACTIVE_CODE",
                 });
             }
             await tx

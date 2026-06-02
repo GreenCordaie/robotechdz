@@ -300,6 +300,7 @@ export const creditResellerFromCentralAction = withAuth(
                     type: "RECHARGE",
                     amount: amountStr,
                     description,
+                    source: "ADMIN_RECHARGE",
                 });
 
                 return {
