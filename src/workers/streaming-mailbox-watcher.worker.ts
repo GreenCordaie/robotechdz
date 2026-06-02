@@ -34,6 +34,16 @@ export interface SlotContext {
     activeTokenLastSeenAt: Date | null;
     soldAt: Date | null;
     lifecycle: { nextHouseholdExpectedAt: Date | null } | null;
+    /**
+     * Set by POST /api/activer/[token]/request-code when the customer
+     * presses "Voir mon code". The OTP router prefers the most recent
+     * click in the last 60s — Netflix doesn't put the profile name in
+     * the email, so this explicit click is the only reliable signal we
+     * have to route concurrent OTPs to the right of N slots on the
+     * same master mailbox. Optional so legacy fixtures and tests don't
+     * break — null is treated identically by `routeEvent`.
+     */
+    lastCodeRequestAt?: Date | null;
 }
 
 export interface AccountContext {
@@ -93,6 +103,11 @@ export interface RouteTarget {
     eventType: "OTP_CODE" | "HOUSEHOLD_LINK";
 }
 
+// Window for "the customer just pressed 'Voir mon code' on the
+// magic-link page". Anything older is treated as a stale click from a
+// previous OTP and falls back to the page-view heuristic.
+const REQUEST_WINDOW_MS = 60_000;
+
 export function routeEvent(
     eventType: "OTP_CODE" | "HOUSEHOLD_LINK",
     now: Date,
@@ -101,7 +116,26 @@ export function routeEvent(
     if (eventType === "HOUSEHOLD_LINK") {
         return { eventType, slotIds: slots.map((s) => s.id) };
     }
-    // OTP_CODE → pick the slot most recently active on the page
+    // OTP_CODE — preferred signal: the most recent explicit "Voir mon
+    // code" click in the last 60s. This disambiguates concurrent
+    // customers waiting on different profiles of the same master
+    // mailbox (Netflix doesn't put the profile name in the email).
+    const recentClicks = slots
+        .filter(
+            (s) =>
+                s.lastCodeRequestAt &&
+                now.getTime() - s.lastCodeRequestAt.getTime() < REQUEST_WINDOW_MS,
+        )
+        .sort(
+            (a, b) =>
+                b.lastCodeRequestAt!.getTime() - a.lastCodeRequestAt!.getTime(),
+        );
+    if (recentClicks.length > 0) {
+        return { eventType, slotIds: [recentClicks[0].id] };
+    }
+    // Fallback (legacy path) — the slot most recently active on the page.
+    // Still useful when the customer hasn't clicked the button yet but
+    // the page is visibly open.
     const recent = slots
         .filter((s) => s.activeTokenLastSeenAt && now.getTime() - s.activeTokenLastSeenAt.getTime() < TEN_MIN_MS)
         .sort((a, b) => (b.activeTokenLastSeenAt!.getTime() - a.activeTokenLastSeenAt!.getTime()));
@@ -219,6 +253,7 @@ export async function pollAccount(
         activeTokenLastSeenAt: tokenRows.find((t: any) => t.slotId === s.id)?.lastSeenAt ?? null,
         soldAt: s.status === "VENDU" ? s.createdAt ?? null : null,
         lifecycle: lifecycleRows.find((l: any) => l.slotId === s.id) ?? null,
+        lastCodeRequestAt: s.lastCodeRequestAt ?? null,
     }));
 
     const now = new Date();

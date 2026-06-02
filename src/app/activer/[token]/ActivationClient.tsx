@@ -22,6 +22,7 @@ export function ActivationClient(props: Props) {
     const [revealPwd, setRevealPwd] = useState(false);
     const [revealPin, setRevealPin] = useState(false);
     const [latest, setLatest] = useState<LiveEvent | null>(null);
+    const [requesting, setRequesting] = useState(false);
     const [connected, setConnected] = useState(false);
     const esRef = useRef<EventSource | null>(null);
 
@@ -188,14 +189,38 @@ export function ActivationClient(props: Props) {
                         Code temps réel
                     </h2>
 
-                    {!latest && (
-                        <div className="py-8 text-center">
-                            <div className="text-3xl mb-2">⏳</div>
-                            <p className="text-neutral-400 text-sm">
-                                Surveillance active de la boîte mail Netflix...
+                    {!latest && !requesting && (
+                        <div className="py-6 text-center">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setRequesting(true);
+                                    fetch(`/api/activer/${props.token}/request-code`, {
+                                        method: "POST",
+                                    }).catch(() => {});
+                                    // Safety revert: if no code arrives within 90s, let the
+                                    // customer click again — they may have missed the Netflix
+                                    // step or the mail is taking longer than usual.
+                                    window.setTimeout(() => setRequesting(false), 90_000);
+                                }}
+                                className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-red-600 hover:bg-red-500 active:bg-red-700 transition text-white font-semibold text-base shadow-lg shadow-red-900/40"
+                            >
+                                👁️ Voir mon code
+                            </button>
+                            <p className="text-neutral-500 text-xs mt-3">
+                                Clique ici dès que Netflix te demande un code de connexion.
                             </p>
-                            <p className="text-neutral-600 text-xs mt-2">
-                                Dès que ton code arrive, il apparaît ici.
+                        </div>
+                    )}
+
+                    {!latest && requesting && (
+                        <div className="py-8 text-center">
+                            <div className="text-3xl mb-2 animate-pulse">⏳</div>
+                            <p className="text-neutral-300 text-sm">
+                                Récupération de ton code…
+                            </p>
+                            <p className="text-neutral-500 text-xs mt-2">
+                                Il s&apos;affichera ici dans quelques secondes.
                             </p>
                         </div>
                     )}

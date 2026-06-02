@@ -202,6 +202,12 @@ export const digitalCodeSlots = pgTable("digital_code_slots", {
     maxDevices: integer("max_devices"),
     devicesActivated: integer("devices_activated").default(0).notNull(),
     lastDeviceAt: timestamp("last_device_at", { mode: "date" }),
+    // Set by POST /api/activer/[token]/request-code when the customer
+    // presses "Voir mon code" — the watcher's OTP router prefers the
+    // most recent click within a 60s window so concurrent slots on the
+    // same master mailbox map to the right customer without needing a
+    // profile name in the email body (Netflix doesn't send one).
+    lastCodeRequestAt: timestamp("last_code_request_at", { mode: "date" }),
 }, (table) => {
     return {
         digitalCodeIdIdx: index("dcs_digital_code_id_idx").on(table.digitalCodeId),
