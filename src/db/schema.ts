@@ -1059,6 +1059,66 @@ export const activeCodeOrdersRelations = relations(activeCodeOrders, ({ one }) =
     }),
 }));
 
+/**
+ * manualProducts — chef-managed catalogue for items the reseller can
+ * buy but the operator has to fulfil by hand (no external panel).
+ */
+export const manualProducts = pgTable("manual_products", {
+    id: serial("id").primaryKey(),
+    title: text("title").notNull(),
+    description: text("description"),
+    category: text("category"),
+    priceDzd: numeric("price_dzd", { precision: 12, scale: 2 }).notNull(),
+    imageUrl: text("image_url"),
+    isActive: boolean("is_active").notNull().default(true),
+    sortOrder: integer("sort_order").notNull().default(100),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow(),
+});
+
+export const manualOrderStatusEnum = pgEnum("manual_order_status", [
+    "PENDING_DELIVERY",
+    "DELIVERED",
+    "CANCELLED",
+    "REFUNDED",
+]);
+
+export const manualOrders = pgTable("manual_orders", {
+    id: serial("id").primaryKey(),
+    localOrderId: integer("local_order_id")
+        .references(() => orders.id, { onDelete: "cascade" })
+        .notNull(),
+    resellerId: integer("reseller_id")
+        .references(() => resellers.id, { onDelete: "cascade" })
+        .notNull(),
+    manualProductId: integer("manual_product_id").references(() => manualProducts.id, { onDelete: "set null" }),
+    productTitleSnapshot: text("product_title_snapshot").notNull(),
+    pricePaidDzd: numeric("price_paid_dzd", { precision: 12, scale: 2 }).notNull(),
+    customerPhone: text("customer_phone"),
+    customerNote: text("customer_note"),
+    deliveryNote: text("delivery_note"),
+    status: manualOrderStatusEnum("status").notNull().default("PENDING_DELIVERY"),
+    deliveredAt: timestamp("delivered_at", { mode: "date" }),
+    deliveredByUserId: integer("delivered_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow(),
+});
+
+export const manualOrdersRelations = relations(manualOrders, ({ one }) => ({
+    localOrder: one(orders, {
+        fields: [manualOrders.localOrderId],
+        references: [orders.id],
+    }),
+    reseller: one(resellers, {
+        fields: [manualOrders.resellerId],
+        references: [resellers.id],
+    }),
+    product: one(manualProducts, {
+        fields: [manualOrders.manualProductId],
+        references: [manualProducts.id],
+    }),
+}));
+
 export const g2bulkOrdersRelations = relations(g2bulkOrders, ({ one, many }) => ({
     localOrder: one(orders, {
         fields: [g2bulkOrders.localOrderId],

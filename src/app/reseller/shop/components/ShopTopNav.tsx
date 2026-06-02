@@ -26,6 +26,7 @@ import {
     Receipt,
     Tv,
     KeyRound,
+    HandCoins,
 } from "lucide-react";
 import {
     Dropdown,
@@ -50,6 +51,7 @@ const NAV_ITEMS: ReadonlyArray<NavItem> = [
     { href: "/reseller/shop/games", label: "Game Top Up", icon: Gamepad2 },
     { href: "/reseller/iptv", label: "IPTV", icon: Tv },
     { href: "/reseller/shop/active-code", label: "Active Code", icon: KeyRound },
+    { href: "/reseller/shop/manual-delivery", label: "Manual Delivery", icon: HandCoins },
     { href: "/reseller/wallet", label: "Wallet", icon: Wallet },
 ];
 
