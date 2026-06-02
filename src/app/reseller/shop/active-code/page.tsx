@@ -1,46 +1,31 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Search, KeyRound, Sparkles, Globe2 } from "lucide-react";
+import { ArrowLeft, Search, KeyRound, Sparkles, Globe2, AlertTriangle } from "lucide-react";
 
 import { ALL_REGION, RegionPills } from "../components/Denomination";
+import {
+    getActiveCodeCatalogAction,
+    type ActiveCodeListResult,
+} from "./actions";
 
 /**
- * Active Code — Phase 2a listing.
+ * Active Code — Phase 2b live listing.
  *
- * Layout matches `/reseller/shop/all` (Tout le catalogue) row style for
- * consistency. The data shown here is a curated demo set that reflects
- * the shape of the upcoming live feed coming from LoadBrain
- * (`/admin/reseller-catalog/active-code`). Phase 2b decides the auth
- * path (X-API-Key public reseller route vs admin token bridge) and
- * swaps the in-page sample array for a server-action fetch.
+ * Layout mirrors `/reseller/shop/all`. Data is fetched server-side from
+ * LoadBrain (`/api/v1/giftcards/reseller-catalog/active-code`) using
+ * the site's X-API-Key — the upstream siteId is derived from the key,
+ * never from a client-controlled param.
  *
- * Source-hiding contract: brand always renders as "Code Premium", the
- * upstream provider name MUST never appear in the surface.
+ * Source-hiding contract: brand is hard-pinned to "Code Premium" by
+ * the LoadBrain projection. The upstream provider name must never
+ * appear in this surface.
  */
 
-interface ActiveCodeRow {
-    readonly id: string;
-    readonly title: string;
-    readonly category: "iptv" | "test" | "vod" | "mango" | "server" | "internet" | "legacy";
-    readonly region: "GLOBAL";
-    readonly stock: number;
-    readonly priceDzd: number;
-}
+type SubCategoryValue = "" | "iptv" | "test" | "vod" | "mango" | "server" | "internet" | "legacy";
 
-const SAMPLE_ROWS: ReadonlyArray<ActiveCodeRow> = [
-    { id: "ac-atlas-3m",      title: "Atlas Pro · 3 mois",   category: "iptv",     region: "GLOBAL", stock: 42,  priceDzd: 2_400 },
-    { id: "ac-atlas-6m",      title: "Atlas Pro · 6 mois",   category: "iptv",     region: "GLOBAL", stock: 28,  priceDzd: 4_300 },
-    { id: "ac-atlas-12m",     title: "Atlas Pro · 12 mois",  category: "iptv",     region: "GLOBAL", stock: 17,  priceDzd: 7_900 },
-    { id: "ac-atlas-test",    title: "Atlas Pro · Test 24h", category: "test",     region: "GLOBAL", stock: 99,  priceDzd: 100 },
-    { id: "ac-forever-12m",   title: "Forever IPTV · 12 mois", category: "iptv",   region: "GLOBAL", stock: 12,  priceDzd: 8_200 },
-    { id: "ac-myhd-6m",       title: "MyHD · 6 mois",        category: "legacy",   region: "GLOBAL", stock: 8,   priceDzd: 5_100 },
-    { id: "ac-iron-1m",       title: "IRON · 1 mois",        category: "iptv",     region: "GLOBAL", stock: 64,  priceDzd: 1_300 },
-    { id: "ac-mango-adult",   title: "Mango · Adulte 12 mois", category: "mango",  region: "GLOBAL", stock: 5,   priceDzd: 9_500 },
-];
-
-const CATEGORY_CHIPS: ReadonlyArray<{ value: ActiveCodeRow["category"] | ""; label: string }> = [
+const CATEGORY_CHIPS: ReadonlyArray<{ value: SubCategoryValue; label: string }> = [
     { value: "",          label: "Tous" },
     { value: "iptv",      label: "IPTV" },
     { value: "test",      label: "Test" },
@@ -58,18 +43,49 @@ function formatDzd(amount: number): string {
 export default function ResellerShopActiveCodePage() {
     const router = useRouter();
     const [rawQuery, setRawQuery] = useState("");
+    const [debouncedQuery, setDebouncedQuery] = useState("");
     const [region, setRegion] = useState<string>(ALL_REGION);
-    const [subCategory, setSubCategory] = useState<ActiveCodeRow["category"] | "">("");
+    const [subCategory, setSubCategory] = useState<SubCategoryValue>("");
 
-    const filtered = useMemo(() => {
-        const q = rawQuery.trim().toLowerCase();
-        return SAMPLE_ROWS.filter((row) => {
-            if (subCategory && row.category !== subCategory) return false;
-            if (region !== ALL_REGION && row.region !== region) return false;
-            if (q && !row.title.toLowerCase().includes(q)) return false;
-            return true;
+    const [items, setItems] = useState<ActiveCodeListResult["items"]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+
+    // Debounce the search input by 250ms — same UX as /reseller/shop/all.
+    useEffect(() => {
+        const t = setTimeout(() => setDebouncedQuery(rawQuery.trim()), 250);
+        return () => clearTimeout(t);
+    }, [rawQuery]);
+
+    // Fetch on subCategory / search change.
+    useEffect(() => {
+        let active = true;
+        setIsLoading(true);
+        setError(null);
+        getActiveCodeCatalogAction({
+            subCategory: subCategory || undefined,
+            search: debouncedQuery || undefined,
+            limit: 200,
+            offset: 0,
+        }).then((res) => {
+            if (!active) return;
+            if (res.ok) {
+                setItems(res.data.items);
+            } else {
+                setItems([]);
+                setError(res.error);
+            }
+            setIsLoading(false);
         });
-    }, [rawQuery, region, subCategory]);
+        return () => {
+            active = false;
+        };
+    }, [subCategory, debouncedQuery]);
+
+    const filteredByRegion =
+        region === ALL_REGION
+            ? items
+            : items.filter((row) => row.region === region);
 
     return (
         <main className="min-h-screen bg-black text-white">
@@ -91,8 +107,9 @@ export default function ResellerShopActiveCodePage() {
                     </h1>
                 </div>
                 <p className="text-sm text-neutral-400 mb-1">
-                    {filtered.length} résultat{filtered.length > 1 ? "s" : ""}
-                    {rawQuery ? ` pour « ${rawQuery} »` : ""}
+                    {isLoading
+                        ? "Chargement…"
+                        : `${filteredByRegion.length} résultat${filteredByRegion.length > 1 ? "s" : ""}${debouncedQuery ? ` pour « ${debouncedQuery} »` : ""}`}
                 </p>
                 <p className="text-xs text-neutral-500 mb-8">
                     Codes premium à activation instantanée — abonnements IPTV, VOD,
@@ -121,7 +138,7 @@ export default function ResellerShopActiveCodePage() {
                     onChange={setRegion}
                 />
 
-                {/* ─── Type chips (sub-category) ───────────────────────── */}
+                {/* ─── Type chips (sub-category, server-side filter) ─── */}
                 <div className="flex flex-wrap gap-2 mt-4 mb-6">
                     {CATEGORY_CHIPS.map((chip) => (
                         <button
@@ -140,29 +157,46 @@ export default function ResellerShopActiveCodePage() {
                     ))}
                 </div>
 
-                {/* ─── Rows ──────────────────────────────────────────── */}
-                {filtered.length === 0 ? (
+                {/* ─── States ────────────────────────────────────────── */}
+                {error ? (
+                    <div className="mt-8 flex items-start gap-3 px-5 py-4 rounded-xl border border-red-900/40 bg-red-950/30 text-red-200">
+                        <AlertTriangle size={18} className="shrink-0 mt-0.5" />
+                        <div className="text-sm">
+                            <p className="font-medium mb-1">Catalogue temporairement indisponible</p>
+                            <p className="text-red-300/80 text-xs">
+                                Réessayez dans un instant. Si le problème persiste,
+                                contactez le support. ({error})
+                            </p>
+                        </div>
+                    </div>
+                ) : isLoading ? (
+                    <div className="mt-12 text-center text-sm text-neutral-500">
+                        Chargement du catalogue…
+                    </div>
+                ) : filteredByRegion.length === 0 ? (
                     <div className="mt-12 flex flex-col items-center justify-center text-center px-6 py-16 rounded-2xl border border-dashed border-neutral-800 bg-neutral-950">
                         <div className="w-16 h-16 rounded-full bg-[#FACC15]/10 flex items-center justify-center mb-4">
                             <Sparkles size={28} className="text-[#FACC15]" />
                         </div>
                         <h2 className="text-xl font-semibold mb-2">
-                            Aucun résultat
+                            {debouncedQuery || subCategory
+                                ? "Aucun résultat"
+                                : "Catalogue en préparation"}
                         </h2>
                         <p className="text-sm text-neutral-400 max-w-md">
-                            Aucun code premium ne correspond à votre recherche.
-                            Essayez un autre filtre ou supprimez la recherche.
+                            {debouncedQuery || subCategory
+                                ? "Aucun code premium ne correspond à votre filtre. Essayez un autre type ou supprimez la recherche."
+                                : "Les codes premium seront disponibles dès que l'opérateur les aura activés."}
                         </p>
                     </div>
                 ) : (
                     <div className="space-y-3">
-                        {filtered.map((row) => (
+                        {filteredByRegion.map((row) => (
                             <button
                                 key={row.id}
                                 type="button"
                                 onClick={() => {
                                     // Phase 3 will route to a purchase modal.
-                                    // For now the row stays informative-only.
                                 }}
                                 className="w-full flex items-center justify-between gap-4 px-5 py-4 rounded-xl bg-neutral-900 border border-neutral-800 hover:border-[#FACC15]/40 hover:bg-neutral-900/80 transition text-left"
                             >
@@ -184,23 +218,20 @@ export default function ResellerShopActiveCodePage() {
                                     </div>
                                 </div>
                                 <div className="flex flex-col items-end gap-1 shrink-0">
-                                    <span className="text-[10px] uppercase tracking-wider text-neutral-500">
-                                        {row.stock} en stock
-                                    </span>
-                                    <span className="text-lg font-bold text-white">
-                                        {formatDzd(row.priceDzd)} DZD
-                                    </span>
+                                    {row.priceDzd !== null ? (
+                                        <span className="text-lg font-bold text-white">
+                                            {formatDzd(row.priceDzd)} DZD
+                                        </span>
+                                    ) : (
+                                        <span className="text-xs text-neutral-500 italic">
+                                            Prix à venir
+                                        </span>
+                                    )}
                                 </div>
                             </button>
                         ))}
                     </div>
                 )}
-
-                {/* ─── Phase 2b notice ────────────────────────────────── */}
-                <p className="mt-8 text-[11px] text-center text-neutral-600">
-                    Catalogue de démonstration — les codes réels seront disponibles
-                    une fois l&apos;intégration finalisée.
-                </p>
             </div>
         </main>
     );
