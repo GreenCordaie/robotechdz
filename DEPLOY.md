@@ -48,6 +48,11 @@ docker compose -f docker-compose.prod.yml up -d --build
 
 # Migrations de la base de données (sur le conteneur Node)
 docker compose -f docker-compose.prod.yml exec app npm run db:push
+
+# Backfill du chiffrement des secrets shop_settings (B6) — voir §3 bis.
+# Idempotent. Lance-le APRÈS db:push et APRÈS avoir seedé/restauré les
+# valeurs dans shop_settings (sinon il chiffre du vide, pas de risque mais inutile).
+docker compose -f docker-compose.prod.yml exec app npx tsx scripts/backfill-encrypt-settings.ts
 ```
 
 ---
@@ -76,8 +81,43 @@ REDIS_URL="redis://redis:6379"
 WHATSAPP_API_URL="http://whatsapp:3000"
 
 NODE_ENV="production"
-NEXT_PUBLIC_APP_URL="https://votre-domaine.com"
+NEXT_PUBLIC_APP_URL="https://boutique.nexusbox.tech"
+NEXTAUTH_URL="https://boutique.nexusbox.tech"
+NEXT_PUBLIC_BASE_URL="https://boutique.nexusbox.tech"
+PUBLIC_URL="https://boutique.nexusbox.tech"
+MICROSOFT_REDIRECT_URI="https://boutique.nexusbox.tech/api/auth/microsoft/callback"
 ```
+
+---
+
+## 3 bis. Décision `ENCRYPTION_KEY` — DB existante OU fresh ?
+
+Les 8 colonnes secrètes de `shop_settings` (telegram/whatsapp/gemini/vapid/microsoft/netflix)
+sont chiffrées au repos via `ENCRYPTION_KEY` (AES-256-GCM, feature B6). La clé doit
+être **stable et cohérente avec les données déjà en DB** — sinon les secrets deviennent
+illisibles (`fromDriver` renvoie `""`, l'app tourne mais WhatsApp/Telegram/etc. ne se
+configurent pas).
+
+### Scénario A — migration depuis prod existante (dump → restore)
+
+1. **Garde la MÊME `ENCRYPTION_KEY`** que la prod actuelle dans `.env`.
+2. Restaure le dump SQL → les colonnes chiffrées sont déjà en ciphertext, cohérentes.
+3. `db:push` (no-op si schema identique) puis **SKIP le backfill** (déjà fait sur la prod source).
+
+### Scénario B — fresh DB (nouveau site, pas de dump)
+
+1. **Génère une nouvelle clé** : `openssl rand -hex 32` → `ENCRYPTION_KEY` dans `.env`.
+2. `db:push` (crée le schema).
+3. Seed les valeurs en **clair** dans `shop_settings` (UI `/admin/settings` après login admin,
+   OU `INSERT INTO shop_settings (...)` avec les valeurs cleartext).
+4. Lance le backfill : `npx tsx scripts/backfill-encrypt-settings.ts` — il lit les colonnes en
+   raw SQL, chiffre les valeurs cleartext, ré-écrit. Idempotent (re-run = no-op).
+
+### Garde-fou commun
+
+Si tu remplaces `ENCRYPTION_KEY` après coup sur une DB qui contient déjà du ciphertext :
+les anciennes valeurs deviennent du bruit, le backfill ne les sauve pas (il les voit comme
+ciphertext et passe). → Sauvegarde + re-seed manuel des secrets dans ce cas.
 
 ---
 
@@ -87,14 +127,14 @@ NEXT_PUBLIC_APP_URL="https://votre-domaine.com"
 # /etc/nginx/sites-available/100-pc-ia
 server {
     listen 80;
-    server_name yourdomain.com www.yourdomain.com n8n.yourdomain.com waha.yourdomain.com;
+    server_name boutique.nexusbox.tech n8n.boutique.nexusbox.tech waha.boutique.nexusbox.tech;
     return 301 https://$server_name$request_uri;
 }
 
 # Proxy Principal (Next.js)
 server {
     listen 443 ssl http2;
-    server_name yourdomain.com www.yourdomain.com;
+    server_name boutique.nexusbox.tech;
 
     # SSL (Let's Encrypt config passée plus bas)
 
@@ -115,7 +155,7 @@ server {
 # Proxy n8n
 server {
     listen 443 ssl http2;
-    server_name n8n.yourdomain.com;
+    server_name n8n.boutique.nexusbox.tech;
 
     location / {
         proxy_pass http://127.0.0.1:5678;
@@ -132,7 +172,7 @@ server {
 # Proxy Waha
 server {
     listen 443 ssl http2;
-    server_name waha.yourdomain.com;
+    server_name waha.boutique.nexusbox.tech;
 
     location / {
         proxy_pass http://127.0.0.1:3001;
@@ -159,7 +199,7 @@ sudo systemctl reload nginx
 
 ```bash
 sudo apt install -y certbot python3-certbot-nginx
-sudo certbot --nginx -d yourdomain.com -d www.yourdomain.com -d n8n.yourdomain.com -d waha.yourdomain.com
+sudo certbot --nginx -d boutique.nexusbox.tech -d n8n.boutique.nexusbox.tech -d waha.boutique.nexusbox.tech
 sudo systemctl enable certbot.timer
 ```
 
@@ -202,6 +242,7 @@ bloquées en `PENDING_LOADBRAIN` quand un webhook entrant est manqué :
 | `GET /api/admin/cron/webhook-retries` (header `Authorization: Bearer $CRON_SECRET`) | Rejoue la DLQ des webhooks sortants reseller | toutes les minutes |
 | `POST /api/admin/g2bulk/reconcile` (header `x-cron-secret: $CRON_SECRET`) | Rattrape les commandes G2Bulk dont le webhook a été manqué | toutes les ~10 min |
 | `POST /api/admin/iptv/reconcile` (header `x-cron-secret: $CRON_SECRET`) | Idem pour l'IPTV reseller | toutes les ~10 min |
+| `GET /api/admin/cron/refresh-balances` (header `Authorization: Bearer $CRON_SECRET`) | Rafraîchit les soldes des fournisseurs externes (CapSolver / 2Captcha / AntiCaptcha) et déclenche les alertes de seuil bas | toutes les ~10 min |
 
 Le script `scripts/cron-tick.sh` appelle ces endpoints avec les bons headers. Ils
 sont idempotents (verrous `FOR UPDATE` + gardes de statut / `SKIP LOCKED`), donc les
@@ -209,9 +250,10 @@ faire tourner en parallèle d'un autre scheduler (n8n) est sans risque.
 
 ```bash
 crontab -e
-# Ajouter (adapter CRON_APP_URL au domaine public de l'app) :
-* * * * *    CRON_SECRET=xxxx CRON_APP_URL=https://app.example.com /var/www/100-pc-ia/scripts/cron-tick.sh retries   >> /var/log/robotech-cron.log 2>&1
-*/10 * * * * CRON_SECRET=xxxx CRON_APP_URL=https://app.example.com /var/www/100-pc-ia/scripts/cron-tick.sh reconcile >> /var/log/robotech-cron.log 2>&1
+# Ajouter :
+* * * * *    CRON_SECRET=xxxx CRON_APP_URL=https://boutique.nexusbox.tech /var/www/100-pc-ia/scripts/cron-tick.sh retries   >> /var/log/robotech-cron.log 2>&1
+*/10 * * * * CRON_SECRET=xxxx CRON_APP_URL=https://boutique.nexusbox.tech /var/www/100-pc-ia/scripts/cron-tick.sh reconcile >> /var/log/robotech-cron.log 2>&1
+*/10 * * * * CRON_SECRET=xxxx CRON_APP_URL=https://boutique.nexusbox.tech /var/www/100-pc-ia/scripts/cron-tick.sh balances  >> /var/log/robotech-cron.log 2>&1
 ```
 
 `CRON_SECRET` doit être identique à la variable d'environnement de l'app. Variante
