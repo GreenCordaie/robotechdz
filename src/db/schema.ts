@@ -511,10 +511,16 @@ export const resellerTransactions = pgTable("reseller_transactions", {
     amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
     orderId: integer("order_id").references(() => orders.id, { onDelete: "set null" }),
     description: text("description"),
+    // Upstream origin tag — 'BSV' | 'G2BULK' | 'IPTV' | 'ACTIVE_CODE' | 'MANUAL'
+    // | 'ADMIN_RECHARGE' | 'UPSTREAM_REFUND' | 'LEGACY'. Nullable for
+    // back-compat with pre-0028 rows that may still be NULL.
+    source: text("source"),
     createdAt: timestamp("created_at", { mode: 'date' }).defaultNow(),
 }, (table) => {
     return {
         walletIdIdx: index("rt_wallet_id_idx").on(table.walletId),
+        sourceIdx: index("rt_source_idx").on(table.source),
+        walletCreatedIdx: index("rt_wallet_created_idx").on(table.walletId, table.createdAt),
     };
 });
 
