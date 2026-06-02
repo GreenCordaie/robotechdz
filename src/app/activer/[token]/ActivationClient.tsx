@@ -85,6 +85,28 @@ export function ActivationClient(props: Props) {
         };
     }, [props.token]);
 
+    // Fast-poll loop — ask the server to mailbox-poll our account RIGHT
+    // NOW, then keep nudging every 8 seconds while the customer is still
+    // waiting for the OTP. The server side dedupes (4s lock) so spam-clicks
+    // can't hammer MS Graph. As soon as `latest` lands (the LiveEvent
+    // state is populated by the SSE subscriber), the loop unwinds and
+    // we stop nudging — no more requests until the customer reloads.
+    useEffect(() => {
+        if (latest) return; // already have a fresh code, no need to nudge
+        let alive = true;
+        const fire = () => {
+            if (!alive) return;
+            fetch(`/api/activer/${props.token}/poll`, { method: "POST" }).catch(() => {});
+        };
+        // Kick once immediately, then every 8 seconds.
+        fire();
+        const id = setInterval(fire, 8_000);
+        return () => {
+            alive = false;
+            clearInterval(id);
+        };
+    }, [props.token, latest]);
+
     // Heartbeat — marks "session active" so the watcher polls aggressively
     useEffect(() => {
         let alive = true;
