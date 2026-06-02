@@ -97,10 +97,10 @@ export function G2BulkOrdersSection() {
             <div className="flex items-center gap-3">
                 <ShoppingBag className="text-cyan-400" size={20} />
                 <h2 className="text-lg font-black uppercase tracking-widest text-white">
-                    Commandes G2Bulk ({rows.length})
+                    Commandes ROBOTECHDZ ({rows.length})
                 </h2>
                 <span className="text-[9px] uppercase font-black tracking-widest text-cyan-400 bg-cyan-500/10 border border-cyan-500/30 px-1.5 py-0.5 rounded">
-                    G2Bulk
+                    ROBOTECHDZ
                 </span>
                 <Button
                     size="sm"

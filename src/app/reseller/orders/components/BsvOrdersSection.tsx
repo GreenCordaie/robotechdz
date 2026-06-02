@@ -87,7 +87,7 @@ export function BsvOrdersSection() {
             <div className="flex items-center gap-3">
                 <Zap className="text-cyan-400" size={20} />
                 <h2 className="text-lg font-black uppercase tracking-widest text-white">
-                    Commandes BSV ({rows.length})
+                    Commandes ROBOTECHDZ0 ({rows.length})
                 </h2>
             </div>
 
@@ -146,14 +146,10 @@ export function BsvOrdersSection() {
 
                                 {snap && (
                                     <div className="text-[10px] text-slate-400 space-y-0.5 bg-[#161616] rounded-xl border border-[#262626] p-3">
-                                        {snap.sellerSlug && (
-                                            <p>
-                                                <span className="text-slate-500">Vendeur:</span>{" "}
-                                                <span className="text-white font-bold">
-                                                    {snap.sellerSlug}
-                                                </span>
-                                            </p>
-                                        )}
+                                        {/* sellerSlug intentionally hidden — exposing
+                                            the upstream seller would defeat the
+                                            source-hiding rule the reseller surface
+                                            now follows everywhere outside IPTV. */}
                                         {typeof snap.exactPriceCents === "number" && (
                                             <p>
                                                 <span className="text-slate-500">Prix exact:</span>{" "}
@@ -164,7 +160,7 @@ export function BsvOrdersSection() {
                                         )}
                                         {snap.bsvTxId && (
                                             <p>
-                                                <span className="text-slate-500">Tx BSV:</span>{" "}
+                                                <span className="text-slate-500">Tx ROBOTECHDZ0:</span>{" "}
                                                 <span className="text-white font-mono">
                                                     {snap.bsvTxId}
                                                 </span>

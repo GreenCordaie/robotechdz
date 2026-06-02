@@ -220,10 +220,9 @@ export const DenominationRow: React.FC<{
                                 item.source === "bsv" ? "text-orange-400" : "text-cyan-400"
                             }`}
                         >
-                            {item.source === "bsv" ? "BSV" : "G2Bulk"}
+                            {item.source === "bsv" ? "ROBOTECHDZ0" : "ROBOTECHDZ"}
                         </span>
-                        · vendeur {item.seller}
-                        {item.region && ` · ${regionFlag(item.region)} ${item.region}`}
+                        {item.region && `· ${regionFlag(item.region)} ${item.region}`}
                     </p>
                 </div>
 
