@@ -28,10 +28,18 @@ export function ActivationClient(props: Props) {
     // SSE subscription
     useEffect(() => {
         let stopped = false;
+        // Stamp the page-open instant so the server's SSE replay only
+        // surfaces OTPs Netflix sent AFTER the customer pressed
+        // "envoyer le code". Without this window, a stale residual
+        // email from an earlier login attempt would be served and
+        // look identical to the fresh code.
+        const sinceParam = encodeURIComponent(new Date().toISOString());
 
         function connect() {
             if (stopped) return;
-            const es = new EventSource(`/api/activer/${props.token}/events`);
+            const es = new EventSource(
+                `/api/activer/${props.token}/events?since=${sinceParam}`,
+            );
             esRef.current = es;
 
             es.onopen = () => setConnected(true);

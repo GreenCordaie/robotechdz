@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { db } from "@/db";
-import { and, eq, isNull, or } from "drizzle-orm";
+import { and, eq, gte, isNull, or } from "drizzle-orm";
 import {
     findActiveSlotByToken,
     touchPageSeen,
@@ -9,6 +9,19 @@ import { slotEvents } from "@/db/schema";
 import { decrypt } from "@/lib/encryption";
 import { streamingEventBus } from "@/lib/streaming-event-bus";
 import { publicIpRateLimited, clientIpFrom } from "@/lib/public-rate-limit";
+
+/**
+ * Window grace period. The client passes `?since=<iso8601>` when it
+ * connects so the SSE replay only surfaces events the customer
+ * actively expected (i.e. captured AFTER they clicked "envoyer le
+ * code" on Netflix). We subtract this small buffer so a sub-second
+ * clock skew between Microsoft Graph's `receivedDateTime` and the
+ * client's clock doesn't drop the very event the customer is waiting
+ * for. Anything older than the window is treated as a stale residue
+ * of a previous login attempt and stays delivered_to_session=false
+ * until a fresh `since` claims it (or a NEW broadcast supersedes it).
+ */
+const WINDOW_BUFFER_MS = 30_000;
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -39,6 +52,20 @@ export async function GET(
     const slotId = resolved.slot.id;
     const digitalCodeId = resolved.account.id;
 
+    // The client tells us when it opened the page so we only surface
+    // OTPs Netflix sent AFTER the customer pressed "envoyer le code".
+    // Without this filter, a stale residual email from a previous login
+    // attempt would be replayed and look like the fresh code — UX bug.
+    // Falls back to "now minus 5 minutes" when the client doesn't send
+    // the param so legacy clients keep working.
+    const rawSince = new URL(req.url).searchParams.get("since");
+    const sinceCandidate = rawSince ? Date.parse(rawSince) : NaN;
+    const windowStart = new Date(
+        (Number.isFinite(sinceCandidate)
+            ? sinceCandidate
+            : Date.now() - 5 * 60_000) - WINDOW_BUFFER_MS,
+    );
+
     const encoder = new TextEncoder();
     let unsub: (() => void) | null = null;
     let closed = false;
@@ -60,10 +87,14 @@ export async function GET(
             send("connected", { slotId, ts: new Date().toISOString() });
 
             // Replay any undelivered events for this slot (or unrouted OTPs for the account)
+            // — but ONLY those received after `windowStart`. Older events stay
+            // pending; a future fresh page-open with an earlier `since` could
+            // still pick them up if the customer is actually waiting for one.
             try {
                 const pending = await db.query.slotEvents.findMany({
                     where: and(
                         eq(slotEvents.deliveredToSession, false),
+                        gte(slotEvents.receivedAt, windowStart),
                         or(
                             eq(slotEvents.slotId, slotId),
                             and(
