@@ -1,7 +1,7 @@
 ﻿"use server";
 
 import { db } from "@/db";
-import { orders, digitalCodes, digitalCodeSlots, orderItems, suppliers, supplierTransactions, productVariantSuppliers, clients, clientPayments, shopSettings, resellers } from "@/db/schema";
+import { orders, digitalCodes, digitalCodeSlots, orderItems, suppliers, supplierTransactions, productVariantSuppliers, clients, clientPayments, shopSettings, resellers, iptvProvisions } from "@/db/schema";
 import { eq, sql, desc, exists, and, inArray, count, gte, asc } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { sendTelegramNotification } from "@/lib/telegram";
@@ -341,6 +341,22 @@ export const replaceOrderItemCode = withAuth(
     }
 );
 
+// Un abonnement IPTV livré (provision LoadBrain "completed") ne peut pas être
+// repris : une fois les identifiants remis au client, le remboursement est
+// interdit. Scopé par commande ou par article selon le chemin de remboursement.
+async function hasDeliveredIptv(
+    tx: any,
+    where: { orderId?: number; orderItemId?: number }
+): Promise<boolean> {
+    const conds = [eq(iptvProvisions.status, "completed")];
+    if (where.orderId !== undefined) conds.push(eq(iptvProvisions.orderId, where.orderId));
+    if (where.orderItemId !== undefined) conds.push(eq(iptvProvisions.orderItemId, where.orderItemId));
+    const row = await tx.query.iptvProvisions.findFirst({ where: and(...conds) });
+    return !!row;
+}
+
+const IPTV_DELIVERED_REFUND_ERROR = "Remboursement impossible : un abonnement IPTV a déjà été livré pour cette commande.";
+
 export const refundOrderItem = withAuth(
     {
         roles: [UserRole.ADMIN],
@@ -355,6 +371,10 @@ export const refundOrderItem = withAuth(
                 });
 
                 if (!item) throw new UserError("Article introuvable");
+
+                if (await hasDeliveredIptv(tx, { orderItemId })) {
+                    throw new UserError(IPTV_DELIVERED_REFUND_ERROR);
+                }
 
                 const status = returnToStock ? DigitalCodeStatus.DISPONIBLE : DigitalCodeStatus.DEFECTUEUX;
 
@@ -397,6 +417,9 @@ export const refundFullOrder = withAuth(
                 if (!locked) throw new UserError("Commande introuvable");
                 if (!isRefundable(locked.status)) {
                     throw new UserError("Cette commande ne peut pas être remboursée (non payée ou déjà remboursée/annulée).");
+                }
+                if (await hasDeliveredIptv(tx, { orderId: id })) {
+                    throw new UserError(IPTV_DELIVERED_REFUND_ERROR);
                 }
 
                 const { OrderQueries } = await import("@/services/queries/order.queries");
@@ -638,6 +661,10 @@ export const approveReturn = withAuth(
                 const returnReq: ReturnRequest | null = order.returnRequest;
                 if (!returnReq || returnReq.status !== "EN_ATTENTE") {
                     return { success: false, error: "Aucune demande de retour en attente pour cette commande" };
+                }
+
+                if (await hasDeliveredIptv(tx, { orderId })) {
+                    throw new UserError(IPTV_DELIVERED_REFUND_ERROR);
                 }
 
                 // 1. Create clientPayments record (requires clientId)
