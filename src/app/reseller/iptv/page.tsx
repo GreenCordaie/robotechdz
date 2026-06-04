@@ -26,6 +26,7 @@ import {
 } from "./components/IptvLinesTable";
 import { IptvCheckoutModal } from "./components/IptvCheckoutModal";
 import { IptvLineDetailModal } from "./components/IptvLineDetailModal";
+import PurchaseSuccessModal from "../shop/components/PurchaseSuccessModal";
 
 const PROVIDERS: ReadonlyArray<IptvProvider> = [
     "panelking365",
@@ -297,8 +298,10 @@ export default function ResellerIptvPage() {
         setCheckoutProduct(product);
     }, []);
 
-    const onCheckoutSuccess = useCallback(() => {
+    const [modalOrderId, setModalOrderId] = useState<number | null>(null);
+    const onCheckoutSuccess = useCallback((orderId: number | null) => {
         loadLines(provider);
+        if (orderId) setModalOrderId(orderId);
     }, [provider, loadLines]);
 
     const onDetailChanged = useCallback(() => {
@@ -434,6 +437,12 @@ export default function ResellerIptvPage() {
                 isOpen={!!checkoutProduct}
                 onClose={() => setCheckoutProduct(null)}
                 onSuccess={onCheckoutSuccess}
+            />
+            <PurchaseSuccessModal
+                isOpen={modalOrderId !== null}
+                onClose={() => setModalOrderId(null)}
+                orderId={modalOrderId}
+                productLabel="Abonnement IPTV"
             />
             <IptvLineDetailModal
                 iptvOrderId={detailOrderId}

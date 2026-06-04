@@ -446,6 +446,7 @@ export const createIptvOrderAction = withAuth(
                 success: true as const,
                 data: {
                     orderNumber,
+                    orderId: staged.localOrderId,
                     iptvOrderId: staged.iptvOrderId,
                 },
             };
@@ -1401,6 +1402,7 @@ export const renewIptvLineAction = withAuth(
                 success: true as const,
                 data: {
                     orderNumber,
+                    orderId: staged.localOrderId,
                     iptvOrderId: staged.iptvOrderId,
                 },
             };

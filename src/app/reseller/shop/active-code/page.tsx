@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Search, KeyRound, Sparkles, Globe2, AlertTriangle } from "lucide-react";
+import { toast } from "react-hot-toast";
 
 import { ALL_REGION, RegionPills } from "../components/Denomination";
 import {
@@ -358,13 +359,35 @@ export default function ResellerShopActiveCodePage() {
                                 <p className="text-xs text-neutral-400 mb-2">
                                     Code :
                                 </p>
-                                <div className="text-2xl font-mono font-bold tracking-wider text-[#FACC15] bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-3 text-center break-all">
+                                <button
+                                    type="button"
+                                    title="Cliquer pour copier"
+                                    onClick={() => {
+                                        navigator.clipboard
+                                            .writeText(purchaseResult.code)
+                                            .then(() => toast.success("Code copié"))
+                                            .catch(() => toast.error("Impossible de copier"));
+                                    }}
+                                    className="w-full text-2xl font-mono font-bold tracking-wider text-[#FACC15] bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-3 text-center break-all cursor-pointer hover:border-[#FACC15]/60 transition"
+                                >
                                     {purchaseResult.code}
-                                </div>
+                                </button>
                                 <p className="text-[11px] text-neutral-500 mt-3">
                                     Commande : {purchaseResult.orderId}
                                 </p>
                                 <div className="flex gap-3 justify-end mt-5">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            navigator.clipboard
+                                                .writeText(purchaseResult.code)
+                                                .then(() => toast.success("Code copié"))
+                                                .catch(() => toast.error("Impossible de copier"));
+                                        }}
+                                        className="px-4 py-2 rounded-lg bg-[#FACC15] text-black font-bold hover:bg-[#FACC15]/90 transition"
+                                    >
+                                        Copier le code
+                                    </button>
                                     <button
                                         type="button"
                                         onClick={() => {

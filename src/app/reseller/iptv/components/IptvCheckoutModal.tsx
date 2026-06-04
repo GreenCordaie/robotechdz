@@ -32,7 +32,7 @@ interface IptvCheckoutModalProps {
     readonly provider: IptvProvider;
     readonly isOpen: boolean;
     readonly onClose: () => void;
-    readonly onSuccess: () => void;
+    readonly onSuccess: (orderId: number | null) => void;
 }
 
 interface IboApp {
@@ -120,8 +120,7 @@ export const IptvCheckoutModal: React.FC<IptvCheckoutModalProps> = ({
                 params: Object.keys(params).length > 0 ? params : undefined,
             });
             if (res.success) {
-                toast.success("Commande envoyée, en cours de provision");
-                onSuccess();
+                onSuccess((res.data as { orderId?: number }).orderId ?? null);
                 onClose();
             } else {
                 toast.error(asErrorString(res.error, "Échec de la commande"));
