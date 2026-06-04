@@ -19,7 +19,6 @@ type LiveEvent =
     | { type: "HOUSEHOLD_LINK"; value: string; timestamp: string };
 
 export function ActivationClient(props: Props) {
-    const [revealPwd, setRevealPwd] = useState(false);
     const [revealPin, setRevealPin] = useState(false);
     const [latest, setLatest] = useState<LiveEvent | null>(null);
     const [requesting, setRequesting] = useState(false);
@@ -154,18 +153,6 @@ export function ActivationClient(props: Props) {
                     <h2 className="text-sm uppercase tracking-wider text-neutral-500 mb-3">Tes accès</h2>
                     <div className="space-y-3">
                         <Row label="Email" value={props.email} />
-                        <Row
-                            label="Mot de passe"
-                            value={revealPwd ? props.password : mask(props.password)}
-                            action={
-                                <button
-                                    onClick={() => setRevealPwd((v) => !v)}
-                                    className="text-xs text-neutral-400 hover:text-white"
-                                >
-                                    {revealPwd ? "Masquer" : "Afficher"}
-                                </button>
-                            }
-                        />
                         <Row label="Profil" value={props.profileName} />
                         {props.pin && (
                             <Row
