@@ -9,7 +9,7 @@ import {
     Gift,
     Gamepad2,
     Layers,
-    LayoutGrid,
+    Clapperboard,
     Wallet,
     Trophy,
     PartyPopper,
@@ -46,7 +46,7 @@ interface NavItem {
 
 const NAV_ITEMS: ReadonlyArray<NavItem> = [
     { href: "/reseller/dashboard", label: "Dashboard", icon: LayoutDashboard },
-    { href: "/reseller/shop/all", label: "Tout le catalogue", icon: LayoutGrid },
+    { href: "/reseller/shop/streaming", label: "Streaming", icon: Clapperboard },
     { href: "/reseller/shop?type=giftcard", label: "Gift Cards & Vouchers", icon: Gift },
     { href: "/reseller/shop/games", label: "Game Top Up", icon: Gamepad2 },
     { href: "/reseller/iptv", label: "IPTV", icon: Tv },
@@ -139,11 +139,15 @@ export const ShopTopNav: React.FC<ShopTopNavProps> = ({ shopName: shopNameProp }
         if (base === "/reseller/shop") {
             const linkType = new URLSearchParams(query).get("type");
             if (!pathname.startsWith("/reseller/shop")) return false;
-            // Sub-routes that have their OWN nav entry (/shop/all, /shop/games)
+            // Sub-routes that have their OWN nav entry (or a dedicated page)
             // must never highlight the gift-card shop tabs.
             if (
                 pathname.startsWith("/reseller/shop/all") ||
-                pathname.startsWith("/reseller/shop/games")
+                pathname.startsWith("/reseller/shop/games") ||
+                pathname.startsWith("/reseller/shop/streaming") ||
+                pathname.startsWith("/reseller/shop/netflix") ||
+                pathname.startsWith("/reseller/shop/active-code") ||
+                pathname.startsWith("/reseller/shop/manual-delivery")
             ) {
                 return false;
             }
