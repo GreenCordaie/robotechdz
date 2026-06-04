@@ -12,6 +12,7 @@ import {
     type G2BulkCatalogPricingMeta,
 } from "../g2bulk-shop-actions";
 import { checkoutResellerAction, getCurrentResellerAction } from "../../actions";
+import PurchaseSuccessModal from "../components/PurchaseSuccessModal";
 import {
     SEED_BRANDS,
     deriveG2BulkBrand,
@@ -61,6 +62,7 @@ export default function ResellerShopAllPage() {
     const [quantity, setQuantity] = useState(1);
     const [resellerId, setResellerId] = useState<number | null>(null);
     const [isCheckingOut, setIsCheckingOut] = useState(false);
+    const [modalOrderId, setModalOrderId] = useState<number | null>(null);
 
     /* ───── Reseller ───── */
     useEffect(() => {
@@ -188,8 +190,8 @@ export default function ResellerShopAllPage() {
                 ],
             });
             if (res.success) {
-                toast.success("Commande envoyée à LoadBrain", { duration: 4000 });
                 setSelectedKey(null);
+                setModalOrderId((res as { orderId?: number }).orderId ?? null);
             } else {
                 toast.error(res.error || "Échec de la commande");
             }
@@ -306,6 +308,12 @@ export default function ResellerShopAllPage() {
                     />
                 </aside>
             </div>
+
+            <PurchaseSuccessModal
+                isOpen={modalOrderId !== null}
+                onClose={() => setModalOrderId(null)}
+                orderId={modalOrderId}
+            />
         </div>
     );
 }

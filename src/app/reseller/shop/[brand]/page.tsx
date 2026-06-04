@@ -32,6 +32,7 @@ import {
     type Denomination,
 } from "../components/Denomination";
 import type { EnrichedBsvListing } from "@/types/bsv-listings";
+import PurchaseSuccessModal from "../components/PurchaseSuccessModal";
 
 // Action schemas cap `limit` at 48 — keep at or below that.
 const PAGE_SIZE = 48;
@@ -54,6 +55,7 @@ export default function ResellerBrandPage() {
     const [quantity, setQuantity] = useState(1);
     const [resellerId, setResellerId] = useState<number | null>(null);
     const [isCheckingOut, setIsCheckingOut] = useState(false);
+    const [modalOrderId, setModalOrderId] = useState<number | null>(null);
 
     /* ───── Reseller ───── */
     useEffect(() => {
@@ -172,9 +174,10 @@ export default function ResellerBrandPage() {
                       };
             const res = await checkoutResellerAction({ resellerId, cart: [cartItem] });
             if (res.success) {
-                toast.success("Commande envoyée à LoadBrain", { duration: 4000 });
                 setSelectedKey(null);
-                router.push("/reseller/orders");
+                // Open the post-purchase modal with the delivered code(s) instead
+                // of redirecting to "Mes Achats".
+                setModalOrderId((res as { orderId?: number }).orderId ?? null);
             } else {
                 toast.error(res.error || "Échec de la commande");
             }
@@ -264,6 +267,12 @@ export default function ResellerBrandPage() {
                     />
                 </aside>
             </div>
+
+            <PurchaseSuccessModal
+                isOpen={modalOrderId !== null}
+                onClose={() => setModalOrderId(null)}
+                orderId={modalOrderId}
+            />
         </div>
     );
 }

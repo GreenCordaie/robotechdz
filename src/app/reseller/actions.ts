@@ -606,7 +606,7 @@ export const checkoutResellerAction = withAuth(
                 console.warn("[checkout] webhook dispatch failed (non-bloquant):", err);
             });
 
-            return { success: true, orderNumber: res.orderNumber };
+            return { success: true, orderId: res.id, orderNumber: res.orderNumber };
         } catch (error) {
             console.error("Checkout error:", error);
             return { success: false, error: "Erreur lors du traitement de la commande" };
@@ -816,7 +816,7 @@ async function handleBsvCheckout({
 
         revalidatePath("/reseller/orders");
 
-        return { success: true as const, orderNumber: res.orderNumber };
+        return { success: true as const, orderId: res.id, orderNumber: res.orderNumber };
     } catch (error) {
         console.error("BSV checkout error:", error);
         const msg =
@@ -1048,7 +1048,7 @@ async function handleG2BulkCheckout({
 
         revalidatePath("/reseller/orders");
 
-        return { success: true as const, orderNumber: res.orderNumber };
+        return { success: true as const, orderId: res.id, orderNumber: res.orderNumber };
     } catch (error) {
         console.error("G2Bulk checkout error:", error);
         const msg =
