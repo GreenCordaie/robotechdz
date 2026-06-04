@@ -23,38 +23,17 @@ import {
 import { withAuth } from "@/lib/security";
 import { UserRole } from "@/lib/constants";
 import { TierService } from "@/services/tier.service";
-
-// ──────────────────────────────────────────────────────────────────────
-// Source / type literals — mirror the values written by the 0028 wiring
-// ──────────────────────────────────────────────────────────────────────
-
-export const TX_TYPES = ["PURCHASE", "RECHARGE", "REFUND"] as const;
-export type TxType = (typeof TX_TYPES)[number];
-
-export const TX_SOURCES = [
-    "BSV",
-    "G2BULK",
-    "IPTV",
-    "ACTIVE_CODE",
-    "MANUAL",
-    "ADMIN_RECHARGE",
-    "UPSTREAM_REFUND",
-    "LEGACY",
-] as const;
-export type TxSource = (typeof TX_SOURCES)[number];
-
-export const ORDER_KINDS = [
-    "bsv",
-    "g2bulk",
-    // Reseller-facing merged family — hides the BSV vs G2Bulk supplier split.
-    "giftcards",
-    "iptv",
-    "active",
-    "manual",
-    "legacy",
-    "all",
-] as const;
-export type OrderKind = (typeof ORDER_KINDS)[number];
+// Source / type literals live in the client-safe components/types module —
+// a "use server" file must not export const arrays (they'd become server
+// references in client components). See the note there.
+import {
+    TX_TYPES,
+    TX_SOURCES,
+    ORDER_KINDS,
+    type TxType,
+    type TxSource,
+    type OrderKind,
+} from "./components/types";
 
 // ──────────────────────────────────────────────────────────────────────
 // 1) getResellerWalletOverviewAction — single fetch at mount

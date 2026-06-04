@@ -9,9 +9,8 @@ import { formatCurrency, formatDate } from "@/lib/formatters";
 import {
     getResellerOrdersByKindAction,
     type NormalizedOrderRow,
-    type OrderKind,
 } from "../actions";
-import { KIND_LABELS, sanitizeSupplierText } from "./types";
+import { KIND_LABELS, sanitizeSupplierText, type OrderKind } from "./types";
 
 const ORDER_TABS: Array<{ key: OrderKind; label: string }> = [
     { key: "all", label: "Toutes" },

@@ -2,6 +2,40 @@
  * Client-side shapes mirroring the wallet server actions' return data.
  */
 
+// Source / type literals. These MUST live in this client-safe module (not in
+// the "use server" actions file): exporting a const array from a "use server"
+// module turns it into a server *reference* when imported by a client
+// component, so `TX_SOURCES.filter(...)` would throw "filter is not a function"
+// at render/prerender. The actions file imports these from here for its zod
+// schemas.
+export const TX_TYPES = ["PURCHASE", "RECHARGE", "REFUND"] as const;
+export type TxType = (typeof TX_TYPES)[number];
+
+export const TX_SOURCES = [
+    "BSV",
+    "G2BULK",
+    "IPTV",
+    "ACTIVE_CODE",
+    "MANUAL",
+    "ADMIN_RECHARGE",
+    "UPSTREAM_REFUND",
+    "LEGACY",
+] as const;
+export type TxSource = (typeof TX_SOURCES)[number];
+
+export const ORDER_KINDS = [
+    "bsv",
+    "g2bulk",
+    // Reseller-facing merged family — hides the BSV vs G2Bulk supplier split.
+    "giftcards",
+    "iptv",
+    "active",
+    "manual",
+    "legacy",
+    "all",
+] as const;
+export type OrderKind = (typeof ORDER_KINDS)[number];
+
 export interface OverviewData {
     reseller: { id: number; companyName: string; contactPhone: string | null };
     wallet: {

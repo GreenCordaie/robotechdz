@@ -17,12 +17,15 @@ import {
 } from "lucide-react";
 import { toast } from "react-hot-toast";
 import { formatCurrency, formatDate } from "@/lib/formatters";
+import { getResellerTransactionsPagedAction } from "../actions";
 import {
-    getResellerTransactionsPagedAction,
+    SOURCE_LABELS,
+    TX_TYPE_LABELS,
     TX_SOURCES,
     TX_TYPES,
-} from "../actions";
-import { SOURCE_LABELS, TX_TYPE_LABELS, sanitizeSupplierText, type TxRow } from "./types";
+    sanitizeSupplierText,
+    type TxRow,
+} from "./types";
 
 // Dedupe the source filter by display label so the two confidential suppliers
 // (BSV, G2BULK) — both shown as "Cartes & Vouchers" — collapse to one option.
