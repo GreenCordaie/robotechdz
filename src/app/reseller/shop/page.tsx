@@ -7,7 +7,21 @@ import Link from "next/link";
 import { LayoutGrid } from "lucide-react";
 import { CategoryGrid } from "./components/CategoryGrid";
 import { getBrandCategoriesAction } from "./aggregate-brands";
-import type { BrandCategory, BrandType } from "./brand-utils";
+import { artworkFor, type BrandCategory, type BrandType } from "./brand-utils";
+
+/**
+ * Netflix is sold from LOCAL `is_sharing` stock (not the G2Bulk catalog that
+ * feeds getBrandCategoriesAction), so it never appears in the aggregated
+ * grid. Surface it manually in the Gift Cards / All sections — the card links
+ * to the dedicated /reseller/shop/netflix page.
+ */
+const NETFLIX_CARD: BrandCategory = {
+    slug: "netflix",
+    label: "Netflix",
+    count: 0,
+    imageUrl: artworkFor("netflix"),
+    type: "giftcard",
+};
 
 type Tab = "all" | "giftcard" | "topup";
 
@@ -74,10 +88,14 @@ export default function ResellerShopLanding() {
         };
     }, []);
 
-    const filtered = useMemo(
-        () => categories.filter((c) => meta.keep(c.type)),
-        [categories, meta],
-    );
+    const filtered = useMemo(() => {
+        const base = categories.filter((c) => meta.keep(c.type));
+        // Prepend the manual Netflix card on the giftcard/all tabs (skip on
+        // top-up, and never duplicate if the catalog ever yields a netflix slug).
+        const showNetflix =
+            meta.keep("giftcard") && !base.some((c) => c.slug === "netflix");
+        return showNetflix ? [NETFLIX_CARD, ...base] : base;
+    }, [categories, meta]);
 
     return (
         <div className="space-y-10 animate-in fade-in duration-500">

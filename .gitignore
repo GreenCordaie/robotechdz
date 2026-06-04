@@ -109,3 +109,8 @@ workflow_to_activate.json
 scripts/noop.js
 /test-results/
 /playwright-report/
+
+# Ruflo / claude-flow tooling artifacts (local only)
+.claude-flow/
+.swarm/
+ruvector.db

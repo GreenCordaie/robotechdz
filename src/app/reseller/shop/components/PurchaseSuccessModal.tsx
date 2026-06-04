@@ -92,9 +92,19 @@ function CopyRow({ label, value }: { label: string; value: string }) {
 }
 
 /** Open WhatsApp (the reseller's own app/number) with a prefilled message
- * carrying the customer magic link. No central WAHA session involved. */
-function shareViaWhatsApp(url: string) {
-    const msg = `🎬 Voici votre accès :\n${url}\n\nOuvrez ce lien — vous y trouverez votre profil et vos codes de connexion.`;
+ * carrying the customer magic link. No central WAHA session involved.
+ * Mirrors the boutique's Netflix activation template, signed with the
+ * reseller's shop name so the customer sees who's serving them. */
+function shareViaWhatsApp(url: string, resellerName?: string) {
+    const who = resellerName?.trim() ? ` — ${resellerName.trim()}` : "";
+    const msg =
+        `🎬 *Votre accès Netflix*${who}\n\n` +
+        `Voici votre lien personnel :\n${url}\n\n` +
+        `📺 *Comment activer :*\n` +
+        `1️⃣ Ouvrez le lien ci-dessus sur votre TV ou téléphone\n` +
+        `2️⃣ Vous y trouverez votre profil et votre code PIN\n` +
+        `3️⃣ Quand Netflix demande un code de connexion (4 chiffres), cliquez sur « Voir mon code » sur la page — il s'affiche en temps réel.\n\n` +
+        `Merci de votre confiance ! 🙏`;
     window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, "_blank", "noopener,noreferrer");
 }
 
@@ -105,6 +115,8 @@ export interface PurchaseSuccessModalProps {
     productLabel?: string;
     /** Code already returned synchronously (e.g. Active Code instant delivery). */
     initialCode?: string;
+    /** Reseller shop name — used to sign the WhatsApp share message. */
+    resellerName?: string;
 }
 
 export default function PurchaseSuccessModal({
@@ -113,6 +125,7 @@ export default function PurchaseSuccessModal({
     orderId,
     productLabel,
     initialCode,
+    resellerName,
 }: PurchaseSuccessModalProps) {
     const [order, setOrder] = React.useState<OrderDetail | null>(null);
     const [polling, setPolling] = React.useState(false);
@@ -192,7 +205,7 @@ export default function PurchaseSuccessModal({
                                                         <CopyRow label="Lien client (magic link)" value={s.activationUrl} />
                                                         <button
                                                             type="button"
-                                                            onClick={() => shareViaWhatsApp(s.activationUrl as string)}
+                                                            onClick={() => shareViaWhatsApp(s.activationUrl as string, resellerName)}
                                                             className="w-full flex items-center justify-center gap-2 bg-[#25D366] text-black font-black rounded-lg px-3 py-2 hover:bg-[#25D366]/90 transition-colors"
                                                         >
                                                             <Send className="size-4" /> Partager sur WhatsApp
