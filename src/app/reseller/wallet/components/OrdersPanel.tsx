@@ -10,11 +10,12 @@ import {
     type NormalizedOrderRow,
     type OrderKind,
 } from "../actions";
+import { KIND_LABELS, sanitizeSupplierText } from "./types";
 
 const ORDER_TABS: Array<{ key: OrderKind; label: string }> = [
     { key: "all", label: "Toutes" },
-    { key: "bsv", label: "BSV" },
-    { key: "g2bulk", label: "G2Bulk" },
+    // BSV + G2Bulk merged into one neutral family — suppliers are confidential.
+    { key: "giftcards", label: "Cartes & Vouchers" },
     { key: "iptv", label: "IPTV" },
     { key: "active", label: "Active Code" },
     { key: "manual", label: "Manuel" },
@@ -112,10 +113,12 @@ function OrderRowCard({ row }: { row: NormalizedOrderRow }) {
                         {row.status}
                     </Chip>
                     <Chip size="sm" className="bg-white/5 text-slate-400 font-bold text-[9px] uppercase border border-white/10">
-                        {row.kind}
+                        {KIND_LABELS[row.kind] ?? row.kind}
                     </Chip>
                 </div>
-                <p className="text-xs text-slate-400 font-medium truncate">{row.productName}</p>
+                <p className="text-xs text-slate-400 font-medium truncate">
+                    {sanitizeSupplierText(row.productName)}
+                </p>
                 <p className="text-[10px] text-slate-600 font-bold uppercase mt-1">
                     {formatDate(new Date(row.createdAt))}
                 </p>

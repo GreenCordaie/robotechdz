@@ -46,6 +46,8 @@ export type TxSource = (typeof TX_SOURCES)[number];
 export const ORDER_KINDS = [
     "bsv",
     "g2bulk",
+    // Reseller-facing merged family — hides the BSV vs G2Bulk supplier split.
+    "giftcards",
     "iptv",
     "active",
     "manual",
@@ -411,7 +413,7 @@ export const getResellerOrdersByKindAction = withAuth(
 
             // BSV / G2Bulk / IPTV reuse their existing actions — call them
             // here so the wallet page never duplicates query logic.
-            if (kind === "bsv" || kind === "all") {
+            if (kind === "bsv" || kind === "giftcards" || kind === "all") {
                 const { getBsvOrdersAction } = await import("../orders/bsv-actions");
                 const res = await getBsvOrdersAction({});
                 if (res.success) {
@@ -429,7 +431,7 @@ export const getResellerOrdersByKindAction = withAuth(
                 }
             }
 
-            if (kind === "g2bulk" || kind === "all") {
+            if (kind === "g2bulk" || kind === "giftcards" || kind === "all") {
                 const { getG2BulkOrdersAction } = await import("../orders/g2bulk-actions");
                 const res = await getG2BulkOrdersAction({ limit: cap });
                 if (res.success) {

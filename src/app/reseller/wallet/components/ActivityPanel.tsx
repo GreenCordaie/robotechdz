@@ -22,7 +22,19 @@ import {
     TX_SOURCES,
     TX_TYPES,
 } from "../actions";
-import { SOURCE_LABELS, TX_TYPE_LABELS, type TxRow } from "./types";
+import { SOURCE_LABELS, TX_TYPE_LABELS, sanitizeSupplierText, type TxRow } from "./types";
+
+// Dedupe the source filter by display label so the two confidential suppliers
+// (BSV, G2BULK) — both shown as "Cartes & Vouchers" — collapse to one option.
+const SOURCE_FILTER_OPTIONS = (() => {
+    const seen = new Set<string>();
+    return TX_SOURCES.filter((s) => {
+        const label = SOURCE_LABELS[s] ?? s;
+        if (seen.has(label)) return false;
+        seen.add(label);
+        return true;
+    });
+})();
 
 export function ActivityPanel({ walletId }: { walletId: number | null }) {
     const [items, setItems] = useState<TxRow[]>([]);
@@ -123,7 +135,7 @@ export function ActivityPanel({ walletId }: { walletId: number | null }) {
                 >
                     {[
                         <SelectItem key="ALL">Toutes sources</SelectItem>,
-                        ...TX_SOURCES.map((s) => (
+                        ...SOURCE_FILTER_OPTIONS.map((s) => (
                             <SelectItem key={s}>{SOURCE_LABELS[s] ?? s}</SelectItem>
                         )),
                     ]}
@@ -203,7 +215,7 @@ function TxRowCard({ tx }: { tx: TxRow }) {
                 <div className="min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                         <h4 className="font-bold text-white text-sm truncate">
-                            {tx.description ||
+                            {sanitizeSupplierText(tx.description) ||
                                 (tx.type === "PURCHASE"
                                     ? "Achat"
                                     : tx.type === "RECHARGE"
