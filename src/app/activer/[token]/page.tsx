@@ -71,9 +71,11 @@ export default async function ActivationPage(props: { params: Promise<{ token: s
         }
     }
 
-    // Decrypt credentials server-side (token gate already passed)
-    const email = account.code ? decrypt(account.code) : null;
-    const password = account.outlookPassword ? decrypt(account.outlookPassword) : null;
+    // Decrypt credentials server-side (token gate already passed).
+    // account.code is stored as "email | password" — expose ONLY the email to
+    // the customer. The password must never reach the browser.
+    const rawAccount = account.code ? decrypt(account.code) : null;
+    const email = rawAccount ? rawAccount.split("|")[0].trim() : null;
     const pin = slot.code ? decrypt(slot.code) : null;
 
     // Resolve brand name
@@ -94,7 +96,6 @@ export default async function ActivationPage(props: { params: Promise<{ token: s
             token={token}
             brandName={brandName}
             email={email ?? "—"}
-            password={password ?? ""}
             profileName={slot.profileName ?? `Profil ${slot.slotNumber}`}
             pin={pin ?? ""}
             hasExtraMember={account.hasExtraMember === true}
