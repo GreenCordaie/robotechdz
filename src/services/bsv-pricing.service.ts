@@ -1,9 +1,6 @@
 import "server-only";
-import { db } from "@/db";
-import { bsvPricingRules } from "@/db/schema";
-import { eq } from "drizzle-orm";
 import {
-    MarkupPricingService,
+    ResalePricingService,
     type PricingRule,
     type ScopeType,
     type MarkupType,
@@ -19,14 +16,14 @@ export type BsvPricingRule = PricingRule;
 export type BsvListingPricingInput = ListingPricingInput;
 export type { ResellerPricingContext, ComputedPrice };
 
-/** BSV mirror shop pricing — see {@link MarkupPricingService}. Rules live in `bsv_pricing_rules`. */
-export class BsvPricingService extends MarkupPricingService {
-    protected async fetchActiveRules(): Promise<PricingRule[]> {
-        const rows = await db
-            .select()
-            .from(bsvPricingRules)
-            .where(eq(bsvPricingRules.isActive, true));
-        return rows.map((row) => this.normalizeRule(row));
+/**
+ * BSV resale pricing. Thin wrapper over the unified engine bound to
+ * source='bsv' — rules now live in the shared `pricing_rules` table
+ * (source 'bsv' + the all-sources '*' fallback).
+ */
+export class BsvPricingService extends ResalePricingService {
+    constructor() {
+        super("bsv");
     }
 }
 

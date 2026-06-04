@@ -1,42 +1,52 @@
 import "server-only";
 import { db } from "@/db";
-import { shopSettings } from "@/db/schema";
+import { shopSettings, pricingRules } from "@/db/schema";
+import { and, eq, inArray } from "drizzle-orm";
 
 /**
- * Generic markup-pricing engine shared by the BSV and G2Bulk mirror shops.
+ * Unified resale-pricing engine shared by every reseller source (BSV, G2Bulk,
+ * IPTV…). Cost (USD or DZD) → DZD via shop_settings rate → scope-based markup →
+ * reseller tier/custom discount.
  *
- * The two shops priced identically (USD cost → DZD via shop_settings rate →
- * scope-based markup → reseller tier/custom discount) but lived in two ~95%
- * duplicated files. This base class owns all that logic; each shop subclass
- * only supplies how to load its own pricing-rules table (`fetchActiveRules`).
+ * Rules live in one table (`pricing_rules`) discriminated by `source`. A service
+ * instance is bound to one source and reads that source's rules PLUS the
+ * all-sources `'*'` rules as fallback.
  *
- * Scope precedence (most specific wins): sku > brand > category > global.
- * markup_type 'pct' = basis points (1500 = 15%); 'fixed_dzd' = absolute DZD.
+ * Scope precedence (most specific wins), source-specific before all-sources:
+ *   <source> sku > brand > category > global   THEN   '*' sku > … > global.
+ *
+ * markup_type:
+ *   'pct'         → markupValue is BASIS POINTS (1500 = 15%): cost × (1 + bps/1e4)
+ *   'fixed_dzd'   → markupValue is a margin ADDED to cost: cost + markupValue
+ *   'fixed_price' → markupValue IS the absolute resale price in DZD (cost ignored)
  */
 
 export type ScopeType = "global" | "category" | "brand" | "sku";
-export type MarkupType = "pct" | "fixed_dzd";
+export type MarkupType = "pct" | "fixed_dzd" | "fixed_price";
 
 /** Internal pricing rule shape after normalization from a DB row. */
 export interface PricingRule {
     id: number;
+    source: string;
     scopeType: ScopeType;
     scopeValue: string;
     markupType: MarkupType;
-    /** For 'pct' this is BASIS POINTS (1500 = 15%). For 'fixed_dzd' this is absolute DZD. */
+    /** 'pct' → basis points; 'fixed_dzd' → margin DZD; 'fixed_price' → absolute DZD. */
     markupValue: number;
     notes: string | null;
     isActive: boolean;
 }
 
 export interface ListingPricingInput {
-    /** USD cents. Never floats. */
+    /** Cost in cents of `costCurrency` (default USD). Never floats. */
     priceCentsUsd: number;
+    /** Currency of the cost. USD is converted to DZD; DZD is used as-is. */
+    costCurrency?: "USD" | "DZD";
     /** Category slug. */
     category: string;
     /** Brand slug. */
     brand: string;
-    /** Canonical SKU (upstream product id stringified). */
+    /** Canonical SKU (upstream product id / cluster slug / loadbrain slug). */
     sku: string;
 }
 
@@ -49,7 +59,7 @@ export interface ResellerPricingContext {
 }
 
 export interface ComputedPrice {
-    /** Cost in DZD (USD × rate). Rounded to 2 decimals. */
+    /** Cost in DZD (USD × rate, or DZD as-is). Rounded to 2 decimals. */
     costDzd: number;
     /** Public catalogue price (after markup, before tier discount). */
     basePriceDzd: number;
@@ -61,6 +71,7 @@ export interface ComputedPrice {
     marginPct: number;
     appliedRule: {
         id: number;
+        source: string;
         scopeType: ScopeType;
         scopeValue: string;
         markupType: MarkupType;
@@ -69,9 +80,10 @@ export interface ComputedPrice {
     conversionRate: number;
 }
 
-/** Raw DB row shape — both pricing-rules tables share these columns. Internal. */
+/** Raw DB row shape from `pricing_rules`. Internal. */
 interface PricingRuleRow {
     id: number;
+    source: string;
     scopeType: string;
     scopeValue: string;
     markupType: string;
@@ -91,16 +103,17 @@ function round2(n: number): number {
 }
 
 export abstract class MarkupPricingService {
+    /** The source this instance prices (e.g. "bsv", "g2bulk", "iptv"). */
+    protected abstract readonly source: string;
+
     private rulesCache: { rules: PricingRule[]; expiresAt: number } | null = null;
     private rateCache: { rate: number; expiresAt: number } | null = null;
-
-    /** Load this shop's ACTIVE pricing rules from its own table. */
-    protected abstract fetchActiveRules(): Promise<PricingRule[]>;
 
     /** Normalize a raw rules-table row into the internal shape. */
     protected normalizeRule(row: PricingRuleRow): PricingRule {
         return {
             id: row.id,
+            source: row.source,
             scopeType: row.scopeType as ScopeType,
             scopeValue: row.scopeValue,
             markupType: row.markupType as MarkupType,
@@ -110,13 +123,25 @@ export abstract class MarkupPricingService {
         };
     }
 
+    /**
+     * Load this source's ACTIVE rules + the all-sources '*' rules from the
+     * unified `pricing_rules` table.
+     */
+    protected async fetchActiveRules(): Promise<PricingRule[]> {
+        const rows = await db
+            .select()
+            .from(pricingRules)
+            .where(and(eq(pricingRules.isActive, true), inArray(pricingRules.source, [this.source, "*"])));
+        return rows.map((row) => this.normalizeRule(row as unknown as PricingRuleRow));
+    }
+
     /** Invalidate all cached state. Call after admin CRUD or rate change. */
     invalidateCache(): void {
         this.rulesCache = null;
         this.rateCache = null;
     }
 
-    /** Load all ACTIVE pricing rules. Cached for 5 min. */
+    /** Load all ACTIVE rules (source + '*'). Cached for 5 min. */
     async getRules(): Promise<PricingRule[]> {
         const now = Date.now();
         if (this.rulesCache && this.rulesCache.expiresAt > now) {
@@ -150,18 +175,18 @@ export abstract class MarkupPricingService {
     }
 
     /**
-     * Pick the most specific active rule for a listing.
-     * Precedence: sku > brand > category > global. Returns null when no rule
-     * (not even global) is configured.
+     * Pick the most specific active rule. Source-specific rules win over the
+     * all-sources '*' fallback; within each, precedence is sku > brand >
+     * category > global. Returns null when no rule (not even '*' global) exists.
      */
     pickRule(rules: PricingRule[], input: ListingPricingInput): PricingRule | null {
-        return (
-            rules.find((r) => r.scopeType === "sku" && r.scopeValue === input.sku) ||
-            rules.find((r) => r.scopeType === "brand" && r.scopeValue === input.brand) ||
-            rules.find((r) => r.scopeType === "category" && r.scopeValue === input.category) ||
-            rules.find((r) => r.scopeType === "global") ||
-            null
-        );
+        const forSource = (s: string): PricingRule | null =>
+            rules.find((r) => r.source === s && r.scopeType === "sku" && r.scopeValue === input.sku) ||
+            rules.find((r) => r.source === s && r.scopeType === "brand" && r.scopeValue === input.brand) ||
+            rules.find((r) => r.source === s && r.scopeType === "category" && r.scopeValue === input.category) ||
+            rules.find((r) => r.source === s && r.scopeType === "global") ||
+            null;
+        return forSource(this.source) || forSource("*") || null;
     }
 
     /** Pure math, no IO. */
@@ -175,7 +200,11 @@ export abstract class MarkupPricingService {
         if (rule.markupType === "pct") {
             // markupValue is basis points (1500 = 15%).
             basePriceDzd = costDzd * (1 + rule.markupValue / 10000);
+        } else if (rule.markupType === "fixed_price") {
+            // markupValue IS the absolute resale price, independent of cost.
+            basePriceDzd = rule.markupValue;
         } else {
+            // fixed_dzd: margin added to cost.
             basePriceDzd = costDzd + rule.markupValue;
         }
 
@@ -198,6 +227,7 @@ export abstract class MarkupPricingService {
             marginPct: round2(marginPct),
             appliedRule: {
                 id: rule.id,
+                source: rule.source,
                 scopeType: rule.scopeType,
                 scopeValue: rule.scopeValue,
                 markupType: rule.markupType,
@@ -205,6 +235,12 @@ export abstract class MarkupPricingService {
             },
             conversionRate: rate,
         };
+    }
+
+    /** Cost in DZD from the input's cents + currency (USD converted, DZD as-is). */
+    private toCostDzd(input: ListingPricingInput, rate: number): number {
+        const units = input.priceCentsUsd / 100;
+        return input.costCurrency === "DZD" ? units : units * rate;
     }
 
     async computePrice(
@@ -215,11 +251,10 @@ export abstract class MarkupPricingService {
         const rule = this.pickRule(rules, input);
         if (!rule) {
             throw new Error(
-                "MarkupPricingService: no active pricing rule found (not even global). Seed the global fallback.",
+                `MarkupPricingService[${this.source}]: no active pricing rule found (not even '*' global). Seed the global fallback.`,
             );
         }
-        const costDzd = (input.priceCentsUsd / 100) * rate;
-        return this.applyRule(costDzd, rule, ctx, rate);
+        return this.applyRule(this.toCostDzd(input, rate), rule, ctx, rate);
     }
 
     /** Bulk version — loads rules+rate ONCE then prices each item. */
@@ -233,11 +268,23 @@ export abstract class MarkupPricingService {
             const rule = this.pickRule(rules, input);
             if (!rule) {
                 throw new Error(
-                    "MarkupPricingService: no active pricing rule found (not even global).",
+                    `MarkupPricingService[${this.source}]: no active pricing rule found (not even '*' global).`,
                 );
             }
-            const costDzd = (input.priceCentsUsd / 100) * rate;
-            return this.applyRule(costDzd, rule, ctx, rate);
+            return this.applyRule(this.toCostDzd(input, rate), rule, ctx, rate);
         });
+    }
+}
+
+/**
+ * Concrete resale-pricing service bound to a source at construction.
+ * Used directly for new sources (e.g. IPTV) and as the base for the
+ * per-source singletons (BSV, G2Bulk).
+ */
+export class ResalePricingService extends MarkupPricingService {
+    protected readonly source: string;
+    constructor(source: string) {
+        super();
+        this.source = source;
     }
 }
