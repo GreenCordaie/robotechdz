@@ -28,6 +28,9 @@ export const loadbrainModuleFetcher: BalanceFetcher = {
         const res = await fetch(url, {
             method: "GET",
             headers: { "X-Internal-Token": token },
+            // Balances must always be live — never serve a stale cached body
+            // (Next.js App Router caches fetch GET by default).
+            cache: "no-store",
             signal: AbortSignal.timeout(15_000),
         });
         if (!res.ok) throw new BalanceFetchError("lb_module", `HTTP ${res.status} on ${moduleName}`, res.status);
