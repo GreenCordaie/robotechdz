@@ -20,6 +20,18 @@ import { formatCurrency } from "@/lib/formatters";
 import { getCurrentResellerAction, getResellerOrdersAction } from "../actions";
 import { toast } from "react-hot-toast";
 
+// An order is "delivered" once it reaches LIVRE or TERMINE — IPTV/marketplace
+// orders settle on LIVRE (codes/credentials sent), not TERMINE. The old badge
+// only checked TERMINE, so delivered orders wrongly showed "Traitement".
+const DELIVERED_STATUSES = new Set(["TERMINE", "LIVRE"]);
+function orderBadge(status: string): { label: string; delivered: boolean; cancelled: boolean } {
+    if (DELIVERED_STATUSES.has(status)) return { label: "Livré", delivered: true, cancelled: false };
+    if (status === "REMBOURSE") return { label: "Remboursé", delivered: false, cancelled: true };
+    if (status === "ANNULE") return { label: "Annulé", delivered: false, cancelled: true };
+    if (status === "EN_ATTENTE") return { label: "En attente", delivered: false, cancelled: false };
+    return { label: "Traitement", delivered: false, cancelled: false };
+}
+
 export default function ResellerDashboard() {
     const [reseller, setReseller] = React.useState<any>(null);
     const [orders, setOrders] = React.useState<any[]>([]);
@@ -182,19 +194,29 @@ export default function ResellerDashboard() {
                     </div>
 
                     <div className="space-y-4">
-                        {recentOrders.map((order) => (
+                        {recentOrders.map((order) => {
+                            const badge = orderBadge(order.status);
+                            const iconCls = badge.delivered
+                                ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-500"
+                                : badge.cancelled
+                                    ? "bg-red-500/10 border-red-500/20 text-red-500"
+                                    : "bg-orange-500/10 border-orange-500/20 text-orange-500";
+                            const chipCls = badge.delivered
+                                ? "bg-emerald-500/10 text-emerald-500"
+                                : badge.cancelled
+                                    ? "bg-red-500/10 text-red-500"
+                                    : "bg-amber-500/10 text-amber-500";
+                            return (
                             <div key={order.id} className="bg-[#161616] border border-[#262626] rounded-2xl p-5 flex items-center justify-between group hover:border-[var(--primary)]/30 transition-all">
                                 <div className="flex items-center gap-5">
-                                    <div className={`size-12 rounded-xl flex items-center justify-center border ${order.status === "TERMINE" ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-500" : "bg-orange-500/10 border-orange-500/20 text-orange-500"
-                                        }`}>
+                                    <div className={`size-12 rounded-xl flex items-center justify-center border ${iconCls}`}>
                                         <ShoppingBag className="size-6" />
                                     </div>
                                     <div>
                                         <div className="flex items-center gap-2">
                                             <h4 className="font-bold text-white tracking-tight">{order.id}</h4>
-                                            <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${order.status === "TERMINE" ? "bg-emerald-500/10 text-emerald-500" : "bg-amber-500/10 text-amber-500"
-                                                }`}>
-                                                {order.status === "TERMINE" ? "Livré" : "Traitement"}
+                                            <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${chipCls}`}>
+                                                {badge.label}
                                             </span>
                                         </div>
                                         <p className="text-xs text-slate-500 font-medium mt-0.5">{order.items}</p>
@@ -205,7 +227,8 @@ export default function ResellerDashboard() {
                                     <p className="text-[10px] text-slate-600 font-bold uppercase tracking-wider mt-1">{order.date}</p>
                                 </div>
                             </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 </div>
 
