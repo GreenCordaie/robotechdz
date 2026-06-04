@@ -228,6 +228,9 @@ export const getResellerOrderDetailAction = withAuth(
                             slotNumber: s.slotNumber,
                             parentCode,
                             pin: slotPin,
+                            // Customer-facing magic link (/activer/[token]) the reseller
+                            // forwards to their client via their own WhatsApp.
+                            activationUrl: (s as { activationUrl?: string | null }).activationUrl ?? null,
                         };
                     }),
                     iptvProvisions: itemIptv.map((p) => {

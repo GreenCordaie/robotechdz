@@ -10,7 +10,7 @@ import {
     Button,
     Spinner,
 } from "@heroui/react";
-import { Check, Copy, ShoppingBag, Clock } from "lucide-react";
+import { Check, Copy, ShoppingBag, Clock, Send } from "lucide-react";
 import toast from "react-hot-toast";
 import Link from "next/link";
 import { getResellerOrderDetailAction } from "../../actions";
@@ -32,7 +32,7 @@ interface OrderItemDetail {
     productName: string;
     quantity: number;
     standardCodes: string[];
-    sharedSlots: { slotNumber: number; parentCode: string | null; pin: string | null }[];
+    sharedSlots: { slotNumber: number; parentCode: string | null; pin: string | null; activationUrl: string | null }[];
     iptvProvisions: { id: number; status: string; credentials: IptvCredentials | null }[];
 }
 
@@ -50,7 +50,7 @@ const POLL_MAX_MS = 60_000;
 /** True when an order item actually carries a deliverable code/credential. */
 function itemHasContent(item: OrderItemDetail): boolean {
     if (item.standardCodes.length > 0) return true;
-    if (item.sharedSlots.some((s) => s.parentCode || s.pin)) return true;
+    if (item.sharedSlots.some((s) => s.parentCode || s.pin || s.activationUrl)) return true;
     if (item.iptvProvisions.some((p) => p.credentials)) return true;
     return false;
 }
@@ -89,6 +89,13 @@ function CopyRow({ label, value }: { label: string; value: string }) {
             )}
         </button>
     );
+}
+
+/** Open WhatsApp (the reseller's own app/number) with a prefilled message
+ * carrying the customer magic link. No central WAHA session involved. */
+function shareViaWhatsApp(url: string) {
+    const msg = `🎬 Voici votre accès :\n${url}\n\nOuvrez ce lien — vous y trouverez votre profil et vos codes de connexion.`;
+    window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, "_blank", "noopener,noreferrer");
 }
 
 export interface PurchaseSuccessModalProps {
@@ -180,6 +187,18 @@ export default function PurchaseSuccessModal({
                                         ))}
                                         {item.sharedSlots.map((s, i) => (
                                             <React.Fragment key={`s-${i}`}>
+                                                {s.activationUrl && (
+                                                    <>
+                                                        <CopyRow label="Lien client (magic link)" value={s.activationUrl} />
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => shareViaWhatsApp(s.activationUrl as string)}
+                                                            className="w-full flex items-center justify-center gap-2 bg-[#25D366] text-black font-black rounded-lg px-3 py-2 hover:bg-[#25D366]/90 transition-colors"
+                                                        >
+                                                            <Send className="size-4" /> Partager sur WhatsApp
+                                                        </button>
+                                                    </>
+                                                )}
                                                 {s.parentCode && <CopyRow label="Compte" value={s.parentCode} />}
                                                 {s.pin && <CopyRow label="PIN / Slot" value={s.pin} />}
                                             </React.Fragment>
