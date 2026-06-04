@@ -171,10 +171,13 @@ export default function ResellerDashboard() {
                                 <span>Solde bas — recharger</span>
                             </Link>
                         ) : (
-                            <div className="flex items-center gap-1.5 text-slate-500 text-xs font-bold">
-                                <Wallet className="size-4" />
-                                <span>Crédit disponible</span>
-                            </div>
+                            <Link
+                                href="/reseller/wallet"
+                                className="inline-flex items-center gap-1.5 text-slate-400 text-xs font-bold hover:text-[var(--primary)] transition-colors"
+                            >
+                                <Plus className="size-4" />
+                                <span>Recharger mon solde</span>
+                            </Link>
                         )}
                     </CardBody>
                 </Card>
