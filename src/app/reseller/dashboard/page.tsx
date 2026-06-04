@@ -36,29 +36,46 @@ export default function ResellerDashboard() {
     const [reseller, setReseller] = React.useState<any>(null);
     const [orders, setOrders] = React.useState<any[]>([]);
     const [isLoading, setIsLoading] = React.useState(true);
+    const seqRef = React.useRef(0);
+    const firstLoadRef = React.useRef(true);
+
+    // Refresh balance/stats/orders so a purchase made in another tab is
+    // reflected without a manual reload. Last-write-wins via a monotonic seq
+    // so an in-flight stale response never overwrites a fresher one. Toast
+    // only on the FIRST load failure (a 30s poll must not spam toasts).
+    const loadData = React.useCallback(async () => {
+        const myTurn = ++seqRef.current;
+        const [resRes, ordRes]: [any, any] = await Promise.all([
+            getCurrentResellerAction({}),
+            getResellerOrdersAction({}),
+        ]);
+        if (myTurn < seqRef.current) return; // a newer refresh already landed
+
+        if (resRes.success) setReseller(resRes.data);
+        else if (firstLoadRef.current) toast.error("Erreur de session revendeur");
+
+        if (ordRes.success) setOrders((ordRes.data as any) || []);
+        else if (firstLoadRef.current) toast.error("Impossible de charger les commandes");
+
+        firstLoadRef.current = false;
+        setIsLoading(false);
+    }, []);
 
     React.useEffect(() => {
-        const loadData = async () => {
-            const [resRes, ordRes]: [any, any] = await Promise.all([
-                getCurrentResellerAction({}),
-                getResellerOrdersAction({})
-            ]);
-
-            if (resRes.success) {
-                setReseller(resRes.data);
-            } else {
-                toast.error("Erreur de session revendeur");
-            }
-
-            if (ordRes.success) {
-                setOrders((ordRes.data as any) || []);
-            } else {
-                toast.error("Impossible de charger les commandes");
-            }
-            setIsLoading(false);
-        };
         loadData();
-    }, []);
+        const onFocus = () => loadData();
+        const onVisible = () => {
+            if (document.visibilityState === "visible") loadData();
+        };
+        window.addEventListener("focus", onFocus);
+        document.addEventListener("visibilitychange", onVisible);
+        const interval = window.setInterval(loadData, 30_000);
+        return () => {
+            window.removeEventListener("focus", onFocus);
+            document.removeEventListener("visibilitychange", onVisible);
+            window.clearInterval(interval);
+        };
+    }, [loadData]);
 
     if (isLoading) {
         return (
@@ -92,13 +109,25 @@ export default function ResellerDashboard() {
         tierColor: tier?.color ?? "#94a3b8",
     };
 
-    const recentOrders = orders.slice(0, 3).map(o => ({
-        id: o.orderNumber,
-        date: new Date(o.createdAt).toLocaleDateString(),
-        amount: Number(o.totalAmount),
-        status: o.status,
-        items: o.items?.[0]?.name + (o.items?.length > 1 ? ` +${o.items.length - 1}` : "")
-    }));
+    // Low-balance alert (opt-in): reseller.lowBalanceThreshold NULL/<=0 = off.
+    const lowBalanceThreshold = Number(reseller?.lowBalanceThreshold ?? 0);
+    const isLowBalance =
+        lowBalanceThreshold > 0 && partnerInfo.balance < lowBalanceThreshold;
+
+    const recentOrders = orders.slice(0, 3).map(o => {
+        // G2Bulk/IPTV/streaming orders carry no `items` rows — the real label
+        // lives in the enriched `productNames`. Fall back gracefully.
+        const names: string[] = o.productNames ?? [];
+        const first = names[0] ?? "Commande";
+        const extra = names.length > 1 ? ` +${names.length - 1}` : "";
+        return {
+            id: o.orderNumber,
+            date: new Date(o.createdAt).toLocaleDateString(),
+            amount: Number(o.totalAmount),
+            status: o.status,
+            items: first + extra,
+        };
+    });
 
     return (
         <div className="space-y-10 max-w-7xl animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -130,11 +159,23 @@ export default function ResellerDashboard() {
                             <Wallet className="size-20" />
                         </div>
                         <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-4">Solde de Crédit</p>
-                        <h3 className="text-3xl font-black text-white mb-2">{formatCurrency(partnerInfo.balance, 'DZD')}</h3>
-                        <div className="flex items-center gap-1.5 text-emerald-500 text-xs font-bold">
-                            <ArrowUpRight className="size-4" />
-                            <span>Compte Rechargé</span>
-                        </div>
+                        <h3 className={`text-3xl font-black mb-2 ${isLowBalance ? "text-amber-400" : "text-white"}`}>
+                            {formatCurrency(partnerInfo.balance, 'DZD')}
+                        </h3>
+                        {isLowBalance ? (
+                            <Link
+                                href="/reseller/wallet"
+                                className="inline-flex items-center gap-1.5 text-amber-500 text-xs font-bold hover:underline"
+                            >
+                                <AlertTriangle className="size-4" />
+                                <span>Solde bas — recharger</span>
+                            </Link>
+                        ) : (
+                            <div className="flex items-center gap-1.5 text-slate-500 text-xs font-bold">
+                                <Wallet className="size-4" />
+                                <span>Crédit disponible</span>
+                            </div>
+                        )}
                     </CardBody>
                 </Card>
 
@@ -194,7 +235,22 @@ export default function ResellerDashboard() {
                     </div>
 
                     <div className="space-y-4">
-                        {recentOrders.map((order) => {
+                        {recentOrders.length === 0 ? (
+                            <div className="bg-[#161616] border border-dashed border-[#262626] rounded-2xl p-10 text-center">
+                                <ShoppingBag className="size-10 text-slate-600 mx-auto mb-3" />
+                                <p className="text-slate-300 font-bold mb-1">Aucune commande pour le moment</p>
+                                <p className="text-slate-500 text-sm mb-5">
+                                    Faites votre premier achat pour démarrer votre activité.
+                                </p>
+                                <Link
+                                    href="/reseller/shop"
+                                    className="inline-flex items-center gap-2 bg-[var(--primary)] hover:bg-orange-600 text-white px-5 py-2.5 rounded-xl font-bold text-sm transition-all active:scale-95"
+                                >
+                                    <Plus className="size-4" /> Faire un premier achat
+                                </Link>
+                            </div>
+                        ) : (
+                        recentOrders.map((order) => {
                             const badge = orderBadge(order.status);
                             const iconCls = badge.delivered
                                 ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-500"
@@ -228,7 +284,8 @@ export default function ResellerDashboard() {
                                 </div>
                             </div>
                             );
-                        })}
+                        })
+                        )}
                     </div>
                 </div>
 
