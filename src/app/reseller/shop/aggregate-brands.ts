@@ -6,7 +6,7 @@
 // `countBsvByBrand` function below is preserved (commented out at the
 // callsite) for easy re-enabling.
 // import { getBsvCatalogAction } from "./actions";
-import { getG2BulkCatalogAction } from "./g2bulk-shop-actions";
+import { getCachedG2BulkCatalog } from "./g2bulk-catalog-cache";
 import {
     SEED_BRANDS,
     artworkFor,
@@ -15,13 +15,6 @@ import {
     toBrandSlug,
     type BrandCategory,
 } from "./brand-utils";
-
-const PROBE_LIMIT = 48;
-// Raised from 6 → 30 so the aggregator covers G2Bulk's full ~980-product catalog
-// (30 × 48 = 1440 slots ≥ 980) and a meaningful slice of BSV's ~10 500 active
-// listings (30 × 48 = 1440 ≈ 14% of BSV). For full BSV coverage on the landing,
-// raise further or move counts to a server-side cache.
-const MAX_PROBE_PAGES = 30;
 
 // BSV count function disabled — see top-of-file note. Restore the import
 // and uncomment this block when BSV curated list is ready.
@@ -44,18 +37,13 @@ const MAX_PROBE_PAGES = 30;
 
 async function countG2BulkByBrand(): Promise<Map<string, number>> {
     const counts = new Map<string, number>();
-    for (let page = 1; page <= MAX_PROBE_PAGES; page++) {
-        const res = await getG2BulkCatalogAction({
-            page,
-            limit: PROBE_LIMIT,
-            sortBy: "newest",
-        });
-        if (!res?.success) break;
-        res.data.items.forEach((p) => {
-            const slug = toBrandSlug(deriveG2BulkBrand(p));
-            counts.set(slug, (counts.get(slug) ?? 0) + 1);
-        });
-        if (page >= res.data.pagination.totalPages) break;
+    // One shared (cached) catalog read — no per-page upstream calls, no pricing.
+    const products = await getCachedG2BulkCatalog();
+    for (const p of products) {
+        const slug = toBrandSlug(
+            deriveG2BulkBrand({ title: p.title, categoryTitle: p.categoryTitle }),
+        );
+        counts.set(slug, (counts.get(slug) ?? 0) + 1);
     }
     return counts;
 }
