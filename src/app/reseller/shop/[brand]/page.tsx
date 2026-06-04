@@ -54,6 +54,7 @@ export default function ResellerBrandPage() {
     const [selectedKey, setSelectedKey] = useState<string | null>(null);
     const [quantity, setQuantity] = useState(1);
     const [resellerId, setResellerId] = useState<number | null>(null);
+    const [resellerName, setResellerName] = useState<string | undefined>(undefined);
     const [isCheckingOut, setIsCheckingOut] = useState(false);
     const [modalOrderId, setModalOrderId] = useState<number | null>(null);
 
@@ -61,7 +62,9 @@ export default function ResellerBrandPage() {
     useEffect(() => {
         getCurrentResellerAction({}).then((res) => {
             if (res.success && res.data) {
-                setResellerId((res.data as { id: number }).id);
+                const r = res.data as { id: number; companyName?: string };
+                setResellerId(r.id);
+                setResellerName(r.companyName);
             }
         });
     }, []);
@@ -272,6 +275,7 @@ export default function ResellerBrandPage() {
                 isOpen={modalOrderId !== null}
                 onClose={() => setModalOrderId(null)}
                 orderId={modalOrderId}
+                resellerName={resellerName}
             />
         </div>
     );

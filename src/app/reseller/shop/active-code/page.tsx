@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Search, KeyRound, Sparkles, Globe2, AlertTriangle } from "lucide-react";
+import { ArrowLeft, Search, KeyRound, Sparkles, Globe2, AlertTriangle, Send } from "lucide-react";
 import { toast } from "react-hot-toast";
 
 import { ALL_REGION, RegionPills } from "../components/Denomination";
@@ -69,6 +69,18 @@ export default function ResellerShopActiveCodePage() {
         | { kind: "error"; message: string }
         | null
     >(null);
+
+    // Reseller shop name — signs the WhatsApp share message to the customer.
+    const [resellerName, setResellerName] = useState<string | undefined>(undefined);
+    useEffect(() => {
+        import("@/app/reseller/actions").then(({ getCurrentResellerAction }) =>
+            getCurrentResellerAction({}).then((res) => {
+                if (res.success && res.data) {
+                    setResellerName((res.data as { companyName?: string }).companyName);
+                }
+            }),
+        );
+    }, []);
 
     // Debounce the search input by 250ms — same UX as /reseller/shop/all.
     useEffect(() => {
@@ -375,7 +387,27 @@ export default function ResellerShopActiveCodePage() {
                                 <p className="text-[11px] text-neutral-500 mt-3">
                                     Commande : {purchaseResult.orderId}
                                 </p>
-                                <div className="flex gap-3 justify-end mt-5">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        const who = resellerName?.trim()
+                                            ? ` — ${resellerName.trim()}`
+                                            : "";
+                                        const msg =
+                                            `🛍️ *Votre code*${who}\n\n` +
+                                            `*Code :* ${purchaseResult.code}\n\n` +
+                                            `Merci de votre confiance ! 🙏`;
+                                        window.open(
+                                            `https://wa.me/?text=${encodeURIComponent(msg)}`,
+                                            "_blank",
+                                            "noopener,noreferrer",
+                                        );
+                                    }}
+                                    className="w-full flex items-center justify-center gap-2 mt-4 px-4 py-2.5 rounded-lg bg-[#25D366] text-black font-bold hover:bg-[#25D366]/90 transition"
+                                >
+                                    <Send className="w-4 h-4" /> Partager sur WhatsApp
+                                </button>
+                                <div className="flex gap-3 justify-end mt-3">
                                     <button
                                         type="button"
                                         onClick={() => {

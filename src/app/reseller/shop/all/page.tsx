@@ -61,13 +61,18 @@ export default function ResellerShopAllPage() {
     const [selectedKey, setSelectedKey] = useState<string | null>(null);
     const [quantity, setQuantity] = useState(1);
     const [resellerId, setResellerId] = useState<number | null>(null);
+    const [resellerName, setResellerName] = useState<string | undefined>(undefined);
     const [isCheckingOut, setIsCheckingOut] = useState(false);
     const [modalOrderId, setModalOrderId] = useState<number | null>(null);
 
     /* ───── Reseller ───── */
     useEffect(() => {
         getCurrentResellerAction({}).then((res) => {
-            if (res.success && res.data) setResellerId((res.data as { id: number }).id);
+            if (res.success && res.data) {
+                const r = res.data as { id: number; companyName?: string };
+                setResellerId(r.id);
+                setResellerName(r.companyName);
+            }
         });
     }, []);
 
@@ -313,6 +318,7 @@ export default function ResellerShopAllPage() {
                 isOpen={modalOrderId !== null}
                 onClose={() => setModalOrderId(null)}
                 orderId={modalOrderId}
+                resellerName={resellerName}
             />
         </div>
     );

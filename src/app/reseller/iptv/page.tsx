@@ -299,6 +299,16 @@ export default function ResellerIptvPage() {
     }, []);
 
     const [modalOrderId, setModalOrderId] = useState<number | null>(null);
+    const [resellerName, setResellerName] = useState<string | undefined>(undefined);
+    useEffect(() => {
+        import("@/app/reseller/actions").then(({ getCurrentResellerAction }) =>
+            getCurrentResellerAction({}).then((res) => {
+                if (res.success && res.data) {
+                    setResellerName((res.data as { companyName?: string }).companyName);
+                }
+            }),
+        );
+    }, []);
     const onCheckoutSuccess = useCallback((orderId: number | null) => {
         loadLines(provider);
         if (orderId) setModalOrderId(orderId);
@@ -443,6 +453,7 @@ export default function ResellerIptvPage() {
                 onClose={() => setModalOrderId(null)}
                 orderId={modalOrderId}
                 productLabel="Abonnement IPTV"
+                resellerName={resellerName}
             />
             <IptvLineDetailModal
                 iptvOrderId={detailOrderId}

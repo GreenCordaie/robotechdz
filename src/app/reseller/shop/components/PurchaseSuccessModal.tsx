@@ -91,21 +91,68 @@ function CopyRow({ label, value }: { label: string; value: string }) {
     );
 }
 
-/** Open WhatsApp (the reseller's own app/number) with a prefilled message
- * carrying the customer magic link. No central WAHA session involved.
- * Mirrors the boutique's Netflix activation template, signed with the
- * reseller's shop name so the customer sees who's serving them. */
-function shareViaWhatsApp(url: string, resellerName?: string) {
+/** Open WhatsApp (the reseller's own app/number) with a prefilled message.
+ * No central WAHA session involved — uses the reseller's own device. */
+function openWhatsApp(message: string) {
+    window.open(
+        `https://wa.me/?text=${encodeURIComponent(message)}`,
+        "_blank",
+        "noopener,noreferrer",
+    );
+}
+
+/**
+ * Build ONE customer-facing message covering everything delivered in the
+ * order, so the reseller can forward it from their own WhatsApp regardless of
+ * product type (giftcard codes, IPTV credentials, shared-account magic links).
+ *
+ * For shared slots we share the magic LINK only (customer-safe) when present;
+ * the raw account/PIN stays in the modal for the reseller's records. Falls
+ * back to account/PIN when a slot has no magic link (non-Netflix sharing).
+ */
+function buildOrderShareMessage(
+    order: OrderDetail | null,
+    initialCode: string | undefined,
+    resellerName?: string,
+): string {
     const who = resellerName?.trim() ? ` — ${resellerName.trim()}` : "";
-    const msg =
-        `🎬 *Votre accès Netflix*${who}\n\n` +
-        `Voici votre lien personnel :\n${url}\n\n` +
-        `📺 *Comment activer :*\n` +
-        `1️⃣ Ouvrez le lien ci-dessus sur votre TV ou téléphone\n` +
-        `2️⃣ Vous y trouverez votre profil et votre code PIN\n` +
-        `3️⃣ Quand Netflix demande un code de connexion (4 chiffres), cliquez sur « Voir mon code » sur la page — il s'affiche en temps réel.\n\n` +
-        `Merci de votre confiance ! 🙏`;
-    window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, "_blank", "noopener,noreferrer");
+    const lines: string[] = [`🛍️ *Votre commande*${who}`, ""];
+    let hasMagicLink = false;
+
+    if (initialCode) {
+        lines.push(`*Code :* ${initialCode}`, "");
+    }
+
+    for (const item of (order?.items ?? []).filter(itemHasContent)) {
+        lines.push(`*${item.productName}*`);
+        for (const c of item.standardCodes) lines.push(`• Code : ${c}`);
+        for (const s of item.sharedSlots) {
+            if (s.activationUrl) {
+                hasMagicLink = true;
+                lines.push(`• Lien d'activation : ${s.activationUrl}`);
+            } else {
+                if (s.parentCode) lines.push(`• Compte : ${s.parentCode}`);
+                if (s.pin) lines.push(`• PIN : ${s.pin}`);
+            }
+        }
+        for (const p of item.iptvProvisions) {
+            if (!p.credentials) continue;
+            for (const [k, v] of Object.entries(p.credentials)) {
+                if (typeof v === "string" && v) lines.push(`• ${k} : ${v}`);
+            }
+        }
+        lines.push("");
+    }
+
+    if (hasMagicLink) {
+        lines.push(
+            "📺 Pour un accès avec lien : ouvrez le lien, puis cliquez « Voir mon code » quand le service demande un code de connexion.",
+            "",
+        );
+    }
+
+    lines.push("Merci de votre confiance ! 🙏");
+    return lines.join("\n");
 }
 
 export interface PurchaseSuccessModalProps {
@@ -201,16 +248,7 @@ export default function PurchaseSuccessModal({
                                         {item.sharedSlots.map((s, i) => (
                                             <React.Fragment key={`s-${i}`}>
                                                 {s.activationUrl && (
-                                                    <>
-                                                        <CopyRow label="Lien client (magic link)" value={s.activationUrl} />
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => shareViaWhatsApp(s.activationUrl as string, resellerName)}
-                                                            className="w-full flex items-center justify-center gap-2 bg-[#25D366] text-black font-black rounded-lg px-3 py-2 hover:bg-[#25D366]/90 transition-colors"
-                                                        >
-                                                            <Send className="size-4" /> Partager sur WhatsApp
-                                                        </button>
-                                                    </>
+                                                    <CopyRow label="Lien client (magic link)" value={s.activationUrl} />
                                                 )}
                                                 {s.parentCode && <CopyRow label="Compte" value={s.parentCode} />}
                                                 {s.pin && <CopyRow label="PIN / Slot" value={s.pin} />}
@@ -241,6 +279,22 @@ export default function PurchaseSuccessModal({
                                     <p className="text-sm text-slate-300 font-bold">Livraison en cours…</p>
                                     <p className="text-xs text-slate-500">Récupération du code, un instant.</p>
                                 </div>
+                            )}
+
+                            {/* Global share — available for EVERY delivered order
+                                (giftcard codes, IPTV credentials, magic links). */}
+                            {delivered && (
+                                <button
+                                    type="button"
+                                    onClick={() =>
+                                        openWhatsApp(
+                                            buildOrderShareMessage(order, initialCode, resellerName),
+                                        )
+                                    }
+                                    className="w-full flex items-center justify-center gap-2 bg-[#25D366] text-black font-black rounded-lg px-3 py-2.5 hover:bg-[#25D366]/90 transition-colors"
+                                >
+                                    <Send className="size-4" /> Partager sur WhatsApp
+                                </button>
                             )}
                         </ModalBody>
 
