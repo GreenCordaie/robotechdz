@@ -3,7 +3,7 @@ import { BalanceFetcher, BalanceFetcherConfig, BalanceResult, BalanceFetchError 
 /**
  * Generic LoadBrain module credit fetcher. Hits the gateway with the boutique's
  * internal token and reads a standard credit endpoint exposed by each module:
- *   GET ${LOADBRAIN_URL}/api/v1/<module>/admin/credit
+ *   GET ${LOADBRAIN_URL}/api/v1/<module>/internal/credit
  *
  * Expected response shape (TBD per module, fallback heuristics applied):
  *   { balance: number, currency?: string }
@@ -24,7 +24,7 @@ export const loadbrainModuleFetcher: BalanceFetcher = {
         if (!base) throw new BalanceFetchError("lb_module", "LOADBRAIN_URL not set");
         if (!token) throw new BalanceFetchError("lb_module", "LOADBRAIN_INTERNAL_TOKEN not set");
 
-        const url = config.endpoint || `${base.replace(/\/$/, "")}/api/v1/${moduleName}/admin/credit`;
+        const url = config.endpoint || `${base.replace(/\/$/, "")}/api/v1/${moduleName}/internal/credit`;
         const res = await fetch(url, {
             method: "GET",
             headers: { "X-Internal-Token": token },

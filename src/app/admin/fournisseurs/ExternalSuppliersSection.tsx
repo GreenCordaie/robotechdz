@@ -22,6 +22,8 @@ function fmtBalance(balance: string, currency: string): string {
     if (currency === "USD") return `$${n.toFixed(2)}`;
     if (currency === "EUR") return `€${n.toFixed(2)}`;
     if (currency === "DZD") return `${n.toLocaleString("fr-FR")} DZD`;
+    // Non-money units (IPTV panel credits). No currency symbol, no forced 2 decimals.
+    if (currency === "CREDITS") return `${n.toLocaleString("fr-FR")} crédits`;
     return `${n.toFixed(2)} ${currency}`;
 }
 
