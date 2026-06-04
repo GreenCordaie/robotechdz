@@ -186,7 +186,7 @@ export default function ResellerBrandPage() {
         } finally {
             setIsCheckingOut(false);
         }
-    }, [selected, resellerId, quantity, router]);
+    }, [selected, resellerId, quantity]);
 
     /* ───── Render ───── */
     return (

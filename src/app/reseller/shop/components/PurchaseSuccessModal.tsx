@@ -200,7 +200,7 @@ export default function PurchaseSuccessModal({
                                     <Clock className="size-8 text-amber-500" />
                                     <p className="text-sm text-slate-300 font-bold">Livraison en cours</p>
                                     <p className="text-xs text-slate-500">
-                                        Le code sera disponible dans « Mes Achats » dès qu'il est prêt.
+                                        Le code sera disponible dans « Mes Achats » une fois prêt.
                                     </p>
                                 </div>
                             ) : (
