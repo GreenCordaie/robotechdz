@@ -10,6 +10,7 @@ interface Props {
     /** White-label: the reseller's brand shown to their own customer. */
     resellerBrand?: string | null;
     accentColor?: string | null;
+    brandLogoUrl?: string | null;
     supportWhatsapp?: string | null;
     supportPhone?: string | null;
     email: string;
@@ -150,9 +151,18 @@ export function ActivationClient(props: Props) {
                         <div className="text-[11px] uppercase tracking-widest text-neutral-500">
                             Accès {props.brandName}
                         </div>
-                        <h1 className="text-2xl sm:text-3xl font-semibold truncate">
-                            {vendor || props.brandName}
-                        </h1>
+                        {props.brandLogoUrl ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                                src={props.brandLogoUrl}
+                                alt={vendor || "Logo"}
+                                className="h-9 sm:h-10 my-1 object-contain max-w-[200px]"
+                            />
+                        ) : (
+                            <h1 className="text-2xl sm:text-3xl font-semibold truncate">
+                                {vendor || props.brandName}
+                            </h1>
+                        )}
                     </div>
                     <span
                         className={`shrink-0 text-[10px] px-2 py-1 rounded-full border ${

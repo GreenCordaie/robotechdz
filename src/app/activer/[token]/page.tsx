@@ -96,6 +96,7 @@ export default async function ActivationPage(props: { params: Promise<{ token: s
     // The operator stays invisible; falls back to neutral defaults if unset.
     let resellerBrand: string | null = null;
     let accentColor: string | null = null;
+    let brandLogoUrl: string | null = null;
     let supportWhatsapp: string | null = null;
     let supportPhone: string | null = null;
     try {
@@ -116,6 +117,7 @@ export default async function ActivationPage(props: { params: Promise<{ token: s
                             companyName: true,
                             brandName: true,
                             brandColor: true,
+                            brandLogoUrl: true,
                             supportPhone: true,
                             supportWhatsapp: true,
                         },
@@ -123,6 +125,7 @@ export default async function ActivationPage(props: { params: Promise<{ token: s
                     if (r) {
                         resellerBrand = r.brandName?.trim() || r.companyName?.trim() || null;
                         accentColor = r.brandColor?.trim() || null;
+                        brandLogoUrl = r.brandLogoUrl?.trim() || null;
                         supportWhatsapp = r.supportWhatsapp?.trim() || null;
                         supportPhone = r.supportPhone?.trim() || null;
                     }
@@ -139,6 +142,7 @@ export default async function ActivationPage(props: { params: Promise<{ token: s
             brandName={brandName}
             resellerBrand={resellerBrand}
             accentColor={accentColor}
+            brandLogoUrl={brandLogoUrl}
             supportWhatsapp={supportWhatsapp}
             supportPhone={supportPhone}
             email={email ?? "—"}

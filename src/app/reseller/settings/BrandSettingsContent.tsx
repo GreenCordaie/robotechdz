@@ -3,9 +3,13 @@
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { Button, Spinner } from "@heroui/react";
-import { Palette, Bell, Save } from "lucide-react";
+import { Palette, Bell, Save, Upload, Image as ImageIcon } from "lucide-react";
 import { toast } from "react-hot-toast";
-import { getResellerBrandAction, updateResellerBrandAction } from "./actions";
+import {
+    getResellerBrandAction,
+    updateResellerBrandAction,
+    uploadResellerImage,
+} from "./actions";
 
 const DEFAULT_ACCENT = "#E50914";
 
@@ -15,6 +19,8 @@ export default function BrandSettingsContent() {
     const [companyName, setCompanyName] = useState("");
     const [brandName, setBrandName] = useState("");
     const [brandColor, setBrandColor] = useState("");
+    const [brandLogoUrl, setBrandLogoUrl] = useState("");
+    const [uploading, setUploading] = useState(false);
     const [supportPhone, setSupportPhone] = useState("");
     const [supportWhatsapp, setSupportWhatsapp] = useState("");
 
@@ -26,12 +32,35 @@ export default function BrandSettingsContent() {
                     setCompanyName(d.companyName);
                     setBrandName(d.brandName);
                     setBrandColor(d.brandColor);
+                    setBrandLogoUrl(d.brandLogoUrl);
                     setSupportPhone(d.supportPhone);
                     setSupportWhatsapp(d.supportWhatsapp);
                 }
             })
             .finally(() => setLoading(false));
     }, []);
+
+    const onLogoFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        setUploading(true);
+        try {
+            const fd = new FormData();
+            fd.append("file", file);
+            const res = await uploadResellerImage(fd);
+            if (res.success) {
+                setBrandLogoUrl(res.url);
+                toast.success("Logo téléversé — pensez à enregistrer");
+            } else {
+                toast.error(res.error || "Échec du téléversement");
+            }
+        } catch {
+            toast.error("Erreur technique");
+        } finally {
+            setUploading(false);
+            e.target.value = "";
+        }
+    };
 
     const accent = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(brandColor)
         ? brandColor
@@ -44,6 +73,7 @@ export default function BrandSettingsContent() {
             const res = await updateResellerBrandAction({
                 brandName: brandName.trim(),
                 brandColor: brandColor.trim(),
+                brandLogoUrl: brandLogoUrl.trim(),
                 supportPhone: supportPhone.trim(),
                 supportWhatsapp: supportWhatsapp.trim(),
             });
@@ -98,6 +128,45 @@ export default function BrandSettingsContent() {
                         />
                         <p className="text-[11px] text-slate-500 mt-1.5">
                             Vide = votre raison sociale ({companyName || "—"}).
+                        </p>
+                    </Field>
+
+                    <Field label="Logo">
+                        <div className="flex items-center gap-3 flex-wrap">
+                            {brandLogoUrl ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                    src={brandLogoUrl}
+                                    alt="Logo"
+                                    className="size-14 rounded-lg object-contain bg-[#0a0a0a] border border-[#262626]"
+                                />
+                            ) : (
+                                <div className="size-14 rounded-lg bg-[#0a0a0a] border border-[#262626] flex items-center justify-center text-slate-600">
+                                    <ImageIcon size={20} />
+                                </div>
+                            )}
+                            <label className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#0a0a0a] border border-[#262626] text-sm font-bold text-slate-300 hover:border-[var(--primary)]/60 cursor-pointer">
+                                <Upload size={14} /> {uploading ? "Envoi…" : "Téléverser"}
+                                <input
+                                    type="file"
+                                    accept="image/*"
+                                    className="hidden"
+                                    onChange={onLogoFile}
+                                    disabled={uploading}
+                                />
+                            </label>
+                            {brandLogoUrl && (
+                                <button
+                                    type="button"
+                                    onClick={() => setBrandLogoUrl("")}
+                                    className="text-xs font-bold text-slate-500 hover:text-red-400"
+                                >
+                                    Retirer
+                                </button>
+                            )}
+                        </div>
+                        <p className="text-[11px] text-slate-500 mt-1.5">
+                            PNG / JPG / WebP, max 2 Mo. Pensez à enregistrer.
                         </p>
                     </Field>
 
@@ -160,6 +229,10 @@ export default function BrandSettingsContent() {
                         <div className="text-[11px] uppercase tracking-widest text-neutral-500">
                             Accès Netflix
                         </div>
+                        {brandLogoUrl ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={brandLogoUrl} alt="" className="h-9 my-1.5 object-contain" />
+                        ) : null}
                         <div className="text-2xl font-semibold text-white truncate">
                             {displayBrand}
                         </div>
