@@ -7,6 +7,11 @@ import { isNetflixHouseholdUrl } from "@/lib/netflix-url";
 interface Props {
     token: string;
     brandName: string;
+    /** White-label: the reseller's brand shown to their own customer. */
+    resellerBrand?: string | null;
+    accentColor?: string | null;
+    supportWhatsapp?: string | null;
+    supportPhone?: string | null;
     email: string;
     profileName: string;
     pin: string;
@@ -133,6 +138,9 @@ export function ActivationClient(props: Props) {
     }, [props.token]);
 
     const mask = (v: string) => (v ? "•".repeat(Math.max(v.length, 6)) : "");
+    const accent = props.accentColor?.trim() || "#E50914"; // reseller brand color, fallback red
+    const vendor = props.resellerBrand?.trim() || null;
+    const supportWa = props.supportWhatsapp?.replace(/[^\d]/g, "") || null;
 
     return (
         <main className="min-h-screen bg-gradient-to-b from-neutral-950 via-neutral-900 to-neutral-950 text-neutral-100">
@@ -140,10 +148,10 @@ export function ActivationClient(props: Props) {
                 <header className="flex items-center justify-between gap-3 mb-6">
                     <div className="min-w-0">
                         <div className="text-[11px] uppercase tracking-widest text-neutral-500">
-                            Streaming
+                            Accès {props.brandName}
                         </div>
                         <h1 className="text-2xl sm:text-3xl font-semibold truncate">
-                            {props.brandName}
+                            {vendor || props.brandName}
                         </h1>
                     </div>
                     <span
@@ -210,7 +218,8 @@ export function ActivationClient(props: Props) {
                                     // step or the mail is taking longer than usual.
                                     window.setTimeout(() => setRequesting(false), 90_000);
                                 }}
-                                className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-red-600 hover:bg-red-500 active:bg-red-700 transition text-white font-semibold text-base shadow-lg shadow-red-900/40"
+                                className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl transition text-white font-semibold text-base shadow-lg shadow-black/30 hover:opacity-90 active:opacity-80"
+                                style={{ backgroundColor: accent }}
                             >
                                 👁️ Voir mon code
                             </button>
@@ -264,7 +273,8 @@ export function ActivationClient(props: Props) {
                                         href={latest.value}
                                         target="_blank"
                                         rel="noopener noreferrer"
-                                        className="block w-full text-center bg-red-600 hover:bg-red-500 text-white font-semibold py-4 rounded-xl transition"
+                                        className="block w-full text-center text-white font-semibold py-4 rounded-xl transition hover:opacity-90"
+                                        style={{ backgroundColor: accent }}
                                     >
                                         Mettre à jour le foyer
                                     </a>
@@ -283,7 +293,21 @@ export function ActivationClient(props: Props) {
                     )}
                 </section>
 
+                {(supportWa || props.supportPhone) && (
+                    <div className="mt-8 text-center">
+                        <a
+                            href={supportWa ? `https://wa.me/${supportWa}` : `tel:${props.supportPhone}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl border border-neutral-700 text-sm font-semibold text-neutral-200 hover:text-white hover:border-neutral-500 transition"
+                        >
+                            💬 Une question ? Contactez votre vendeur
+                        </a>
+                    </div>
+                )}
+
                 <footer className="mt-8 text-center text-xs text-neutral-600">
+                    {vendor && <div className="mb-1 font-semibold text-neutral-500">{vendor}</div>}
                     Lien valide jusqu&apos;au {new Date(props.validUntil).toLocaleDateString("fr-FR")}
                 </footer>
             </div>

@@ -5,7 +5,7 @@ import { checkDeviceQuota, bumpDeviceUsage } from "@/services/slot-device-quota.
 import { decrypt } from "@/lib/encryption";
 import { logger } from "@/lib/logger";
 import { ActivationClient } from "./ActivationClient";
-import { productVariants, products, digitalCodeSlots } from "@/db/schema";
+import { productVariants, products, digitalCodeSlots, orderItems, orders, resellers } from "@/db/schema";
 import { eq } from "drizzle-orm";
 
 export const dynamic = "force-dynamic";
@@ -78,7 +78,7 @@ export default async function ActivationPage(props: { params: Promise<{ token: s
     const email = rawAccount ? rawAccount.split("|")[0].trim() : null;
     const pin = slot.code ? decrypt(slot.code) : null;
 
-    // Resolve brand name
+    // Resolve product brand name (e.g. "Netflix") — shown as the offer label.
     let brandName = "Streaming";
     try {
         const variant = await db.query.productVariants.findFirst({
@@ -91,10 +91,56 @@ export default async function ActivationPage(props: { params: Promise<{ token: s
         // brand stays default
     }
 
+    // White-label: resolve the RESELLER who sold this slot and surface THEIR
+    // brand to the end customer. slot -> order_item -> order -> reseller.
+    // The operator stays invisible; falls back to neutral defaults if unset.
+    let resellerBrand: string | null = null;
+    let accentColor: string | null = null;
+    let supportWhatsapp: string | null = null;
+    let supportPhone: string | null = null;
+    try {
+        if (slot.orderItemId) {
+            const [oi] = await db
+                .select({ orderId: orderItems.orderId })
+                .from(orderItems)
+                .where(eq(orderItems.id, slot.orderItemId));
+            if (oi?.orderId) {
+                const [ord] = await db
+                    .select({ resellerId: orders.resellerId })
+                    .from(orders)
+                    .where(eq(orders.id, oi.orderId));
+                if (ord?.resellerId) {
+                    const r = await db.query.resellers.findFirst({
+                        where: eq(resellers.id, ord.resellerId),
+                        columns: {
+                            companyName: true,
+                            brandName: true,
+                            brandColor: true,
+                            supportPhone: true,
+                            supportWhatsapp: true,
+                        },
+                    });
+                    if (r) {
+                        resellerBrand = r.brandName?.trim() || r.companyName?.trim() || null;
+                        accentColor = r.brandColor?.trim() || null;
+                        supportWhatsapp = r.supportWhatsapp?.trim() || null;
+                        supportPhone = r.supportPhone?.trim() || null;
+                    }
+                }
+            }
+        }
+    } catch {
+        // white-label is best-effort — never block activation on branding.
+    }
+
     return (
         <ActivationClient
             token={token}
             brandName={brandName}
+            resellerBrand={resellerBrand}
+            accentColor={accentColor}
+            supportWhatsapp={supportWhatsapp}
+            supportPhone={supportPhone}
             email={email ?? "—"}
             profileName={slot.profileName ?? `Profil ${slot.slotNumber}`}
             pin={pin ?? ""}
