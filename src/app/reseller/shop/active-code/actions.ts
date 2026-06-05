@@ -448,6 +448,19 @@ async function refundActiveCodeOrder(args: {
 }): Promise<void> {
     try {
         await db.transaction(async (tx) => {
+            // Idempotency: lock the active-code order and bail if it's already
+            // refunded. A concurrent/duplicate refund (inline failure path +
+            // reconciler, or a retry) blocks here, then reads REFUNDED and
+            // no-ops — without this the wallet could be credited twice.
+            const [lockedAco] = await tx
+                .select({ status: activeCodeOrders.status })
+                .from(activeCodeOrders)
+                .where(eq(activeCodeOrders.id, args.activeCodeOrderId))
+                .for("update");
+            if (!lockedAco || lockedAco.status === "REFUNDED") {
+                return;
+            }
+
             const locked = await tx.query.resellers.findFirst({
                 where: eq(resellers.id, args.resellerId),
                 with: { wallet: true },
