@@ -1,6 +1,9 @@
 import "server-only";
+import { db } from "@/db";
+import { g2bulkPricingRules } from "@/db/schema";
+import { eq } from "drizzle-orm";
 import {
-    ResalePricingService,
+    MarkupPricingService,
     type PricingRule,
     type ScopeType,
     type MarkupType,
@@ -16,14 +19,14 @@ export type G2BulkPricingRule = PricingRule;
 export type G2BulkListingPricingInput = ListingPricingInput;
 export type { ResellerPricingContext, ComputedPrice };
 
-/**
- * G2Bulk resale pricing. Thin wrapper over the unified engine bound to
- * source='g2bulk' — rules now live in the shared `pricing_rules` table
- * (source 'g2bulk' + the all-sources '*' fallback).
- */
-export class G2BulkPricingService extends ResalePricingService {
-    constructor() {
-        super("g2bulk");
+/** G2Bulk mirror shop pricing — see {@link MarkupPricingService}. Rules live in `g2bulk_pricing_rules`. */
+export class G2BulkPricingService extends MarkupPricingService {
+    protected async fetchActiveRules(): Promise<PricingRule[]> {
+        const rows = await db
+            .select()
+            .from(g2bulkPricingRules)
+            .where(eq(g2bulkPricingRules.isActive, true));
+        return rows.map((row) => this.normalizeRule(row));
     }
 }
 

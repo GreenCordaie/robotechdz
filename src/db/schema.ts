@@ -870,30 +870,6 @@ export const bsvPricingRules = pgTable("bsv_pricing_rules", {
     };
 });
 
-/**
- * Unified resale-pricing rules across every reseller source (BSV, G2Bulk, IPTV…).
- * Supersedes the per-source bsv_pricing_rules / g2bulk_pricing_rules tables
- * (kept for now; migrated in). `source='*'` is the all-sources global default.
- * markup_type 'fixed_price' = absolute resale price in DZD (vs 'fixed_dzd' which
- * is a margin ADDED to cost, and 'pct' = basis points).
- */
-export const pricingRules = pgTable("pricing_rules", {
-    id: serial("id").primaryKey(),
-    source: text("source").notNull(), // 'bsv' | 'g2bulk' | 'iptv' | '*' (all sources)
-    scopeType: text("scope_type").notNull(), // 'global' | 'category' | 'brand' | 'sku'
-    scopeValue: text("scope_value").notNull(), // '*' for global
-    markupType: text("markup_type").notNull(), // 'pct' | 'fixed_dzd' | 'fixed_price'
-    markupValue: numeric("markup_value", { precision: 12, scale: 2 }).notNull(),
-    notes: text("notes"),
-    isActive: boolean("is_active").notNull().default(true),
-    createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow(),
-}, (table) => {
-    return {
-        sourceScopeLookupIdx: index("pricing_rules_source_scope_lookup").on(table.source, table.scopeType, table.scopeValue),
-    };
-});
-
 /* ----------------------------------------------------------------------
  * BSV Mirror Shop (Lot 3) — additive tables, no FK changes to existing ones
  * --------------------------------------------------------------------- */
