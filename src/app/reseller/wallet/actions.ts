@@ -468,6 +468,39 @@ export const getResellerOrdersByKindAction = withAuth(
                             customerLabel: string | null;
                         }>;
                     };
+                    // Surface IPTV credentials as codeOrLink so the wallet row
+                    // gets the same copy + WhatsApp re-share button as the other
+                    // order types. Credentials live encrypted in iptvProvisions.
+                    const iptvOrderIds = (data.items ?? []).map((x) => x.localOrderId);
+                    const credByOrder = new Map<number, string>();
+                    if (iptvOrderIds.length > 0) {
+                        const { iptvProvisions } = await import("@/db/schema");
+                        const { decrypt } = await import("@/lib/encryption");
+                        const { inArray: inArr } = await import("drizzle-orm");
+                        const provs = await db
+                            .select({
+                                orderId: iptvProvisions.orderId,
+                                enc: iptvProvisions.credentialsEncrypted,
+                            })
+                            .from(iptvProvisions)
+                            .where(inArr(iptvProvisions.orderId, iptvOrderIds));
+                        for (const p of provs) {
+                            if (p.orderId == null || !p.enc || credByOrder.has(p.orderId)) continue;
+                            try {
+                                const dec = decrypt(p.enc);
+                                const c = dec ? (JSON.parse(dec) as Record<string, unknown>) : null;
+                                if (!c) continue;
+                                const parts: string[] = [];
+                                if (typeof c.url === "string" && c.url) parts.push(`URL: ${c.url}`);
+                                if (typeof c.username === "string" && c.username) parts.push(`User: ${c.username}`);
+                                if (typeof c.password === "string" && c.password) parts.push(`Pass: ${c.password}`);
+                                if (!parts.length && typeof c.m3u === "string" && c.m3u) parts.push(c.m3u);
+                                if (parts.length) credByOrder.set(p.orderId, parts.join("\n"));
+                            } catch {
+                                /* skip undecryptable */
+                            }
+                        }
+                    }
                     for (const r of data.items ?? []) {
                         rows.push({
                             kind: "iptv",
@@ -478,7 +511,7 @@ export const getResellerOrdersByKindAction = withAuth(
                             priceDzd: parseFloat(r.pricePaidDzd),
                             status: r.status,
                             createdAt: r.createdAt,
-                            codeOrLink: null,
+                            codeOrLink: credByOrder.get(r.localOrderId) ?? null,
                         });
                     }
                 }
