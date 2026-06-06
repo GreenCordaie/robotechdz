@@ -26,7 +26,7 @@ import {
     Receipt,
     Tv,
     KeyRound,
-    HandCoins,
+    Store,
 } from "lucide-react";
 import {
     Dropdown,
@@ -51,7 +51,7 @@ const NAV_ITEMS: ReadonlyArray<NavItem> = [
     { href: "/reseller/shop/games", label: "Game Top Up", icon: Gamepad2 },
     { href: "/reseller/iptv", label: "IPTV", icon: Tv },
     { href: "/reseller/shop/active-code", label: "Active Code", icon: KeyRound },
-    { href: "/reseller/shop/manual-delivery", label: "Manual Delivery", icon: HandCoins },
+    { href: "/reseller/shop/marketplace", label: "Marketplace", icon: Store },
     { href: "/reseller/wallet", label: "Wallet", icon: Wallet },
 ];
 
@@ -147,7 +147,7 @@ export const ShopTopNav: React.FC<ShopTopNavProps> = ({ shopName: shopNameProp }
                 pathname.startsWith("/reseller/shop/streaming") ||
                 pathname.startsWith("/reseller/shop/netflix") ||
                 pathname.startsWith("/reseller/shop/active-code") ||
-                pathname.startsWith("/reseller/shop/manual-delivery")
+                pathname.startsWith("/reseller/shop/marketplace")
             ) {
                 return false;
             }

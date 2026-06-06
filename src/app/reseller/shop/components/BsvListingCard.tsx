@@ -19,6 +19,8 @@ export interface BsvListingCardProps {
     listing: EnrichedBsvListing;
     onAddToCart: () => void;
     isInCart: boolean;
+    /** CTA label (default "Panier"). Marketplace uses "Acheter" for direct buy. */
+    ctaLabel?: string;
 }
 
 /**
@@ -32,6 +34,7 @@ export function BsvListingCard({
     listing,
     onAddToCart,
     isInCart,
+    ctaLabel = "Panier",
 }: BsvListingCardProps) {
     const {
         product,
@@ -135,7 +138,7 @@ export function BsvListingCard({
                             isInCart ? <Check size={14} /> : <Plus size={14} />
                         }
                     >
-                        {isInCart ? "Ajouté" : "Panier"}
+                        {isInCart ? "Ajouté" : ctaLabel}
                     </Button>
                 </div>
             </CardBody>

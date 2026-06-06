@@ -20,6 +20,7 @@ export interface BsvListingGridProps {
     cartListingIds: Set<string>;
     onAddToCart: (listing: EnrichedBsvListing) => void;
     onPageChange: (page: number) => void;
+    ctaLabel?: string;
 }
 
 export function BsvListingGrid({
@@ -29,6 +30,7 @@ export function BsvListingGrid({
     cartListingIds,
     onAddToCart,
     onPageChange,
+    ctaLabel,
 }: BsvListingGridProps) {
     if (isLoading) {
         return (
@@ -66,6 +68,7 @@ export function BsvListingGrid({
                         listing={listing}
                         onAddToCart={() => onAddToCart(listing)}
                         isInCart={cartListingIds.has(listing.listingId)}
+                        ctaLabel={ctaLabel}
                     />
                 ))}
             </div>
