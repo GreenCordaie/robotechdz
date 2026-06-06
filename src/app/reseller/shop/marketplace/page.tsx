@@ -32,6 +32,20 @@ const DELIVERY_PILLS: ReadonlyArray<{ value: DeliveryFilter; label: string }> = 
 
 const EMPTY_PAGINATION: BsvListingsPagination = { page: 1, limit: PAGE_SIZE, total: 0, totalPages: 0 };
 
+// BSV search matches ALL whitespace tokens (AND). A long, specific title like
+// "Xbox Game Pass Ultimate 1+1 Month" returns 0 because no single listing
+// carries every token. Progressively drop trailing tokens until a query hits,
+// so the search behaves like a forgiving marketplace. Capped at 5 attempts.
+function buildQueryCandidates(q: string): string[] {
+    const tokens = q.split(/\s+/).filter(Boolean);
+    if (tokens.length <= 1) return [q];
+    const out: string[] = [];
+    for (let end = tokens.length; end >= 1 && out.length < 5; end--) {
+        out.push(tokens.slice(0, end).join(" "));
+    }
+    return out;
+}
+
 /**
  * Marketplace — live BuySellVouchers mirror. Every search query hits BSV in
  * real time via `getBsvCatalogAction` (LoadBrain SDK v2 `listings.search`).
@@ -44,6 +58,7 @@ export default function ResellerMarketplacePage() {
 
     const [rawQuery, setRawQuery] = useState("");
     const [query, setQuery] = useState("");
+    const [effectiveQuery, setEffectiveQuery] = useState("");
     const [delivery, setDelivery] = useState<DeliveryFilter>("all");
     const [page, setPage] = useState(1);
 
@@ -88,34 +103,49 @@ export default function ResellerMarketplacePage() {
         setPage(1);
     }, [delivery]);
 
-    /* ───── Live BSV search ───── */
+    /* ───── Live BSV search (with progressive token fallback) ───── */
     useEffect(() => {
         let active = true;
         setIsLoading(true);
         setError(null);
-        getBsvCatalogAction({
-            q: query || undefined,
-            deliveryType: delivery,
-            sellerRankMin: "all",
-            sortBy: "score",
-            page,
-            limit: PAGE_SIZE,
-        })
-            .then((res) => {
+
+        const run = async () => {
+            const candidates: ReadonlyArray<string | undefined> = query
+                ? buildQueryCandidates(query)
+                : [undefined];
+
+            for (let i = 0; i < candidates.length; i++) {
+                const cand = candidates[i];
+                const res = await getBsvCatalogAction({
+                    q: cand || undefined,
+                    deliveryType: delivery,
+                    sellerRankMin: "all",
+                    sortBy: "score",
+                    page,
+                    limit: PAGE_SIZE,
+                });
                 if (!active) return;
-                if (res.success) {
-                    setItems(res.data.items);
-                    setPagination(res.data.pagination);
-                    setMeta(res.data.pricing);
-                } else {
+                if (!res.success) {
                     setItems([]);
                     setPagination(EMPTY_PAGINATION);
                     setError(res.error);
+                    setIsLoading(false);
+                    return;
                 }
-            })
-            .finally(() => {
-                if (active) setIsLoading(false);
-            });
+                const isLast = i === candidates.length - 1;
+                if (res.data.pagination.total > 0 || isLast) {
+                    setItems(res.data.items);
+                    setPagination(res.data.pagination);
+                    setMeta(res.data.pricing);
+                    setEffectiveQuery(cand ?? "");
+                    setIsLoading(false);
+                    return;
+                }
+            }
+            setIsLoading(false);
+        };
+
+        run();
         return () => {
             active = false;
         };
@@ -179,6 +209,16 @@ export default function ResellerMarketplacePage() {
                     Marketplace
                 </h1>
                 <p className="text-sm text-slate-400">{countLabel}</p>
+                {!isLoading &&
+                    !error &&
+                    !!query &&
+                    effectiveQuery !== query &&
+                    pagination.total > 0 && (
+                        <p className="text-[11px] font-bold text-amber-400/90">
+                            Aucun résultat exact — résultats élargis pour «{" "}
+                            {effectiveQuery} »
+                        </p>
+                    )}
                 {meta && (meta.tierDiscountPct > 0 || meta.customDiscountPct > 0) && (
                     <p className="text-[11px] font-black uppercase tracking-widest text-emerald-400">
                         Remise appliquée :{" "}
