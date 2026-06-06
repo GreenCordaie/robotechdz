@@ -248,7 +248,9 @@ export const PurchasePanel: React.FC<{
     readonly onQuantity: (n: number) => void;
     readonly onPurchase: () => void;
     readonly isCheckingOut: boolean;
-}> = ({ item, quantity, onQuantity, onPurchase, isCheckingOut }) => {
+    /** When provided, shows an "Ajouter au panier" action (multi-product). */
+    readonly onAddToCart?: () => void;
+}> = ({ item, quantity, onQuantity, onPurchase, isCheckingOut, onAddToCart }) => {
     if (!item) {
         return (
             <div className="bg-[#161616] border border-[#262626] rounded-2xl p-6 text-center text-slate-500 text-sm">
@@ -320,6 +322,17 @@ export const PurchasePanel: React.FC<{
                     {formatCurrency(total, "DZD")}
                 </span>
             </div>
+
+            {onAddToCart && (
+                <Button
+                    onPress={onAddToCart}
+                    isDisabled={item.stock <= 0}
+                    data-testid="add-to-cart-btn"
+                    className="w-full h-11 bg-[#262626] text-white font-black rounded-xl hover:bg-[#333] transition-colors"
+                >
+                    Ajouter au panier
+                </Button>
+            )}
 
             <Button
                 onPress={onPurchase}

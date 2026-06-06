@@ -13,6 +13,8 @@ import {
 } from "../g2bulk-shop-actions";
 import { checkoutResellerAction, getCurrentResellerAction } from "../../actions";
 import PurchaseSuccessModal from "../components/PurchaseSuccessModal";
+import { CartBar } from "../components/CartBar";
+import { useResellerCart } from "@/store/useResellerCart";
 import {
     SEED_BRANDS,
     deriveG2BulkBrand,
@@ -64,6 +66,7 @@ export default function ResellerShopAllPage() {
     const [resellerName, setResellerName] = useState<string | undefined>(undefined);
     const [isCheckingOut, setIsCheckingOut] = useState(false);
     const [modalOrderId, setModalOrderId] = useState<number | null>(null);
+    const addToCart = useResellerCart((s) => s.add);
 
     /* ───── Reseller ───── */
     useEffect(() => {
@@ -310,6 +313,24 @@ export default function ResellerShopAllPage() {
                         onQuantity={setQuantity}
                         onPurchase={handlePurchase}
                         isCheckingOut={isCheckingOut}
+                        onAddToCart={
+                            selected && selected.source === "g2bulk"
+                                ? () => {
+                                      addToCart(
+                                          {
+                                              productId: (selected.raw as G2BulkCatalogProduct).productId,
+                                              title: selected.title,
+                                              priceDzd: selected.priceDzd,
+                                              stock: selected.stock,
+                                              brandLabel: brandLabels.get(selected.key),
+                                              region: selected.region,
+                                          },
+                                          quantity,
+                                      );
+                                      toast.success("Ajouté au panier");
+                                  }
+                                : undefined
+                        }
                     />
                 </aside>
             </div>
@@ -320,6 +341,7 @@ export default function ResellerShopAllPage() {
                 orderId={modalOrderId}
                 resellerName={resellerName}
             />
+            <CartBar />
         </div>
     );
 }
