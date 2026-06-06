@@ -429,8 +429,27 @@ export const refundFullOrder = withAuth(
 
                 for (const item of (order as any).items) {
                     const status = returnToStock ? DigitalCodeStatus.DISPONIBLE : DigitalCodeStatus.DEFECTUEUX;
+                    // Capture the shared-account parents of the slots we free, BEFORE
+                    // clearing the link.
+                    const freedSlots = await tx
+                        .select({ codeId: digitalCodeSlots.digitalCodeId })
+                        .from(digitalCodeSlots)
+                        .where(eq(digitalCodeSlots.orderItemId, item.id));
                     await tx.update(digitalCodes).set({ status, orderItemId: null }).where(eq(digitalCodes.orderItemId, item.id));
-                    await tx.update(digitalCodeSlots).set({ status, orderItemId: null }).where(eq(digitalCodeSlots.orderItemId, item.id));
+                    await tx.update(digitalCodeSlots).set({ status, orderItemId: null, activationUrl: null }).where(eq(digitalCodeSlots.orderItemId, item.id));
+                    if (returnToStock) {
+                        // Shared accounts (Netflix…) are marked VENDU only when ALL
+                        // their slots are sold and carry NO orderItemId, so the update
+                        // above (keyed on orderItemId) never touches them. Freeing one
+                        // slot makes the parent allocatable again → DISPONIBLE, otherwise
+                        // the returned slot can never be re-sold.
+                        const parentIds = Array.from(new Set(freedSlots.map((s) => s.codeId).filter((x): x is number => x != null)));
+                        if (parentIds.length > 0) {
+                            await tx.update(digitalCodes)
+                                .set({ status: DigitalCodeStatus.DISPONIBLE, isDebitCompleted: false })
+                                .where(and(inArray(digitalCodes.id, parentIds), eq(digitalCodes.status, DigitalCodeStatus.VENDU)));
+                        }
+                    }
                 }
 
                 await tx.update(orders).set({ status: OrderStatus.REMBOURSE }).where(eq(orders.id, id));
@@ -711,9 +730,17 @@ export const approveReturn = withAuth(
                     }
                 }
 
-                // 5. Restore VENDU digital codes → DISPONIBLE
+                // 5. Restore VENDU digital codes / slots → DISPONIBLE
                 const itemIds = (order.items || []).map((i: any) => i.id);
                 if (itemIds.length > 0) {
+                    // Capture shared-account parents of the slots we're freeing.
+                    const freedSlots = await tx
+                        .select({ codeId: digitalCodeSlots.digitalCodeId })
+                        .from(digitalCodeSlots)
+                        .where(and(
+                            inArray(digitalCodeSlots.orderItemId, itemIds),
+                            eq(digitalCodeSlots.status, DigitalCodeSlotStatus.VENDU)
+                        ));
                     await tx.update(digitalCodes)
                         .set({ status: DigitalCodeStatus.DISPONIBLE, orderItemId: null })
                         .where(and(
@@ -721,11 +748,20 @@ export const approveReturn = withAuth(
                             eq(digitalCodes.status, DigitalCodeStatus.VENDU)
                         ));
                     await tx.update(digitalCodeSlots)
-                        .set({ status: DigitalCodeSlotStatus.DISPONIBLE, orderItemId: null })
+                        .set({ status: DigitalCodeSlotStatus.DISPONIBLE, orderItemId: null, activationUrl: null })
                         .where(and(
                             inArray(digitalCodeSlots.orderItemId, itemIds),
                             eq(digitalCodeSlots.status, DigitalCodeSlotStatus.VENDU)
                         ));
+                    // Re-enable shared parent accounts (Netflix…): they're VENDU with
+                    // no orderItemId, so the update above misses them; freeing a slot
+                    // makes the parent allocatable again at the next purchase.
+                    const parentIds = Array.from(new Set(freedSlots.map((s) => s.codeId).filter((x): x is number => x != null)));
+                    if (parentIds.length > 0) {
+                        await tx.update(digitalCodes)
+                            .set({ status: DigitalCodeStatus.DISPONIBLE, isDebitCompleted: false })
+                            .where(and(inArray(digitalCodes.id, parentIds), eq(digitalCodes.status, DigitalCodeStatus.VENDU)));
+                    }
                 }
 
                 // --- 🔄 BALANCE REVERSAL LOGIC ---

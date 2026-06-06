@@ -369,11 +369,35 @@ export const getResellerOrdersByKindAction = withAuth(
                         ...acIds.map((r) => r.id),
                         ...manIds.map((r) => r.id),
                     ]);
+                    // Shared-account orders (Netflix etc.) carry their customer
+                    // magic link on the slot — surface it as codeOrLink so the
+                    // wallet row shows a copy + WhatsApp re-share button.
+                    const legacyItemIds = ordersList
+                        .filter((o) => !mirrored.has(o.id))
+                        .flatMap((o) => o.items.map((it) => it.id));
+                    const linkByItem = new Map<number, string>();
+                    if (legacyItemIds.length > 0) {
+                        const { digitalCodeSlots } = await import("@/db/schema");
+                        const slotRows = await db
+                            .select({
+                                orderItemId: digitalCodeSlots.orderItemId,
+                                activationUrl: digitalCodeSlots.activationUrl,
+                            })
+                            .from(digitalCodeSlots)
+                            .where(inArray(digitalCodeSlots.orderItemId, legacyItemIds));
+                        for (const s of slotRows) {
+                            if (s.orderItemId != null && s.activationUrl && !linkByItem.has(s.orderItemId)) {
+                                linkByItem.set(s.orderItemId, s.activationUrl);
+                            }
+                        }
+                    }
                     for (const o of ordersList) {
                         if (mirrored.has(o.id)) continue;
                         const firstItem = o.items?.[0];
                         const productName =
                             firstItem?.variant?.product?.name ?? firstItem?.name ?? "Commande";
+                        const magicLink =
+                            o.items.map((it) => linkByItem.get(it.id)).find(Boolean) ?? null;
                         rows.push({
                             kind: "legacy",
                             orderNumber: o.orderNumber,
@@ -384,7 +408,7 @@ export const getResellerOrdersByKindAction = withAuth(
                             priceDzd: parseFloat(o.totalAmount),
                             status: o.status,
                             createdAt: o.createdAt ?? new Date(),
-                            codeOrLink: null,
+                            codeOrLink: magicLink,
                         });
                     }
                 }
