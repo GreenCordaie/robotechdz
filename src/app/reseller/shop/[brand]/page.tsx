@@ -33,7 +33,6 @@ import {
 } from "../components/Denomination";
 import type { EnrichedBsvListing } from "@/types/bsv-listings";
 import PurchaseSuccessModal from "../components/PurchaseSuccessModal";
-import { CartBar } from "../components/CartBar";
 import { useResellerCart } from "@/store/useResellerCart";
 
 // Action schemas cap `limit` at 48 — keep at or below that.
@@ -275,7 +274,8 @@ export default function ResellerBrandPage() {
                                 ? () => {
                                       addToCart(
                                           {
-                                              productId: (selected.raw as G2BulkCatalogProduct).productId,
+                                              source: "g2bulk",
+                                              refId: (selected.raw as G2BulkCatalogProduct).productId,
                                               title: selected.title,
                                               priceDzd: selected.priceDzd,
                                               stock: selected.stock,
@@ -298,7 +298,6 @@ export default function ResellerBrandPage() {
                 orderId={modalOrderId}
                 resellerName={resellerName}
             />
-            <CartBar />
         </div>
     );
 }

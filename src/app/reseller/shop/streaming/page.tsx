@@ -13,6 +13,7 @@ import {
     type StreamingOffer,
 } from "../streaming-actions";
 import PurchaseSuccessModal from "../components/PurchaseSuccessModal";
+import { useResellerCart } from "@/store/useResellerCart";
 
 export default function ResellerStreamingPage() {
     const router = useRouter();
@@ -26,6 +27,7 @@ export default function ResellerStreamingPage() {
     const [isCheckingOut, setIsCheckingOut] = useState(false);
     const [modalOrderId, setModalOrderId] = useState<number | null>(null);
     const [boughtLabel, setBoughtLabel] = useState<string | undefined>(undefined);
+    const addToCart = useResellerCart((s) => s.add);
 
     useEffect(() => {
         getCurrentResellerAction({}).then((res) => {
@@ -257,6 +259,26 @@ export default function ResellerStreamingPage() {
                                 </span>
                             </div>
 
+                            <Button
+                                onPress={() => {
+                                    addToCart(
+                                        {
+                                            source: "streaming",
+                                            refId: selected.variantId,
+                                            title: selected.title,
+                                            priceDzd: selected.priceDzd,
+                                            stock: selected.stock,
+                                            brandLabel: "Streaming",
+                                        },
+                                        quantity,
+                                    );
+                                    toast.success("Ajouté au panier");
+                                }}
+                                isDisabled={selected.stock <= 0}
+                                className="w-full h-11 bg-[#262626] text-white font-black rounded-xl hover:bg-[#333] transition-colors"
+                            >
+                                Ajouter au panier
+                            </Button>
                             <Button
                                 onPress={handlePurchase}
                                 isLoading={isCheckingOut}

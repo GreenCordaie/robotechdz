@@ -6,6 +6,7 @@ import { ArrowLeft, Search, KeyRound, Sparkles, Globe2, AlertTriangle, Send } fr
 import { toast } from "react-hot-toast";
 
 import { ALL_REGION, RegionPills } from "../components/Denomination";
+import { useResellerCart } from "@/store/useResellerCart";
 import {
     getActiveCodeCatalogAction,
     purchaseActiveCodeAction,
@@ -72,6 +73,7 @@ export default function ResellerShopActiveCodePage() {
 
     // Reseller shop name — signs the WhatsApp share message to the customer.
     const [resellerName, setResellerName] = useState<string | undefined>(undefined);
+    const addToCart = useResellerCart((s) => s.add);
     useEffect(() => {
         import("@/app/reseller/actions").then(({ getCurrentResellerAction }) =>
             getCurrentResellerAction({}).then((res) => {
@@ -329,6 +331,26 @@ export default function ResellerShopActiveCodePage() {
                                     >
                                         Annuler
                                     </button>
+                                    {selected.priceDzd !== null && (
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                addToCart({
+                                                    source: "activecode",
+                                                    refId: selected.id,
+                                                    title: selected.title,
+                                                    priceDzd: selected.priceDzd as number,
+                                                    stock: 99,
+                                                    brandLabel: "Active Code",
+                                                });
+                                                toast.success("Ajouté au panier");
+                                                setSelected(null);
+                                            }}
+                                            className="px-4 py-2 rounded-lg bg-neutral-800 text-white font-bold hover:bg-neutral-700 transition"
+                                        >
+                                            Ajouter au panier
+                                        </button>
+                                    )}
                                     <button
                                         type="button"
                                         disabled={isBuying}

@@ -13,7 +13,6 @@ import {
 } from "../g2bulk-shop-actions";
 import { checkoutResellerAction, getCurrentResellerAction } from "../../actions";
 import PurchaseSuccessModal from "../components/PurchaseSuccessModal";
-import { CartBar } from "../components/CartBar";
 import { useResellerCart } from "@/store/useResellerCart";
 import {
     SEED_BRANDS,
@@ -318,7 +317,8 @@ export default function ResellerShopAllPage() {
                                 ? () => {
                                       addToCart(
                                           {
-                                              productId: (selected.raw as G2BulkCatalogProduct).productId,
+                                              source: "g2bulk",
+                                              refId: (selected.raw as G2BulkCatalogProduct).productId,
                                               title: selected.title,
                                               priceDzd: selected.priceDzd,
                                               stock: selected.stock,
@@ -341,7 +341,6 @@ export default function ResellerShopAllPage() {
                 orderId={modalOrderId}
                 resellerName={resellerName}
             />
-            <CartBar />
         </div>
     );
 }
