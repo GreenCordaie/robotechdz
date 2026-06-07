@@ -44,6 +44,25 @@ export async function GET(req: NextRequest) {
             console.warn(`[MS_AUTH_CALLBACK] /me lookup error for code ${codeId}:`, e instanceof Error ? e.message : "unknown");
         }
 
+        // Fallback: if /me yielded no email (e.g. token granted without
+        // User.Read), use the Netflix account's own email (the mailbox the
+        // watcher reads via /me anyway). Without this, ms_account_email stays
+        // NULL and the streaming watcher skips the account → no OTP delivery.
+        if (!accountEmail) {
+            try {
+                const { db } = await import("@/db");
+                const { digitalCodes } = await import("@/db/schema");
+                const { decrypt } = await import("@/lib/encryption");
+                const { eq } = await import("drizzle-orm");
+                const dc = await db.query.digitalCodes.findFirst({ where: eq(digitalCodes.id, codeId) });
+                const plain = dc?.code ? decrypt(dc.code) : null;
+                const candidate = plain ? plain.split("|")[0].trim() : "";
+                if (/^[^@\s]+@[^@\s]+$/.test(candidate)) accountEmail = candidate;
+            } catch (e: unknown) {
+                console.warn(`[MS_AUTH_CALLBACK] code-email fallback failed for ${codeId}:`, e instanceof Error ? e.message : "unknown");
+            }
+        }
+
         // 3. Sauvegarder le refresh_token + email avec le Client ID associé
         await MicrosoftAuthService.saveRefreshToken(codeId, tokens.refresh_token, accountEmail, explicitClientId);
 
