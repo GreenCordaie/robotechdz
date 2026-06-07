@@ -91,11 +91,25 @@ function CopyRow({ label, value }: { label: string; value: string }) {
     );
 }
 
-/** Open WhatsApp (the reseller's own app/number) with a prefilled message.
- * No central WAHA session involved — uses the reseller's own device. */
-function openWhatsApp(message: string) {
+/** Normalise a user-typed phone into a wa.me number (digits only, no '+').
+ * Algerian local format (0XXXXXXXXX) → international 213XXXXXXXXX. Empty when
+ * nothing usable was typed (caller falls back to the no-recipient share). */
+function toWaNumber(raw?: string): string {
+    if (!raw) return "";
+    let d = raw.replace(/\D/g, "");
+    if (!d) return "";
+    if (d.startsWith("0")) d = "213" + d.slice(1);
+    return d;
+}
+
+/** Open WhatsApp with a prefilled message, addressed to `phone` when provided
+ * (`wa.me/<number>` opens the chat directly on phone AND desktop). No central
+ * WAHA session — uses the reseller's own device/account. */
+function openWhatsApp(message: string, phone?: string) {
+    const num = toWaNumber(phone);
+    const base = num ? `https://wa.me/${num}` : "https://wa.me/";
     window.open(
-        `https://wa.me/?text=${encodeURIComponent(message)}`,
+        `${base}?text=${encodeURIComponent(message)}`,
         "_blank",
         "noopener,noreferrer",
     );
@@ -129,7 +143,12 @@ function buildOrderShareMessage(
         for (const s of item.sharedSlots) {
             if (s.activationUrl) {
                 hasMagicLink = true;
-                lines.push(`• Lien d'activation : ${s.activationUrl}`);
+                // The URL MUST sit alone on its own line (no bullet/label on the
+                // same line) so WhatsApp — Android especially — turns it into a
+                // tappable link. A label or emoji glued to it breaks detection.
+                lines.push("Lien d'activation :");
+                lines.push(s.activationUrl);
+                if (s.pin) lines.push(`Code PIN du profil : ${s.pin}`);
             } else {
                 if (s.parentCode) lines.push(`• Compte : ${s.parentCode}`);
                 if (s.pin) lines.push(`• PIN : ${s.pin}`);
@@ -177,6 +196,7 @@ export default function PurchaseSuccessModal({
     const [order, setOrder] = React.useState<OrderDetail | null>(null);
     const [polling, setPolling] = React.useState(false);
     const [timedOut, setTimedOut] = React.useState(false);
+    const [recipientPhone, setRecipientPhone] = React.useState("");
 
     React.useEffect(() => {
         if (!isOpen || !orderId) return;
@@ -186,6 +206,7 @@ export default function PurchaseSuccessModal({
         setOrder(null);
         setTimedOut(false);
         setPolling(true);
+        setRecipientPhone("");
 
         const tick = async () => {
             if (cancelled) return;
@@ -282,19 +303,42 @@ export default function PurchaseSuccessModal({
                             )}
 
                             {/* Global share — available for EVERY delivered order
-                                (giftcard codes, IPTV credentials, magic links). */}
+                                (giftcard codes, IPTV credentials, magic links).
+                                The optional phone field addresses the message
+                                straight to the client (wa.me/<number>) on phone
+                                AND desktop. */}
                             {delivered && (
-                                <button
-                                    type="button"
-                                    onClick={() =>
-                                        openWhatsApp(
-                                            buildOrderShareMessage(order, initialCode, resellerName),
-                                        )
-                                    }
-                                    className="w-full flex items-center justify-center gap-2 bg-[#25D366] text-black font-black rounded-lg px-3 py-2.5 hover:bg-[#25D366]/90 transition-colors"
-                                >
-                                    <Send className="size-4" /> Partager sur WhatsApp
-                                </button>
+                                <div className="space-y-2">
+                                    <div>
+                                        <label className="text-[9px] uppercase font-black tracking-widest text-slate-500">
+                                            Numéro WhatsApp du client (optionnel)
+                                        </label>
+                                        <input
+                                            type="tel"
+                                            inputMode="tel"
+                                            value={recipientPhone}
+                                            onChange={(e) => setRecipientPhone(e.target.value)}
+                                            placeholder="0555 12 34 56"
+                                            data-testid="whatsapp-recipient-phone"
+                                            className="mt-1 w-full h-10 bg-[#0a0a0a] border border-[#262626] rounded-lg px-3 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-[#25D366]"
+                                        />
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() =>
+                                            openWhatsApp(
+                                                buildOrderShareMessage(order, initialCode, resellerName),
+                                                recipientPhone,
+                                            )
+                                        }
+                                        className="w-full flex items-center justify-center gap-2 bg-[#25D366] text-black font-black rounded-lg px-3 py-2.5 hover:bg-[#25D366]/90 transition-colors"
+                                    >
+                                        <Send className="size-4" />
+                                        {toWaNumber(recipientPhone)
+                                            ? "Envoyer au client sur WhatsApp"
+                                            : "Partager sur WhatsApp"}
+                                    </button>
+                                </div>
                             )}
                         </ModalBody>
 

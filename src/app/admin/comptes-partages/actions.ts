@@ -400,8 +400,17 @@ export const updateSharedAccount = withAuth(
                     for (const s of slotsData) {
                         const slotUpdate: Record<string, unknown> = {
                             profileName: s.profileName,
-                            code: s.pinCode ? encrypt(s.pinCode) : null,
                         };
+                        // CRITICAL: never clobber the stored PIN with the masked
+                        // placeholder. The list/edit form renders unrevealed PINs
+                        // as MASKED ("***"); saving the form without revealing
+                        // would otherwise re-encrypt "***" over the real PIN (and
+                        // an empty field used to wipe it to null). Only overwrite
+                        // when the admin supplied a real, non-masked value.
+                        const newPin = s.pinCode?.trim();
+                        if (newPin && !/^\*+$/.test(newPin)) {
+                            slotUpdate.code = encrypt(newPin);
+                        }
                         // Only touch maxDevices when explicitly provided so the
                         // admin can leave it untouched while editing other fields.
                         // `null` means "unlimited" (legacy slots default).
