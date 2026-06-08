@@ -531,25 +531,29 @@ export const getMarketplaceTrackedAction = withAuth(
             };
             const deliveryType: "auto" | "manual" =
                 r.deliveryType === "auto" ? "auto" : "manual";
+            // SUPPLIER CONFIDENTIALITY: never leak the BSV seller / supplier to
+            // the reseller. The upstream vendor (Face2Face, BSV, G2Bulk…) and
+            // its reputation stay admin-only — the reseller payload is fully
+            // neutralised so it's untraceable even via the network/data.
             return {
                 listingId: r.id,
-                upstreamKey: r.bsvProductId,
-                encodedId: r.bsvProductId,
+                upstreamKey: r.id,
+                encodedId: r.id,
                 product: {
-                    sku: r.bsvProductId,
-                    brand: r.sellerName ?? "BSV",
+                    sku: r.id,
+                    brand: "ROBOTECHDZ",
                     category: "giftcard",
                     faceValue: "",
                     faceUnit: "",
                     region: "GLOBAL",
-                    displayName: r.title ?? r.bsvProductId,
+                    displayName: r.title ?? "Produit",
                     imageUrl: null,
                 },
                 seller: {
-                    slug: r.sellerName ?? "—",
-                    rank: r.sellerRank ?? null,
-                    positiveReviews: r.feedbackPos ?? 0,
-                    negativeReviews: r.feedbackNeg ?? 0,
+                    slug: "",
+                    rank: null,
+                    positiveReviews: 0,
+                    negativeReviews: 0,
                 },
                 priceCents: r.finalPriceCents ?? 0,
                 currency: "USD",
