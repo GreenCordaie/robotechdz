@@ -1,28 +1,15 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import {
-    Modal,
-    ModalContent,
-    ModalHeader,
-    ModalBody,
-    ModalFooter,
-    Button,
-} from "@heroui/react";
-import { ArrowLeft, Search, Store, Zap, Clock, Minus, Plus } from "lucide-react";
+import { ArrowLeft, Search, Store } from "lucide-react";
 import { toast } from "react-hot-toast";
 
-import { formatCurrency } from "@/lib/formatters";
-import { getBsvCatalogAction, type BsvCatalogPricingMeta } from "../actions";
-import { checkoutResellerAction, getCurrentResellerAction } from "../../actions";
+import { getMarketplaceTrackedAction } from "../actions";
 import { BsvListingGrid } from "../components/BsvListingGrid";
-import PurchaseSuccessModal from "../components/PurchaseSuccessModal";
 import type { EnrichedBsvListing, BsvListingsPagination } from "@/types/bsv-listings";
 
 type DeliveryFilter = "all" | "auto" | "manual";
-
-const PAGE_SIZE = 24;
 
 const DELIVERY_PILLS: ReadonlyArray<{ value: DeliveryFilter; label: string }> = [
     { value: "all", label: "Tous" },
@@ -30,168 +17,70 @@ const DELIVERY_PILLS: ReadonlyArray<{ value: DeliveryFilter; label: string }> = 
     { value: "manual", label: "⏳ Sous 24h" },
 ];
 
-const EMPTY_PAGINATION: BsvListingsPagination = { page: 1, limit: PAGE_SIZE, total: 0, totalPages: 0 };
-
-// BSV search matches ALL whitespace tokens (AND). A long, specific title like
-// "Xbox Game Pass Ultimate 1+1 Month" returns 0 because no single listing
-// carries every token. Progressively drop trailing tokens until a query hits,
-// so the search behaves like a forgiving marketplace. Capped at 5 attempts.
-function buildQueryCandidates(q: string): string[] {
-    const tokens = q.split(/\s+/).filter(Boolean);
-    if (tokens.length <= 1) return [q];
-    const out: string[] = [];
-    for (let end = tokens.length; end >= 1 && out.length < 5; end--) {
-        out.push(tokens.slice(0, end).join(" "));
-    }
-    return out;
-}
-
 /**
- * Marketplace — live BuySellVouchers mirror. Every search query hits BSV in
- * real time via `getBsvCatalogAction` (LoadBrain SDK v2 `listings.search`).
- * Buying debits the wallet and creates the upstream order; the code is then
- * delivered instantly (auto listings) or as soon as the seller fulfils it
- * (manual) — surfaced by the polling PurchaseSuccessModal.
+ * Curated Marketplace (Phase 1 — display) — shows ONLY the products the
+ * operator hand-tracked in /admin/arbitrage (giftcards.bsv_tracked_links),
+ * synced with live BSV price/stock/seller/delivery. Buying is wired in Phase 2.
  */
 export default function ResellerMarketplacePage() {
     const router = useRouter();
 
-    const [rawQuery, setRawQuery] = useState("");
-    const [query, setQuery] = useState("");
-    const [effectiveQuery, setEffectiveQuery] = useState("");
-    const [delivery, setDelivery] = useState<DeliveryFilter>("all");
-    const [page, setPage] = useState(1);
-
-    const [items, setItems] = useState<ReadonlyArray<EnrichedBsvListing>>([]);
-    const [pagination, setPagination] = useState<BsvListingsPagination>(EMPTY_PAGINATION);
-    const [meta, setMeta] = useState<BsvCatalogPricingMeta | null>(null);
+    const [allItems, setAllItems] = useState<ReadonlyArray<EnrichedBsvListing>>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
-    const [resellerId, setResellerId] = useState<number | null>(null);
-    const [resellerName, setResellerName] = useState<string | undefined>(undefined);
+    const [rawQuery, setRawQuery] = useState("");
+    const [query, setQuery] = useState("");
+    const [delivery, setDelivery] = useState<DeliveryFilter>("all");
 
-    // Purchase flow.
-    const [selected, setSelected] = useState<EnrichedBsvListing | null>(null);
-    const [quantity, setQuantity] = useState(1);
-    const [isCheckingOut, setIsCheckingOut] = useState(false);
-    const [modalOrderId, setModalOrderId] = useState<number | null>(null);
-    const [boughtLabel, setBoughtLabel] = useState<string | undefined>(undefined);
-
-    /* ───── Reseller identity ───── */
-    useEffect(() => {
-        getCurrentResellerAction({}).then((res) => {
-            if (res.success && res.data) {
-                const r = res.data as { id: number; companyName?: string };
-                setResellerId(r.id);
-                setResellerName(r.companyName);
-            }
-        });
-    }, []);
-
-    /* ───── Debounce the search input (300ms) ───── */
-    useEffect(() => {
-        const t = setTimeout(() => {
-            setQuery(rawQuery.trim());
-            setPage(1);
-        }, 300);
-        return () => clearTimeout(t);
-    }, [rawQuery]);
-
-    // Reset to page 1 when the delivery filter changes.
-    useEffect(() => {
-        setPage(1);
-    }, [delivery]);
-
-    /* ───── Live BSV search (with progressive token fallback) ───── */
+    /* ───── Load curated tracked products once ───── */
     useEffect(() => {
         let active = true;
         setIsLoading(true);
         setError(null);
-
-        const run = async () => {
-            const candidates: ReadonlyArray<string | undefined> = query
-                ? buildQueryCandidates(query)
-                : [undefined];
-
-            for (let i = 0; i < candidates.length; i++) {
-                const cand = candidates[i];
-                const res = await getBsvCatalogAction({
-                    q: cand || undefined,
-                    deliveryType: delivery,
-                    sellerRankMin: "all",
-                    sortBy: "score",
-                    page,
-                    limit: PAGE_SIZE,
-                });
+        getMarketplaceTrackedAction({})
+            .then((res) => {
                 if (!active) return;
-                if (!res.success) {
-                    setItems([]);
-                    setPagination(EMPTY_PAGINATION);
-                    setError(res.error);
-                    setIsLoading(false);
-                    return;
-                }
-                const isLast = i === candidates.length - 1;
-                if (res.data.pagination.total > 0 || isLast) {
-                    setItems(res.data.items);
-                    setPagination(res.data.pagination);
-                    setMeta(res.data.pricing);
-                    setEffectiveQuery(cand ?? "");
-                    setIsLoading(false);
-                    return;
-                }
-            }
-            setIsLoading(false);
-        };
-
-        run();
+                if (res.success) setAllItems(res.data.items);
+                else setError(res.error);
+            })
+            .finally(() => {
+                if (active) setIsLoading(false);
+            });
         return () => {
             active = false;
         };
-    }, [query, delivery, page]);
-
-    const max = Math.max(1, selected?.stockQty ?? 1);
-    const total = (selected?.pricing.finalPriceDzd ?? 0) * quantity;
-
-    const selectListing = useCallback((listing: EnrichedBsvListing) => {
-        if ((listing.stockQty ?? 0) <= 0) {
-            toast.error("Annonce en rupture — choisissez-en une autre.");
-            return;
-        }
-        setSelected(listing);
-        setQuantity(1);
     }, []);
 
-    const handlePurchase = useCallback(async () => {
-        if (!selected || !resellerId || quantity < 1) return;
-        setIsCheckingOut(true);
-        try {
-            const res = await checkoutResellerAction({
-                resellerId,
-                cart: [{ listingId: selected.listingId, quantity }],
-            });
-            if (res.success) {
-                setBoughtLabel(selected.product.displayName);
-                setSelected(null);
-                setModalOrderId((res as { orderId?: number }).orderId ?? null);
-            } else {
-                toast.error(res.error || "Échec de la commande");
-            }
-        } catch {
-            toast.error("Erreur technique lors du paiement");
-        } finally {
-            setIsCheckingOut(false);
-        }
-    }, [selected, resellerId, quantity]);
+    /* ───── Debounce search (250ms) ───── */
+    useEffect(() => {
+        const t = setTimeout(() => setQuery(rawQuery.trim().toLowerCase()), 250);
+        return () => clearTimeout(t);
+    }, [rawQuery]);
 
-    const countLabel = useMemo(() => {
-        if (isLoading) return "Recherche en cours…";
-        if (error) return "Catalogue temporairement indisponible";
-        const n = pagination.total;
-        const base = `${n} annonce${n === 1 ? "" : "s"}`;
-        return query ? `${base} pour « ${query} »` : base;
-    }, [isLoading, error, pagination.total, query]);
+    const filtered = useMemo(() => {
+        return allItems.filter((it) => {
+            if (delivery !== "all" && it.deliveryType !== delivery) return false;
+            if (query) {
+                const hay = `${it.product.displayName} ${it.seller.slug}`.toLowerCase();
+                if (!hay.includes(query)) return false;
+            }
+            return true;
+        });
+    }, [allItems, query, delivery]);
+
+    const pagination: BsvListingsPagination = {
+        page: 1,
+        limit: filtered.length || 1,
+        total: filtered.length,
+        totalPages: 1,
+    };
+
+    const countLabel = isLoading
+        ? "Chargement…"
+        : error
+          ? "Catalogue indisponible"
+          : `${filtered.length} produit${filtered.length === 1 ? "" : "s"} suivi${filtered.length === 1 ? "" : "s"}`;
 
     return (
         <div className="space-y-6 animate-in fade-in duration-300">
@@ -209,26 +98,8 @@ export default function ResellerMarketplacePage() {
                     Marketplace
                 </h1>
                 <p className="text-sm text-slate-400">{countLabel}</p>
-                {!isLoading &&
-                    !error &&
-                    !!query &&
-                    effectiveQuery !== query &&
-                    pagination.total > 0 && (
-                        <p className="text-[11px] font-bold text-amber-400/90">
-                            Aucun résultat exact — résultats élargis pour «{" "}
-                            {effectiveQuery} »
-                        </p>
-                    )}
-                {meta && (meta.tierDiscountPct > 0 || meta.customDiscountPct > 0) && (
-                    <p className="text-[11px] font-black uppercase tracking-widest text-emerald-400">
-                        Remise appliquée :{" "}
-                        {(meta.tierDiscountPct + meta.customDiscountPct).toFixed(0)}%
-                        {meta.tierName ? ` · Tier ${meta.tierName}` : ""}
-                    </p>
-                )}
             </div>
 
-            {/* Live search */}
             <div className="relative">
                 <Search
                     size={16}
@@ -236,7 +107,7 @@ export default function ResellerMarketplacePage() {
                 />
                 <input
                     type="search"
-                    placeholder="Rechercher en direct sur le marché (marque, montant, région…)"
+                    placeholder="Rechercher (produit, vendeur…)"
                     value={rawQuery}
                     onChange={(e) => setRawQuery(e.target.value)}
                     data-testid="marketplace-search"
@@ -244,7 +115,6 @@ export default function ResellerMarketplacePage() {
                 />
             </div>
 
-            {/* Delivery filter pills */}
             <div className="flex flex-wrap gap-2">
                 {DELIVERY_PILLS.map((pill) => (
                     <button
@@ -268,132 +138,17 @@ export default function ResellerMarketplacePage() {
                 </div>
             ) : (
                 <BsvListingGrid
-                    items={items as EnrichedBsvListing[]}
+                    items={filtered as EnrichedBsvListing[]}
                     pagination={pagination}
                     isLoading={isLoading}
                     cartListingIds={new Set()}
-                    onAddToCart={selectListing}
-                    onPageChange={setPage}
+                    onAddToCart={() =>
+                        toast("Achat des produits suivis : bientôt disponible.", { icon: "🛒" })
+                    }
+                    onPageChange={() => undefined}
                     ctaLabel="Acheter"
                 />
             )}
-
-            {/* Purchase confirmation */}
-            <Modal isOpen={!!selected} onClose={() => setSelected(null)} size="md">
-                <ModalContent className="bg-[#161616] border border-[#262626]">
-                    {(close) =>
-                        selected && (
-                            <>
-                                <ModalHeader className="flex flex-col gap-1">
-                                    <span className="flex items-center gap-2">
-                                        {selected.deliveryType === "auto" ? (
-                                            <span className="px-2 py-0.5 rounded-md bg-cyan-500/15 text-[9px] font-black text-cyan-400 uppercase border border-cyan-500/30 flex items-center gap-1">
-                                                <Zap size={10} /> Instantané
-                                            </span>
-                                        ) : (
-                                            <span className="px-2 py-0.5 rounded-md bg-amber-500/15 text-[9px] font-black text-amber-400 uppercase border border-amber-500/30 flex items-center gap-1">
-                                                <Clock size={10} /> Sous 24h
-                                            </span>
-                                        )}
-                                    </span>
-                                    <span className="text-base font-black text-white leading-snug">
-                                        {selected.product.displayName}
-                                    </span>
-                                </ModalHeader>
-                                <ModalBody className="space-y-4">
-                                    <div className="flex items-baseline gap-2">
-                                        <span className="text-lg font-black text-[#FACC15]">
-                                            {formatCurrency(selected.pricing.finalPriceDzd, "DZD")}
-                                        </span>
-                                        <span className="text-xs text-slate-500">/ unité</span>
-                                        <span className="ml-auto text-[10px] uppercase font-black tracking-widest text-emerald-400">
-                                            {selected.stockQty ?? 0} dispo
-                                        </span>
-                                    </div>
-
-                                    <div className="border-t border-[#262626] pt-4 space-y-2">
-                                        <label className="text-[10px] uppercase font-black tracking-widest text-slate-500">
-                                            Quantité
-                                        </label>
-                                        <div className="flex items-center gap-3">
-                                            <button
-                                                type="button"
-                                                onClick={() => setQuantity(Math.max(1, quantity - 1))}
-                                                className="size-9 rounded-lg border border-[#262626] flex items-center justify-center hover:border-[#FACC15]/40 text-white"
-                                                aria-label="Diminuer"
-                                            >
-                                                <Minus size={14} />
-                                            </button>
-                                            <input
-                                                type="number"
-                                                min={1}
-                                                max={max}
-                                                value={quantity}
-                                                onChange={(e) => {
-                                                    const n = parseInt(e.target.value, 10);
-                                                    if (Number.isFinite(n))
-                                                        setQuantity(Math.min(max, Math.max(1, n)));
-                                                }}
-                                                className="flex-1 h-9 bg-[#0a0a0a] border border-[#262626] rounded-lg text-center text-white font-black focus:outline-none focus:border-[#FACC15]"
-                                            />
-                                            <button
-                                                type="button"
-                                                onClick={() => setQuantity(Math.min(max, quantity + 1))}
-                                                className="size-9 rounded-lg border border-[#262626] flex items-center justify-center hover:border-[#FACC15]/40 text-white"
-                                                aria-label="Augmenter"
-                                            >
-                                                <Plus size={14} />
-                                            </button>
-                                        </div>
-                                    </div>
-
-                                    <div className="border-t border-[#262626] pt-4 flex items-baseline justify-between">
-                                        <span className="text-[11px] uppercase font-black tracking-widest text-slate-500">
-                                            Total
-                                        </span>
-                                        <span className="text-xl font-black text-[#FACC15]">
-                                            {formatCurrency(total, "DZD")}
-                                        </span>
-                                    </div>
-
-                                    <p className="text-[11px] text-slate-500">
-                                        {selected.deliveryType === "auto"
-                                            ? "Livraison instantanée — le code s'affiche juste après l'achat."
-                                            : "Livraison sous 24h — le code apparaîtra ici et dans « Mes Achats » dès que le vendeur livre."}
-                                    </p>
-                                </ModalBody>
-                                <ModalFooter>
-                                    <Button
-                                        variant="light"
-                                        onPress={close}
-                                        isDisabled={isCheckingOut}
-                                        className="text-slate-400 font-bold"
-                                    >
-                                        Annuler
-                                    </Button>
-                                    <Button
-                                        onPress={handlePurchase}
-                                        isLoading={isCheckingOut}
-                                        isDisabled={isCheckingOut || (selected.stockQty ?? 0) <= 0}
-                                        data-testid="marketplace-buy-btn"
-                                        className="bg-[#FACC15] text-black font-black px-6"
-                                    >
-                                        {isCheckingOut ? "Traitement…" : "Acheter maintenant"}
-                                    </Button>
-                                </ModalFooter>
-                            </>
-                        )
-                    }
-                </ModalContent>
-            </Modal>
-
-            <PurchaseSuccessModal
-                isOpen={modalOrderId !== null}
-                onClose={() => setModalOrderId(null)}
-                orderId={modalOrderId}
-                productLabel={boughtLabel}
-                resellerName={resellerName}
-            />
         </div>
     );
 }
