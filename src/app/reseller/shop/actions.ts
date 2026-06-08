@@ -581,3 +581,72 @@ export const getMarketplaceTrackedAction = withAuth(
         };
     },
 );
+
+/**
+ * Resolve a curated tracked product (by its tracked-link id, the only id the
+ * reseller sees) to a buyable BSV listingId. Two server-side hops keep the
+ * supplier hidden: tracked id → encoded_id (admin tracker) → listingId
+ * (listings-by-encoded). The returned listingId feeds checkoutResellerAction.
+ */
+export const resolveTrackedListingAction = withAuth(
+    {
+        roles: [UserRole.RESELLER],
+        schema: z.object({ trackedId: z.string().min(1) }),
+    },
+    async ({ trackedId }) => {
+        const baseUrl = process.env.LOADBRAIN_URL;
+        const token = process.env.LOADBRAIN_INTERNAL_TOKEN;
+        const apiKey = process.env.LOADBRAIN_API_KEY;
+        if (!baseUrl || !token || !apiKey) {
+            return { success: false as const, error: "LoadBrain non configuré" };
+        }
+        const base = baseUrl.replace(/\/$/, "");
+
+        // 1) tracked id → encoded_id + stock (server-only; never sent to client).
+        let bsvProductId: string;
+        try {
+            const res = await fetch(`${base}/api/v1/giftcards/admin/bsv-tracker`, {
+                headers: { "X-Internal-Token": token },
+                cache: "no-store",
+            });
+            if (!res.ok) return { success: false as const, error: `LoadBrain ${res.status}` };
+            const body = (await res.json()) as {
+                data?: Array<{ id: string; bsvProductId: string; status: string }>;
+            };
+            const row = (body.data ?? []).find((r) => r.id === trackedId);
+            if (!row) return { success: false as const, error: "Produit introuvable" };
+            if (row.status !== "IN_STOCK") {
+                return { success: false as const, error: "Produit en rupture de stock" };
+            }
+            bsvProductId = row.bsvProductId;
+        } catch (err) {
+            return { success: false as const, error: `LoadBrain: ${(err as Error).message}` };
+        }
+
+        // 2) encoded_id → freshest buyable listingId.
+        try {
+            const res = await fetch(
+                `${base}/api/v1/giftcards/internal/listings-by-encoded/${encodeURIComponent(bsvProductId)}`,
+                { headers: { "X-API-Key": apiKey }, cache: "no-store" },
+            );
+            if (!res.ok) {
+                return { success: false as const, error: "Offre momentanément indisponible — réessayez." };
+            }
+            const body = (await res.json()) as {
+                data?: { listingId?: string; deliveryType?: string; stockQty?: number | null };
+            };
+            const d = body.data;
+            if (!d?.listingId) {
+                return { success: false as const, error: "Offre momentanément indisponible." };
+            }
+            return {
+                success: true as const,
+                listingId: d.listingId,
+                deliveryType: d.deliveryType === "auto" ? ("auto" as const) : ("manual" as const),
+                stockQty: d.stockQty ?? 0,
+            };
+        } catch (err) {
+            return { success: false as const, error: `LoadBrain: ${(err as Error).message}` };
+        }
+    },
+);

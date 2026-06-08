@@ -6,13 +6,15 @@ import { Spinner } from "@heroui/react";
 import { ArrowLeft, Search, Store } from "lucide-react";
 import { toast } from "react-hot-toast";
 
-import { getMarketplaceTrackedAction } from "../actions";
+import { getMarketplaceTrackedAction, resolveTrackedListingAction } from "../actions";
+import { checkoutResellerAction, getCurrentResellerAction } from "../../actions";
 import {
     DenominationRow,
     PurchasePanel,
     bsvToDenomination,
     type Denomination,
 } from "../components/Denomination";
+import PurchaseSuccessModal from "../components/PurchaseSuccessModal";
 import type { EnrichedBsvListing } from "@/types/bsv-listings";
 
 type DeliveryFilter = "all" | "auto" | "manual";
@@ -44,6 +46,23 @@ export default function ResellerMarketplacePage() {
     const [delivery, setDelivery] = useState<DeliveryFilter>("all");
     const [selectedKey, setSelectedKey] = useState<string | null>(null);
     const [quantity, setQuantity] = useState(1);
+
+    const [resellerId, setResellerId] = useState<number | null>(null);
+    const [resellerName, setResellerName] = useState<string | undefined>(undefined);
+    const [isCheckingOut, setIsCheckingOut] = useState(false);
+    const [modalOrderId, setModalOrderId] = useState<number | null>(null);
+    const [boughtLabel, setBoughtLabel] = useState<string | undefined>(undefined);
+
+    /* ───── Reseller identity ───── */
+    useEffect(() => {
+        getCurrentResellerAction({}).then((res) => {
+            if (res.success && res.data) {
+                const r = res.data as { id: number; companyName?: string };
+                setResellerId(r.id);
+                setResellerName(r.companyName);
+            }
+        });
+    }, []);
 
     /* ───── Load curated tracked products once ───── */
     useEffect(() => {
@@ -85,6 +104,36 @@ export default function ResellerMarketplacePage() {
         () => items.find((it) => it.key === selectedKey) ?? null,
         [items, selectedKey],
     );
+
+    const handlePurchase = async () => {
+        if (!selected || !resellerId) return;
+        // The reseller only ever holds the tracked-link id; the server resolves
+        // it to the buyable BSV listingId (supplier stays hidden).
+        const trackedId = (selected.raw as EnrichedBsvListing).listingId;
+        setIsCheckingOut(true);
+        try {
+            const r = await resolveTrackedListingAction({ trackedId });
+            if (!r.success) {
+                toast.error(r.error || "Produit indisponible");
+                return;
+            }
+            const res = await checkoutResellerAction({
+                resellerId,
+                cart: [{ listingId: r.listingId, quantity }],
+            });
+            if (res.success) {
+                setBoughtLabel(selected.title);
+                setSelectedKey(null);
+                setModalOrderId((res as { orderId?: number }).orderId ?? null);
+            } else {
+                toast.error(res.error || "Échec de la commande");
+            }
+        } catch {
+            toast.error("Erreur technique lors du paiement");
+        } finally {
+            setIsCheckingOut(false);
+        }
+    };
 
     const countLabel = isLoading
         ? "Chargement…"
@@ -181,15 +230,19 @@ export default function ResellerMarketplacePage() {
                         item={selected}
                         quantity={quantity}
                         onQuantity={setQuantity}
-                        isCheckingOut={false}
-                        onPurchase={() =>
-                            toast("Achat des produits suivis : bientôt disponible.", {
-                                icon: "🛒",
-                            })
-                        }
+                        isCheckingOut={isCheckingOut}
+                        onPurchase={handlePurchase}
                     />
                 </aside>
             </div>
+
+            <PurchaseSuccessModal
+                isOpen={modalOrderId !== null}
+                onClose={() => setModalOrderId(null)}
+                orderId={modalOrderId}
+                productLabel={boughtLabel}
+                resellerName={resellerName}
+            />
         </div>
     );
 }
