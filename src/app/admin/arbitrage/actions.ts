@@ -73,6 +73,30 @@ export const addBsvTrackedLinkAction = withAuth(
     }
 );
 
+export const triggerBsvTrackerTickAction = withAuth(
+    { roles: [UserRole.ADMIN] },
+    async (_input, user) => {
+        try {
+            const res = await fetch(`${lbUrl}/api/v1/giftcards/admin/bsv-tracker/tick`, {
+                method: "POST",
+                headers: getHeaders(),
+            });
+            const data = await res.json();
+            if (!res.ok || !data.success) {
+                throw new Error(data.error || "Erreur lors du déclenchement de la synchronisation");
+            }
+            await logSecurityAction({
+                userId: user.id,
+                action: "BSV_TRACKER_MANUAL_TICK",
+                entityType: "bsv_tracker",
+            });
+            return { success: true as const };
+        } catch (error) {
+            return { success: false as const, error: (error as Error).message };
+        }
+    }
+);
+
 export const removeBsvTrackedLinkAction = withAuth(
     { 
         roles: [UserRole.ADMIN],

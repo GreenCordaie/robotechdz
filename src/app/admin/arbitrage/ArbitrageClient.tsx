@@ -2,7 +2,11 @@
 
 import React, { useState, useTransition } from "react";
 import { toast } from "react-hot-toast";
-import { addBsvTrackedLinkAction, removeBsvTrackedLinkAction } from "./actions";
+import {
+    addBsvTrackedLinkAction,
+    removeBsvTrackedLinkAction,
+    triggerBsvTrackerTickAction,
+} from "./actions";
 
 export default function ArbitrageClient({ initialLinks }: { initialLinks: any[] }) {
     const [isPending, startTransition] = useTransition();
@@ -23,6 +27,17 @@ export default function ArbitrageClient({ initialLinks }: { initialLinks: any[] 
                 setTitle("");
             } else {
                 toast.error(res.error || "Erreur lors de l'ajout.");
+            }
+        });
+    };
+
+    const handleTick = () => {
+        startTransition(async () => {
+            const res = await triggerBsvTrackerTickAction({});
+            if (res.success) {
+                toast.success("Synchronisation lancée — le catalogue se met à jour dans quelques instants.");
+            } else {
+                toast.error(res.error || "Erreur lors du déclenchement.");
             }
         });
     };
@@ -89,8 +104,16 @@ export default function ArbitrageClient({ initialLinks }: { initialLinks: any[] 
 
             {/* Liste des liens */}
             <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden">
-                <div className="p-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
+                <div className="p-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 flex items-center justify-between gap-3">
                     <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Produits Surveillés</h2>
+                    <button
+                        onClick={handleTick}
+                        disabled={isPending}
+                        title="Resynchroniser maintenant tous les produits (stock, prix, catalogue achetable)"
+                        className="px-3 py-1.5 text-sm bg-emerald-600 hover:bg-emerald-700 text-white font-medium rounded-lg disabled:opacity-50 transition-colors"
+                    >
+                        {isPending ? "Synchronisation…" : "↻ Synchroniser maintenant"}
+                    </button>
                 </div>
                 <div className="overflow-x-auto">
                     <table className="w-full text-left text-sm text-gray-600 dark:text-gray-400">
