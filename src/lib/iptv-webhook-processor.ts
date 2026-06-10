@@ -194,7 +194,9 @@ export async function processCompletedTask(event: LoadBrainTaskEvent): Promise<v
             status: finalStatus,
             error: partial ? sanitizeProviderError("IPTV combo not delivered") : null,
             errorCode: partial ? "PARTIAL_IPTV" : null,
-            credentialsEncrypted: encrypt(JSON.stringify(event.credentials)),
+            // Guard against a missing credentials payload: JSON.stringify(undefined)
+            // returns undefined, which would store NULL and crash a later decrypt().
+            credentialsEncrypted: encrypt(JSON.stringify(event.credentials ?? {})),
             completedAt: new Date(),
         }).where(and(
             eq(iptvProvisions.orderId, order.id),

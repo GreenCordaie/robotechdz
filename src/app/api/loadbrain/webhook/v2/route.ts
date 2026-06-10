@@ -245,6 +245,15 @@ async function handleG2BulkFailed(event: G2BulkFailedEvent): Promise<void> {
     }
 
     await db.transaction(async (tx) => {
+        // Lock the local order row up-front (same lock order as refundFullOrder,
+        // which locks `orders` first) so a concurrent UI refund can't race us into
+        // a lost update on orders.status.
+        const [lockedOrder] = await tx
+            .select({ status: orders.status })
+            .from(orders)
+            .where(eq(orders.id, localG2bulkOrder.localOrderId))
+            .for("update");
+
         // Idempotency guard: re-read under FOR UPDATE and only refund a still-pending
         // order. Already COMPLETED or REFUNDED → no-op, so a retried `failed`/`refunded`
         // webhook can't credit the wallet twice. Mirrors g2bulk-reconciler.markRefunded.
@@ -291,10 +300,13 @@ async function handleG2BulkFailed(event: G2BulkFailedEvent): Promise<void> {
             });
         }
 
-        await tx
-            .update(orders)
-            .set({ status: "ANNULE" })
-            .where(eq(orders.id, fresh.localOrderId));
+        // Don't clobber an order another refund path already finalized.
+        if (lockedOrder && lockedOrder.status !== "REMBOURSE" && lockedOrder.status !== "ANNULE") {
+            await tx
+                .update(orders)
+                .set({ status: "ANNULE" })
+                .where(eq(orders.id, fresh.localOrderId));
+        }
     });
 
     // Best-effort failure notification
@@ -501,6 +513,14 @@ async function handleGiftcardsFailed(event: unknown): Promise<void> {
 
     // Refund the wallet for the price paid and mark order REFUNDED.
     await db.transaction(async (tx) => {
+        // Lock the local order row up-front (same lock order as refundFullOrder)
+        // so a concurrent UI refund can't race us into a lost update on status.
+        const [lockedOrder] = await tx
+            .select({ status: orders.status })
+            .from(orders)
+            .where(eq(orders.id, localBsvOrder.localOrderId))
+            .for("update");
+
         // Idempotency guard: only refund a still-pending order. Already
         // COMPLETED or REFUNDED → no-op, so a retried `failed` webhook can't
         // credit the wallet twice.
@@ -546,10 +566,13 @@ async function handleGiftcardsFailed(event: unknown): Promise<void> {
             });
         }
 
-        await tx
-            .update(orders)
-            .set({ status: "ANNULE" })
-            .where(eq(orders.id, fresh.localOrderId));
+        // Don't clobber an order another refund path already finalized.
+        if (lockedOrder && lockedOrder.status !== "REMBOURSE" && lockedOrder.status !== "ANNULE") {
+            await tx
+                .update(orders)
+                .set({ status: "ANNULE" })
+                .where(eq(orders.id, fresh.localOrderId));
+        }
     });
 
     console.warn("[v2-webhook] giftcards failed processed:", lbOrderId, errorMsg);

@@ -39,6 +39,7 @@ import {
     insertPendingIptvOrder,
     attachLbIdentifiers,
     setIptvOrderStatus,
+    markIptvOrderFailed,
     type IptvProvider,
     type IptvOrderStatus,
 } from "@/services/iptv-reseller.service";
@@ -411,6 +412,8 @@ export const createIptvOrderAction = withAuth(
             // `provisionIptvOrder` walks variant.loadbrainSlug, builds the
             // right payload per provider, and inserts an `iptv_provisions`
             // row that the webhook handler already knows how to complete.
+            let dispatched = false;
+            let dispatchError = "";
             try {
                 const { provisionIptvOrder } = await import("@/lib/iptv");
                 const provRes = await provisionIptvOrder(staged.localOrderId);
@@ -422,22 +425,67 @@ export const createIptvOrderAction = withAuth(
                         lbTaskId: provRes.taskIds[0],
                         lbOrderId: null,
                     });
+                    dispatched = true;
+                } else {
+                    // provisionIptvOrder swallows per-item failures (e.g. an unmapped
+                    // LoadBrain slug) and returns 0 tasks WITHOUT throwing. The order
+                    // would otherwise sit PENDING_LOADBRAIN with a NULL lbTaskId, which
+                    // the reconciler skips — wallet debited, money stuck forever.
+                    dispatchError = "aucune tâche créée (produit non mappé côté fournisseur)";
                 }
             } catch (lbErr) {
                 console.error(
                     "[iptv:createIptvOrderAction] provisionIptvOrder failed",
                     lbErr,
                 );
-                await db
-                    .update(resellerIptvOrders)
-                    .set({
-                        lastError: `Provisioning failed: ${stringifyError(lbErr)}`,
-                        updatedAt: new Date(),
-                    })
-                    .where(eq(resellerIptvOrders.id, staged.iptvOrderId));
+                dispatchError = stringifyError(lbErr);
+            }
+
+            if (!dispatched) {
+                // Compensation: the wallet was debited in Stage 1 but nothing will be
+                // provisioned and the reconciler cannot recover an order with no
+                // lbTaskId. Reuse the canonical, row-locked refund path (the same one
+                // the webhook + reconciler use) so the reseller's money is never stuck.
+                // markIptvOrderFailed refunds PENDING_LOADBRAIN lines, reverses
+                // totalSpent, sets the mirror FAILED + the local order REMBOURSE.
+                try {
+                    const outcome = await markIptvOrderFailed(db, {
+                        id: staged.iptvOrderId,
+                        resellerId: reseller.id,
+                        reason: `Dispatch échoué: ${dispatchError}`,
+                    });
+                    if (!outcome.refunded) {
+                        // Marked FAILED but wallet not credited (no wallet row / already
+                        // terminal) — surface so an operator can reconcile manually.
+                        console.error(
+                            "[iptv:createIptvOrderAction] dispatch failed, not auto-refunded",
+                            { orderId: staged.localOrderId, outcome },
+                        );
+                        const { sendTelegramNotification } = await import("@/lib/telegram");
+                        sendTelegramNotification(
+                            `⚠️ *IPTV — échec dispatch NON remboursé auto*\n\nCommande: \`${orderNumber}\`\nRevendeur: ${reseller.companyName ?? reseller.id}\nMontant: ${totalAmount.toFixed(2)} DZD\nRaison: ${outcome.reason ?? "?"}\n⚠️ Vérifier le wallet manuellement.`,
+                            ["ADMIN"],
+                        ).catch(() => {});
+                    }
+                } catch (refundErr) {
+                    // A failed compensation is a money-stuck incident: surface loudly.
+                    console.error(
+                        "[iptv:createIptvOrderAction] REFUND COMPENSATION FAILED — money stuck",
+                        { orderId: staged.localOrderId, refundErr },
+                    );
+                    const { sendTelegramNotification } = await import("@/lib/telegram");
+                    sendTelegramNotification(
+                        `🔴 *IPTV — remboursement compensation ÉCHOUÉ*\n\nCommande: \`${orderNumber}\`\nRevendeur: ${reseller.companyName ?? reseller.id}\nMontant: ${totalAmount.toFixed(2)} DZD\n⚠️ Vérifier le wallet manuellement.`,
+                        ["ADMIN"],
+                    ).catch(() => {});
+                    return {
+                        success: false as const,
+                        error: "Provisioning échoué et le remboursement automatique a rencontré une erreur. Notre équipe a été alertée.",
+                    };
+                }
                 return {
                     success: false as const,
-                    error: `Provisioning différé — sera réessayé automatiquement. Détail: ${stringifyError(lbErr)}`,
+                    error: "Produit IPTV momentanément indisponible — votre compte a été intégralement remboursé. Réessayez plus tard.",
                 };
             }
 

@@ -402,7 +402,11 @@ export async function reverseSupplierDebits(
  * that doesn't exist, which threw and rolled back the whole approval.)
  *
  * Locks the wallet row FOR UPDATE. No-op (returns false) if the reseller has no
- * wallet row. Reusable by every refund path (admin returns, IPTV/G2Bulk/BSV).
+ * wallet row — this is a deliberate contract: the sole caller (approveReturn in
+ * caisse/actions.ts) treats `false` as a hard failure and throws to roll back
+ * the whole return approval, forcing an admin to seed the wallet first rather
+ * than silently auto-creating one (see refund-reseller-wallet.test.ts).
+ * Reusable by every refund path (admin returns, IPTV/G2Bulk/BSV).
  */
 export async function refundResellerWallet(
     tx: Transaction,

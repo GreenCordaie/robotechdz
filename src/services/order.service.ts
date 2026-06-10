@@ -8,6 +8,13 @@ import { eventBus, SystemEvent } from "@/lib/events";
 import { isPayableStatus } from "@/lib/order-finance";
 import { UserError } from "@/lib/errors";
 
+/**
+ * Tolerance (DZD) allowed above the strict amount owed on a payment, to absorb
+ * rounding/tips/change without flagging. Payments beyond owed + client debt +
+ * this tolerance are rejected as fat-finger entries.
+ */
+const PAYMENT_OVERPAY_TOLERANCE_DZD = 100;
+
 export class OrderService {
     /**
      * Handles the payment logic for an order, including debt management, 
@@ -41,6 +48,27 @@ export class OrderService {
             const currentCumulativePaid = parseFloat(order.montantPaye || "0");
             const newTotalPaid = currentCumulativePaid + montantRecuMaintenant;
             const totalApresRemise = parseFloat(order.totalAmount) - remise;
+
+            // Fat-finger / abuse guard: a single payment may legitimately cover this
+            // order's outstanding balance PLUS the client's existing debt (overpayment
+            // is intentionally used below to clear prior debt), with a small tolerance.
+            // Anything beyond that is almost certainly a typo (e.g. 100000 for 1000),
+            // which would otherwise inflate montantPaye and emit bogus clientPayments rows.
+            const outstandingThisOrder = Math.max(0, totalApresRemise - currentCumulativePaid);
+            let maxAcceptablePayment = outstandingThisOrder + PAYMENT_OVERPAY_TOLERANCE_DZD;
+            if (clientId) {
+                const [clientForCap] = await tx
+                    .select({ debt: clients.totalDetteDzd })
+                    .from(clients)
+                    .where(eq(clients.id, clientId));
+                maxAcceptablePayment += parseFloat(clientForCap?.debt || "0");
+            }
+            if (montantRecuMaintenant > maxAcceptablePayment) {
+                throw new UserError(
+                    `Montant trop élevé : ${montantRecuMaintenant.toFixed(0)} DZD dépasse le maximum dû ` +
+                    `(${maxAcceptablePayment.toFixed(0)} DZD). Vérifiez le montant saisi.`,
+                );
+            }
 
             const resteAPayer = Math.max(0, totalApresRemise - newTotalPaid);
             const extraPayment = Math.max(0, newTotalPaid - totalApresRemise);
