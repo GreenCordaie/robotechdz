@@ -227,13 +227,23 @@ export const refundManualOrderAction = withAuth(
     async (input) => {
         try {
             await db.transaction(async (tx) => {
-                const row = await tx.query.manualOrders.findFirst({
-                    where: and(
-                        eq(manualOrders.id, input.id),
-                        eq(manualOrders.status, "PENDING_DELIVERY"),
-                    ),
-                });
-                if (!row) {
+                // Lock the order row FOR UPDATE so two concurrent refund clicks
+                // serialize: the second blocks here, then reads the non-PENDING
+                // status the first committed → throws. Without the lock both
+                // could read PENDING_DELIVERY and credit the wallet twice.
+                const [row] = await tx
+                    .select({
+                        status: manualOrders.status,
+                        pricePaidDzd: manualOrders.pricePaidDzd,
+                        resellerId: manualOrders.resellerId,
+                        localOrderId: manualOrders.localOrderId,
+                        productTitleSnapshot: manualOrders.productTitleSnapshot,
+                        deliveryNote: manualOrders.deliveryNote,
+                    })
+                    .from(manualOrders)
+                    .where(eq(manualOrders.id, input.id))
+                    .for("update");
+                if (!row || row.status !== "PENDING_DELIVERY") {
                     throw new Error("Commande introuvable ou déjà traitée");
                 }
                 const refund = parseFloat(row.pricePaidDzd);

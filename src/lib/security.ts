@@ -19,6 +19,28 @@ export class UnauthorizedError extends Error {
     }
 }
 
+// De-spam the security Telegram alert. A logged-in operator who simply leaves a
+// reseller page open in a tab makes its poll hit a RESELLER-only action once a
+// minute → one alert/minute forever. We still AUDIT every attempt, but only
+// push a Telegram notification once per (user + action) within this window.
+const SECURITY_ALERT_WINDOW_MS = 15 * 60 * 1000;
+const securityAlertLastSent = new Map<string, number>();
+function shouldSendSecurityAlert(key: string): boolean {
+    const now = Date.now();
+    const last = securityAlertLastSent.get(key) ?? 0;
+    if (now - last < SECURITY_ALERT_WINDOW_MS) return false;
+    securityAlertLastSent.set(key, now);
+    // Opportunistic cleanup so the map can't grow unbounded.
+    if (securityAlertLastSent.size > 500) {
+        for (const k of Array.from(securityAlertLastSent.keys())) {
+            if (now - (securityAlertLastSent.get(k) ?? 0) > SECURITY_ALERT_WINDOW_MS) {
+                securityAlertLastSent.delete(k);
+            }
+        }
+    }
+    return true;
+}
+
 /**
  * Cache shop settings for the duration of the request to avoid redundant DB queries.
  */
@@ -199,11 +221,14 @@ export function withAuth<T extends z.ZodType, R>(
                     newData: { actionName: action.name || "anonymous", attemptedRoles: config.roles }
                 });
 
-                // Escalate to Telegram for unauthorized attempts
-                await sendTelegramNotification(
-                    `⚠️ ALERTE SÉCURITÉ: Tentative d'accès non autorisé par ${user.nom} (${user.role}) à l'action ${action.name || "système"}.`,
-                    [UserRole.ADMIN]
-                ).catch(() => { });
+                // Escalate to Telegram — but throttled per user+action so a
+                // background reseller tab can't spam one alert every minute.
+                if (shouldSendSecurityAlert(`${user.id}:${action.name || "anon"}`)) {
+                    await sendTelegramNotification(
+                        `⚠️ ALERTE SÉCURITÉ: Tentative d'accès non autorisé par ${user.nom} (${user.role}) à l'action ${action.name || "système"}.`,
+                        [UserRole.ADMIN]
+                    ).catch(() => { });
+                }
 
                 throw new UnauthorizedError("Permissions insuffisantes");
             }

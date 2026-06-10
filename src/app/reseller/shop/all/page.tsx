@@ -12,6 +12,8 @@ import {
     type G2BulkCatalogPricingMeta,
 } from "../g2bulk-shop-actions";
 import { checkoutResellerAction, getCurrentResellerAction } from "../../actions";
+import PurchaseSuccessModal from "../components/PurchaseSuccessModal";
+import { useResellerCart } from "@/store/useResellerCart";
 import {
     SEED_BRANDS,
     deriveG2BulkBrand,
@@ -60,12 +62,19 @@ export default function ResellerShopAllPage() {
     const [selectedKey, setSelectedKey] = useState<string | null>(null);
     const [quantity, setQuantity] = useState(1);
     const [resellerId, setResellerId] = useState<number | null>(null);
+    const [resellerName, setResellerName] = useState<string | undefined>(undefined);
     const [isCheckingOut, setIsCheckingOut] = useState(false);
+    const [modalOrderId, setModalOrderId] = useState<number | null>(null);
+    const addToCart = useResellerCart((s) => s.add);
 
     /* ───── Reseller ───── */
     useEffect(() => {
         getCurrentResellerAction({}).then((res) => {
-            if (res.success && res.data) setResellerId((res.data as { id: number }).id);
+            if (res.success && res.data) {
+                const r = res.data as { id: number; companyName?: string };
+                setResellerId(r.id);
+                setResellerName(r.companyName);
+            }
         });
     }, []);
 
@@ -188,8 +197,8 @@ export default function ResellerShopAllPage() {
                 ],
             });
             if (res.success) {
-                toast.success("Commande envoyée à LoadBrain", { duration: 4000 });
                 setSelectedKey(null);
+                setModalOrderId((res as { orderId?: number }).orderId ?? null);
             } else {
                 toast.error(res.error || "Échec de la commande");
             }
@@ -303,9 +312,35 @@ export default function ResellerShopAllPage() {
                         onQuantity={setQuantity}
                         onPurchase={handlePurchase}
                         isCheckingOut={isCheckingOut}
+                        onAddToCart={
+                            selected && selected.source === "g2bulk"
+                                ? () => {
+                                      addToCart(
+                                          {
+                                              source: "g2bulk",
+                                              refId: (selected.raw as G2BulkCatalogProduct).productId,
+                                              title: selected.title,
+                                              priceDzd: selected.priceDzd,
+                                              stock: selected.stock,
+                                              brandLabel: brandLabels.get(selected.key),
+                                              region: selected.region,
+                                          },
+                                          quantity,
+                                      );
+                                      toast.success("Ajouté au panier");
+                                  }
+                                : undefined
+                        }
                     />
                 </aside>
             </div>
+
+            <PurchaseSuccessModal
+                isOpen={modalOrderId !== null}
+                onClose={() => setModalOrderId(null)}
+                orderId={modalOrderId}
+                resellerName={resellerName}
+            />
         </div>
     );
 }

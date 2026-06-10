@@ -3,18 +3,19 @@
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Chip, Spinner } from "@heroui/react";
+import { Copy, Send } from "lucide-react";
 import { toast } from "react-hot-toast";
 import { formatCurrency, formatDate } from "@/lib/formatters";
 import {
     getResellerOrdersByKindAction,
     type NormalizedOrderRow,
-    type OrderKind,
 } from "../actions";
+import { KIND_LABELS, sanitizeSupplierText, type OrderKind } from "./types";
 
 const ORDER_TABS: Array<{ key: OrderKind; label: string }> = [
     { key: "all", label: "Toutes" },
-    { key: "bsv", label: "BSV" },
-    { key: "g2bulk", label: "G2Bulk" },
+    // BSV + G2Bulk merged into one neutral family — suppliers are confidential.
+    { key: "giftcards", label: "Cartes & Vouchers" },
     { key: "iptv", label: "IPTV" },
     { key: "active", label: "Active Code" },
     { key: "manual", label: "Manuel" },
@@ -26,6 +27,18 @@ export function OrdersPanel() {
     const [kind, setKind] = useState<OrderKind>("all");
     const [rows, setRows] = useState<NormalizedOrderRow[]>([]);
     const [loading, setLoading] = useState(true);
+    const [resellerName, setResellerName] = useState<string | undefined>(undefined);
+
+    // Reseller shop name — signs the WhatsApp re-share message.
+    useEffect(() => {
+        import("@/app/reseller/actions").then(({ getCurrentResellerAction }) =>
+            getCurrentResellerAction({}).then((res) => {
+                if (res.success && res.data) {
+                    setResellerName((res.data as { companyName?: string }).companyName);
+                }
+            }),
+        );
+    }, []);
 
     useEffect(() => {
         let cancelled = false;
@@ -91,40 +104,92 @@ export function OrdersPanel() {
                         Aucune commande dans cette catégorie
                     </div>
                 ) : (
-                    rows.map((r, i) => <OrderRowCard key={`${r.kind}-${r.orderNumber}-${i}`} row={r} />)
+                    rows.map((r, i) => (
+                        <OrderRowCard
+                            key={`${r.kind}-${r.orderNumber}-${i}`}
+                            row={r}
+                            resellerName={resellerName}
+                        />
+                    ))
                 )}
             </div>
         </div>
     );
 }
 
-function OrderRowCard({ row }: { row: NormalizedOrderRow }) {
+function OrderRowCard({ row, resellerName }: { row: NormalizedOrderRow; resellerName?: string }) {
     const statusStyle = orderStatusStyle(row.status);
+    const code = row.codeOrLink;
+    const isLink = !!code && /^https?:\/\//i.test(code);
+
+    const copyCode = () => {
+        if (!code) return;
+        navigator.clipboard
+            .writeText(code)
+            .then(() => toast.success(isLink ? "Lien copié" : "Code copié"))
+            .catch(() => toast.error("Impossible de copier"));
+    };
+
+    const shareWhatsApp = () => {
+        if (!code) return;
+        const who = resellerName?.trim() ? ` — ${resellerName.trim()}` : "";
+        const intro = isLink ? "Voici votre lien d'accès" : "Voici votre code";
+        const msg =
+            `🛍️ *Votre commande*${who}\n\n${intro} :\n${code}\n\nMerci de votre confiance ! 🙏`;
+        window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, "_blank", "noopener,noreferrer");
+    };
+
     return (
         <div
-            className="bg-[#161616] border border-[#262626] rounded-2xl p-5 flex items-center justify-between gap-4"
+            className="bg-[#161616] border border-[#262626] rounded-2xl p-5"
             data-testid="order-row"
         >
-            <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap mb-1">
-                    <span className="font-black text-white text-sm">{row.orderNumber}</span>
-                    <Chip size="sm" className={`${statusStyle} font-bold text-[9px] uppercase`}>
-                        {row.status}
-                    </Chip>
-                    <Chip size="sm" className="bg-white/5 text-slate-400 font-bold text-[9px] uppercase border border-white/10">
-                        {row.kind}
-                    </Chip>
+            <div className="flex items-center justify-between gap-4">
+                <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap mb-1">
+                        <span className="font-black text-white text-sm">{row.orderNumber}</span>
+                        <Chip size="sm" className={`${statusStyle} font-bold text-[9px] uppercase`}>
+                            {row.status}
+                        </Chip>
+                        <Chip size="sm" className="bg-white/5 text-slate-400 font-bold text-[9px] uppercase border border-white/10">
+                            {KIND_LABELS[row.kind] ?? row.kind}
+                        </Chip>
+                    </div>
+                    <p className="text-xs text-slate-400 font-medium truncate">
+                        {sanitizeSupplierText(row.productName)}
+                    </p>
+                    <p className="text-[10px] text-slate-600 font-bold uppercase mt-1">
+                        {formatDate(new Date(row.createdAt))}
+                    </p>
                 </div>
-                <p className="text-xs text-slate-400 font-medium truncate">{row.productName}</p>
-                <p className="text-[10px] text-slate-600 font-bold uppercase mt-1">
-                    {formatDate(new Date(row.createdAt))}
-                </p>
+                <div className="text-right shrink-0">
+                    <p className="font-black text-[var(--primary)] text-base">
+                        {formatCurrency(row.priceDzd, "DZD")}
+                    </p>
+                </div>
             </div>
-            <div className="text-right shrink-0">
-                <p className="font-black text-[var(--primary)] text-base">
-                    {formatCurrency(row.priceDzd, "DZD")}
-                </p>
-            </div>
+
+            {/* Re-access the delivered code/link any time — copy + WhatsApp share. */}
+            {code && (
+                <div className="mt-3 pt-3 border-t border-[#262626] flex items-center gap-2">
+                    <button
+                        type="button"
+                        onClick={copyCode}
+                        title="Cliquer pour copier"
+                        className="flex-1 min-w-0 flex items-center justify-between gap-2 bg-[#0a0a0a] border border-[#262626] rounded-lg px-3 py-2 hover:border-[var(--primary)]/40 transition-colors text-left group"
+                    >
+                        <span className="font-mono text-xs text-white truncate">{code}</span>
+                        <Copy className="size-4 text-slate-500 group-hover:text-[var(--primary)] shrink-0" />
+                    </button>
+                    <button
+                        type="button"
+                        onClick={shareWhatsApp}
+                        className="shrink-0 inline-flex items-center gap-1.5 bg-[#25D366] text-black font-black rounded-lg px-3 py-2 hover:bg-[#25D366]/90 transition-colors text-xs"
+                    >
+                        <Send className="size-4" /> Partager
+                    </button>
+                </div>
+            )}
         </div>
     );
 }

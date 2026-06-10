@@ -56,18 +56,16 @@ export const getSharedAccountsInventory = withAuth(
                     slotCount += dc.slots.length;
                     const decryptedCode = decrypt(dc.code) || dc.code;
                     const decryptedOutlook = dc.outlookPassword ? (decrypt(dc.outlookPassword) || undefined) : undefined;
-                    // Mask code: split email | pass and keep email visible always
-                    const [email, ...rest] = (decryptedCode || "").split("|").map(s => s.trim());
-                    const fullCode = reveal ? decryptedCode : `${email} | ${MASKED}`;
+                    const fullCode = decryptedCode;
                     return {
                         ...dc,
                         code: fullCode,
-                        outlookPassword: reveal ? decryptedOutlook : (decryptedOutlook ? MASKED : undefined),
+                        outlookPassword: decryptedOutlook,
                         hasOutlookPassword: !!dc.outlookPassword,
                         msStatus: dc.msStatus,
                         slots: dc.slots.map(s => ({
                             ...s,
-                            code: reveal && s.code ? (decrypt(s.code) || s.code) : (s.code ? MASKED : null)
+                            code: s.code ? (decrypt(s.code) || s.code) : null
                         }))
                     };
                 })
@@ -400,8 +398,17 @@ export const updateSharedAccount = withAuth(
                     for (const s of slotsData) {
                         const slotUpdate: Record<string, unknown> = {
                             profileName: s.profileName,
-                            code: s.pinCode ? encrypt(s.pinCode) : null,
                         };
+                        // CRITICAL: never clobber the stored PIN with the masked
+                        // placeholder. The list/edit form renders unrevealed PINs
+                        // as MASKED ("***"); saving the form without revealing
+                        // would otherwise re-encrypt "***" over the real PIN (and
+                        // an empty field used to wipe it to null). Only overwrite
+                        // when the admin supplied a real, non-masked value.
+                        const newPin = s.pinCode?.trim();
+                        if (newPin && !/^\*+$/.test(newPin)) {
+                            slotUpdate.code = encrypt(newPin);
+                        }
                         // Only touch maxDevices when explicitly provided so the
                         // admin can leave it untouched while editing other fields.
                         // `null` means "unlimited" (legacy slots default).
@@ -604,17 +611,16 @@ export const getSharedAccountsHistory = withAuth(
         for (const variant of variants) {
             for (const dc of variant.digitalCodes) {
                 const decryptedCode = decrypt(dc.code) || dc.code;
-                // Keep the email visible, mask the password unless explicitly revealed.
-                const [email] = (decryptedCode || "").split("|").map(s => s.trim());
+                // Keep the full code visible for admin
                 accounts.push({
                     ...dc,
-                    code: reveal ? decryptedCode : `${email} | ${MASKED}`,
-                    outlookPassword: undefined,
+                    code: decryptedCode,
+                    outlookPassword: dc.outlookPassword ? (decrypt(dc.outlookPassword) || undefined) : undefined,
                     hasOutlookPassword: !!dc.outlookPassword,
                     variant: { ...variant, digitalCodes: undefined },
                     slots: dc.slots.map(s => ({
                         ...s,
-                        code: s.code ? (reveal ? (decrypt(s.code) || s.code) : MASKED) : null,
+                        code: s.code ? (decrypt(s.code) || s.code) : null,
                         resolverLogs: logsBySlot[String(s.id)] || []
                     }))
                 });

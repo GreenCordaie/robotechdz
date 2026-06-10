@@ -6,6 +6,7 @@ import { getPublicSettingsAction } from "@/app/admin/settings/actions";
 import { Spinner } from "@heroui/react";
 import { ShieldAlert, Store, Hammer, WifiOff } from "lucide-react";
 import { ShopTopNav } from "./shop/components/ShopTopNav";
+import { CartBar } from "./shop/components/CartBar";
 
 // Safety net: the settings server action should answer in well under a
 // second. If it hangs (e.g. a broken/recompiling server), never leave the
@@ -151,6 +152,7 @@ export default function ResellerLayout({ children }: { children: React.ReactNode
             <main className="flex-1 max-w-[1400px] mx-auto w-full px-4 lg:px-6 py-8 lg:py-12">
                 {children}
             </main>
+            <CartBar />
         </div>
     );
 }

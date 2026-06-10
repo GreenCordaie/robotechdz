@@ -389,6 +389,14 @@ export const resellers = pgTable("resellers", {
     // Seuil d'alerte solde bas (DZD). NULL ou <= 0 → pas d'alerte (opt-in).
     // Quand un débit fait passer le solde sous ce seuil → notif wallet.low_balance (edge-triggered).
     lowBalanceThreshold: numeric("low_balance_threshold", { precision: 12, scale: 2 }),
+    // White-label — branding shown to the RESELLER's own customers on the
+    // public magic-link page (/activer/[token]). NULL = fall back to companyName
+    // / operator defaults. The operator stays invisible to the end customer.
+    brandName: text("brand_name"),
+    brandColor: text("brand_color"), // accent hex, e.g. "#E50914"
+    brandLogoUrl: text("brand_logo_url"), // reseller logo shown on the magic-link page
+    supportPhone: text("support_phone"), // reseller's own customer-support number
+    supportWhatsapp: text("support_whatsapp"), // reseller's WhatsApp (digits, e.g. 213xxxxxxxxx)
     createdAt: timestamp("created_at", { mode: 'date' }).defaultNow(),
 });
 

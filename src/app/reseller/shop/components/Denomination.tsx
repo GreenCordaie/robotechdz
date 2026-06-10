@@ -179,7 +179,9 @@ export const DenominationRow: React.FC<{
     readonly onSelect: (it: Denomination) => void;
     /** Show the brand label inline (useful in the cross-brand flat catalog). */
     readonly brandLabel?: string;
-}> = ({ item, selected, onSelect, brandLabel }) => {
+    /** Optional delivery indicator (Marketplace) — never reveals the supplier. */
+    readonly deliveryType?: "auto" | "manual";
+}> = ({ item, selected, onSelect, brandLabel, deliveryType }) => {
     const outOfStock = item.stock <= 0;
     return (
         <li>
@@ -215,16 +217,25 @@ export const DenominationRow: React.FC<{
                         {item.title}
                     </p>
                     <p className="truncate text-[10px] text-slate-500 font-medium mt-0.5">
-                        <span
-                            className={`uppercase font-black tracking-widest mr-1.5 ${
-                                item.source === "bsv" ? "text-orange-400" : "text-cyan-400"
-                            }`}
-                        >
-                            {item.source === "bsv" ? "ROBOTECHDZ0" : "ROBOTECHDZ"}
+                        {/* Supplier is hidden — every source shows the operator's
+                            own neutral label so resellers can't tell BSV/G2Bulk
+                            apart or trace the upstream vendor. */}
+                        <span className="uppercase font-black tracking-widest mr-1.5 text-cyan-400">
+                            ROBOTECHDZ
                         </span>
                         {item.region && `· ${regionFlag(item.region)} ${item.region}`}
                     </p>
                 </div>
+
+                {deliveryType && (
+                    <span
+                        className={`shrink-0 text-[9px] font-black uppercase tracking-widest ${
+                            deliveryType === "auto" ? "text-cyan-400" : "text-amber-400"
+                        }`}
+                    >
+                        {deliveryType === "auto" ? "⚡ Instantané" : "⏳ Sous 24h"}
+                    </span>
+                )}
 
                 <span
                     className={`shrink-0 text-[10px] font-black uppercase tracking-widest ${
@@ -248,7 +259,9 @@ export const PurchasePanel: React.FC<{
     readonly onQuantity: (n: number) => void;
     readonly onPurchase: () => void;
     readonly isCheckingOut: boolean;
-}> = ({ item, quantity, onQuantity, onPurchase, isCheckingOut }) => {
+    /** When provided, shows an "Ajouter au panier" action (multi-product). */
+    readonly onAddToCart?: () => void;
+}> = ({ item, quantity, onQuantity, onPurchase, isCheckingOut, onAddToCart }) => {
     if (!item) {
         return (
             <div className="bg-[#161616] border border-[#262626] rounded-2xl p-6 text-center text-slate-500 text-sm">
@@ -320,6 +333,17 @@ export const PurchasePanel: React.FC<{
                     {formatCurrency(total, "DZD")}
                 </span>
             </div>
+
+            {onAddToCart && (
+                <Button
+                    onPress={onAddToCart}
+                    isDisabled={item.stock <= 0}
+                    data-testid="add-to-cart-btn"
+                    className="w-full h-11 bg-[#262626] text-white font-black rounded-xl hover:bg-[#333] transition-colors"
+                >
+                    Ajouter au panier
+                </Button>
+            )}
 
             <Button
                 onPress={onPurchase}

@@ -5,10 +5,11 @@ import { Spinner } from "@heroui/react";
 import { TrendingUp } from "lucide-react";
 import { formatCurrency } from "@/lib/formatters";
 import { getResellerTransactionsPagedAction } from "../actions";
-import type { OverviewData, TxRow } from "./types";
+import { SOURCE_LABELS, type OverviewData, type TxRow } from "./types";
 
 export function StatsPanel({ data }: { data: OverviewData }) {
     const [bars, setBars] = useState<Array<{ label: string; volume: number; count: number }>>([]);
+    const [categories, setCategories] = useState<Array<{ label: string; volume: number; count: number }>>([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
@@ -31,16 +32,31 @@ export function StatsPanel({ data }: { data: OverviewData }) {
                         label: d.toLocaleDateString("fr-FR", { month: "short" }),
                     });
                 }
+                // Spend per neutral category (confidential supplier names are
+                // collapsed via SOURCE_LABELS — BSV/G2BULK → "Cartes & Vouchers").
+                const byLabel = new Map<string, { volume: number; count: number }>();
                 for (const tx of items) {
-                    if (!tx.createdAt) continue;
-                    const d = new Date(tx.createdAt);
-                    const key = `${d.getFullYear()}-${d.getMonth()}`;
-                    const slot = byMonth.get(key);
-                    if (!slot) continue;
-                    slot.volume += parseFloat(tx.amount);
-                    slot.count += 1;
+                    if (tx.createdAt) {
+                        const d = new Date(tx.createdAt);
+                        const key = `${d.getFullYear()}-${d.getMonth()}`;
+                        const slot = byMonth.get(key);
+                        if (slot) {
+                            slot.volume += parseFloat(tx.amount);
+                            slot.count += 1;
+                        }
+                    }
+                    const label = tx.source ? SOURCE_LABELS[tx.source] ?? tx.source : "Autre";
+                    const cat = byLabel.get(label) ?? { volume: 0, count: 0 };
+                    cat.volume += parseFloat(tx.amount);
+                    cat.count += 1;
+                    byLabel.set(label, cat);
                 }
                 setBars(Array.from(byMonth.values()));
+                setCategories(
+                    Array.from(byLabel.entries())
+                        .map(([label, v]) => ({ label, ...v }))
+                        .sort((a, b) => b.volume - a.volume),
+                );
             }
             setLoading(false);
         });
@@ -156,6 +172,42 @@ export function StatsPanel({ data }: { data: OverviewData }) {
                                 </p>
                             </div>
                         ))}
+                    </div>
+                )}
+            </div>
+
+            <div className="bg-[#161616] border border-[#262626] rounded-[28px] p-6 space-y-4">
+                <h3 className="text-sm font-black text-white uppercase tracking-widest flex items-center gap-2">
+                    <TrendingUp size={16} className="text-[var(--primary)]" />
+                    Répartition par catégorie (3 mois)
+                </h3>
+                {loading ? (
+                    <div className="py-10 flex justify-center"><Spinner color="warning" /></div>
+                ) : categories.length === 0 ? (
+                    <p className="text-sm text-slate-500 italic">Aucun achat sur la période.</p>
+                ) : (
+                    <div className="space-y-3 pt-1">
+                        {categories.map((c) => {
+                            const total = categories.reduce((a, x) => a + x.volume, 0);
+                            const pct = total > 0 ? (c.volume / total) * 100 : 0;
+                            return (
+                                <div key={c.label} className="space-y-1.5">
+                                    <div className="flex items-center justify-between text-xs">
+                                        <span className="font-bold text-slate-300">{c.label}</span>
+                                        <span className="text-slate-400 font-medium">
+                                            {formatCurrency(c.volume, "DZD")}
+                                            <span className="text-slate-600"> · {c.count} cmd</span>
+                                        </span>
+                                    </div>
+                                    <div className="h-2 bg-white/5 rounded-full overflow-hidden">
+                                        <div
+                                            className="h-full bg-gradient-to-r from-[var(--primary)] to-orange-400"
+                                            style={{ width: `${Math.max(2, pct)}%` }}
+                                        />
+                                    </div>
+                                </div>
+                            );
+                        })}
                     </div>
                 )}
             </div>

@@ -2,9 +2,11 @@
 
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Search, KeyRound, Sparkles, Globe2, AlertTriangle } from "lucide-react";
+import { ArrowLeft, Search, KeyRound, Sparkles, Globe2, AlertTriangle, Send } from "lucide-react";
+import { toast } from "react-hot-toast";
 
 import { ALL_REGION, RegionPills } from "../components/Denomination";
+import { useResellerCart } from "@/store/useResellerCart";
 import {
     getActiveCodeCatalogAction,
     purchaseActiveCodeAction,
@@ -68,6 +70,19 @@ export default function ResellerShopActiveCodePage() {
         | { kind: "error"; message: string }
         | null
     >(null);
+
+    // Reseller shop name — signs the WhatsApp share message to the customer.
+    const [resellerName, setResellerName] = useState<string | undefined>(undefined);
+    const addToCart = useResellerCart((s) => s.add);
+    useEffect(() => {
+        import("@/app/reseller/actions").then(({ getCurrentResellerAction }) =>
+            getCurrentResellerAction({}).then((res) => {
+                if (res.success && res.data) {
+                    setResellerName((res.data as { companyName?: string }).companyName);
+                }
+            }),
+        );
+    }, []);
 
     // Debounce the search input by 250ms — same UX as /reseller/shop/all.
     useEffect(() => {
@@ -316,6 +331,26 @@ export default function ResellerShopActiveCodePage() {
                                     >
                                         Annuler
                                     </button>
+                                    {selected.priceDzd !== null && (
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                addToCart({
+                                                    source: "activecode",
+                                                    refId: selected.id,
+                                                    title: selected.title,
+                                                    priceDzd: selected.priceDzd as number,
+                                                    stock: 99,
+                                                    brandLabel: "Active Code",
+                                                });
+                                                toast.success("Ajouté au panier");
+                                                setSelected(null);
+                                            }}
+                                            className="px-4 py-2 rounded-lg bg-neutral-800 text-white font-bold hover:bg-neutral-700 transition"
+                                        >
+                                            Ajouter au panier
+                                        </button>
+                                    )}
                                     <button
                                         type="button"
                                         disabled={isBuying}
@@ -358,13 +393,55 @@ export default function ResellerShopActiveCodePage() {
                                 <p className="text-xs text-neutral-400 mb-2">
                                     Code :
                                 </p>
-                                <div className="text-2xl font-mono font-bold tracking-wider text-[#FACC15] bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-3 text-center break-all">
+                                <button
+                                    type="button"
+                                    title="Cliquer pour copier"
+                                    onClick={() => {
+                                        navigator.clipboard
+                                            .writeText(purchaseResult.code)
+                                            .then(() => toast.success("Code copié"))
+                                            .catch(() => toast.error("Impossible de copier"));
+                                    }}
+                                    className="w-full text-2xl font-mono font-bold tracking-wider text-[#FACC15] bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-3 text-center break-all cursor-pointer hover:border-[#FACC15]/60 transition"
+                                >
                                     {purchaseResult.code}
-                                </div>
+                                </button>
                                 <p className="text-[11px] text-neutral-500 mt-3">
                                     Commande : {purchaseResult.orderId}
                                 </p>
-                                <div className="flex gap-3 justify-end mt-5">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        const who = resellerName?.trim()
+                                            ? ` — ${resellerName.trim()}`
+                                            : "";
+                                        const msg =
+                                            `🛍️ *Votre code*${who}\n\n` +
+                                            `*Code :* ${purchaseResult.code}\n\n` +
+                                            `Merci de votre confiance ! 🙏`;
+                                        window.open(
+                                            `https://wa.me/?text=${encodeURIComponent(msg)}`,
+                                            "_blank",
+                                            "noopener,noreferrer",
+                                        );
+                                    }}
+                                    className="w-full flex items-center justify-center gap-2 mt-4 px-4 py-2.5 rounded-lg bg-[#25D366] text-black font-bold hover:bg-[#25D366]/90 transition"
+                                >
+                                    <Send className="w-4 h-4" /> Partager sur WhatsApp
+                                </button>
+                                <div className="flex gap-3 justify-end mt-3">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            navigator.clipboard
+                                                .writeText(purchaseResult.code)
+                                                .then(() => toast.success("Code copié"))
+                                                .catch(() => toast.error("Impossible de copier"));
+                                        }}
+                                        className="px-4 py-2 rounded-lg bg-[#FACC15] text-black font-bold hover:bg-[#FACC15]/90 transition"
+                                    >
+                                        Copier le code
+                                    </button>
                                     <button
                                         type="button"
                                         onClick={() => {

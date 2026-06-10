@@ -9,7 +9,7 @@ import {
     Gift,
     Gamepad2,
     Layers,
-    LayoutGrid,
+    Clapperboard,
     Wallet,
     Trophy,
     PartyPopper,
@@ -26,7 +26,7 @@ import {
     Receipt,
     Tv,
     KeyRound,
-    HandCoins,
+    Store,
 } from "lucide-react";
 import {
     Dropdown,
@@ -46,12 +46,12 @@ interface NavItem {
 
 const NAV_ITEMS: ReadonlyArray<NavItem> = [
     { href: "/reseller/dashboard", label: "Dashboard", icon: LayoutDashboard },
-    { href: "/reseller/shop/all", label: "Tout le catalogue", icon: LayoutGrid },
+    { href: "/reseller/shop/streaming", label: "Streaming", icon: Clapperboard },
     { href: "/reseller/shop?type=giftcard", label: "Gift Cards & Vouchers", icon: Gift },
     { href: "/reseller/shop/games", label: "Game Top Up", icon: Gamepad2 },
     { href: "/reseller/iptv", label: "IPTV", icon: Tv },
     { href: "/reseller/shop/active-code", label: "Active Code", icon: KeyRound },
-    { href: "/reseller/shop/manual-delivery", label: "Manual Delivery", icon: HandCoins },
+    { href: "/reseller/shop/marketplace", label: "Marketplace", icon: Store },
     { href: "/reseller/wallet", label: "Wallet", icon: Wallet },
 ];
 
@@ -139,11 +139,15 @@ export const ShopTopNav: React.FC<ShopTopNavProps> = ({ shopName: shopNameProp }
         if (base === "/reseller/shop") {
             const linkType = new URLSearchParams(query).get("type");
             if (!pathname.startsWith("/reseller/shop")) return false;
-            // Sub-routes that have their OWN nav entry (/shop/all, /shop/games)
+            // Sub-routes that have their OWN nav entry (or a dedicated page)
             // must never highlight the gift-card shop tabs.
             if (
                 pathname.startsWith("/reseller/shop/all") ||
-                pathname.startsWith("/reseller/shop/games")
+                pathname.startsWith("/reseller/shop/games") ||
+                pathname.startsWith("/reseller/shop/streaming") ||
+                pathname.startsWith("/reseller/shop/netflix") ||
+                pathname.startsWith("/reseller/shop/active-code") ||
+                pathname.startsWith("/reseller/shop/marketplace")
             ) {
                 return false;
             }

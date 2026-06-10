@@ -16,6 +16,7 @@ import {
 } from "@/services/g2bulk-pricing.service";
 import { searchG2BulkProductsMock } from "@/lib/__mocks__/g2bulk-sdk.mock";
 import { deriveG2BulkBrand, inferG2BulkCategory } from "./brand-utils";
+import { getCachedG2BulkCatalog } from "./g2bulk-catalog-cache";
 
 /* ----------------------------------------------------------------------
  * G2Bulk catalog action (Lot 5)
@@ -160,16 +161,52 @@ export const getG2BulkCatalogAction = withAuth(
                 ? Math.round((params.priceMaxDzd / rate) * 100)
                 : undefined;
 
+        // Fast path: plain pagination (no search/filter) is served from the
+        // shared in-process catalog cache — turns the brand/landing pages' ~25
+        // per-page upstream calls into instant cache slices. Falls back to a
+        // direct upstream query when a search/filter is actually requested
+        // (currently no caller does, but the path stays correct).
+        const canUseCache =
+            !params.q && params.categoryId === undefined && priceMaxCents === undefined;
+
         let resp: Awaited<ReturnType<typeof fetchG2BulkProducts>>;
         try {
-            resp = await fetchG2BulkProducts({
-                q: params.q,
-                categoryId: params.categoryId,
-                priceMaxCents,
-                sortBy: params.sortBy,
-                page: params.page,
-                limit: params.limit,
-            });
+            if (canUseCache) {
+                const all = await getCachedG2BulkCatalog();
+                const start = (params.page - 1) * params.limit;
+                const pageItems: ProviderProduct[] = all
+                    .slice(start, start + params.limit)
+                    .map((p) => ({
+                        id: p.id,
+                        providerId: p.providerId,
+                        categoryId: p.categoryId,
+                        title: p.title,
+                        description: p.description,
+                        imageUrl: p.imageUrl,
+                        unitPriceCents: p.unitPriceCents,
+                        currency: p.currency,
+                        stock: p.stock,
+                        raw: { category_title: p.categoryTitle ?? undefined },
+                    }));
+                resp = {
+                    items: pageItems,
+                    pagination: {
+                        page: params.page,
+                        limit: params.limit,
+                        total: all.length,
+                        totalPages: Math.max(1, Math.ceil(all.length / params.limit)),
+                    },
+                };
+            } else {
+                resp = await fetchG2BulkProducts({
+                    q: params.q,
+                    categoryId: params.categoryId,
+                    priceMaxCents,
+                    sortBy: params.sortBy,
+                    page: params.page,
+                    limit: params.limit,
+                });
+            }
         } catch (err) {
             return {
                 success: false as const,

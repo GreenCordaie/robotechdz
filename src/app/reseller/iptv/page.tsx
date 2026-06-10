@@ -26,6 +26,7 @@ import {
 } from "./components/IptvLinesTable";
 import { IptvCheckoutModal } from "./components/IptvCheckoutModal";
 import { IptvLineDetailModal } from "./components/IptvLineDetailModal";
+import PurchaseSuccessModal from "../shop/components/PurchaseSuccessModal";
 
 const PROVIDERS: ReadonlyArray<IptvProvider> = [
     "panelking365",
@@ -297,8 +298,20 @@ export default function ResellerIptvPage() {
         setCheckoutProduct(product);
     }, []);
 
-    const onCheckoutSuccess = useCallback(() => {
+    const [modalOrderId, setModalOrderId] = useState<number | null>(null);
+    const [resellerName, setResellerName] = useState<string | undefined>(undefined);
+    useEffect(() => {
+        import("@/app/reseller/actions").then(({ getCurrentResellerAction }) =>
+            getCurrentResellerAction({}).then((res) => {
+                if (res.success && res.data) {
+                    setResellerName((res.data as { companyName?: string }).companyName);
+                }
+            }),
+        );
+    }, []);
+    const onCheckoutSuccess = useCallback((orderId: number | null) => {
         loadLines(provider);
+        if (orderId) setModalOrderId(orderId);
     }, [provider, loadLines]);
 
     const onDetailChanged = useCallback(() => {
@@ -434,6 +447,13 @@ export default function ResellerIptvPage() {
                 isOpen={!!checkoutProduct}
                 onClose={() => setCheckoutProduct(null)}
                 onSuccess={onCheckoutSuccess}
+            />
+            <PurchaseSuccessModal
+                isOpen={modalOrderId !== null}
+                onClose={() => setModalOrderId(null)}
+                orderId={modalOrderId}
+                productLabel="Abonnement IPTV"
+                resellerName={resellerName}
             />
             <IptvLineDetailModal
                 iptvOrderId={detailOrderId}

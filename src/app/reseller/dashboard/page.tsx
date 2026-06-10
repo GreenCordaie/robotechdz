@@ -20,33 +20,62 @@ import { formatCurrency } from "@/lib/formatters";
 import { getCurrentResellerAction, getResellerOrdersAction } from "../actions";
 import { toast } from "react-hot-toast";
 
+// An order is "delivered" once it reaches LIVRE or TERMINE — IPTV/marketplace
+// orders settle on LIVRE (codes/credentials sent), not TERMINE. The old badge
+// only checked TERMINE, so delivered orders wrongly showed "Traitement".
+const DELIVERED_STATUSES = new Set(["TERMINE", "LIVRE"]);
+function orderBadge(status: string): { label: string; delivered: boolean; cancelled: boolean } {
+    if (DELIVERED_STATUSES.has(status)) return { label: "Livré", delivered: true, cancelled: false };
+    if (status === "REMBOURSE") return { label: "Remboursé", delivered: false, cancelled: true };
+    if (status === "ANNULE") return { label: "Annulé", delivered: false, cancelled: true };
+    if (status === "EN_ATTENTE") return { label: "En attente", delivered: false, cancelled: false };
+    return { label: "Traitement", delivered: false, cancelled: false };
+}
+
 export default function ResellerDashboard() {
     const [reseller, setReseller] = React.useState<any>(null);
     const [orders, setOrders] = React.useState<any[]>([]);
     const [isLoading, setIsLoading] = React.useState(true);
+    const seqRef = React.useRef(0);
+    const firstLoadRef = React.useRef(true);
+
+    // Refresh balance/stats/orders so a purchase made in another tab is
+    // reflected without a manual reload. Last-write-wins via a monotonic seq
+    // so an in-flight stale response never overwrites a fresher one. Toast
+    // only on the FIRST load failure (a 30s poll must not spam toasts).
+    const loadData = React.useCallback(async () => {
+        const myTurn = ++seqRef.current;
+        const [resRes, ordRes]: [any, any] = await Promise.all([
+            getCurrentResellerAction({}),
+            getResellerOrdersAction({}),
+        ]);
+        if (myTurn < seqRef.current) return; // a newer refresh already landed
+
+        if (resRes.success) setReseller(resRes.data);
+        else if (firstLoadRef.current) toast.error("Erreur de session revendeur");
+
+        if (ordRes.success) setOrders((ordRes.data as any) || []);
+        else if (firstLoadRef.current) toast.error("Impossible de charger les commandes");
+
+        firstLoadRef.current = false;
+        setIsLoading(false);
+    }, []);
 
     React.useEffect(() => {
-        const loadData = async () => {
-            const [resRes, ordRes]: [any, any] = await Promise.all([
-                getCurrentResellerAction({}),
-                getResellerOrdersAction({})
-            ]);
-
-            if (resRes.success) {
-                setReseller(resRes.data);
-            } else {
-                toast.error("Erreur de session revendeur");
-            }
-
-            if (ordRes.success) {
-                setOrders((ordRes.data as any) || []);
-            } else {
-                toast.error("Impossible de charger les commandes");
-            }
-            setIsLoading(false);
-        };
         loadData();
-    }, []);
+        const onFocus = () => loadData();
+        const onVisible = () => {
+            if (document.visibilityState === "visible") loadData();
+        };
+        window.addEventListener("focus", onFocus);
+        document.addEventListener("visibilitychange", onVisible);
+        const interval = window.setInterval(loadData, 30_000);
+        return () => {
+            window.removeEventListener("focus", onFocus);
+            document.removeEventListener("visibilitychange", onVisible);
+            window.clearInterval(interval);
+        };
+    }, [loadData]);
 
     if (isLoading) {
         return (
@@ -80,13 +109,25 @@ export default function ResellerDashboard() {
         tierColor: tier?.color ?? "#94a3b8",
     };
 
-    const recentOrders = orders.slice(0, 3).map(o => ({
-        id: o.orderNumber,
-        date: new Date(o.createdAt).toLocaleDateString(),
-        amount: Number(o.totalAmount),
-        status: o.status,
-        items: o.items?.[0]?.name + (o.items?.length > 1 ? ` +${o.items.length - 1}` : "")
-    }));
+    // Low-balance alert (opt-in): reseller.lowBalanceThreshold NULL/<=0 = off.
+    const lowBalanceThreshold = Number(reseller?.lowBalanceThreshold ?? 0);
+    const isLowBalance =
+        lowBalanceThreshold > 0 && partnerInfo.balance < lowBalanceThreshold;
+
+    const recentOrders = orders.slice(0, 3).map(o => {
+        // G2Bulk/IPTV/streaming orders carry no `items` rows — the real label
+        // lives in the enriched `productNames`. Fall back gracefully.
+        const names: string[] = o.productNames ?? [];
+        const first = names[0] ?? "Commande";
+        const extra = names.length > 1 ? ` +${names.length - 1}` : "";
+        return {
+            id: o.orderNumber,
+            date: new Date(o.createdAt).toLocaleDateString(),
+            amount: Number(o.totalAmount),
+            status: o.status,
+            items: first + extra,
+        };
+    });
 
     return (
         <div className="space-y-10 max-w-7xl animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -118,11 +159,26 @@ export default function ResellerDashboard() {
                             <Wallet className="size-20" />
                         </div>
                         <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-4">Solde de Crédit</p>
-                        <h3 className="text-3xl font-black text-white mb-2">{formatCurrency(partnerInfo.balance, 'DZD')}</h3>
-                        <div className="flex items-center gap-1.5 text-emerald-500 text-xs font-bold">
-                            <ArrowUpRight className="size-4" />
-                            <span>Compte Rechargé</span>
-                        </div>
+                        <h3 className={`text-3xl font-black mb-2 ${isLowBalance ? "text-amber-400" : "text-white"}`}>
+                            {formatCurrency(partnerInfo.balance, 'DZD')}
+                        </h3>
+                        {isLowBalance ? (
+                            <Link
+                                href="/reseller/wallet"
+                                className="inline-flex items-center gap-1.5 text-amber-500 text-xs font-bold hover:underline"
+                            >
+                                <AlertTriangle className="size-4" />
+                                <span>Solde bas — recharger</span>
+                            </Link>
+                        ) : (
+                            <Link
+                                href="/reseller/wallet"
+                                className="inline-flex items-center gap-1.5 text-slate-400 text-xs font-bold hover:text-[var(--primary)] transition-colors"
+                            >
+                                <Plus className="size-4" />
+                                <span>Recharger mon solde</span>
+                            </Link>
+                        )}
                     </CardBody>
                 </Card>
 
@@ -182,19 +238,44 @@ export default function ResellerDashboard() {
                     </div>
 
                     <div className="space-y-4">
-                        {recentOrders.map((order) => (
+                        {recentOrders.length === 0 ? (
+                            <div className="bg-[#161616] border border-dashed border-[#262626] rounded-2xl p-10 text-center">
+                                <ShoppingBag className="size-10 text-slate-600 mx-auto mb-3" />
+                                <p className="text-slate-300 font-bold mb-1">Aucune commande pour le moment</p>
+                                <p className="text-slate-500 text-sm mb-5">
+                                    Faites votre premier achat pour démarrer votre activité.
+                                </p>
+                                <Link
+                                    href="/reseller/shop"
+                                    className="inline-flex items-center gap-2 bg-[var(--primary)] hover:bg-orange-600 text-white px-5 py-2.5 rounded-xl font-bold text-sm transition-all active:scale-95"
+                                >
+                                    <Plus className="size-4" /> Faire un premier achat
+                                </Link>
+                            </div>
+                        ) : (
+                        recentOrders.map((order) => {
+                            const badge = orderBadge(order.status);
+                            const iconCls = badge.delivered
+                                ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-500"
+                                : badge.cancelled
+                                    ? "bg-red-500/10 border-red-500/20 text-red-500"
+                                    : "bg-orange-500/10 border-orange-500/20 text-orange-500";
+                            const chipCls = badge.delivered
+                                ? "bg-emerald-500/10 text-emerald-500"
+                                : badge.cancelled
+                                    ? "bg-red-500/10 text-red-500"
+                                    : "bg-amber-500/10 text-amber-500";
+                            return (
                             <div key={order.id} className="bg-[#161616] border border-[#262626] rounded-2xl p-5 flex items-center justify-between group hover:border-[var(--primary)]/30 transition-all">
                                 <div className="flex items-center gap-5">
-                                    <div className={`size-12 rounded-xl flex items-center justify-center border ${order.status === "TERMINE" ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-500" : "bg-orange-500/10 border-orange-500/20 text-orange-500"
-                                        }`}>
+                                    <div className={`size-12 rounded-xl flex items-center justify-center border ${iconCls}`}>
                                         <ShoppingBag className="size-6" />
                                     </div>
                                     <div>
                                         <div className="flex items-center gap-2">
                                             <h4 className="font-bold text-white tracking-tight">{order.id}</h4>
-                                            <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${order.status === "TERMINE" ? "bg-emerald-500/10 text-emerald-500" : "bg-amber-500/10 text-amber-500"
-                                                }`}>
-                                                {order.status === "TERMINE" ? "Livré" : "Traitement"}
+                                            <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${chipCls}`}>
+                                                {badge.label}
                                             </span>
                                         </div>
                                         <p className="text-xs text-slate-500 font-medium mt-0.5">{order.items}</p>
@@ -205,7 +286,9 @@ export default function ResellerDashboard() {
                                     <p className="text-[10px] text-slate-600 font-bold uppercase tracking-wider mt-1">{order.date}</p>
                                 </div>
                             </div>
-                        ))}
+                            );
+                        })
+                        )}
                     </div>
                 </div>
 

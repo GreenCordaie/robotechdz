@@ -343,6 +343,218 @@ async function handleG2BulkFailed(event: G2BulkFailedEvent): Promise<void> {
     );
 }
 
+// ──────────────────────────────────────────────────────────────────────────
+// BSV (giftcards) delivery/failure handlers. LoadBrain's giftcards module
+// posts a FLAT payload (`{ event, orderId, codes, ... }`) under the legacy
+// event names `giftcard.delivered` / `giftcard.failed`, while a v2 dispatch
+// would wrap the same fields under `data` and use `giftcards.order.*`. We
+// register both name spellings and read `event.data ?? event` so either wire
+// shape (flat v1 or enveloped v2) is processed identically.
+// ──────────────────────────────────────────────────────────────────────────
+type GiftcardsDeliveredCode = {
+    index?: number;
+    code: string;
+    redemptionUrl?: string | null;
+    pin?: string | null;
+};
+
+function giftcardsSource(event: unknown): {
+    orderId: string;
+    codes: ReadonlyArray<GiftcardsDeliveredCode>;
+    error?: string | null;
+    wonSnapshot?: unknown;
+} {
+    const e = (event ?? {}) as Record<string, unknown>;
+    const src = ((e.data as Record<string, unknown> | undefined) ?? e) as Record<
+        string,
+        unknown
+    >;
+    return {
+        orderId: String(src.orderId ?? ""),
+        codes: (Array.isArray(src.codes) ? src.codes : []) as ReadonlyArray<GiftcardsDeliveredCode>,
+        error: (src.error as string | null | undefined) ?? null,
+        wonSnapshot: src.wonSnapshot ?? null,
+    };
+}
+
+async function handleGiftcardsDelivered(event: unknown): Promise<void> {
+    const { orderId: lbOrderId, codes, wonSnapshot } = giftcardsSource(event);
+    if (!lbOrderId) {
+        console.warn("[v2-webhook] giftcards delivered without orderId — ignored");
+        return;
+    }
+
+    const [localBsvOrder] = await db
+        .select()
+        .from(bsvOrders)
+        .where(eq(bsvOrders.lbOrderId, lbOrderId));
+
+    if (!localBsvOrder) {
+        console.warn(
+            "[v2-webhook] giftcards delivered for unknown lbOrderId:",
+            lbOrderId,
+        );
+        return;
+    }
+
+    const processed = await db.transaction(async (tx) => {
+        // Idempotency guard: re-read under FOR UPDATE and only act on a
+        // still-pending order. A replayed/duplicate webhook (already COMPLETED
+        // or REFUNDED) is a no-op — prevents duplicate code rows.
+        const [fresh] = await tx
+            .select()
+            .from(bsvOrders)
+            .where(eq(bsvOrders.id, localBsvOrder.id))
+            .for("update");
+        if (!fresh || fresh.status !== "PENDING_LOADBRAIN") return false;
+
+        for (const c of codes) {
+            await tx.insert(bsvDeliveredCodes).values({
+                bsvOrderId: fresh.id,
+                code: encrypt(c.code),
+                redemptionUrl: c.redemptionUrl ?? null,
+                pin: c.pin ? encrypt(c.pin) : null,
+            });
+        }
+
+        await tx
+            .update(bsvOrders)
+            .set({
+                status: "COMPLETED",
+                completedAt: new Date(),
+                wonSnapshot: wonSnapshot ?? undefined,
+            })
+            .where(eq(bsvOrders.id, fresh.id));
+
+        await tx
+            .update(orders)
+            .set({ status: "LIVRE", isDelivered: true })
+            .where(eq(orders.id, fresh.localOrderId));
+        return true;
+    });
+
+    if (!processed) {
+        console.warn(
+            "[v2-webhook] giftcards delivered ignored (already processed):",
+            lbOrderId,
+        );
+        return;
+    }
+
+    // Best-effort WhatsApp notification — non-blocking.
+    try {
+        const reseller = await db.query.resellers.findFirst({
+            where: eq(resellers.id, localBsvOrder.resellerId),
+        });
+        const localOrder = await db.query.orders.findFirst({
+            where: eq(orders.id, localBsvOrder.localOrderId),
+        });
+        if (reseller?.contactPhone && localOrder) {
+            const notifModule = (await import(
+                "@/services/reseller-notifications.service"
+            )) as unknown as {
+                ResellerNotifications: Record<
+                    string,
+                    ((arg: unknown) => Promise<unknown>) | undefined
+                >;
+            };
+            const notify = notifModule.ResellerNotifications.notifyOrderDelivered;
+            if (typeof notify === "function") {
+                await notify({
+                    resellerId: reseller.id,
+                    companyName: reseller.companyName,
+                    contactPhone: reseller.contactPhone,
+                    orderNumber: localOrder.orderNumber,
+                    codeCount: codes.length,
+                }).catch((err: unknown) => {
+                    console.warn(
+                        "[v2-webhook] notifyOrderDelivered failed (non-bloquant):",
+                        err,
+                    );
+                });
+            }
+        }
+    } catch (err) {
+        console.warn("[v2-webhook] notify wiring failed:", err);
+    }
+}
+
+async function handleGiftcardsFailed(event: unknown): Promise<void> {
+    const { orderId: lbOrderId, error: errorMsg } = giftcardsSource(event);
+    if (!lbOrderId) {
+        console.warn("[v2-webhook] giftcards failed without orderId — ignored");
+        return;
+    }
+
+    const [localBsvOrder] = await db
+        .select()
+        .from(bsvOrders)
+        .where(eq(bsvOrders.lbOrderId, lbOrderId));
+
+    if (!localBsvOrder) {
+        console.warn(
+            "[v2-webhook] giftcards failed for unknown lbOrderId:",
+            lbOrderId,
+        );
+        return;
+    }
+
+    // Refund the wallet for the price paid and mark order REFUNDED.
+    await db.transaction(async (tx) => {
+        // Idempotency guard: only refund a still-pending order. Already
+        // COMPLETED or REFUNDED → no-op, so a retried `failed` webhook can't
+        // credit the wallet twice.
+        const [fresh] = await tx
+            .select()
+            .from(bsvOrders)
+            .where(eq(bsvOrders.id, localBsvOrder.id))
+            .for("update");
+        if (!fresh || fresh.status !== "PENDING_LOADBRAIN") return;
+
+        await tx
+            .update(bsvOrders)
+            .set({ status: "REFUNDED", completedAt: new Date() })
+            .where(eq(bsvOrders.id, fresh.id));
+
+        const reseller = await tx.query.resellers.findFirst({
+            where: eq(resellers.id, fresh.resellerId),
+            with: { wallet: true },
+        });
+
+        if (reseller?.wallet) {
+            const refundAmount = parseFloat(fresh.pricePaidDzd);
+            await tx
+                .select()
+                .from(resellerWallets)
+                .where(eq(resellerWallets.id, reseller.wallet.id))
+                .for("update");
+            await tx
+                .update(resellerWallets)
+                .set({
+                    balance: sql`${resellerWallets.balance} + ${refundAmount}`,
+                    updatedAt: new Date(),
+                })
+                .where(eq(resellerWallets.id, reseller.wallet.id));
+
+            await tx.insert(resellerTransactions).values({
+                walletId: reseller.wallet.id,
+                type: "REFUND",
+                amount: refundAmount.toString(),
+                orderId: fresh.localOrderId,
+                description: `Remboursement BSV - échec livraison: ${errorMsg ?? "inconnu"}`,
+                source: "UPSTREAM_REFUND",
+            });
+        }
+
+        await tx
+            .update(orders)
+            .set({ status: "ANNULE" })
+            .where(eq(orders.id, fresh.localOrderId));
+    });
+
+    console.warn("[v2-webhook] giftcards failed processed:", lbOrderId, errorMsg);
+}
+
 /**
  * SDK v2 webhook entry point. Lives side-by-side with the legacy
  * /api/loadbrain/webhook (manual HMAC verification). Once v2 is verified in
@@ -421,205 +633,20 @@ const handler = createWebhookHandler({
         }) as never,
 
         // ────────────────────────────────────────────────────────────────
-        // BSV Mirror Shop (Lot 3) — handles successful delivery of gift card
-        // codes from LoadBrain. Persists encrypted codes, marks the local
-        // bsv_orders row COMPLETED, and notifies the reseller.
+        // BSV Mirror Shop (Lot 3) — successful delivery / failure of gift
+        // card codes from LoadBrain. Registered under BOTH the canonical v2
+        // names and the legacy flat names LoadBrain's giftcards module
+        // actually emits (`giftcard.delivered` / `giftcard.failed`). The
+        // handlers tolerate flat or enveloped payloads (see giftcardsSource).
         // ────────────────────────────────────────────────────────────────
-        "giftcards.order.delivered": async (event) => {
-            const lbOrderId = event.data.orderId;
-            const codes = event.data.codes;
-            // wonSnapshot is not yet in the SDK v2 type but the brief promises
-            // it. Read defensively until Agent 1 ships it formally.
-            const wonSnapshot =
-                (event.data as unknown as { wonSnapshot?: unknown })
-                    .wonSnapshot ?? null;
-
-            const [localBsvOrder] = await db
-                .select()
-                .from(bsvOrders)
-                .where(eq(bsvOrders.lbOrderId, lbOrderId));
-
-            if (!localBsvOrder) {
-                console.warn(
-                    "[v2-webhook] giftcards.order.delivered for unknown lbOrderId:",
-                    lbOrderId
-                );
-                return;
-            }
-
-            const processed = await db.transaction(async (tx) => {
-                // Idempotency guard: re-read under FOR UPDATE and only act on a
-                // still-pending order. A replayed/duplicate webhook (already
-                // COMPLETED or REFUNDED) is a no-op — prevents duplicate code rows
-                // and reconciler races. Mirrors g2bulk-reconciler.markDelivered.
-                const [fresh] = await tx
-                    .select()
-                    .from(bsvOrders)
-                    .where(eq(bsvOrders.id, localBsvOrder.id))
-                    .for("update");
-                if (!fresh || fresh.status !== "PENDING_LOADBRAIN") return false;
-
-                for (const c of codes) {
-                    // Codes are sensitive — encrypt at rest.
-                    const enriched = c as unknown as {
-                        code: string;
-                        redemptionUrl?: string | null;
-                        pin?: string | null;
-                    };
-                    await tx.insert(bsvDeliveredCodes).values({
-                        bsvOrderId: fresh.id,
-                        code: encrypt(enriched.code),
-                        redemptionUrl: enriched.redemptionUrl ?? null,
-                        pin: enriched.pin ? encrypt(enriched.pin) : null,
-                    });
-                }
-
-                await tx
-                    .update(bsvOrders)
-                    .set({
-                        status: "COMPLETED",
-                        completedAt: new Date(),
-                        wonSnapshot: wonSnapshot ?? undefined,
-                    })
-                    .where(eq(bsvOrders.id, fresh.id));
-
-                await tx
-                    .update(orders)
-                    .set({
-                        status: "LIVRE",
-                        isDelivered: true,
-                    })
-                    .where(eq(orders.id, fresh.localOrderId));
-                return true;
-            });
-
-            if (!processed) {
-                console.warn(
-                    "[v2-webhook] giftcards.order.delivered ignored (already processed):",
-                    lbOrderId
-                );
-                return;
-            }
-
-            // Best-effort WhatsApp notification — non-blocking.
-            try {
-                const reseller = await db.query.resellers.findFirst({
-                    where: eq(resellers.id, localBsvOrder.resellerId),
-                });
-                const localOrder = await db.query.orders.findFirst({
-                    where: eq(orders.id, localBsvOrder.localOrderId),
-                });
-                if (reseller?.contactPhone && localOrder) {
-                    const notifModule = (await import(
-                        "@/services/reseller-notifications.service"
-                    )) as unknown as {
-                        ResellerNotifications: Record<
-                            string,
-                            ((arg: unknown) => Promise<unknown>) | undefined
-                        >;
-                    };
-                    const notify =
-                        notifModule.ResellerNotifications.notifyOrderDelivered;
-                    if (typeof notify === "function") {
-                        await notify({
-                            resellerId: reseller.id,
-                            companyName: reseller.companyName,
-                            contactPhone: reseller.contactPhone,
-                            orderNumber: localOrder.orderNumber,
-                            codeCount: codes.length,
-                        }).catch((err: unknown) => {
-                            console.warn(
-                                "[v2-webhook] notifyOrderDelivered failed (non-bloquant):",
-                                err
-                            );
-                        });
-                    }
-                }
-            } catch (err) {
-                console.warn("[v2-webhook] notify wiring failed:", err);
-            }
-        },
-
-        "giftcards.order.failed": async (event) => {
-            const lbOrderId = event.data.orderId;
-            const errorMsg = event.data.error;
-
-            const [localBsvOrder] = await db
-                .select()
-                .from(bsvOrders)
-                .where(eq(bsvOrders.lbOrderId, lbOrderId));
-
-            if (!localBsvOrder) {
-                console.warn(
-                    "[v2-webhook] giftcards.order.failed for unknown lbOrderId:",
-                    lbOrderId
-                );
-                return;
-            }
-
-            // Refund the wallet for the price paid and mark order REFUNDED.
-            await db.transaction(async (tx) => {
-                // Idempotency guard: re-read under FOR UPDATE and only refund a
-                // still-pending order. Already COMPLETED or REFUNDED → no-op, so a
-                // retried `failed` webhook can't credit the wallet twice. Mirrors
-                // g2bulk-reconciler.markRefunded.
-                const [fresh] = await tx
-                    .select()
-                    .from(bsvOrders)
-                    .where(eq(bsvOrders.id, localBsvOrder.id))
-                    .for("update");
-                if (!fresh || fresh.status !== "PENDING_LOADBRAIN") return;
-
-                await tx
-                    .update(bsvOrders)
-                    .set({ status: "REFUNDED", completedAt: new Date() })
-                    .where(eq(bsvOrders.id, fresh.id));
-
-                const reseller = await tx.query.resellers.findFirst({
-                    where: eq(resellers.id, fresh.resellerId),
-                    with: { wallet: true },
-                });
-
-                if (reseller?.wallet) {
-                    const refundAmount = parseFloat(
-                        fresh.pricePaidDzd
-                    );
-                    // Lock the wallet row before crediting (consistency with reconciler).
-                    await tx
-                        .select()
-                        .from(resellerWallets)
-                        .where(eq(resellerWallets.id, reseller.wallet.id))
-                        .for("update");
-                    await tx
-                        .update(resellerWallets)
-                        .set({
-                            balance: sql`${resellerWallets.balance} + ${refundAmount}`,
-                            updatedAt: new Date(),
-                        })
-                        .where(eq(resellerWallets.id, reseller.wallet.id));
-
-                    await tx.insert(resellerTransactions).values({
-                        walletId: reseller.wallet.id,
-                        type: "REFUND",
-                        amount: refundAmount.toString(),
-                        orderId: fresh.localOrderId,
-                        description: `Remboursement BSV - échec livraison: ${errorMsg}`,
-                        source: "UPSTREAM_REFUND",
-                    });
-                }
-
-                await tx
-                    .update(orders)
-                    .set({ status: "ANNULE" })
-                    .where(eq(orders.id, fresh.localOrderId));
-            });
-
-            console.warn(
-                "[v2-webhook] giftcards.order.failed processed:",
-                lbOrderId,
-                errorMsg
-            );
-        },
+        "giftcards.order.delivered": (async (event: unknown) =>
+            handleGiftcardsDelivered(event)) as never,
+        ["giftcard.delivered" as never]: (async (event: unknown) =>
+            handleGiftcardsDelivered(event)) as never,
+        "giftcards.order.failed": (async (event: unknown) =>
+            handleGiftcardsFailed(event)) as never,
+        ["giftcard.failed" as never]: (async (event: unknown) =>
+            handleGiftcardsFailed(event)) as never,
     },
     onError: (err) => {
         console.error("[v2-webhook] handler error:", err.message);

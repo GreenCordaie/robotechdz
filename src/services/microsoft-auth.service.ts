@@ -13,7 +13,11 @@ export interface MicrosoftTokenResponse {
 
 export class MicrosoftAuthService {
     private static readonly REDIRECT_URI = `${process.env.NEXT_PUBLIC_APP_URL}/api/auth/microsoft/callback`;
-    private static readonly SCOPES = "offline_access Mail.Read";
+    // User.Read is required for the callback's /me lookup that captures the
+    // mailbox address into ms_account_email — without it /me returns 403 and
+    // the streaming watcher skips the account (pollAccount guards on a
+    // non-empty ms_account_email).
+    private static readonly SCOPES = "offline_access Mail.Read User.Read";
 
     /**
      * Récupère les credentials Microsoft depuis les paramètres de la boutique ou l'env.

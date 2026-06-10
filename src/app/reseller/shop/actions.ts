@@ -436,3 +436,217 @@ export interface BsvCatalogPricingMeta {
     customDiscountPct: number;
     conversionRate: number;
 }
+
+/* ----------------------------------------------------------------------
+ * Curated Marketplace (reseller-facing) — Phase 1
+ *
+ * Reads the operator's hand-tracked BSV products (giftcards.bsv_tracked_links
+ * via the LoadBrain admin endpoint) and maps them to the EnrichedBsvListing
+ * shape so the existing grid renders delivery type (auto/manual), seller, rank,
+ * stock and a reseller DZD price. Replaces the live-search catalog source.
+ * --------------------------------------------------------------------- */
+interface TrackedLinkRow {
+    id: string;
+    bsvProductId: string;
+    title: string | null;
+    finalPriceCents: number | null;
+    status: string;
+    stockQty: number | null;
+    sellerName: string | null;
+    sellerRank: string | null;
+    feedbackPos: number | null;
+    feedbackNeg: number | null;
+    deliveryType: string | null;
+}
+
+export const getMarketplaceTrackedAction = withAuth(
+    {
+        roles: [UserRole.RESELLER],
+        schema: z.object({}).optional(),
+    },
+    async (_params, user) => {
+        const reseller = await db.query.resellers.findFirst({
+            where: eq(resellers.userId, user.id),
+        });
+        if (!reseller) {
+            return { success: false as const, error: "Compte revendeur introuvable" };
+        }
+
+        const baseUrl = process.env.LOADBRAIN_URL;
+        const token = process.env.LOADBRAIN_INTERNAL_TOKEN;
+        if (!baseUrl || !token) {
+            return { success: false as const, error: "LoadBrain non configuré" };
+        }
+
+        let rows: TrackedLinkRow[];
+        try {
+            const res = await fetch(
+                `${baseUrl.replace(/\/$/, "")}/api/v1/giftcards/admin/bsv-tracker`,
+                { headers: { "X-Internal-Token": token }, cache: "no-store" },
+            );
+            if (!res.ok) {
+                return { success: false as const, error: `LoadBrain ${res.status}` };
+            }
+            const body = (await res.json()) as { data?: TrackedLinkRow[] };
+            rows = body.data ?? [];
+        } catch (err) {
+            return { success: false as const, error: `LoadBrain: ${(err as Error).message}` };
+        }
+
+        // Only synced, sellable products (skip PENDING/REMOVED and unpriced).
+        const sellable = rows.filter(
+            (r) => r.finalPriceCents != null && r.status !== "REMOVED" && r.status !== "PENDING",
+        );
+
+        const { bsvPricingService } = await import("@/services/bsv-pricing.service");
+        const tier = await TierService.getCurrentTierForReseller(reseller.id);
+        const tierDiscountPct = tier ? parseFloat(tier.discountPct) : 0;
+        const customDiscountPct = reseller.customDiscount
+            ? Math.min(parseFloat(reseller.customDiscount), 100 - tierDiscountPct)
+            : 0;
+        const ctx: ResellerPricingContext = {
+            resellerId: reseller.id,
+            tierDiscountPct,
+            customDiscountPct,
+        };
+
+        const pricingInputs: BsvListingPricingInput[] = sellable.map((r) => ({
+            priceCentsUsd: r.finalPriceCents ?? 0,
+            category: "giftcard",
+            brand: r.sellerName ?? "BSV",
+            sku: r.bsvProductId,
+        }));
+        const servicePrices = await bsvPricingService.computeBulk(pricingInputs, ctx);
+        const totalDiscountPct = tierDiscountPct + customDiscountPct;
+
+        const items: EnrichedBsvListing[] = sellable.map((r, i) => {
+            const x = servicePrices[i] as unknown as Record<string, number>;
+            const pricing = {
+                basePriceCentsUsd: x.basePriceCentsUsd ?? r.finalPriceCents ?? 0,
+                markupPct: x.markupPct ?? 0,
+                listPriceDzd: x.listPriceDzd ?? x.basePriceDzd ?? 0,
+                finalPriceDzd: x.finalPriceDzd ?? 0,
+                discountPct: x.discountPct ?? totalDiscountPct,
+                conversionRate: x.conversionRate ?? 0,
+            };
+            const deliveryType: "auto" | "manual" =
+                r.deliveryType === "auto" ? "auto" : "manual";
+            // SUPPLIER CONFIDENTIALITY: never leak the BSV seller / supplier to
+            // the reseller. The upstream vendor (Face2Face, BSV, G2Bulk…) and
+            // its reputation stay admin-only — the reseller payload is fully
+            // neutralised so it's untraceable even via the network/data.
+            return {
+                listingId: r.id,
+                upstreamKey: r.id,
+                encodedId: r.id,
+                product: {
+                    sku: r.id,
+                    brand: "ROBOTECHDZ",
+                    category: "giftcard",
+                    faceValue: "",
+                    faceUnit: "",
+                    region: "GLOBAL",
+                    displayName: r.title ?? "Produit",
+                    imageUrl: null,
+                },
+                seller: {
+                    slug: "",
+                    rank: null,
+                    positiveReviews: 0,
+                    negativeReviews: 0,
+                },
+                priceCents: r.finalPriceCents ?? 0,
+                currency: "USD",
+                deliveryType,
+                isApi: false,
+                stockQty: r.stockQty ?? 0,
+                score: 0,
+                rawTitle: r.title ?? null,
+                pricing,
+            };
+        });
+
+        return {
+            success: true as const,
+            data: {
+                items,
+                pricing: {
+                    tierName: tier?.name ?? null,
+                    tierColor: tier?.color ?? null,
+                    tierDiscountPct,
+                    customDiscountPct,
+                    conversionRate: items[0]?.pricing.conversionRate ?? 0,
+                },
+            },
+        };
+    },
+);
+
+/**
+ * Resolve a curated tracked product (by its tracked-link id, the only id the
+ * reseller sees) to a buyable BSV listingId. Two server-side hops keep the
+ * supplier hidden: tracked id → encoded_id (admin tracker) → listingId
+ * (listings-by-encoded). The returned listingId feeds checkoutResellerAction.
+ */
+export const resolveTrackedListingAction = withAuth(
+    {
+        roles: [UserRole.RESELLER],
+        schema: z.object({ trackedId: z.string().min(1) }),
+    },
+    async ({ trackedId }) => {
+        const baseUrl = process.env.LOADBRAIN_URL;
+        const token = process.env.LOADBRAIN_INTERNAL_TOKEN;
+        const apiKey = process.env.LOADBRAIN_API_KEY;
+        if (!baseUrl || !token || !apiKey) {
+            return { success: false as const, error: "LoadBrain non configuré" };
+        }
+        const base = baseUrl.replace(/\/$/, "");
+
+        // 1) tracked id → encoded_id + stock (server-only; never sent to client).
+        let bsvProductId: string;
+        try {
+            const res = await fetch(`${base}/api/v1/giftcards/admin/bsv-tracker`, {
+                headers: { "X-Internal-Token": token },
+                cache: "no-store",
+            });
+            if (!res.ok) return { success: false as const, error: `LoadBrain ${res.status}` };
+            const body = (await res.json()) as {
+                data?: Array<{ id: string; bsvProductId: string; status: string }>;
+            };
+            const row = (body.data ?? []).find((r) => r.id === trackedId);
+            if (!row) return { success: false as const, error: "Produit introuvable" };
+            if (row.status !== "IN_STOCK") {
+                return { success: false as const, error: "Produit en rupture de stock" };
+            }
+            bsvProductId = row.bsvProductId;
+        } catch (err) {
+            return { success: false as const, error: `LoadBrain: ${(err as Error).message}` };
+        }
+
+        // 2) encoded_id → freshest buyable listingId.
+        try {
+            const res = await fetch(
+                `${base}/api/v1/giftcards/internal/listings-by-encoded/${encodeURIComponent(bsvProductId)}`,
+                { headers: { "X-API-Key": apiKey }, cache: "no-store" },
+            );
+            if (!res.ok) {
+                return { success: false as const, error: "Offre momentanément indisponible — réessayez." };
+            }
+            const body = (await res.json()) as {
+                data?: { listingId?: string; deliveryType?: string; stockQty?: number | null };
+            };
+            const d = body.data;
+            if (!d?.listingId) {
+                return { success: false as const, error: "Offre momentanément indisponible." };
+            }
+            return {
+                success: true as const,
+                listingId: d.listingId,
+                deliveryType: d.deliveryType === "auto" ? ("auto" as const) : ("manual" as const),
+                stockQty: d.stockQty ?? 0,
+            };
+        } catch (err) {
+            return { success: false as const, error: `LoadBrain: ${(err as Error).message}` };
+        }
+    },
+);

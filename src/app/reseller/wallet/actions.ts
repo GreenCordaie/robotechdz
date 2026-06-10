@@ -23,36 +23,17 @@ import {
 import { withAuth } from "@/lib/security";
 import { UserRole } from "@/lib/constants";
 import { TierService } from "@/services/tier.service";
-
-// ──────────────────────────────────────────────────────────────────────
-// Source / type literals — mirror the values written by the 0028 wiring
-// ──────────────────────────────────────────────────────────────────────
-
-export const TX_TYPES = ["PURCHASE", "RECHARGE", "REFUND"] as const;
-export type TxType = (typeof TX_TYPES)[number];
-
-export const TX_SOURCES = [
-    "BSV",
-    "G2BULK",
-    "IPTV",
-    "ACTIVE_CODE",
-    "MANUAL",
-    "ADMIN_RECHARGE",
-    "UPSTREAM_REFUND",
-    "LEGACY",
-] as const;
-export type TxSource = (typeof TX_SOURCES)[number];
-
-export const ORDER_KINDS = [
-    "bsv",
-    "g2bulk",
-    "iptv",
-    "active",
-    "manual",
-    "legacy",
-    "all",
-] as const;
-export type OrderKind = (typeof ORDER_KINDS)[number];
+// Source / type literals live in the client-safe components/types module —
+// a "use server" file must not export const arrays (they'd become server
+// references in client components). See the note there.
+import {
+    TX_TYPES,
+    TX_SOURCES,
+    ORDER_KINDS,
+    type TxType,
+    type TxSource,
+    type OrderKind,
+} from "./components/types";
 
 // ──────────────────────────────────────────────────────────────────────
 // 1) getResellerWalletOverviewAction — single fetch at mount
@@ -388,11 +369,35 @@ export const getResellerOrdersByKindAction = withAuth(
                         ...acIds.map((r) => r.id),
                         ...manIds.map((r) => r.id),
                     ]);
+                    // Shared-account orders (Netflix etc.) carry their customer
+                    // magic link on the slot — surface it as codeOrLink so the
+                    // wallet row shows a copy + WhatsApp re-share button.
+                    const legacyItemIds = ordersList
+                        .filter((o) => !mirrored.has(o.id))
+                        .flatMap((o) => o.items.map((it) => it.id));
+                    const linkByItem = new Map<number, string>();
+                    if (legacyItemIds.length > 0) {
+                        const { digitalCodeSlots } = await import("@/db/schema");
+                        const slotRows = await db
+                            .select({
+                                orderItemId: digitalCodeSlots.orderItemId,
+                                activationUrl: digitalCodeSlots.activationUrl,
+                            })
+                            .from(digitalCodeSlots)
+                            .where(inArray(digitalCodeSlots.orderItemId, legacyItemIds));
+                        for (const s of slotRows) {
+                            if (s.orderItemId != null && s.activationUrl && !linkByItem.has(s.orderItemId)) {
+                                linkByItem.set(s.orderItemId, s.activationUrl);
+                            }
+                        }
+                    }
                     for (const o of ordersList) {
                         if (mirrored.has(o.id)) continue;
                         const firstItem = o.items?.[0];
                         const productName =
                             firstItem?.variant?.product?.name ?? firstItem?.name ?? "Commande";
+                        const magicLink =
+                            o.items.map((it) => linkByItem.get(it.id)).find(Boolean) ?? null;
                         rows.push({
                             kind: "legacy",
                             orderNumber: o.orderNumber,
@@ -403,7 +408,7 @@ export const getResellerOrdersByKindAction = withAuth(
                             priceDzd: parseFloat(o.totalAmount),
                             status: o.status,
                             createdAt: o.createdAt ?? new Date(),
-                            codeOrLink: null,
+                            codeOrLink: magicLink,
                         });
                     }
                 }
@@ -411,7 +416,7 @@ export const getResellerOrdersByKindAction = withAuth(
 
             // BSV / G2Bulk / IPTV reuse their existing actions — call them
             // here so the wallet page never duplicates query logic.
-            if (kind === "bsv" || kind === "all") {
+            if (kind === "bsv" || kind === "giftcards" || kind === "all") {
                 const { getBsvOrdersAction } = await import("../orders/bsv-actions");
                 const res = await getBsvOrdersAction({});
                 if (res.success) {
@@ -429,7 +434,7 @@ export const getResellerOrdersByKindAction = withAuth(
                 }
             }
 
-            if (kind === "g2bulk" || kind === "all") {
+            if (kind === "g2bulk" || kind === "giftcards" || kind === "all") {
                 const { getG2BulkOrdersAction } = await import("../orders/g2bulk-actions");
                 const res = await getG2BulkOrdersAction({ limit: cap });
                 if (res.success) {
@@ -463,6 +468,39 @@ export const getResellerOrdersByKindAction = withAuth(
                             customerLabel: string | null;
                         }>;
                     };
+                    // Surface IPTV credentials as codeOrLink so the wallet row
+                    // gets the same copy + WhatsApp re-share button as the other
+                    // order types. Credentials live encrypted in iptvProvisions.
+                    const iptvOrderIds = (data.items ?? []).map((x) => x.localOrderId);
+                    const credByOrder = new Map<number, string>();
+                    if (iptvOrderIds.length > 0) {
+                        const { iptvProvisions } = await import("@/db/schema");
+                        const { decrypt } = await import("@/lib/encryption");
+                        const { inArray: inArr } = await import("drizzle-orm");
+                        const provs = await db
+                            .select({
+                                orderId: iptvProvisions.orderId,
+                                enc: iptvProvisions.credentialsEncrypted,
+                            })
+                            .from(iptvProvisions)
+                            .where(inArr(iptvProvisions.orderId, iptvOrderIds));
+                        for (const p of provs) {
+                            if (p.orderId == null || !p.enc || credByOrder.has(p.orderId)) continue;
+                            try {
+                                const dec = decrypt(p.enc);
+                                const c = dec ? (JSON.parse(dec) as Record<string, unknown>) : null;
+                                if (!c) continue;
+                                const parts: string[] = [];
+                                if (typeof c.url === "string" && c.url) parts.push(`URL: ${c.url}`);
+                                if (typeof c.username === "string" && c.username) parts.push(`User: ${c.username}`);
+                                if (typeof c.password === "string" && c.password) parts.push(`Pass: ${c.password}`);
+                                if (!parts.length && typeof c.m3u === "string" && c.m3u) parts.push(c.m3u);
+                                if (parts.length) credByOrder.set(p.orderId, parts.join("\n"));
+                            } catch {
+                                /* skip undecryptable */
+                            }
+                        }
+                    }
                     for (const r of data.items ?? []) {
                         rows.push({
                             kind: "iptv",
@@ -473,7 +511,7 @@ export const getResellerOrdersByKindAction = withAuth(
                             priceDzd: parseFloat(r.pricePaidDzd),
                             status: r.status,
                             createdAt: r.createdAt,
-                            codeOrLink: null,
+                            codeOrLink: credByOrder.get(r.localOrderId) ?? null,
                         });
                     }
                 }

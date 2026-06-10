@@ -32,6 +32,8 @@ import {
     type Denomination,
 } from "../components/Denomination";
 import type { EnrichedBsvListing } from "@/types/bsv-listings";
+import PurchaseSuccessModal from "../components/PurchaseSuccessModal";
+import { useResellerCart } from "@/store/useResellerCart";
 
 // Action schemas cap `limit` at 48 — keep at or below that.
 const PAGE_SIZE = 48;
@@ -53,13 +55,18 @@ export default function ResellerBrandPage() {
     const [selectedKey, setSelectedKey] = useState<string | null>(null);
     const [quantity, setQuantity] = useState(1);
     const [resellerId, setResellerId] = useState<number | null>(null);
+    const [resellerName, setResellerName] = useState<string | undefined>(undefined);
     const [isCheckingOut, setIsCheckingOut] = useState(false);
+    const [modalOrderId, setModalOrderId] = useState<number | null>(null);
+    const addToCart = useResellerCart((s) => s.add);
 
     /* ───── Reseller ───── */
     useEffect(() => {
         getCurrentResellerAction({}).then((res) => {
             if (res.success && res.data) {
-                setResellerId((res.data as { id: number }).id);
+                const r = res.data as { id: number; companyName?: string };
+                setResellerId(r.id);
+                setResellerName(r.companyName);
             }
         });
     }, []);
@@ -172,9 +179,10 @@ export default function ResellerBrandPage() {
                       };
             const res = await checkoutResellerAction({ resellerId, cart: [cartItem] });
             if (res.success) {
-                toast.success("Commande envoyée à LoadBrain", { duration: 4000 });
                 setSelectedKey(null);
-                router.push("/reseller/orders");
+                // Open the post-purchase modal with the delivered code(s) instead
+                // of redirecting to "Mes Achats".
+                setModalOrderId((res as { orderId?: number }).orderId ?? null);
             } else {
                 toast.error(res.error || "Échec de la commande");
             }
@@ -183,7 +191,7 @@ export default function ResellerBrandPage() {
         } finally {
             setIsCheckingOut(false);
         }
-    }, [selected, resellerId, quantity, router]);
+    }, [selected, resellerId, quantity]);
 
     /* ───── Render ───── */
     return (
@@ -261,9 +269,35 @@ export default function ResellerBrandPage() {
                         onQuantity={setQuantity}
                         onPurchase={handlePurchase}
                         isCheckingOut={isCheckingOut}
+                        onAddToCart={
+                            selected && selected.source === "g2bulk"
+                                ? () => {
+                                      addToCart(
+                                          {
+                                              source: "g2bulk",
+                                              refId: (selected.raw as G2BulkCatalogProduct).productId,
+                                              title: selected.title,
+                                              priceDzd: selected.priceDzd,
+                                              stock: selected.stock,
+                                              brandLabel: label,
+                                              region: selected.region,
+                                          },
+                                          quantity,
+                                      );
+                                      toast.success("Ajouté au panier");
+                                  }
+                                : undefined
+                        }
                     />
                 </aside>
             </div>
+
+            <PurchaseSuccessModal
+                isOpen={modalOrderId !== null}
+                onClose={() => setModalOrderId(null)}
+                orderId={modalOrderId}
+                resellerName={resellerName}
+            />
         </div>
     );
 }
