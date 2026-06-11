@@ -12,9 +12,10 @@ async function getDeps() {
     const { logSecurityAction } = await import("@/lib/security");
     const { encrypt, decrypt } = await import("@/lib/encryption");
     const { checkRateLimit, recordFailure, resetRateLimit } = await import("@/lib/rate-limit");
+    const { issueMfaTicket, verifyMfaTicket } = await import("@/lib/mfa-ticket");
     const turnstileSecret = process.env.TURNSTILE_SECRET_KEY;
 
-    return { db, users, eq, bcrypt, createSession, deleteSession, getSession, logSecurityAction, encrypt, decrypt, checkRateLimit, recordFailure, resetRateLimit, turnstileSecret };
+    return { db, users, eq, bcrypt, createSession, deleteSession, getSession, logSecurityAction, encrypt, decrypt, checkRateLimit, recordFailure, resetRateLimit, issueMfaTicket, verifyMfaTicket, turnstileSecret };
 }
 
 async function verifyTurnstile(token: string, secret: string) {
@@ -37,11 +38,23 @@ export async function loginAction(formData: FormData) {
     const password = formData.get("password") as string;
     const honeypot = formData.get("website_url") as string;
 
-    const { db, users, eq, bcrypt, createSession, logSecurityAction, checkRateLimit, recordFailure, resetRateLimit, turnstileSecret } = await getDeps();
+    const { db, users, eq, bcrypt, createSession, logSecurityAction, checkRateLimit, recordFailure, resetRateLimit, issueMfaTicket, turnstileSecret } = await getDeps();
 
-    // 0. Turnstile check — verify if token is provided (skip if widget didn't load)
+    // 0. Turnstile check — fail-closed, parity with reseller side.
+    // Cloudflare official test secret keys always pass; used in local dev
+    // where the widget isn't rendered.
+    // Doc: https://developers.cloudflare.com/turnstile/troubleshooting/testing/
+    const TURNSTILE_TEST_SECRETS = new Set([
+        "1x0000000000000000000000000000000AA", // always passes
+        "2x0000000000000000000000000000000AA", // always fails
+        "3x0000000000000000000000000000000AA", // token already spent
+    ]);
+    const isTurnstileTestKey = turnstileSecret ? TURNSTILE_TEST_SECRETS.has(turnstileSecret) : false;
     const turnstileToken = formData.get("cf-turnstile-response") as string;
-    if (turnstileSecret && turnstileToken) {
+    if (turnstileSecret && !isTurnstileTestKey) {
+        if (!turnstileToken) {
+            return { success: false, error: "Veuillez valider le CAPTCHA" };
+        }
         const isValid = await verifyTurnstile(turnstileToken, turnstileSecret);
         if (!isValid) {
             return { success: false, error: "Vérification de sécurité échouée" };
@@ -104,12 +117,13 @@ export async function loginAction(formData: FormData) {
         // Reset on success
         await resetRateLimit(email);
 
-        // 2FA CHECK
+        // 2FA CHECK — hand back a signed step-2 ticket bound to this user, not
+        // a raw userId the client could swap (verified in verifyMfaAction).
         if (user.twoFactorSecret) {
             return {
                 success: true,
                 mfaRequired: true,
-                tempUserId: user.id
+                mfaTicket: await issueMfaTicket(user.id, user.role)
             };
         }
 
@@ -137,9 +151,25 @@ export async function loginAction(formData: FormData) {
     }
 }
 
-export async function verifyMfaAction(userId: number, code: string) {
+export async function verifyMfaAction(ticket: string, code: string) {
     try {
-        const { db, users, eq, createSession, logSecurityAction, encrypt, decrypt, checkRateLimit, recordFailure, resetRateLimit } = await getDeps();
+        const { db, users, eq, createSession, logSecurityAction, encrypt, decrypt, checkRateLimit, recordFailure, resetRateLimit, verifyMfaTicket } = await getDeps();
+
+        // Resolve the user from the SIGNED step-1 ticket — never trust a raw
+        // client-supplied userId for the second factor (closes the IDOR/bypass).
+        // Allowlist admin-side roles only — a verified RESELLER ticket must not
+        // be acceptable here (parity with verifyResellerMfaAction's RESELLER check).
+        const ADMIN_SIDE_ROLES = new Set([
+            "ADMIN",
+            "SUPER_ADMIN",
+            "CAISSIER",
+            "TRAITEUR",
+        ]);
+        const claims = await verifyMfaTicket(ticket);
+        if (!claims || !ADMIN_SIDE_ROLES.has(claims.role)) {
+            return { success: false, error: "Session expirée, reconnectez-vous." };
+        }
+        const userId = claims.userId;
 
         // 0. Rate Limit Check (MFA)
         const limit = await checkRateLimit(`mfa:${userId}`);
@@ -149,6 +179,9 @@ export async function verifyMfaAction(userId: number, code: string) {
         if (userList.length === 0) return { success: false, error: "Utilisateur introuvable" };
 
         const user = userList[0];
+        // Defense-in-depth: even if a forged/stale ticket somehow passed, refuse
+        // to elevate a RESELLER (or unknown role) row through the admin flow.
+        if (!ADMIN_SIDE_ROLES.has(user.role)) return { success: false, error: "Utilisateur introuvable" };
         if (!user.twoFactorSecret) return { success: false, error: "2FA non configuré" };
 
         let isValid: any = verify({ token: code, secret: decrypt(user.twoFactorSecret) as string });
@@ -174,7 +207,7 @@ export async function verifyMfaAction(userId: number, code: string) {
                 userId: user.id,
                 action: "AUTH_MFA_FAILED",
                 entityType: "AUTH",
-                newData: { code }
+                newData: { reason: "invalid_code" }
             });
             await recordFailure(`mfa:${user.id}`);
             return { success: false, error: "Code invalide" };

@@ -42,5 +42,17 @@ pack_stub() {
 pack_stub "$REPO_ROOT/vendor/loadbrain-site-integration-stub" "loadbrain-site-integration-3.2.0-fixed.tgz"
 pack_stub "$REPO_ROOT/vendor/loadbrain-sdk-stub" "loadbrain-sdk-3.2.0.tgz"
 
+# @loadbrain/sdk-v2 is referenced as a DIRECTORY dep (file:../LoadBrain/packages/sdk-v2),
+# not a tgz, and its dist is gitignored upstream + its tsconfig extends a workspace
+# package (can't build standalone in CI). We vendor the REAL compiled output (real
+# .d.ts → strict tsc passes accurately; nothing hand-written to drift) and drop it
+# at the expected path. NB vendored under lib/ (not dist/ — root .gitignore excludes
+# dist). To refresh: cp ../LoadBrain/packages/sdk-v2/dist/* -> vendor/loadbrain-sdk-v2/lib/
+# (drop *.map) when the SDK API changes.
+SDK_V2_TARGET="$(cd "$REPO_ROOT/.." && pwd)/LoadBrain/packages/sdk-v2"
+mkdir -p "$SDK_V2_TARGET"
+cp -r "$REPO_ROOT/vendor/loadbrain-sdk-v2/." "$SDK_V2_TARGET/"
+echo "[ci-stubs] OK sdk-v2 (vendored real dist) -> $SDK_V2_TARGET"
+
 echo "[ci-stubs] Done. Files in $TARGET_DIR :"
 ls -lh "$TARGET_DIR"

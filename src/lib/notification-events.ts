@@ -10,10 +10,12 @@
 
 export const RESELLER_NOTIF_EVENTS = {
     walletRecharged: "wallet.recharged",
+    walletLowBalance: "wallet.low_balance",
     signupApproved: "signup.approved",
     signupRejected: "signup.rejected",
     orderConfirmed: "order.confirmed",
     orderCredentialsReady: "order.credentials.ready",
+    supportReply: "support.reply",
 } as const;
 
 export type ResellerNotifEventKey =
@@ -21,8 +23,10 @@ export type ResellerNotifEventKey =
 
 export const RESELLER_NOTIF_EVENT_LABELS: Record<ResellerNotifEventKey, string> = {
     "wallet.recharged": "Recharge wallet confirmée",
+    "wallet.low_balance": "Alerte solde bas",
     "signup.approved": "Compte partenaire activé",
     "signup.rejected": "Demande partenaire refusée",
     "order.confirmed": "Commande B2B confirmée",
     "order.credentials.ready": "Credentials prêtes après provisioning",
+    "support.reply": "Réponse support",
 };

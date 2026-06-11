@@ -65,8 +65,20 @@ interface Transaction {
     exchangeRate?: string | null;
 }
 
+interface ExternalSupplier {
+    id: number;
+    name: string;
+    balance: string;
+    currency: string;
+    providerKind: string | null;
+    alertThreshold: string | null;
+    lastBalanceAt: Date | string | null;
+    externalConfig: { apiKeyEnv?: string; endpoint?: string; module?: string } | null;
+}
+
 interface SuppliersContentProps {
     initialSuppliers: Supplier[];
+    initialExternalSuppliers?: ExternalSupplier[];
     initialHistory: Transaction[];
     initialStats?: {
         totalPaidDzd: string;
@@ -77,7 +89,9 @@ interface SuppliersContentProps {
     shopSettings?: any;
 }
 
-export default function SuppliersContent({ initialSuppliers, initialHistory, initialStats, shopSettings }: SuppliersContentProps) {
+import ExternalSuppliersSection from "./ExternalSuppliersSection";
+
+export default function SuppliersContent({ initialSuppliers, initialExternalSuppliers, initialHistory, initialStats, shopSettings }: SuppliersContentProps) {
     const router = useRouter();
     const [suppliers, setSuppliers] = useState<Supplier[]>(initialSuppliers || []);
     const [history, setHistory] = useState<Transaction[]>(initialHistory || []);
@@ -258,6 +272,9 @@ export default function SuppliersContent({ initialSuppliers, initialHistory, ini
 
                 {activeTab === "overview" ? (
                     <>
+                        {/* External services balance section (CapSolver, 2Captcha, Mudfish, LB modules…) */}
+                        <ExternalSuppliersSection suppliers={initialExternalSuppliers ?? []} />
+
                         {/* KPI Section */}
                         <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
                             <Card className="bg-[#161616] border border-[#262626] shadow-sm overflow-hidden group">

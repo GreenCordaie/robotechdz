@@ -2,7 +2,7 @@
 
 import { db } from "@/db";
 import { iptvProvisions, digitalCodes, orders, orderItems, productVariants } from "@/db/schema";
-import { eq, desc, and, sql } from "drizzle-orm";
+import { eq, desc, and, sql, exists, isNull } from "drizzle-orm";
 import { withAuth } from "@/lib/security";
 import { UserRole, DigitalCodeStatus } from "@/lib/constants";
 import { decrypt, encrypt } from "@/lib/encryption";
@@ -13,7 +13,17 @@ export const getIptvProvisions = withAuth(
     { roles: [UserRole.ADMIN, UserRole.CAISSIER, UserRole.TRAITEUR] },
     async () => {
         try {
+            // B2C scoping: only show kiosk-side provisions (orders.resellerId IS NULL).
+            // Reseller IPTV orders have their own surface (/reseller/iptv) and own
+            // mirror table (reseller_iptv_orders), so they must not leak into the
+            // admin kiosk view.
             const provisions = await db.query.iptvProvisions.findMany({
+                where: exists(
+                    db.select({ _: sql`1` }).from(orders).where(and(
+                        eq(orders.id, iptvProvisions.orderId),
+                        isNull(orders.resellerId)
+                    ))
+                ),
                 with: {
                     order: { with: { client: true } },
                     orderItem: true,

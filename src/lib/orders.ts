@@ -6,7 +6,9 @@ import {
     orderItems,
     suppliers,
     supplierTransactions,
-    productVariantSuppliers
+    productVariantSuppliers,
+    resellerWallets,
+    resellerTransactions
 } from "@/db/schema";
 import { eq, and, sql, inArray, exists } from "drizzle-orm";
 import { checkStockAndAlert } from "@/lib/stock-alerts";
@@ -89,6 +91,39 @@ export async function allocateOrderStock(
                 await tx.update(digitalCodeSlots)
                     .set({ status: DigitalCodeSlotStatus.VENDU, orderItemId: item.id })
                     .where(inArray(digitalCodeSlots.id, slotIds));
+
+                // Mint the streaming activation deeplink token for each
+                // assigned slot. Without this, the WhatsApp delivery message
+                // would carry only email/password/PIN — no magic link — and
+                // the customer would have to use the "reply CODE" fallback
+                // every time Netflix asks for a household code. Mirrors what
+                // attribuerSlotAutomatiqueAction does in /admin/comptes-partages.
+                // Best-effort per slot: a single failure can't block the
+                // whole order allocation.
+                try {
+                    const { createTokenForSlot } = await import("@/services/slot-activation-token.service");
+                    const baseUrl =
+                        process.env.NEXT_PUBLIC_APP_URL ||
+                        process.env.PUBLIC_URL ||
+                        "https://boutique.nexusbox.tech";
+                    for (const slotId of slotIds) {
+                        try {
+                            const { token } = await createTokenForSlot(tx, slotId);
+                            const activationUrl = `${baseUrl.replace(/\/$/, "")}/activer/${token}`;
+                            await tx
+                                .update(digitalCodeSlots)
+                                .set({ activationUrl })
+                                .where(eq(digitalCodeSlots.id, slotId));
+                        } catch (err: any) {
+                            console.error(
+                                `[stock-alloc] activation token mint failed for slot ${slotId}:`,
+                                err?.message,
+                            );
+                        }
+                    }
+                } catch (err: any) {
+                    console.error("[stock-alloc] activation token service unavailable:", err?.message);
+                }
 
                 // Mark parent codes as VENDU if all slots are gone
                 const parentCodeIds = Array.from(new Set(availableSlots.map((s: any) => s.digitalCodeId)));
@@ -269,17 +304,29 @@ export async function reverseSupplierDebits(
     { orderId, orderItemId }: { orderId?: number, orderItemId?: number },
     reason: string = "Remboursement"
 ) {
-    if (!orderId && !orderItemId) return;
+    // supplier_transactions has NO orderItemId column, so a reversal can only be
+    // scoped by orderId. Called with only orderItemId, the old code fell back to
+    // matching EVERY ACHAT_STOCK row in the table — crediting every supplier.
+    // Refuse instead (per-item supplier reversal is unsupported by the schema).
+    if (!orderId) {
+        if (orderItemId) {
+            await logSecurityAction({
+                userId: null,
+                action: "SUPPLIER_REVERSAL_SKIPPED_UNSCOPED",
+                entityType: "SUPPLIER",
+                entityId: "0",
+                newData: { orderItemId, reason },
+            });
+        }
+        return;
+    }
 
     // Determine which ACHAT_STOCK transactions belong to this order
     const relatedTransactions = await tx.query.supplierTransactions.findMany({
-        where: (table: any, { and, eq }: any) => {
-            const conditions = [eq(table.type, SupplierTransactionType.ACHAT_STOCK)];
-            if (orderId) conditions.push(eq(table.orderId, orderId));
-            // Note : la colonne orderItemId n'existe pas sur supplierTransactions,
-            // on retombe donc sur orderId même quand orderItemId est fourni.
-            return and(...conditions);
-        }
+        where: (table: any, { and, eq }: any) => and(
+            eq(table.type, SupplierTransactionType.ACHAT_STOCK),
+            eq(table.orderId, orderId),
+        ),
     });
 
     if (relatedTransactions.length === 0) return;
@@ -300,7 +347,10 @@ export async function reverseSupplierDebits(
         existingReversals.map((r: any) => r.supplierId)
     );
 
-    await Promise.all(relatedTransactions.map(async (st: any) => {
+    // Séquentiel (pas Promise.all) : une transaction Drizzle = une seule
+    // connexion, donc des requêtes concurrentes peuvent se télescoper. Le
+    // séquencement rend aussi la dédup intra-boucle (reversedSupplierIds) fiable.
+    for (const st of relatedTransactions) {
         // Skip si déjà reversé pour ce fournisseur
         if (reversedSupplierIds.has(st.supplierId)) {
             await logSecurityAction({
@@ -310,7 +360,7 @@ export async function reverseSupplierDebits(
                 entityId: st.supplierId.toString(),
                 newData: { orderId: st.orderId, reason, achatStockId: st.id }
             });
-            return;
+            continue; // skip THIS supplier only — not the whole reversal (was: return)
         }
 
         // 1. Credit supplier balance
@@ -341,5 +391,52 @@ export async function reverseSupplierDebits(
 
         // Mémorise pour bloquer un autre ACHAT_STOCK du même fournisseur dans la même boucle
         reversedSupplierIds.add(st.supplierId);
-    }));
+    }
+}
+
+/**
+ * Credits a reseller's wallet for a refund and traces it in reseller_transactions.
+ *
+ * `resellers` has NO balance column — the balance lives on `reseller_wallets`.
+ * (The old approveReturn wrote `UPDATE resellers SET balance` against a column
+ * that doesn't exist, which threw and rolled back the whole approval.)
+ *
+ * Locks the wallet row FOR UPDATE. No-op (returns false) if the reseller has no
+ * wallet row — this is a deliberate contract: the sole caller (approveReturn in
+ * caisse/actions.ts) treats `false` as a hard failure and throws to roll back
+ * the whole return approval, forcing an admin to seed the wallet first rather
+ * than silently auto-creating one (see refund-reseller-wallet.test.ts).
+ * Reusable by every refund path (admin returns, IPTV/G2Bulk/BSV).
+ */
+export async function refundResellerWallet(
+    tx: Transaction,
+    { resellerId, montant, orderId, description }: {
+        resellerId: number;
+        montant: number;
+        orderId: number;
+        description?: string;
+    }
+): Promise<boolean> {
+    const [wallet] = await tx
+        .select({ id: resellerWallets.id })
+        .from(resellerWallets)
+        .where(eq(resellerWallets.resellerId, resellerId))
+        .for("update");
+
+    if (!wallet) return false;
+
+    await tx.update(resellerWallets)
+        .set({ balance: sql`${resellerWallets.balance} + ${montant}`, updatedAt: new Date() })
+        .where(eq(resellerWallets.id, wallet.id));
+
+    await tx.insert(resellerTransactions).values({
+        walletId: wallet.id,
+        type: "REFUND",
+        amount: String(montant),
+        orderId,
+        description: description ?? `Remboursement Commande #${orderId}`,
+        source: "LEGACY",
+    });
+
+    return true;
 }

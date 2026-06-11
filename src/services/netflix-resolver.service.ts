@@ -5,6 +5,14 @@ export interface ResolverResult {
     value?: string;
     attempts: number;
     error?: string;
+    /** Microsoft Graph message ID for the source email. Used by the
+     * streaming worker to dedup against `slot_events.source_email_id`
+     * so re-polling the same inbox doesn't re-deliver the same code. */
+    sourceEmailId?: string;
+    /** Email subject — useful for audit logs + debugging. */
+    sourceEmailSubject?: string;
+    /** When the email was received (ISO string). */
+    receivedAt?: string;
 }
 
 export class NetflixResolverService {
@@ -45,11 +53,20 @@ export class NetflixResolverService {
                 return {
                     type: result.type,
                     value: result.value,
-                    attempts: 1
+                    attempts: 1,
+                    sourceEmailId: email.id,
+                    sourceEmailSubject: email.subject,
+                    receivedAt: email.receivedDateTime,
                 };
             }
 
-            return { type: 'NOT_FOUND', attempts: 1 };
+            return {
+                type: 'NOT_FOUND',
+                attempts: 1,
+                sourceEmailId: email.id,
+                sourceEmailSubject: email.subject,
+                receivedAt: email.receivedDateTime,
+            };
 
         } catch (error: any) {
             console.error(`[NetflixResolver] Graph Native Error: ${error.message}`);

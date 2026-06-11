@@ -24,6 +24,11 @@ export function initNotificationWorker() {
             await triggerDebtPaymentNotification(data.paymentId);
         } catch (error: any) {
             console.error(`[Worker] Failed to handle DEBT_PAYMENT_RECORDED:`, error.message);
+            // Re-enqueue via BullMQ so the retry/backoff policy applies instead of silent loss.
+            await addNotificationJob(NotificationJobType.TRIGGER_N8N, {
+                type: 'DEBT_PAYMENT_RETRY',
+                paymentId: data.paymentId,
+            }).catch((e) => console.error(`[Worker] Failed to enqueue DEBT_PAYMENT_RECORDED retry:`, e?.message));
         }
     });
 
@@ -63,14 +68,14 @@ export function initNotificationWorker() {
                 await N8nService.notifyOrderEvent("ORDER_PAID", order as any, items);
 
                 // Push notification to admin/caissier
-                const { sendPushToRoleAction } = await import("@/app/admin/push/actions");
+                const { sendPushToRole } = await import("@/lib/push-sender");
                 const amount = parseFloat((order as any).totalAmount || '0').toLocaleString('fr-DZ');
-                sendPushToRoleAction('ADMIN', {
+                sendPushToRole('ADMIN', {
                     title: `Commande ${(order as any).orderNumber}`,
                     body: `${amount} DZD — ${items.length} article(s)`,
                     url: '/admin/caisse',
                 }).catch(() => {});
-                sendPushToRoleAction('CAISSIER', {
+                sendPushToRole('CAISSIER', {
                     title: `Nouvelle commande ${(order as any).orderNumber}`,
                     body: `${amount} DZD — ${items.length} article(s)`,
                     url: '/admin/caisse',
@@ -78,6 +83,10 @@ export function initNotificationWorker() {
             }
         } catch (error: any) {
             console.error(`[Worker] Failed to handle ORDER_PAID:`, error.message);
+            await addNotificationJob(NotificationJobType.TRIGGER_N8N, {
+                orderId: data.orderId,
+                context: 'ORDER_PAID_RETRY',
+            }).catch((e) => console.error(`[Worker] Failed to enqueue ORDER_PAID retry:`, e?.message));
         }
     });
 
@@ -90,6 +99,11 @@ export function initNotificationWorker() {
             console.log(`[Worker] ORDER_DELIVERED #${data.orderId}: ${result.success ? 'OK' : result.error || 'skipped'}`);
         } catch (error: any) {
             console.error(`[Worker] Failed to handle ORDER_DELIVERED:`, error.message);
+            // Retry via the queue so attempts/backoff apply (delivery is money-critical).
+            await addNotificationJob(NotificationJobType.TRIGGER_N8N, {
+                orderId: data.orderId,
+                context: 'DELIVERY',
+            }).catch((e) => console.error(`[Worker] Failed to enqueue ORDER_DELIVERED retry:`, e?.message));
         }
     });
 
@@ -105,6 +119,10 @@ export function initNotificationWorker() {
             if (order) await N8nService.notifyOrderArchival(order as any);
         } catch (error: any) {
             console.error(`[Worker] Failed to handle ORDER_PRINTED:`, error.message);
+            await addNotificationJob(NotificationJobType.TRIGGER_N8N, {
+                orderId: data.orderId,
+                context: 'ARCHIVAL',
+            }).catch((e) => console.error(`[Worker] Failed to enqueue ORDER_PRINTED retry:`, e?.message));
         }
     });
 
@@ -120,6 +138,10 @@ export function initNotificationWorker() {
             if (order) await N8nService.notifyOrderArchival(order as any);
         } catch (error: any) {
             console.error(`[Worker] Failed to handle TICKET_PRINTED:`, error.message);
+            await addNotificationJob(NotificationJobType.TRIGGER_N8N, {
+                orderId: data.orderId,
+                context: 'ARCHIVAL',
+            }).catch((e) => console.error(`[Worker] Failed to enqueue TICKET_PRINTED retry:`, e?.message));
         }
     });
 }

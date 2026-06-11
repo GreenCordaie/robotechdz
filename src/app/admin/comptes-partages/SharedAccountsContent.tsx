@@ -12,11 +12,13 @@ import {
     linkProductToSharing,
     getSharedAccountsHistory,
     resolveHouseholdAction,
+    sweepSharedAccountSlots,
+    generateMissingSlotsAction,
 } from "./actions";
 import {
     Users, Mail, LayoutGrid, CheckCircle2, Search, User, Calendar,
     Activity, ShieldCheck, AlertCircle, Copy, Plus, Edit3, Trash2,
-    Key, ExternalLink, Clock, Link
+    Key, ExternalLink, Clock, Link, Smartphone
 } from "lucide-react";
 import toast from "react-hot-toast";
 import {
@@ -47,7 +49,7 @@ export default function SharedAccountsContent() {
     const [addPurchasePrice, setAddPurchasePrice] = useState("");
     const [addPurchaseCurrency, setAddPurchaseCurrency] = useState("DZD");
     const [addIsRelayed, setAddIsRelayed] = useState(false);
-    const [addSlotsData, setAddSlotsData] = useState<{ profileName: string; pinCode: string }[]>([]);
+    const [addSlotsData, setAddSlotsData] = useState<{ profileName: string; pinCode: string; maxDevices: number }[]>([]);
     const [generatedPins, setGeneratedPins] = useState<{ slotIndex: number; pin: string }[]>([]);
     const [isAdding, setIsAdding] = useState(false);
     const [historySearch, setHistorySearch] = useState("");
@@ -75,7 +77,7 @@ export default function SharedAccountsContent() {
     const [editOutlookPassword, setEditOutlookPassword] = useState("");
     const [editPurchasePrice, setEditPurchasePrice] = useState("");
     const [editPurchaseCurrency, setEditPurchaseCurrency] = useState("DZD");
-    const [editSlotsData, setEditSlotsData] = useState<{ id?: number; profileName: string; pinCode: string }[]>([]);
+    const [editSlotsData, setEditSlotsData] = useState<{ id?: number; profileName: string; pinCode: string; maxDevices: number | null }[]>([]);
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     // ── Delete ────────────────────────────────────────────────────────────────
@@ -89,16 +91,33 @@ export default function SharedAccountsContent() {
 
     // ── Outlook password visibility (per account id) ──────────────────────────
     const [shownOutlookPw, setShownOutlookPw] = useState<Set<number>>(new Set());
+    const [passwordsRevealed, setPasswordsRevealed] = useState(false);
+    const [revealConfirmOpen, setRevealConfirmOpen] = useState(false);
+    const [isSweeping, setIsSweeping] = useState(false);
+    const [isGenerating, setIsGenerating] = useState(false);
+    const [orphanCount, setOrphanCount] = useState(0);
 
     // ── Load ──────────────────────────────────────────────────────────────────
-    const loadInventory = useCallback(async () => {
+    const loadInventory = useCallback(async (revealPasswords = false) => {
         try {
             const [invData, varData, linkData] = await Promise.all([
-                getSharedAccountsInventory(),
+                getSharedAccountsInventory({ revealPasswords }),
                 getSharingVariants({}),
                 getAvailableVariantsForLinking({})
             ]);
-            if (Array.isArray(invData)) setInventory(invData);
+            if (Array.isArray(invData)) {
+                setInventory(invData);
+                setPasswordsRevealed(!!(invData as any).passwordsRevealed);
+                // Compute orphan count heuristic: variants whose accounts have slots.length < totalSlots
+                let orphans = 0;
+                (invData as any[]).forEach(v => {
+                    v.digitalCodes?.forEach((acc: any) => {
+                        const total = v.totalSlots || 0;
+                        if (total > 0 && (acc.slots?.length || 0) < total) orphans++;
+                    });
+                });
+                setOrphanCount(orphans);
+            }
             if (Array.isArray(varData)) setSharingVariants(varData);
             if (Array.isArray(linkData)) setLinkableVariants(linkData);
         } catch {
@@ -107,6 +126,42 @@ export default function SharedAccountsContent() {
             setIsLoading(false);
         }
     }, []);
+
+    const handleSweep = useCallback(async () => {
+        setIsSweeping(true);
+        try {
+            const res: any = await sweepSharedAccountSlots({});
+            if (res?.success) {
+                toast.success(`🧹 ${res.expired} slot(s) expiré(s) (${res.took_ms}ms)`);
+                await loadInventory(passwordsRevealed);
+            } else {
+                toast.error(res?.error || "Échec du balayage");
+            }
+        } finally {
+            setIsSweeping(false);
+        }
+    }, [loadInventory, passwordsRevealed]);
+
+    const handleGenerateOrphans = useCallback(async () => {
+        setIsGenerating(true);
+        try {
+            const res: any = await generateMissingSlotsAction({});
+            if (res?.success) {
+                toast.success(`⚡ ${res.slotsCreated} slot(s) créé(s) sur ${res.accountsTouched} compte(s)`);
+                await loadInventory(passwordsRevealed);
+            } else {
+                toast.error(res?.error || "Échec de la génération");
+            }
+        } finally {
+            setIsGenerating(false);
+        }
+    }, [loadInventory, passwordsRevealed]);
+
+    const confirmRevealPasswords = useCallback(async () => {
+        setRevealConfirmOpen(false);
+        await loadInventory(true);
+        toast.success("🔓 Mots de passe affichés — action tracée dans l'audit");
+    }, [loadInventory]);
 
     const loadHistory = useCallback(async () => {
         setIsLoadingHistory(true);
@@ -125,10 +180,11 @@ export default function SharedAccountsContent() {
     }, []);
 
     useEffect(() => {
-        loadInventory();
-        const interval = setInterval(loadInventory, 30_000);
+        loadInventory(false);
+        const interval = setInterval(() => loadInventory(false), 30_000);
         return () => clearInterval(interval);
-    }, [loadInventory]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     // ── Slot auto-fill on add variant change ──────────────────────────────────
     useEffect(() => {
@@ -139,7 +195,7 @@ export default function SharedAccountsContent() {
         if (!variant) return;
 
         setAddSlotsData(Array.from({ length: variant.totalSlots || 0 }, (_, i) => ({
-            profileName: `Profil ${i + 1}`, pinCode: ""
+            profileName: `Profil ${i + 1}`, pinCode: "", maxDevices: 3
         })));
         lastAddVariantId.current = addVariantId;
     }, [addVariantId, sharingVariants]);
@@ -203,7 +259,7 @@ export default function SharedAccountsContent() {
         setEditPurchasePrice(account.purchasePrice || "");
         setEditPurchaseCurrency(account.purchaseCurrency || "DZD");
         setEditSlotsData(account.slots.map((s: any) => ({
-            id: s.id, profileName: s.profileName || "", pinCode: s.code || ""
+            id: s.id, profileName: s.profileName || "", pinCode: s.code || "", maxDevices: s.maxDevices ?? null
         })));
         accountModal.onOpen();
     };
@@ -310,7 +366,7 @@ export default function SharedAccountsContent() {
                 outlookPassword: editOutlookPassword || undefined,
                 purchasePrice: editPurchasePrice,
                 purchaseCurrency: editPurchaseCurrency,
-                slots: editSlotsData.map(s => ({ id: s.id!, profileName: s.profileName, pinCode: s.pinCode }))
+                slots: editSlotsData.map(s => ({ id: s.id!, profileName: s.profileName, pinCode: s.pinCode, maxDevices: s.maxDevices ?? undefined }))
             });
             if (res.success) {
                 toast.success("Compte mis à jour ✓");
@@ -377,12 +433,12 @@ export default function SharedAccountsContent() {
         toast.success("Copié ✓");
     };
 
-    const updateAddSlot = (index: number, field: "profileName" | "pinCode", value: string) => {
-        setAddSlotsData(prev => { const d = [...prev]; d[index] = { ...d[index], [field]: value }; return d; });
+    const updateAddSlot = (index: number, field: "profileName" | "pinCode" | "maxDevices", value: string | number) => {
+        setAddSlotsData(prev => { const d = [...prev]; d[index] = { ...d[index], [field]: value } as typeof d[number]; return d; });
     };
 
-    const updateEditSlot = (index: number, field: "profileName" | "pinCode", value: string) => {
-        setEditSlotsData(prev => { const d = [...prev]; d[index] = { ...d[index], [field]: value }; return d; });
+    const updateEditSlot = (index: number, field: "profileName" | "pinCode" | "maxDevices", value: string | number | null) => {
+        setEditSlotsData(prev => { const d = [...prev]; d[index] = { ...d[index], [field]: value } as typeof d[number]; return d; });
     };
 
     // ── Progress bar color ────────────────────────────────────────────────────
@@ -437,8 +493,73 @@ export default function SharedAccountsContent() {
                         onClick={linkModal.onOpen}>
                         Lier SKU
                     </Button>
+                    <Button
+                        variant="flat"
+                        isLoading={isSweeping}
+                        onClick={handleSweep}
+                        className="h-10 px-4 text-sm font-bold rounded-xl bg-yellow-500/10 border border-yellow-500/20 text-yellow-300">
+                        🧹 Balayer les expirés
+                    </Button>
+                    <Button
+                        variant="flat"
+                        isLoading={isGenerating}
+                        onClick={handleGenerateOrphans}
+                        className="h-10 px-4 text-sm font-bold rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-300">
+                        ⚡ Générer slots manquants
+                    </Button>
+                    {!passwordsRevealed ? (
+                        <Button
+                            variant="flat"
+                            onClick={() => setRevealConfirmOpen(true)}
+                            className="h-10 px-4 text-sm font-bold rounded-xl bg-red-500/10 border border-red-500/20 text-red-300">
+                            👁 Révéler les mots de passe
+                        </Button>
+                    ) : (
+                        <Button
+                            variant="flat"
+                            onClick={() => loadInventory(false)}
+                            className="h-10 px-4 text-sm font-bold rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-300">
+                            🔒 Masquer les mots de passe
+                        </Button>
+                    )}
                 </div>
             </header>
+
+            {/* Healthcheck banner */}
+            {orphanCount > 0 && (
+                <div className="flex items-center justify-between gap-3 p-3 rounded-xl bg-red-500/10 border border-red-500/30">
+                    <div className="flex items-center gap-2">
+                        <AlertCircle className="text-red-400" size={18} />
+                        <span className="text-sm font-bold text-red-200">
+                            {orphanCount} compte(s) avec des slots manquants — inventaire fantôme détecté.
+                        </span>
+                    </div>
+                    <Button
+                        size="sm"
+                        isLoading={isGenerating}
+                        onClick={handleGenerateOrphans}
+                        className="h-8 px-3 text-xs font-bold rounded-lg bg-red-500 text-white">
+                        ⚡ Réparer maintenant
+                    </Button>
+                </div>
+            )}
+
+            {/* Reveal confirmation modal */}
+            <Modal isOpen={revealConfirmOpen} onClose={() => setRevealConfirmOpen(false)} backdrop="blur">
+                <ModalContent>
+                    <ModalHeader>Révéler les mots de passe</ModalHeader>
+                    <ModalBody>
+                        <p className="text-sm text-slate-300">
+                            Cette action sera tracée dans le journal d&apos;audit.
+                            Tous les mots de passe des comptes partagés visibles seront déchiffrés et affichés.
+                        </p>
+                    </ModalBody>
+                    <ModalFooter>
+                        <Button variant="light" onClick={() => setRevealConfirmOpen(false)}>Annuler</Button>
+                        <Button color="danger" onClick={confirmRevealPasswords}>Confirmer et révéler</Button>
+                    </ModalFooter>
+                </ModalContent>
+            </Modal>
 
             {/* ── Stats ── */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -639,6 +760,23 @@ export default function SharedAccountsContent() {
                                                                     startContent={<Key size={11} className="text-slate-600" />}
                                                                     classNames={{ inputWrapper: "bg-[#222] h-9 border border-white/5 w-28", input: "text-xs font-mono text-purple-400" }}
                                                                 />
+                                                                <Tooltip content="Nombre maximum d'appareils que le client peut activer avec son lien magique" placement="top">
+                                                                    <Input
+                                                                        type="number"
+                                                                        min={1}
+                                                                        max={50}
+                                                                        placeholder="3"
+                                                                        size="sm"
+                                                                        aria-label="Limite appareils"
+                                                                        value={String(slot.maxDevices ?? 3)}
+                                                                        onValueChange={(v) => {
+                                                                            const n = parseInt(v, 10);
+                                                                            updateAddSlot(index, "maxDevices", Number.isFinite(n) ? Math.min(50, Math.max(1, n)) : 3);
+                                                                        }}
+                                                                        startContent={<Smartphone size={11} className="text-slate-600" />}
+                                                                        classNames={{ inputWrapper: "bg-[#222] h-9 border border-white/5 w-24", input: "text-xs font-mono text-emerald-400" }}
+                                                                    />
+                                                                </Tooltip>
                                                             </div>
                                                         ))}
                                                     </div>
@@ -1449,6 +1587,24 @@ export default function SharedAccountsContent() {
                                                         onValueChange={(v) => updateEditSlot(index, "pinCode", v)}
                                                         startContent={<Key size={11} className="text-slate-600" />}
                                                         classNames={{ inputWrapper: "bg-[#222] h-10 border border-white/5 w-28", input: "text-xs font-mono text-purple-400" }} />
+                                                    <Tooltip content="Nombre maximum d'appareils que le client peut activer avec son lien magique" placement="top">
+                                                        <Input
+                                                            type="number"
+                                                            min={1}
+                                                            max={50}
+                                                            placeholder="∞ illimité"
+                                                            size="sm"
+                                                            aria-label="Limite appareils"
+                                                            value={slot.maxDevices === null || slot.maxDevices === undefined ? "" : String(slot.maxDevices)}
+                                                            onValueChange={(v) => {
+                                                                if (v === "") { updateEditSlot(index, "maxDevices", null); return; }
+                                                                const n = parseInt(v, 10);
+                                                                updateEditSlot(index, "maxDevices", Number.isFinite(n) ? Math.min(50, Math.max(1, n)) : null);
+                                                            }}
+                                                            startContent={<Smartphone size={11} className="text-slate-600" />}
+                                                            classNames={{ inputWrapper: "bg-[#222] h-10 border border-white/5 w-24", input: "text-xs font-mono text-emerald-400" }}
+                                                        />
+                                                    </Tooltip>
                                                 </div>
                                             ))}
                                         </div>

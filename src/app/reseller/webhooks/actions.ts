@@ -8,6 +8,7 @@ import { UserRole } from "@/lib/constants";
 import { z } from "zod";
 import crypto from "crypto";
 import { revalidatePath } from "next/cache";
+import { isBlockedWebhookUrl } from "@/lib/webhook-url-guard";
 
 /**
  * CRUD côté reseller pour ses propres webhooks sortants.
@@ -51,9 +52,9 @@ export const createMyWebhookAction = withAuth(
         const reseller = await getResellerForUser(user.id);
         if (!reseller) return { success: false as const, error: "Compte revendeur introuvable" };
 
-        // Sécurité : refuse les URLs vers localhost / 127.0.0.1 / 0.0.0.0 / 169.254 / .local
-        // pour éviter le SSRF (un reseller malveillant pointe vers ressources internes).
-        if (/^https?:\/\/(127\.|0\.|169\.254\.|192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[01])\.|localhost|.+\.local|.+\.internal)/i.test(url)) {
+        // Sécurité SSRF : refuse loopback / IP privées / metadata / schémas non-http.
+        // Couvre les bypass de l'ancienne regex (IPv6, IP entière/hex) — cf webhook-url-guard.
+        if (isBlockedWebhookUrl(url)) {
             return {
                 success: false as const,
                 error: "URL invalide — adresse privée/locale refusée",

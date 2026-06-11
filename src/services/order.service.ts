@@ -1,10 +1,19 @@
 import { db } from "@/db";
-import { orders, clients, clientPayments, digitalCodes, orderItems } from "@/db/schema";
+import { orders, clients, clientPayments, digitalCodes, orderItems, auditLogs } from "@/db/schema";
 import { eq, and, sql, or } from "drizzle-orm";
 import { allocateOrderStock } from "@/lib/orders";
 import { decrypt, encrypt } from "@/lib/encryption";
 import { OrderStatus, UserRole, ClientActionType, DigitalCodeStatus, OrderSource, DeliveryMethod } from "@/lib/constants";
 import { eventBus, SystemEvent } from "@/lib/events";
+import { isPayableStatus } from "@/lib/order-finance";
+import { UserError } from "@/lib/errors";
+
+/**
+ * Tolerance (DZD) allowed above the strict amount owed on a payment, to absorb
+ * rounding/tips/change without flagging. Payments beyond owed + client debt +
+ * this tolerance are rejected as fat-finger entries.
+ */
+const PAYMENT_OVERPAY_TOLERANCE_DZD = 100;
 
 export class OrderService {
     /**
@@ -24,15 +33,42 @@ export class OrderService {
         const clientId = options.clientId;
 
         const result = await db.transaction(async (tx) => {
-            const order = await tx.query.orders.findFirst({
-                where: (table, { eq }) => eq(table.id, id)
-            });
+            // Lock the order row for the duration of the transaction so two
+            // concurrent payments (e.g. cashier + web) can't both read the same
+            // montantPaye and lose one another's increment.
+            const [order] = await tx.select().from(orders).where(eq(orders.id, id)).for("update");
 
-            if (!order) throw new Error("Commande introuvable");
+            if (!order) throw new UserError("Commande introuvable");
+
+            // A cancelled or refunded order must never accept a payment.
+            if (!isPayableStatus(order.status)) {
+                throw new UserError("Cette commande ne peut plus être encaissée (annulée ou remboursée)");
+            }
 
             const currentCumulativePaid = parseFloat(order.montantPaye || "0");
             const newTotalPaid = currentCumulativePaid + montantRecuMaintenant;
             const totalApresRemise = parseFloat(order.totalAmount) - remise;
+
+            // Fat-finger / abuse guard: a single payment may legitimately cover this
+            // order's outstanding balance PLUS the client's existing debt (overpayment
+            // is intentionally used below to clear prior debt), with a small tolerance.
+            // Anything beyond that is almost certainly a typo (e.g. 100000 for 1000),
+            // which would otherwise inflate montantPaye and emit bogus clientPayments rows.
+            const outstandingThisOrder = Math.max(0, totalApresRemise - currentCumulativePaid);
+            let maxAcceptablePayment = outstandingThisOrder + PAYMENT_OVERPAY_TOLERANCE_DZD;
+            if (clientId) {
+                const [clientForCap] = await tx
+                    .select({ debt: clients.totalDetteDzd })
+                    .from(clients)
+                    .where(eq(clients.id, clientId));
+                maxAcceptablePayment += parseFloat(clientForCap?.debt || "0");
+            }
+            if (montantRecuMaintenant > maxAcceptablePayment) {
+                throw new UserError(
+                    `Montant trop élevé : ${montantRecuMaintenant.toFixed(0)} DZD dépasse le maximum dû ` +
+                    `(${maxAcceptablePayment.toFixed(0)} DZD). Vérifiez le montant saisi.`,
+                );
+            }
 
             const resteAPayer = Math.max(0, totalApresRemise - newTotalPaid);
             const extraPayment = Math.max(0, newTotalPaid - totalApresRemise);
@@ -73,9 +109,9 @@ export class OrderService {
 
             // 6. Manage Client Debt
             if (clientId) {
-                const client = await tx.query.clients.findFirst({
-                    where: (c, { eq }) => eq(c.id, clientId)
-                });
+                // Lock the client row too: total_dette_dzd is read-modify-written
+                // below, so concurrent payments on the same client must serialize.
+                const [client] = await tx.select().from(clients).where(eq(clients.id, clientId)).for("update");
                 if (client) {
                     let newClientTotalDebt = parseFloat(client.totalDetteDzd || "0");
 
@@ -155,24 +191,33 @@ export class OrderService {
             eventBus.publish(SystemEvent.ORDER_DELIVERED, { orderId: result.id });
         }
 
-        // Dispatch IPTV provisioning — webhook handles completion
+        // Dispatch IPTV provisioning — webhook handles completion.
+        // Fire-and-forget by design (the provisioner can take several seconds and
+        // we don't want to block the cashier UI). When the dispatch fails or
+        // provisions zero items, the order would otherwise stay PAYE without
+        // credentials forever; markIptvDispatchFailed() flips it back to
+        // EN_ATTENTE so an operator can retry (NOT ANNULE — manual review path).
         if (hasIptvProducts && (result.status === OrderStatus.PAYE || result.status === OrderStatus.TERMINE)) {
             import("@/lib/iptv").then(async ({ provisionIptvOrder }) => {
                 try {
                     const iptvResult = await provisionIptvOrder(result.id);
                     if (iptvResult.provisioned === 0) {
                         console.error(`[IPTV] Zero items provisioned for order #${result.id}`);
+                        await OrderService.markIptvDispatchFailed(result.id, "Zero items provisioned");
                         const { sendTelegramNotification } = await import("@/lib/telegram");
                         sendTelegramNotification(
-                            `⚠️ *IPTV — 0 items provisionnés*\n\nCommande: \`${(result as any).orderNumber}\`\nVérifiez LoadBrain et les slugs produits.`,
+                            `⚠️ *IPTV — 0 items provisionnés*\n\nCommande: \`${(result as any).orderNumber}\`\nVérifiez LoadBrain et les slugs produits.\nStatut remis à EN_ATTENTE.`,
                             ["ADMIN"]
                         ).catch(() => {});
                     }
                 } catch (err: any) {
                     console.error(`[IPTV] Fatal dispatch error for order #${result.id}:`, err.message);
+                    await OrderService.markIptvDispatchFailed(result.id, err?.message ?? "Unknown error").catch(rollbackErr => {
+                        console.error(`[IPTV] markIptvDispatchFailed failed for order #${result.id}:`, rollbackErr);
+                    });
                     const { sendTelegramNotification } = await import("@/lib/telegram");
                     sendTelegramNotification(
-                        `🔴 *IPTV — Erreur fatale provisioning*\n\nCommande: \`${(result as any).orderNumber}\`\nErreur: ${err.message}`,
+                        `🔴 *IPTV — Erreur fatale provisioning*\n\nCommande: \`${(result as any).orderNumber}\`\nErreur: ${err.message}\nStatut remis à EN_ATTENTE.`,
                         ["ADMIN"]
                     ).catch(() => {});
                 }
@@ -189,10 +234,19 @@ export class OrderService {
     static async processOrder(id: number, codesData: { id: number; codes: string[] }[]) {
         const result = await db.transaction(async (tx) => {
             const current = await tx.query.orders.findFirst({ where: eq(orders.id, id) });
-            if (!current) throw new Error("Commande introuvable");
+            if (!current) throw new UserError("Commande introuvable");
 
             const nextStatus = current.status === OrderStatus.PAYE ? OrderStatus.TERMINE : current.status;
-            await tx.update(orders).set({ status: nextStatus, isDelivered: true }).where(eq(orders.id, id));
+            const isWhatsApp = (current as any).deliveryMethod === DeliveryMethod.WHATSAPP;
+            // printStatus is set inside the transaction so a crash can't leave a
+            // TERMINE order with a stale print state.
+            await tx.update(orders)
+                .set({
+                    status: nextStatus,
+                    isDelivered: true,
+                    ...(nextStatus === OrderStatus.TERMINE ? { printStatus: (isWhatsApp ? "idle" : "print_pending") as any } : {}),
+                })
+                .where(eq(orders.id, id));
 
             for (const itemData of codesData) {
                 const oi = await tx.query.orderItems.findFirst({ where: eq(orderItems.id, itemData.id) });
@@ -225,8 +279,7 @@ export class OrderService {
         });
 
         if (result?.status === OrderStatus.TERMINE) {
-            const isWhatsApp = (result as any).deliveryMethod === DeliveryMethod.WHATSAPP;
-            await db.update(orders).set({ printStatus: isWhatsApp ? "idle" : "print_pending" }).where(eq(orders.id, id));
+            // printStatus already persisted inside the transaction above.
             eventBus.publish(SystemEvent.ORDER_PRINTED, { orderId: id });
             eventBus.publish(SystemEvent.ORDER_DELIVERED, { orderId: id });
         }
@@ -243,7 +296,7 @@ export class OrderService {
                 where: (o, { eq }) => eq(o.id, orderId),
                 with: { items: true }
             });
-            if (!order) throw new Error("Commande introuvable");
+            if (!order) throw new UserError("Commande introuvable");
 
             let codeIndex = 0;
             let insertedCount = 0;
@@ -285,7 +338,7 @@ export class OrderService {
 
                 return { success: true, nextStatus, insertedCount };
             }
-            throw new Error("Aucun code mappé");
+            throw new UserError("Aucun code mappé");
         });
     }
 
@@ -323,6 +376,43 @@ export class OrderService {
         if (isFullyAuto || hasCodesOrSlots || isWhatsAppPaid) {
             eventBus.publish(SystemEvent.ORDER_DELIVERED, { orderId: order.id });
         }
+    }
+
+    /**
+     * Compensating action for the fire-and-forget IPTV dispatch in payOrder().
+     *
+     * When provisionIptvOrder() throws or returns zero items, the order is still
+     * `PAYE` (the payment transaction committed before dispatch) but the customer
+     * has no credentials. We flip it back to EN_ATTENTE — NOT ANNULE — so an
+     * operator can retry from the admin, and we record an `auditLogs` row so the
+     * failure is traceable. Idempotent: only acts on a PAYE/TERMINE row.
+     */
+    static async markIptvDispatchFailed(orderId: number, reason: string) {
+        return await db.transaction(async (tx) => {
+            const [order] = await tx.select().from(orders).where(eq(orders.id, orderId)).for("update");
+            if (!order) return { rolledBack: false };
+
+            // Only roll back if the order is still in the post-payment IPTV window.
+            // If an operator already moved it, leave it alone.
+            if (order.status !== OrderStatus.PAYE && order.status !== OrderStatus.TERMINE) {
+                return { rolledBack: false };
+            }
+
+            await tx.update(orders)
+                .set({ status: OrderStatus.EN_ATTENTE })
+                .where(eq(orders.id, orderId));
+
+            await tx.insert(auditLogs).values({
+                userId: null,
+                action: "IPTV_DISPATCH_FAILED",
+                entityType: "ORDER",
+                entityId: String(orderId),
+                oldData: { status: order.status },
+                newData: { status: OrderStatus.EN_ATTENTE, reason: `IPTV dispatch failed: ${reason}` },
+            });
+
+            return { rolledBack: true };
+        });
     }
 
     /**

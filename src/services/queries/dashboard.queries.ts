@@ -1,7 +1,7 @@
 import "server-only";
 import { db } from "@/db";
 import { orders, orderItems, products, digitalCodes, shopSettings, supportTickets } from "@/db/schema";
-import { eq, sql, and, gte, lte, desc, count } from "drizzle-orm";
+import { eq, sql, and, gte, lte, desc, count, isNull } from "drizzle-orm";
 import { cache } from "react";
 import { OrderStatus, DigitalCodeStatus, DigitalCodeSlotStatus } from "@/lib/constants";
 
@@ -42,9 +42,11 @@ export class DashboardQueries {
         }
 
         const fetchStatsInRange = async (start: Date, end?: Date) => {
+            // B2C scoping: dashboard KPIs exclude reseller orders (separate surface).
             const filters = [
                 sql`status IN (${OrderStatus.PAYE}, ${OrderStatus.TERMINE}, ${OrderStatus.LIVRE}, ${OrderStatus.PARTIEL})`,
-                gte(orders.createdAt, start)
+                gte(orders.createdAt, start),
+                isNull(orders.resellerId)
             ];
             if (end) filters.push(lte(orders.createdAt, end));
 
@@ -84,8 +86,9 @@ export class DashboardQueries {
             return ((current - previous) / previous) * 100;
         };
 
-        const thresholdSettings = await db.query.shopSettings.findFirst();
-        const alertThreshold = thresholdSettings?.stockAlertThreshold ?? 5;
+        // Single shopSettings fetch reused for thresholdSettings, settings (maintenance mode), etc.
+        const settings = await db.query.shopSettings.findFirst();
+        const alertThreshold = settings?.stockAlertThreshold ?? 5;
         const lowStockAlerts = await db.execute(sql`
             SELECT COUNT(*) as count FROM (
                 SELECT pv.id,
@@ -112,6 +115,7 @@ export class DashboardQueries {
             .where(eq(supportTickets.status, "OUVERT"));
 
         const latestOrders = await db.query.orders.findMany({
+            where: (orders, { isNull }) => isNull(orders.resellerId),
             limit: 10,
             orderBy: [desc(orders.createdAt)],
             with: { items: true }
@@ -119,30 +123,52 @@ export class DashboardQueries {
 
         const pendingCountResult = await db.select({ count: count() })
             .from(orders)
-            .where(eq(orders.status, OrderStatus.EN_ATTENTE));
+            .where(and(
+                eq(orders.status, OrderStatus.EN_ATTENTE),
+                isNull(orders.resellerId)
+            ));
 
-        const settings = await db.query.shopSettings.findFirst();
+        // Week revenue: single GROUP BY date_trunc('day'), assemble 7 days in JS (fill gaps with 0).
+        const weekStart = new Date();
+        weekStart.setDate(weekStart.getDate() - 6);
+        weekStart.setHours(0, 0, 0, 0);
+        const weekEndExclusive = new Date();
+        weekEndExclusive.setDate(weekEndExclusive.getDate() + 1);
+        weekEndExclusive.setHours(0, 0, 0, 0);
 
+        const dailyRows = await db
+            .select({
+                day: sql<string>`date_trunc('day', ${orders.createdAt})::date::text`,
+                total: sql<string>`COALESCE(SUM(${orders.totalAmount}), 0)::text`,
+            })
+            .from(orders)
+            .where(and(
+                sql`status IN (${OrderStatus.PAYE}, ${OrderStatus.TERMINE}, ${OrderStatus.LIVRE}, ${OrderStatus.PARTIEL})`,
+                gte(orders.createdAt, weekStart),
+                lte(orders.createdAt, weekEndExclusive),
+                isNull(orders.resellerId)
+            ))
+            .groupBy(sql`date_trunc('day', ${orders.createdAt})`);
+
+        const totalsByDayKey = new Map<string, number>();
+        for (const row of dailyRows) {
+            totalsByDayKey.set(row.day, Number(row.total || 0));
+        }
+
+        const dayNames = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
         const weekData = [];
         for (let i = 6; i >= 0; i--) {
             const day = new Date();
             day.setDate(day.getDate() - i);
             day.setHours(0, 0, 0, 0);
-            const nextDay = new Date(day);
-            nextDay.setDate(nextDay.getDate() + 1);
-
-            const dayResult = await db.select({ total: sql<string>`sum(total_amount)` })
-                .from(orders)
-                .where(and(
-                    sql`status IN (${OrderStatus.PAYE}, ${OrderStatus.TERMINE}, ${OrderStatus.LIVRE}, ${OrderStatus.PARTIEL})`,
-                    gte(orders.createdAt, day),
-                    lte(orders.createdAt, nextDay)
-                ));
-
-            const dayNames = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
+            // Match Postgres `::date::text` formatting: YYYY-MM-DD in the server's TZ. Use local date components.
+            const y = day.getFullYear();
+            const m = String(day.getMonth() + 1).padStart(2, '0');
+            const d = String(day.getDate()).padStart(2, '0');
+            const key = `${y}-${m}-${d}`;
             weekData.push({
                 name: dayNames[day.getDay()],
-                total: Number(dayResult[0]?.total || 0)
+                total: totalsByDayKey.get(key) || 0
             });
         }
 
@@ -204,6 +230,7 @@ export class DashboardQueries {
      */
     static getRecentOrders = cache(async (limit = 10) => {
         return await db.query.orders.findMany({
+            where: (orders, { isNull }) => isNull(orders.resellerId),
             limit,
             orderBy: [desc(orders.createdAt)],
             with: {

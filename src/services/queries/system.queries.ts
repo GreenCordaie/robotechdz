@@ -42,7 +42,15 @@ export class SystemQueries {
     static getUsers = cache(async () => {
         return await db.query.users.findMany({
             where: sql`${users.role} != ${UserRole.RESELLER}`,
-            orderBy: [desc(users.id)]
+            orderBy: [desc(users.id)],
+            // Never ship credential material to the client. The team list only
+            // needs identity/role fields.
+            columns: {
+                passwordHash: false,
+                pinCode: false,
+                twoFactorSecret: false,
+                mfaBackupCodes: false,
+            },
         });
     });
 

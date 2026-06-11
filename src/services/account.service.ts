@@ -89,7 +89,7 @@ export class AccountService {
         purchaseCurrency?: string;
         expiresAt?: string;
         slotsCount?: number;
-        slotsConfig?: { profileName?: string; pinCode?: string }[];
+        slotsConfig?: { profileName?: string; pinCode?: string; maxDevices?: number }[];
     }) {
         const variant = await db.query.productVariants.findFirst({
             where: eq(productVariants.id, data.variantId),
@@ -129,7 +129,12 @@ export class AccountService {
                     profileName: data.slotsConfig?.[i]?.profileName || `Profil ${i + 1}`,
                     code: encrypt(pin),
                     status: "DISPONIBLE" as const,
-                    expiresAt: data.expiresAt ? new Date(data.expiresAt) : null
+                    expiresAt: data.expiresAt ? new Date(data.expiresAt) : null,
+                    // Anti link-sharing — default 3 devices per slot if the
+                    // admin didn't override. NULL would mean unlimited which
+                    // is undesirable for fresh slots. Existing rows stay NULL
+                    // (legacy unlimited) until they're explicitly edited.
+                    maxDevices: data.slotsConfig?.[i]?.maxDevices ?? 3,
                 });
             }
 

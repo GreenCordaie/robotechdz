@@ -8,7 +8,7 @@
 #   - Aucun deploy déclenché (deploy.yml est sur master/avant-netflix-n8n
 #     uniquement et ce workflow n'y push pas)
 #
-# Trigger : push + pull_request (toutes branches)
+# Trigger : push + pull_request sur master, avant-netflix-n8n, epic-** et feat-**
 # Concurrence : annule les runs précédents sur la même branche pour économiser
 # les minutes GitHub Actions.
 
@@ -20,11 +20,13 @@ on:
       - master
       - avant-netflix-n8n
       - 'epic-**'
+      - 'feat/**'
   pull_request:
     branches:
       - master
       - avant-netflix-n8n
       - 'epic-**'
+      - 'feat/**'
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -43,7 +45,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
+          # No `cache:` — repo is pnpm-only (no package-lock.json); CI installs
+          # via `npm install` (regenerates an ephemeral lock to absorb the
+          # LoadBrain stub sha mismatch), so there is no npm lockfile to cache.
       - name: Pack LoadBrain stubs into expected tgz paths
         # Le package.json référence ../LoadBrain/dist-packages/*.tgz (privés, non
         # commités). En CI on remplace par des stubs no-op du repo qui satisfont
@@ -134,7 +138,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
+          # No `cache:` — repo is pnpm-only (no package-lock.json); CI installs
+          # via `npm install` (regenerates an ephemeral lock to absorb the
+          # LoadBrain stub sha mismatch), so there is no npm lockfile to cache.
       - name: Pack LoadBrain stubs into expected tgz paths
         run: bash scripts/ci-pack-loadbrain-stubs.sh
       - name: Install deps (inclure devDeps malgré NODE_ENV=production)
@@ -156,7 +162,14 @@ jobs:
         env:
           PGPASSWORD: testpass
       - name: Apply schema (drizzle-kit push)
-        run: npx drizzle-kit push --force
+        # drizzle-kit reads schema.ts in plain Node. The schema pulls in
+        # encrypted-column -> @/lib/encryption -> `import "server-only"`, whose
+        # guard throws outside a Next server bundle. That's a false positive for a
+        # CLI tool, so neutralize the module for this step only (no prod code is
+        # changed; the real client-bundle guard stays intact at app runtime).
+        run: |
+          node -e "require('fs').writeFileSync(require.resolve('server-only'), 'module.exports = {};')"
+          npx drizzle-kit push --force
       - name: next build (strict — ignoreBuildErrors=false + ignoreDuringBuilds=false)
         # Doit passer SANS aucune env externe configurée. Si une route crashe
         # au module-load ou au "collecting page data" sans creds, c'est un bug
@@ -244,7 +257,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
+          # No `cache:` — repo is pnpm-only (no package-lock.json); CI installs
+          # via `npm install` (regenerates an ephemeral lock to absorb the
+          # LoadBrain stub sha mismatch), so there is no npm lockfile to cache.
 
       - name: Pack LoadBrain stubs into expected tgz paths
         run: bash scripts/ci-pack-loadbrain-stubs.sh
@@ -262,7 +277,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: pw-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          key: pw-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
 
       - name: Install Playwright browsers
         if: steps.pw-cache.outputs.cache-hit != 'true'
@@ -280,7 +295,14 @@ jobs:
           PGPASSWORD: testpass
 
       - name: Apply schema (drizzle-kit push)
-        run: npx drizzle-kit push --force
+        # drizzle-kit reads schema.ts in plain Node. The schema pulls in
+        # encrypted-column -> @/lib/encryption -> `import "server-only"`, whose
+        # guard throws outside a Next server bundle. That's a false positive for a
+        # CLI tool, so neutralize the module for this step only (no prod code is
+        # changed; the real client-bundle guard stays intact at app runtime).
+        run: |
+          node -e "require('fs').writeFileSync(require.resolve('server-only'), 'module.exports = {};')"
+          npx drizzle-kit push --force
 
       - name: Seed E2E fixtures
         run: npx tsx scripts/seed-e2e.ts

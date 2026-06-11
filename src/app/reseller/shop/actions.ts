@@ -236,3 +236,417 @@ export interface ResellerCatalogPricing {
     customDiscountPct: number;
     totalDiscountPct: number;
 }
+
+/* ----------------------------------------------------------------------
+ * BSV Mirror Shop catalog action (Lot 3) — production wiring
+ *
+ * Wired against:
+ *   - LoadBrain SDK v2 listings.search() — see @/lib/loadbrain-v2.ts
+ *   - bsvPricingService — see @/services/bsv-pricing.service.ts
+ *
+ * (The historical __mocks__ stubs remain in the repo for local dev when
+ * LoadBrain is unreachable. Swap back if needed.)
+ * --------------------------------------------------------------------- */
+import { lbV2 } from "@/lib/loadbrain-v2";
+import { bsvPricingService } from "@/services/bsv-pricing.service";
+import type {
+    EnrichedBsvListing,
+    BsvListingPricingInput,
+    ResellerPricingContext,
+} from "@/types/bsv-listings";
+
+export const getBsvCatalogAction = withAuth(
+    {
+        roles: [UserRole.RESELLER],
+        schema: z.object({
+            q: z.string().optional(),
+            brand: z.string().optional(),
+            category: z.string().optional(),
+            region: z.string().optional(),
+            deliveryType: z.enum(["auto", "manual", "all"]).default("all"),
+            sellerRankMin: z.enum(["all", "L4", "L7", "L9"]).default("all"),
+            priceMinDzd: z.number().optional(),
+            priceMaxDzd: z.number().optional(),
+            sortBy: z
+                .enum(["score", "price_asc", "price_desc", "newest"])
+                .default("score"),
+            page: z.number().int().min(1).default(1),
+            limit: z.number().int().min(1).max(48).default(24),
+        }),
+    },
+    async (params, user) => {
+        const reseller = await db.query.resellers.findFirst({
+            where: eq(resellers.userId, user.id),
+        });
+        if (!reseller) {
+            return { success: false as const, error: "Compte revendeur introuvable" };
+        }
+
+        const tier = await TierService.getCurrentTierForReseller(reseller.id);
+        const tierDiscountPct = tier ? parseFloat(tier.discountPct) : 0;
+        const customDiscountPct = reseller.customDiscount
+            ? Math.min(
+                  parseFloat(reseller.customDiscount),
+                  100 - tierDiscountPct
+              )
+            : 0;
+
+        // Convert DZD price filters → USD using the SAME rate as the pricing
+        // service, so the round-trip is consistent.
+        const rate = await bsvPricingService.getUsdToDzdRate();
+        const priceMinUsd =
+            typeof params.priceMinDzd === "number"
+                ? params.priceMinDzd / rate
+                : undefined;
+        const priceMaxUsd =
+            typeof params.priceMaxDzd === "number"
+                ? params.priceMaxDzd / rate
+                : undefined;
+
+        const sdkSort: "price" | "score" | "newest" =
+            params.sortBy === "price_asc" || params.sortBy === "price_desc"
+                ? "price"
+                : params.sortBy === "newest"
+                  ? "newest"
+                  : "score";
+
+        // Real LoadBrain SDK v2 call (Agent 1 merged). The SDK throws on
+        // error and returns the unwrapped data directly — wrap to keep the
+        // callsite's success/error contract for the React layer.
+        if (!lbV2) {
+            return {
+                success: false as const,
+                error: "LoadBrain non configuré (LOADBRAIN_API_KEY manquant)",
+            };
+        }
+        let lbResp: Awaited<ReturnType<typeof lbV2.giftcards.listings.search>>;
+        try {
+            lbResp = await lbV2.giftcards.listings.search({
+                q: params.q,
+                brand: params.brand,
+                category: params.category,
+                region: params.region,
+                deliveryType: params.deliveryType,
+                priceMinUsd,
+                priceMaxUsd,
+                sortBy: sdkSort,
+                page: params.page,
+                limit: params.limit,
+            });
+        } catch (err) {
+            return {
+                success: false as const,
+                error: `LoadBrain catalogue: ${(err as Error).message}`,
+            };
+        }
+
+        const ctx: ResellerPricingContext = {
+            resellerId: reseller.id,
+            tierDiscountPct,
+            customDiscountPct,
+        };
+
+        const pricingInputs: BsvListingPricingInput[] = lbResp.items.map(
+            (l) => ({
+                priceCentsUsd: l.priceCents,
+                category: l.product.category,
+                brand: l.product.brand,
+                sku: l.product.sku,
+            })
+        );
+
+        const servicePrices = await bsvPricingService.computeBulk(pricingInputs, ctx);
+
+        // Adapter: the real service returns { costDzd, basePriceDzd, finalPriceDzd, ... },
+        // the UI consumes { listPriceDzd, finalPriceDzd, discountPct, conversionRate }.
+        // We bridge the two so the UI doesn't need to know about the service shape.
+        const totalDiscountPct = tierDiscountPct + customDiscountPct;
+        // Adapter tolerant of both shapes:
+        //   Real Agent 2 service: { basePriceDzd, finalPriceDzd, conversionRate, ... }
+        //   Legacy stub:          { listPriceDzd, finalPriceDzd, conversionRate, discountPct, markupPct, basePriceCentsUsd }
+        // Tests still use the stub via vi.mock; prod uses the real service.
+        const prices = servicePrices.map((p) => {
+            const x = p as unknown as Record<string, number>;
+            return {
+                basePriceCentsUsd: x.basePriceCentsUsd ?? 0,
+                markupPct: x.markupPct ?? 0,
+                listPriceDzd: x.listPriceDzd ?? x.basePriceDzd ?? 0,
+                finalPriceDzd: x.finalPriceDzd ?? 0,
+                discountPct: x.discountPct ?? totalDiscountPct,
+                conversionRate: x.conversionRate ?? 0,
+            };
+        });
+
+        const RANKS = [
+            "L1",
+            "L2",
+            "L3",
+            "L4",
+            "L5",
+            "L6",
+            "L7",
+            "L8",
+            "L9",
+        ];
+
+        let enriched: EnrichedBsvListing[] = lbResp.items.map((l, i) => ({
+            ...l,
+            pricing: prices[i],
+        }));
+
+        if (params.sellerRankMin !== "all") {
+            const minIdx = RANKS.indexOf(params.sellerRankMin);
+            enriched = enriched.filter((l) => {
+                const lIdx = RANKS.indexOf(l.seller.rank ?? "L1");
+                return lIdx >= minIdx;
+            });
+        }
+
+        if (params.sortBy === "price_asc") {
+            enriched.sort(
+                (a, b) => a.pricing.finalPriceDzd - b.pricing.finalPriceDzd
+            );
+        } else if (params.sortBy === "price_desc") {
+            enriched.sort(
+                (a, b) => b.pricing.finalPriceDzd - a.pricing.finalPriceDzd
+            );
+        }
+
+        return {
+            success: true as const,
+            data: {
+                items: enriched,
+                pagination: lbResp.pagination,
+                pricing: {
+                    tierName: tier?.name ?? null,
+                    tierColor: tier?.color ?? null,
+                    tierDiscountPct,
+                    customDiscountPct,
+                    conversionRate: rate,
+                },
+            },
+        };
+    }
+);
+
+export interface BsvCatalogPricingMeta {
+    tierName: string | null;
+    tierColor: string | null;
+    tierDiscountPct: number;
+    customDiscountPct: number;
+    conversionRate: number;
+}
+
+/* ----------------------------------------------------------------------
+ * Curated Marketplace (reseller-facing) — Phase 1
+ *
+ * Reads the operator's hand-tracked BSV products (giftcards.bsv_tracked_links
+ * via the LoadBrain admin endpoint) and maps them to the EnrichedBsvListing
+ * shape so the existing grid renders delivery type (auto/manual), seller, rank,
+ * stock and a reseller DZD price. Replaces the live-search catalog source.
+ * --------------------------------------------------------------------- */
+interface TrackedLinkRow {
+    id: string;
+    bsvProductId: string;
+    title: string | null;
+    finalPriceCents: number | null;
+    status: string;
+    stockQty: number | null;
+    sellerName: string | null;
+    sellerRank: string | null;
+    feedbackPos: number | null;
+    feedbackNeg: number | null;
+    deliveryType: string | null;
+}
+
+export const getMarketplaceTrackedAction = withAuth(
+    {
+        roles: [UserRole.RESELLER],
+        schema: z.object({}).optional(),
+    },
+    async (_params, user) => {
+        const reseller = await db.query.resellers.findFirst({
+            where: eq(resellers.userId, user.id),
+        });
+        if (!reseller) {
+            return { success: false as const, error: "Compte revendeur introuvable" };
+        }
+
+        const baseUrl = process.env.LOADBRAIN_URL;
+        const token = process.env.LOADBRAIN_INTERNAL_TOKEN;
+        if (!baseUrl || !token) {
+            return { success: false as const, error: "LoadBrain non configuré" };
+        }
+
+        let rows: TrackedLinkRow[];
+        try {
+            const res = await fetch(
+                `${baseUrl.replace(/\/$/, "")}/api/v1/giftcards/admin/bsv-tracker`,
+                { headers: { "X-Internal-Token": token }, cache: "no-store" },
+            );
+            if (!res.ok) {
+                return { success: false as const, error: `LoadBrain ${res.status}` };
+            }
+            const body = (await res.json()) as { data?: TrackedLinkRow[] };
+            rows = body.data ?? [];
+        } catch (err) {
+            return { success: false as const, error: `LoadBrain: ${(err as Error).message}` };
+        }
+
+        // Only synced, sellable products (skip PENDING/REMOVED and unpriced).
+        const sellable = rows.filter(
+            (r) => r.finalPriceCents != null && r.status !== "REMOVED" && r.status !== "PENDING",
+        );
+
+        const { bsvPricingService } = await import("@/services/bsv-pricing.service");
+        const tier = await TierService.getCurrentTierForReseller(reseller.id);
+        const tierDiscountPct = tier ? parseFloat(tier.discountPct) : 0;
+        const customDiscountPct = reseller.customDiscount
+            ? Math.min(parseFloat(reseller.customDiscount), 100 - tierDiscountPct)
+            : 0;
+        const ctx: ResellerPricingContext = {
+            resellerId: reseller.id,
+            tierDiscountPct,
+            customDiscountPct,
+        };
+
+        const pricingInputs: BsvListingPricingInput[] = sellable.map((r) => ({
+            priceCentsUsd: r.finalPriceCents ?? 0,
+            category: "giftcard",
+            brand: r.sellerName ?? "BSV",
+            sku: r.bsvProductId,
+        }));
+        const servicePrices = await bsvPricingService.computeBulk(pricingInputs, ctx);
+        const totalDiscountPct = tierDiscountPct + customDiscountPct;
+
+        const items: EnrichedBsvListing[] = sellable.map((r, i) => {
+            const x = servicePrices[i] as unknown as Record<string, number>;
+            const pricing = {
+                basePriceCentsUsd: x.basePriceCentsUsd ?? r.finalPriceCents ?? 0,
+                markupPct: x.markupPct ?? 0,
+                listPriceDzd: x.listPriceDzd ?? x.basePriceDzd ?? 0,
+                finalPriceDzd: x.finalPriceDzd ?? 0,
+                discountPct: x.discountPct ?? totalDiscountPct,
+                conversionRate: x.conversionRate ?? 0,
+            };
+            const deliveryType: "auto" | "manual" =
+                r.deliveryType === "auto" ? "auto" : "manual";
+            // SUPPLIER CONFIDENTIALITY: never leak the BSV seller / supplier to
+            // the reseller. The upstream vendor (Face2Face, BSV, G2Bulk…) and
+            // its reputation stay admin-only — the reseller payload is fully
+            // neutralised so it's untraceable even via the network/data.
+            return {
+                listingId: r.id,
+                upstreamKey: r.id,
+                encodedId: r.id,
+                product: {
+                    sku: r.id,
+                    brand: "ROBOTECHDZ",
+                    category: "giftcard",
+                    faceValue: "",
+                    faceUnit: "",
+                    region: "GLOBAL",
+                    displayName: r.title ?? "Produit",
+                    imageUrl: null,
+                },
+                seller: {
+                    slug: "",
+                    rank: null,
+                    positiveReviews: 0,
+                    negativeReviews: 0,
+                },
+                priceCents: r.finalPriceCents ?? 0,
+                currency: "USD",
+                deliveryType,
+                isApi: false,
+                stockQty: r.stockQty ?? 0,
+                score: 0,
+                rawTitle: r.title ?? null,
+                pricing,
+            };
+        });
+
+        return {
+            success: true as const,
+            data: {
+                items,
+                pricing: {
+                    tierName: tier?.name ?? null,
+                    tierColor: tier?.color ?? null,
+                    tierDiscountPct,
+                    customDiscountPct,
+                    conversionRate: items[0]?.pricing.conversionRate ?? 0,
+                },
+            },
+        };
+    },
+);
+
+/**
+ * Resolve a curated tracked product (by its tracked-link id, the only id the
+ * reseller sees) to a buyable BSV listingId. Two server-side hops keep the
+ * supplier hidden: tracked id → encoded_id (admin tracker) → listingId
+ * (listings-by-encoded). The returned listingId feeds checkoutResellerAction.
+ */
+export const resolveTrackedListingAction = withAuth(
+    {
+        roles: [UserRole.RESELLER],
+        schema: z.object({ trackedId: z.string().min(1) }),
+    },
+    async ({ trackedId }) => {
+        const baseUrl = process.env.LOADBRAIN_URL;
+        const token = process.env.LOADBRAIN_INTERNAL_TOKEN;
+        const apiKey = process.env.LOADBRAIN_API_KEY;
+        if (!baseUrl || !token || !apiKey) {
+            return { success: false as const, error: "LoadBrain non configuré" };
+        }
+        const base = baseUrl.replace(/\/$/, "");
+
+        // 1) tracked id → encoded_id + stock (server-only; never sent to client).
+        let bsvProductId: string;
+        try {
+            const res = await fetch(`${base}/api/v1/giftcards/admin/bsv-tracker`, {
+                headers: { "X-Internal-Token": token },
+                cache: "no-store",
+            });
+            if (!res.ok) return { success: false as const, error: `LoadBrain ${res.status}` };
+            const body = (await res.json()) as {
+                data?: Array<{ id: string; bsvProductId: string; status: string }>;
+            };
+            const row = (body.data ?? []).find((r) => r.id === trackedId);
+            if (!row) return { success: false as const, error: "Produit introuvable" };
+            if (row.status !== "IN_STOCK") {
+                return { success: false as const, error: "Produit en rupture de stock" };
+            }
+            bsvProductId = row.bsvProductId;
+        } catch (err) {
+            return { success: false as const, error: `LoadBrain: ${(err as Error).message}` };
+        }
+
+        // 2) encoded_id → freshest buyable listingId.
+        try {
+            const res = await fetch(
+                `${base}/api/v1/giftcards/internal/listings-by-encoded/${encodeURIComponent(bsvProductId)}`,
+                { headers: { "X-API-Key": apiKey }, cache: "no-store" },
+            );
+            if (!res.ok) {
+                return { success: false as const, error: "Offre momentanément indisponible — réessayez." };
+            }
+            const body = (await res.json()) as {
+                data?: { listingId?: string; deliveryType?: string; stockQty?: number | null };
+            };
+            const d = body.data;
+            if (!d?.listingId) {
+                return { success: false as const, error: "Offre momentanément indisponible." };
+            }
+            return {
+                success: true as const,
+                listingId: d.listingId,
+                deliveryType: d.deliveryType === "auto" ? ("auto" as const) : ("manual" as const),
+                stockQty: d.stockQty ?? 0,
+            };
+        } catch (err) {
+            return { success: false as const, error: `LoadBrain: ${(err as Error).message}` };
+        }
+    },
+);

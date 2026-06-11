@@ -69,3 +69,48 @@ export const updateResellerNotifPrefAction = withAuth(
         return { success: true as const };
     }
 );
+
+/**
+ * Seuil d'alerte solde bas (DZD) du reseller courant. null = alerte désactivée.
+ */
+export const getResellerLowBalanceThresholdAction = withAuth(
+    { roles: [UserRole.RESELLER] },
+    async (_, user) => {
+        const reseller = await db.query.resellers.findFirst({
+            where: eq(resellers.userId, user.id),
+            columns: { lowBalanceThreshold: true },
+        });
+        if (!reseller) return { success: false as const, error: "Reseller introuvable" };
+        return {
+            success: true as const,
+            data: reseller.lowBalanceThreshold ? Number(reseller.lowBalanceThreshold) : null,
+        };
+    }
+);
+
+/**
+ * Définit le seuil d'alerte solde bas. null ou 0 → désactive l'alerte.
+ */
+export const updateResellerLowBalanceThresholdAction = withAuth(
+    {
+        roles: [UserRole.RESELLER],
+        schema: z.object({
+            threshold: z.number().nonnegative().max(100_000_000).nullable(),
+        }),
+    },
+    async ({ threshold }, user) => {
+        const reseller = await db.query.resellers.findFirst({
+            where: eq(resellers.userId, user.id),
+            columns: { id: true },
+        });
+        if (!reseller) return { success: false as const, error: "Reseller introuvable" };
+
+        await db
+            .update(resellers)
+            .set({ lowBalanceThreshold: threshold && threshold > 0 ? threshold.toFixed(2) : null })
+            .where(eq(resellers.id, reseller.id));
+
+        revalidatePath("/reseller/settings/notifications");
+        return { success: true as const };
+    }
+);

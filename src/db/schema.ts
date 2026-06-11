@@ -1,6 +1,7 @@
-import { pgTable, serial, text, timestamp, numeric, integer, boolean, jsonb, pgEnum, index, uuid, varchar } from "drizzle-orm/pg-core";
-import { relations } from "drizzle-orm";
+import { pgTable, serial, text, timestamp, numeric, integer, boolean, jsonb, pgEnum, index, uniqueIndex, uuid, varchar } from "drizzle-orm/pg-core";
+import { relations, sql } from "drizzle-orm";
 import { OrderStatus, UserRole, ClientActionType, DeliveryMethod, SupplierTransactionType, DigitalCodeStatus, DigitalCodeSlotStatus, OrderSource } from "@/lib/constants";
+import { encryptedText } from "./encrypted-column";
 
 export const orderStatusEnum = pgEnum("order_status", Object.values(OrderStatus) as [string, ...string[]]);
 export const userRoleEnum = pgEnum("user_role", Object.values(UserRole) as [string, ...string[]]);
@@ -58,9 +59,29 @@ export const suppliers = pgTable("suppliers", {
     id: serial("id").primaryKey(),
     name: text("name").notNull(),
     balance: numeric("balance", { precision: 12, scale: 2 }).default("0"),
-    currency: text("currency").default("DZD"), // 'USD' or 'DZD'
+    currency: text("currency").default("DZD"), // 'USD', 'EUR', 'DZD'
     status: text("status").default("ACTIVE").notNull(), // 'ACTIVE' or 'INACTIVE'
-});
+    // External balance tracking (migration 0024). INTERNAL_STOCK keeps the
+    // legacy behavior; EXTERNAL_API rows are auto-refreshed by the cron and
+    // surface low-balance alerts on /admin/fournisseurs.
+    type: text("type").default("INTERNAL_STOCK").notNull(), // 'INTERNAL_STOCK' | 'EXTERNAL_API'
+    providerKind: text("provider_kind"), // 'capsolver' | 'twocaptcha' | 'anticaptcha' | 'mudfish' | 'lb_bsv' | 'lb_g2bulk' | 'lb_kinguin' | 'lb_ironmax' | ...
+    externalConfig: jsonb("external_config").$type<{
+        endpoint?: string;
+        apiKeyEnv?: string;     // name of env var holding the secret (never store the secret itself here)
+        refreshIntervalS?: number;
+        notes?: string;
+    } | null>(),
+    alertThreshold: numeric("alert_threshold", { precision: 12, scale: 2 }),
+    lastBalanceAt: timestamp("last_balance_at", { mode: "date" }),
+}, (table) => ({
+    typeIdx: index("suppliers_type_idx").on(table.type),
+    // Partial index (mirrors migration 0024). Declared here so drizzle-kit is
+    // aware of it and won't drop it on the next generate.
+    lastBalanceIdx: index("suppliers_last_balance_idx")
+        .on(table.lastBalanceAt)
+        .where(sql`type = 'EXTERNAL_API'`),
+}));
 
 export const clients = pgTable("clients", {
     id: serial("id").primaryKey(),
@@ -100,6 +121,13 @@ export const orders = pgTable("orders", {
         createdAtIdx: index("orders_created_at_idx").on(table.createdAt),
         statusIdx: index("orders_status_idx").on(table.status),
         clientIdIdx: index("orders_client_id_idx").on(table.clientId),
+        // Partial index for B2C scans (reseller_id IS NULL).
+        // Almost every B2C query filters with isNull(orders.resellerId);
+        // this avoids full-filter on the table once it grows.
+        // Ops: run `drizzle-kit generate` (or apply manual DDL) to materialize.
+        ordersB2cCreatedIdx: index("orders_b2c_created_idx")
+            .on(table.createdAt)
+            .where(sql`reseller_id IS NULL`),
     };
 });
 
@@ -142,6 +170,9 @@ export const digitalCodes = pgTable("digital_codes", {
     msClientId: text("ms_client_id"), // The Specific Azure Client ID used for this account
     msLastSync: timestamp("ms_last_sync", { mode: 'date' }),
 
+    // Streaming deeplink — Netflix "Extra Member" (+1 stream) operator-side flag
+    hasExtraMember: boolean("has_extra_member").default(false).notNull(),
+
 }, (table) => {
     return {
         variantIdIdx: index("dc_variant_id_idx").on(table.variantId),
@@ -160,11 +191,29 @@ export const digitalCodeSlots = pgTable("digital_code_slots", {
     orderItemId: integer("order_item_id").references(() => orderItems.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at", { mode: 'date' }).defaultNow(),
     expiresAt: timestamp("expires_at", { mode: 'date' }),
+    // Denormalized streaming activation deeplink — set at slot assignment,
+    // mirrors the canonical row in `slot_activation_tokens`. Lets the sync
+    // WhatsApp delivery formatter include the link without a join.
+    activationUrl: text("activation_url"),
+    // Device quota (Option C hybrid — anti link-sharing). NULL = unlimited.
+    // `devicesActivated` bumps on each new page session (debounced 60 min
+    // on `lastDeviceAt`). When devicesActivated >= maxDevices, /activer page
+    // returns 410 Gone.
+    maxDevices: integer("max_devices"),
+    devicesActivated: integer("devices_activated").default(0).notNull(),
+    lastDeviceAt: timestamp("last_device_at", { mode: "date" }),
+    // Set by POST /api/activer/[token]/request-code when the customer
+    // presses "Voir mon code" — the watcher's OTP router prefers the
+    // most recent click within a 60s window so concurrent slots on the
+    // same master mailbox map to the right customer without needing a
+    // profile name in the email body (Netflix doesn't send one).
+    lastCodeRequestAt: timestamp("last_code_request_at", { mode: "date" }),
 }, (table) => {
     return {
         digitalCodeIdIdx: index("dcs_digital_code_id_idx").on(table.digitalCodeId),
         statusIdx: index("dcs_status_idx").on(table.status),
         orderItemIdIdx: index("dcs_order_item_id_idx").on(table.orderItemId),
+        devicesActivatedIdx: index("dcs_devices_activated_idx").on(table.devicesActivated),
     };
 });
 
@@ -242,13 +291,13 @@ export const shopSettings = pgTable("shop_settings", {
     logoUrl: text("logo_url"),
     dashboardLogoUrl: text("dashboard_logo_url"),
     faviconUrl: text("favicon_url"),
-    telegramBotToken: text("telegram_bot_token"),
+    telegramBotToken: encryptedText("telegram_bot_token"),
     telegramChatId: text("telegram_chat_id"),
     telegramChatIdAdmin: text("telegram_chat_id_admin"),
     telegramChatIdCaisse: text("telegram_chat_id_caisse"),
     telegramChatIdTraiteur: text("telegram_chat_id_traiteur"),
     webhookUrl: text("webhook_url"),
-    whatsappToken: text("whatsapp_token"),
+    whatsappToken: encryptedText("whatsapp_token"),
     whatsappPhoneId: text("whatsapp_phone_id"),
     isB2bEnabled: boolean("is_b2b_enabled").default(false).notNull(),
     defaultResellerDiscount: numeric("default_reseller_discount", { precision: 5, scale: 2 }).default("5.00"),
@@ -256,7 +305,7 @@ export const shopSettings = pgTable("shop_settings", {
     isMaintenanceMode: boolean("is_maintenance_mode").default(false).notNull(),
     allowedIps: text("allowed_ips"),
     whatsappApiUrl: text("whatsapp_api_url").default("http://localhost:3001"),
-    whatsappApiKey: text("whatsapp_api_key"),
+    whatsappApiKey: encryptedText("whatsapp_api_key"),
     whatsappInstanceName: text("whatsapp_instance_name").default("FLEXBOX_BOT"),
     // EPIC 2 / Phase A — Toggle global pour l'envoi auto WhatsApp post-paiement kiosk.
     // Default true = comportement historique préservé. False = le caissier doit
@@ -267,19 +316,19 @@ export const shopSettings = pgTable("shop_settings", {
     chatbotEnabled: boolean("chatbot_enabled").default(false).notNull(),
     chatbotGreeting: text("chatbot_greeting"),
     whatsappWebhookUrl: text("whatsapp_webhook_url"),
-    whatsappVerifyToken: text("whatsapp_verify_token"),
-    geminiApiKey: text("gemini_api_key"),
+    whatsappVerifyToken: encryptedText("whatsapp_verify_token"),
+    geminiApiKey: encryptedText("gemini_api_key"),
     chatbotRole: text("chatbot_role"),
     n8nWebhookUrl: text("n8n_webhook_url"),
     usdExchangeRate: numeric("usd_exchange_rate", { precision: 10, scale: 2 }).default("245.00").notNull(),
     vapidPublicKey: text("vapid_public_key"),
-    vapidPrivateKey: text("vapid_private_key"),
+    vapidPrivateKey: encryptedText("vapid_private_key"),
     stockAlertThreshold: integer("stock_alert_threshold").default(5).notNull(),
     netflixResolverEmail: text("netflix_resolver_email"),
-    netflixResolverPassword: text("netflix_resolver_password"),
+    netflixResolverPassword: encryptedText("netflix_resolver_password"),
     microsoftClientId: text("microsoft_client_id"),
     microsoftTenantId: text("microsoft_tenant_id"),
-    microsoftClientSecret: text("microsoft_client_secret"),
+    microsoftClientSecret: encryptedText("microsoft_client_secret"),
     microsoftRedirectUri: text("microsoft_redirect_uri"),
 });
 
@@ -337,6 +386,17 @@ export const resellers = pgTable("resellers", {
     // Shape : { "wallet.recharged": false, "order.confirmed": true, ... }
     // Si une clé manque → opt-in par défaut (true). Webhooks gèrent leurs events séparément.
     notificationPreferences: jsonb("notification_preferences").$type<Record<string, boolean>>().notNull().default({}),
+    // Seuil d'alerte solde bas (DZD). NULL ou <= 0 → pas d'alerte (opt-in).
+    // Quand un débit fait passer le solde sous ce seuil → notif wallet.low_balance (edge-triggered).
+    lowBalanceThreshold: numeric("low_balance_threshold", { precision: 12, scale: 2 }),
+    // White-label — branding shown to the RESELLER's own customers on the
+    // public magic-link page (/activer/[token]). NULL = fall back to companyName
+    // / operator defaults. The operator stays invisible to the end customer.
+    brandName: text("brand_name"),
+    brandColor: text("brand_color"), // accent hex, e.g. "#E50914"
+    brandLogoUrl: text("brand_logo_url"), // reseller logo shown on the magic-link page
+    supportPhone: text("support_phone"), // reseller's own customer-support number
+    supportWhatsapp: text("support_whatsapp"), // reseller's WhatsApp (digits, e.g. 213xxxxxxxxx)
     createdAt: timestamp("created_at", { mode: 'date' }).defaultNow(),
 });
 
@@ -459,10 +519,16 @@ export const resellerTransactions = pgTable("reseller_transactions", {
     amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
     orderId: integer("order_id").references(() => orders.id, { onDelete: "set null" }),
     description: text("description"),
+    // Upstream origin tag — 'BSV' | 'G2BULK' | 'IPTV' | 'ACTIVE_CODE' | 'MANUAL'
+    // | 'ADMIN_RECHARGE' | 'UPSTREAM_REFUND' | 'LEGACY'. Nullable for
+    // back-compat with pre-0028 rows that may still be NULL.
+    source: text("source"),
     createdAt: timestamp("created_at", { mode: 'date' }).defaultNow(),
 }, (table) => {
     return {
         walletIdIdx: index("rt_wallet_id_idx").on(table.walletId),
+        sourceIdx: index("rt_source_idx").on(table.source),
+        walletCreatedIdx: index("rt_wallet_created_idx").on(table.walletId, table.createdAt),
     };
 });
 
@@ -786,5 +852,506 @@ export const apiLogsRelations = relations(apiLogs, ({ one }) => ({
     apiKey: one(partnerApiKeys, {
         fields: [apiLogs.apiKeyId],
         references: [partnerApiKeys.id],
+    }),
+}));
+
+// ---------------------------------------------------------------------------
+// BSV Mirror Shop — pricing rules for listings sourced from LoadBrain/BSV
+// ---------------------------------------------------------------------------
+// Scope precedence at resolution time (most-specific wins):
+//   sku > brand > category > global
+// markup_type 'pct' stores basis points (1500 = 15%).
+// markup_type 'fixed_dzd' stores absolute DZD added on top of the cost.
+export const bsvPricingRules = pgTable("bsv_pricing_rules", {
+    id: serial("id").primaryKey(),
+    scopeType: text("scope_type").notNull(), // 'global' | 'category' | 'brand' | 'sku'
+    scopeValue: text("scope_value").notNull(), // '*' for global, ex: 'gaming' | 'free-fire' | 'free-fire__110DIAMONDS__GLOBAL'
+    markupType: text("markup_type").notNull(), // 'pct' | 'fixed_dzd'
+    markupValue: numeric("markup_value", { precision: 12, scale: 2 }).notNull(),
+    notes: text("notes"),
+    isActive: boolean("is_active").notNull().default(true),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow(),
+}, (table) => {
+    return {
+        scopeLookupIdx: index("bsv_pricing_rules_scope_lookup").on(table.scopeType, table.scopeValue),
+    };
+});
+
+/* ----------------------------------------------------------------------
+ * BSV Mirror Shop (Lot 3) — additive tables, no FK changes to existing ones
+ * --------------------------------------------------------------------- */
+
+export const bsvOrderStatusEnum = pgEnum("bsv_order_status", [
+    "PENDING_LOADBRAIN",
+    "COMPLETED",
+    "FAILED",
+    "REFUNDED",
+]);
+
+/**
+ * Mirror-order: one row per reseller checkout of a BSV listing.
+ * Linked to the local `orders` row (which handles the wallet debit) via
+ * `localOrderId`, and to the LoadBrain order via `lbOrderId`.
+ */
+export const bsvOrders = pgTable("bsv_orders", {
+    id: serial("id").primaryKey(),
+    localOrderId: integer("local_order_id")
+        .references(() => orders.id, { onDelete: "cascade" })
+        .notNull(),
+    resellerId: integer("reseller_id")
+        .references(() => resellers.id, { onDelete: "cascade" })
+        .notNull(),
+    listingId: text("listing_id").notNull(),
+    quantity: integer("quantity").notNull(),
+    pricePaidDzd: numeric("price_paid_dzd", { precision: 12, scale: 2 }).notNull(),
+    lbOrderId: text("lb_order_id"),
+    status: bsvOrderStatusEnum("status").default("PENDING_LOADBRAIN").notNull(),
+    /** Forensic snapshot from LoadBrain: seller, exact price, BSV tx, etc. */
+    wonSnapshot: jsonb("won_snapshot").$type<unknown>(),
+    completedAt: timestamp("completed_at", { mode: "date" }),
+    createdAt: timestamp("created_at", { mode: "date" }).defaultNow(),
+}, (table) => ({
+    localOrderIdx: index("bsv_orders_local_order_idx").on(table.localOrderId),
+    lbOrderIdx: index("bsv_orders_lb_order_idx").on(table.lbOrderId),
+    resellerIdx: index("bsv_orders_reseller_idx").on(table.resellerId),
+}));
+
+export const bsvDeliveredCodes = pgTable("bsv_delivered_codes", {
+    id: serial("id").primaryKey(),
+    bsvOrderId: integer("bsv_order_id")
+        .references(() => bsvOrders.id, { onDelete: "cascade" })
+        .notNull(),
+    /** Encrypted code (use lib/encryption.ts). */
+    code: text("code").notNull(),
+    redemptionUrl: text("redemption_url"),
+    pin: text("pin"),
+    createdAt: timestamp("created_at", { mode: "date" }).defaultNow(),
+}, (table) => ({
+    bsvOrderIdx: index("bsv_delivered_codes_bsv_order_idx").on(table.bsvOrderId),
+}));
+
+export const bsvOrdersRelations = relations(bsvOrders, ({ one, many }) => ({
+    localOrder: one(orders, {
+        fields: [bsvOrders.localOrderId],
+        references: [orders.id],
+    }),
+    reseller: one(resellers, {
+        fields: [bsvOrders.resellerId],
+        references: [resellers.id],
+    }),
+    codes: many(bsvDeliveredCodes),
+}));
+
+export const bsvDeliveredCodesRelations = relations(bsvDeliveredCodes, ({ one }) => ({
+    bsvOrder: one(bsvOrders, {
+        fields: [bsvDeliveredCodes.bsvOrderId],
+        references: [bsvOrders.id],
+    }),
+}));
+
+// ---------------------------------------------------------------------------
+// G2Bulk Mirror Shop — pricing rules for products sourced from LoadBrain/G2Bulk
+// ---------------------------------------------------------------------------
+// Mirrors bsvPricingRules. Scope precedence at resolution time
+// (most-specific wins): sku > brand > category > global.
+// markup_type 'pct' stores basis points (1500 = 15%).
+// markup_type 'fixed_dzd' stores absolute DZD added on top of cost.
+export const g2bulkPricingRules = pgTable("g2bulk_pricing_rules", {
+    id: serial("id").primaryKey(),
+    scopeType: text("scope_type").notNull(), // 'global' | 'category' | 'brand' | 'sku'
+    scopeValue: text("scope_value").notNull(), // '*' for global
+    markupType: text("markup_type").notNull(), // 'pct' | 'fixed_dzd'
+    markupValue: numeric("markup_value", { precision: 12, scale: 2 }).notNull(),
+    notes: text("notes"),
+    isActive: boolean("is_active").notNull().default(true),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow(),
+}, (table) => {
+    return {
+        scopeLookupIdx: index("g2bulk_pricing_rules_scope_lookup").on(table.scopeType, table.scopeValue),
+    };
+});
+
+/* ----------------------------------------------------------------------
+ * G2Bulk Mirror Shop (Lot 3) — additive tables, mirrors bsv_orders/bsv_delivered_codes
+ * --------------------------------------------------------------------- */
+
+export const g2bulkOrderStatusEnum = pgEnum("g2bulk_order_status", [
+    "PENDING_LOADBRAIN",
+    "COMPLETED",
+    "FAILED",
+    "REFUNDED",
+]);
+
+/**
+ * Mirror-order: one row per reseller checkout of a G2Bulk product.
+ * Linked to the local `orders` row (wallet debit) via `localOrderId`,
+ * and to the LoadBrain order via `lbOrderId`.
+ */
+export const g2bulkOrders = pgTable("g2bulk_orders", {
+    id: serial("id").primaryKey(),
+    localOrderId: integer("local_order_id")
+        .references(() => orders.id, { onDelete: "cascade" })
+        .notNull(),
+    resellerId: integer("reseller_id")
+        .references(() => resellers.id, { onDelete: "cascade" })
+        .notNull(),
+    productId: text("product_id").notNull(), // upstream G2Bulk product id (stringified)
+    quantity: integer("quantity").notNull(),
+    pricePaidDzd: numeric("price_paid_dzd", { precision: 12, scale: 2 }).notNull(),
+    lbOrderId: text("lb_order_id"),
+    status: g2bulkOrderStatusEnum("status").default("PENDING_LOADBRAIN").notNull(),
+    /** Forensic snapshot from LoadBrain: provider, exact price, etc. */
+    wonSnapshot: jsonb("won_snapshot").$type<unknown>(),
+    completedAt: timestamp("completed_at", { mode: "date" }),
+    createdAt: timestamp("created_at", { mode: "date" }).defaultNow(),
+}, (table) => ({
+    localOrderIdx: index("g2bulk_orders_local_order_idx").on(table.localOrderId),
+    lbOrderIdx: index("g2bulk_orders_lb_order_idx").on(table.lbOrderId),
+    resellerIdx: index("g2bulk_orders_reseller_idx").on(table.resellerId),
+}));
+
+export const g2bulkDeliveredCodes = pgTable("g2bulk_delivered_codes", {
+    id: serial("id").primaryKey(),
+    g2bulkOrderId: integer("g2bulk_order_id")
+        .references(() => g2bulkOrders.id, { onDelete: "cascade" })
+        .notNull(),
+    /** Encrypted code (use lib/encryption.ts). */
+    code: text("code").notNull(),
+    redemptionUrl: text("redemption_url"),
+    pin: text("pin"),
+    createdAt: timestamp("created_at", { mode: "date" }).defaultNow(),
+}, (table) => ({
+    g2bulkOrderIdx: index("g2bulk_delivered_codes_g2bulk_order_idx").on(table.g2bulkOrderId),
+}));
+
+/**
+ * activeCodeOrders — per-line tracking for Niveausat-backed purchases
+ * placed via /reseller/shop/active-code. Mirrors the g2bulkOrders shape:
+ * linked to a local `orders` row (wallet debit, reseller context) and to
+ * the LoadBrain provisioning task on the side so the storefront can
+ * resync status after the in-page polling window.
+ */
+export const activeCodeOrderStatusEnum = pgEnum("active_code_order_status", [
+    "PENDING_LOADBRAIN",
+    "DELIVERED",
+    "FAILED",
+    "REFUNDED",
+]);
+
+export const activeCodeOrders = pgTable("active_code_orders", {
+    id: serial("id").primaryKey(),
+    localOrderId: integer("local_order_id")
+        .references(() => orders.id, { onDelete: "cascade" })
+        .notNull(),
+    resellerId: integer("reseller_id")
+        .references(() => resellers.id, { onDelete: "cascade" })
+        .notNull(),
+    planId: text("plan_id").notNull(),
+    planLabel: text("plan_label").notNull(),
+    pricePaidDzd: numeric("price_paid_dzd", { precision: 12, scale: 2 }).notNull(),
+    lbOrderId: text("lb_order_id").notNull(),
+    lbTaskId: text("lb_task_id"),
+    code: text("code"),
+    status: activeCodeOrderStatusEnum("status")
+        .notNull()
+        .default("PENDING_LOADBRAIN"),
+    error: text("error"),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow(),
+});
+
+export const activeCodeOrdersRelations = relations(activeCodeOrders, ({ one }) => ({
+    localOrder: one(orders, {
+        fields: [activeCodeOrders.localOrderId],
+        references: [orders.id],
+    }),
+    reseller: one(resellers, {
+        fields: [activeCodeOrders.resellerId],
+        references: [resellers.id],
+    }),
+}));
+
+/**
+ * manualProducts — chef-managed catalogue for items the reseller can
+ * buy but the operator has to fulfil by hand (no external panel).
+ */
+export const manualProducts = pgTable("manual_products", {
+    id: serial("id").primaryKey(),
+    title: text("title").notNull(),
+    description: text("description"),
+    category: text("category"),
+    priceDzd: numeric("price_dzd", { precision: 12, scale: 2 }).notNull(),
+    imageUrl: text("image_url"),
+    isActive: boolean("is_active").notNull().default(true),
+    sortOrder: integer("sort_order").notNull().default(100),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow(),
+});
+
+export const manualOrderStatusEnum = pgEnum("manual_order_status", [
+    "PENDING_DELIVERY",
+    "DELIVERED",
+    "CANCELLED",
+    "REFUNDED",
+]);
+
+export const manualOrders = pgTable("manual_orders", {
+    id: serial("id").primaryKey(),
+    localOrderId: integer("local_order_id")
+        .references(() => orders.id, { onDelete: "cascade" })
+        .notNull(),
+    resellerId: integer("reseller_id")
+        .references(() => resellers.id, { onDelete: "cascade" })
+        .notNull(),
+    manualProductId: integer("manual_product_id").references(() => manualProducts.id, { onDelete: "set null" }),
+    productTitleSnapshot: text("product_title_snapshot").notNull(),
+    pricePaidDzd: numeric("price_paid_dzd", { precision: 12, scale: 2 }).notNull(),
+    customerPhone: text("customer_phone"),
+    customerNote: text("customer_note"),
+    deliveryNote: text("delivery_note"),
+    status: manualOrderStatusEnum("status").notNull().default("PENDING_DELIVERY"),
+    deliveredAt: timestamp("delivered_at", { mode: "date" }),
+    deliveredByUserId: integer("delivered_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow(),
+});
+
+export const manualOrdersRelations = relations(manualOrders, ({ one }) => ({
+    localOrder: one(orders, {
+        fields: [manualOrders.localOrderId],
+        references: [orders.id],
+    }),
+    reseller: one(resellers, {
+        fields: [manualOrders.resellerId],
+        references: [resellers.id],
+    }),
+    product: one(manualProducts, {
+        fields: [manualOrders.manualProductId],
+        references: [manualProducts.id],
+    }),
+}));
+
+export const g2bulkOrdersRelations = relations(g2bulkOrders, ({ one, many }) => ({
+    localOrder: one(orders, {
+        fields: [g2bulkOrders.localOrderId],
+        references: [orders.id],
+    }),
+    reseller: one(resellers, {
+        fields: [g2bulkOrders.resellerId],
+        references: [resellers.id],
+    }),
+    codes: many(g2bulkDeliveredCodes),
+}));
+
+export const g2bulkDeliveredCodesRelations = relations(g2bulkDeliveredCodes, ({ one }) => ({
+    g2bulkOrder: one(g2bulkOrders, {
+        fields: [g2bulkDeliveredCodes.g2bulkOrderId],
+        references: [g2bulkOrders.id],
+    }),
+}));
+
+// ---------------------------------------------------------------------------
+// IPTV reseller mirror — every line/code/device sold by a reseller across the
+// four LoadBrain providers (panelking365 / atlaspro / ironmax / ibosol).
+// LoadBrain itself only sees the robotech tenant; this table is the SOURCE
+// OF TRUTH for "which reseller owns line X" and gates every read + mutation.
+// ---------------------------------------------------------------------------
+export const resellerIptvProviderEnum = pgEnum("reseller_iptv_provider", [
+    "panelking365",
+    "atlaspro",
+    "ironmax",
+    "ibosol",
+]);
+
+export const resellerIptvOrderStatusEnum = pgEnum("reseller_iptv_order_status", [
+    "PENDING_LOADBRAIN",
+    "ACTIVE",
+    "FROZEN",
+    "EXPIRED",
+    "CANCELLED",
+    "FAILED",
+    "REFUNDED",
+]);
+
+export const resellerIptvOrders = pgTable("reseller_iptv_orders", {
+    id: serial("id").primaryKey(),
+    localOrderId: integer("local_order_id")
+        .references(() => orders.id, { onDelete: "cascade" })
+        .notNull(),
+    resellerId: integer("reseller_id")
+        .references(() => resellers.id, { onDelete: "cascade" })
+        .notNull(),
+    provider: resellerIptvProviderEnum("provider").notNull(),
+
+    /** LoadBrain v2 task id (provision pipeline). */
+    lbTaskId: text("lb_task_id").unique(),
+    /** LoadBrain v2 order id (panelking/atlaspro hold this). */
+    lbOrderId: text("lb_order_id"),
+    /** Provider-native line id (ironmax) or device id (ibosol). */
+    upstreamLineId: text("upstream_line_id"),
+    /** Xtream username / device MAC / app identifier — whatever the customer needs. */
+    providerAccountId: text("provider_account_id"),
+
+    productId: text("product_id").notNull(),
+    productName: text("product_name").notNull(),
+    productSnapshot: jsonb("product_snapshot").$type<unknown>(),
+    quantity: integer("quantity").default(1).notNull(),
+    pricePaidDzd: numeric("price_paid_dzd", { precision: 12, scale: 2 }).notNull(),
+
+    status: resellerIptvOrderStatusEnum("status")
+        .default("PENDING_LOADBRAIN")
+        .notNull(),
+    lastStatusAt: timestamp("last_status_at", { withTimezone: true, mode: "date" })
+        .defaultNow()
+        .notNull(),
+    lastSyncedAt: timestamp("last_synced_at", { withTimezone: true, mode: "date" }),
+    expiresAt: timestamp("expires_at", { withTimezone: true, mode: "date" }),
+
+    customerLabel: text("customer_label"),
+    customerPhone: text("customer_phone"),
+    notes: text("notes"),
+
+    lastError: text("last_error"),
+    completedAt: timestamp("completed_at", { withTimezone: true, mode: "date" }),
+    cancelledAt: timestamp("cancelled_at", { withTimezone: true, mode: "date" }),
+    refundedAt: timestamp("refunded_at", { withTimezone: true, mode: "date" }),
+
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
+        .defaultNow()
+        .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" })
+        .defaultNow()
+        .notNull(),
+}, (table) => ({
+    resellerIdx: index("rio_reseller_idx").on(table.resellerId),
+    resellerStatusIdx: index("rio_reseller_status_idx").on(table.resellerId, table.status),
+    providerIdx: index("rio_provider_idx").on(table.provider),
+    lbOrderIdx: index("rio_lb_order_idx").on(table.lbOrderId),
+    // Partial indexes (mirror migration 0020). Declared here so drizzle-kit is
+    // aware of them and won't drop them on the next generate.
+    expiresIdx: index("rio_expires_idx")
+        .on(table.expiresAt)
+        .where(sql`expires_at IS NOT NULL`),
+    upstreamLineIdx: index("rio_upstream_line_idx")
+        .on(table.provider, table.upstreamLineId)
+        .where(sql`upstream_line_id IS NOT NULL`),
+    pendingIdx: index("rio_pending_idx")
+        .on(table.resellerId, table.createdAt)
+        .where(sql`status = 'PENDING_LOADBRAIN'`),
+}));
+
+export const resellerIptvOrdersRelations = relations(resellerIptvOrders, ({ one }) => ({
+    localOrder: one(orders, {
+        fields: [resellerIptvOrders.localOrderId],
+        references: [orders.id],
+    }),
+    reseller: one(resellers, {
+        fields: [resellerIptvOrders.resellerId],
+        references: [resellers.id],
+    }),
+}));
+
+// ---------------------------------------------------------------------------
+// Central B2B Wallet — singleton wallet (id = 1) holding admin-managed funds.
+// Admin tops it up manually (bank transfer received, etc.). Admin then
+// disburses to reseller wallets, which is how resellers get recharged.
+// ---------------------------------------------------------------------------
+export const centralWallet = pgTable("central_wallet", {
+    id: integer("id").primaryKey().default(1),
+    balance: numeric("balance", { precision: 12, scale: 2 }).default("0").notNull(),
+    totalToppedUp: numeric("total_topped_up", { precision: 12, scale: 2 }).default("0").notNull(),
+    totalDisbursed: numeric("total_disbursed", { precision: 12, scale: 2 }).default("0").notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+});
+
+export const centralWalletTransactions = pgTable("central_wallet_transactions", {
+    id: serial("id").primaryKey(),
+    type: text("type").notNull(), // 'admin_topup' | 'reseller_credit' | 'adjustment'
+    amountDzd: numeric("amount_dzd", { precision: 12, scale: 2 }).notNull(),
+    balanceAfter: numeric("balance_after", { precision: 12, scale: 2 }).notNull(),
+    resellerId: integer("reseller_id").references(() => resellers.id, { onDelete: "set null" }),
+    adminUserId: integer("admin_user_id").references(() => users.id, { onDelete: "set null" }),
+    reference: text("reference"),
+    notes: text("notes"),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+}, (table) => ({
+    typeIdx: index("cwt_type_idx").on(table.type),
+    resellerIdx: index("cwt_reseller_idx").on(table.resellerId),
+    createdAtIdx: index("cwt_created_at_idx").on(table.createdAt),
+}));
+
+export const centralWalletTransactionsRelations = relations(centralWalletTransactions, ({ one }) => ({
+    reseller: one(resellers, {
+        fields: [centralWalletTransactions.resellerId],
+        references: [resellers.id],
+    }),
+    adminUser: one(users, {
+        fields: [centralWalletTransactions.adminUserId],
+        references: [users.id],
+    }),
+}));
+
+// ─── Streaming Auto-Code Deeplink ─────────────────────────────────────────────
+// Token-only public page that streams Netflix OTP / household links to the customer.
+export const slotActivationTokens = pgTable("slot_activation_tokens", {
+    id: serial("id").primaryKey(),
+    token: varchar("token", { length: 16 }).notNull().unique(),
+    slotId: integer("slot_id").references(() => digitalCodeSlots.id, { onDelete: "cascade" }).notNull(),
+    validFrom: timestamp("valid_from", { mode: "date" }).defaultNow().notNull(),
+    validUntil: timestamp("valid_until", { mode: "date" }).notNull(),
+    lastSeenAt: timestamp("last_seen_at", { mode: "date" }),
+    createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
+}, (table) => ({
+    tokenIdx: index("sat_token_idx").on(table.token),
+    slotIdx: index("sat_slot_idx").on(table.slotId),
+    lastSeenIdx: index("sat_last_seen_idx").on(table.lastSeenAt),
+}));
+
+export const slotEvents = pgTable("slot_events", {
+    id: serial("id").primaryKey(),
+    slotId: integer("slot_id").references(() => digitalCodeSlots.id, { onDelete: "set null" }),
+    digitalCodeId: integer("digital_code_id").references(() => digitalCodes.id, { onDelete: "cascade" }).notNull(),
+    eventType: varchar("event_type", { length: 20 }).notNull(), // OTP_CODE | HOUSEHOLD_LINK
+    valueEncrypted: text("value_encrypted").notNull(),
+    sourceEmailId: text("source_email_id"),
+    deliveredToSession: boolean("delivered_to_session").default(false).notNull(),
+    deliveredAt: timestamp("delivered_at", { mode: "date" }),
+    receivedAt: timestamp("received_at", { mode: "date" }).defaultNow().notNull(),
+}, (table) => ({
+    receivedIdx: index("se_received_idx").on(table.receivedAt),
+    slotIdx: index("se_slot_idx").on(table.slotId),
+    // Partial UNIQUE dedup index (mirrors migration 0018). Declared here so
+    // drizzle-kit is aware of it and won't drop it on the next generate.
+    dedupIdx: uniqueIndex("se_dedup_idx")
+        .on(table.digitalCodeId, table.sourceEmailId)
+        .where(sql`source_email_id IS NOT NULL`),
+}));
+
+export const slotLifecycle = pgTable("slot_lifecycle", {
+    slotId: integer("slot_id").primaryKey().references(() => digitalCodeSlots.id, { onDelete: "cascade" }),
+    firstActivatedAt: timestamp("first_activated_at", { mode: "date" }),
+    lastHouseholdAt: timestamp("last_household_at", { mode: "date" }),
+    nextHouseholdExpectedAt: timestamp("next_household_expected_at", { mode: "date" }),
+    monitoringIntensity: varchar("monitoring_intensity", { length: 10 }).default("NORMAL").notNull(),
+    updatedAt: timestamp("updated_at", { mode: "date" }).defaultNow().notNull(),
+});
+
+export const slotActivationTokensRelations = relations(slotActivationTokens, ({ one }) => ({
+    slot: one(digitalCodeSlots, {
+        fields: [slotActivationTokens.slotId],
+        references: [digitalCodeSlots.id],
+    }),
+}));
+
+export const slotEventsRelations = relations(slotEvents, ({ one }) => ({
+    slot: one(digitalCodeSlots, {
+        fields: [slotEvents.slotId],
+        references: [digitalCodeSlots.id],
+    }),
+    digitalCode: one(digitalCodes, {
+        fields: [slotEvents.digitalCodeId],
+        references: [digitalCodes.id],
     }),
 }));

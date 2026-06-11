@@ -94,9 +94,13 @@ export async function middleware(request: NextRequest) {
                 return NextResponse.redirect(new URL("/admin/dashboard", request.url));
             }
 
-            // RBAC for admin (Default Deny - Whitelist approach)
+            // RBAC for admin (Default Deny - Whitelist approach).
+            // SUPER_ADMIN is the highest role (> ADMIN) and must keep full
+            // access to every /admin/* route — including /admin/b2b/* (central
+            // wallet, etc.). Only the lower roles (CAISSIER, TRAITEUR) are
+            // constrained to the whitelist below.
             if (path.startsWith("/admin")) {
-                if (userRole !== UserRole.ADMIN) {
+                if (userRole !== UserRole.ADMIN && userRole !== UserRole.SUPER_ADMIN) {
                     const permittedPaths = [
                         "/admin/dashboard",
                         "/admin/caisse",

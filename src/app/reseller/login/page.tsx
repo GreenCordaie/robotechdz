@@ -16,7 +16,7 @@ export default function ResellerLoginPage() {
     const [websiteUrl, setWebsiteUrl] = useState(""); // Honeypot
     const [isLoading, setIsLoading] = useState(false);
     const [mfaRequired, setMfaRequired] = useState(false);
-    const [tempUserId, setTempUserId] = useState<number | null>(null);
+    const [mfaTicket, setMfaTicket] = useState<string | null>(null);
     const [mfaCode, setMfaCode] = useState("");
     const router = useRouter();
 
@@ -29,7 +29,7 @@ export default function ResellerLoginPage() {
             if (res.success) {
                 if (res.mfaRequired) {
                     setMfaRequired(true);
-                    setTempUserId(res.tempUserId!);
+                    setMfaTicket(res.mfaTicket!);
                 } else {
                     toast.success("Bienvenue sur votre portail partenaire");
                     router.push("/reseller/dashboard");
@@ -46,12 +46,12 @@ export default function ResellerLoginPage() {
 
     const handleMfaSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!tempUserId) return;
+        if (!mfaTicket) return;
         setIsLoading(true);
 
         try {
             const { verifyResellerMfaAction } = await import("./actions");
-            const res = await verifyResellerMfaAction(tempUserId, mfaCode);
+            const res = await verifyResellerMfaAction(mfaTicket, mfaCode);
             if (res.success) {
                 toast.success("Vérification réussie");
                 router.push("/reseller/dashboard");

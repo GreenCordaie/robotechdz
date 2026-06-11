@@ -2,7 +2,7 @@
 
 import { db } from "@/db";
 import { suppliers, supplierTransactions } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { withAuth } from "@/lib/security";
 import { z } from "zod";
@@ -60,9 +60,12 @@ export const rechargeSupplierAction = withAuth(
                 const supplier = await tx.query.suppliers.findFirst({ where: eq(suppliers.id, data.supplierId) });
                 if (!supplier) throw new Error("Fournisseur introuvable");
 
-                const newBalance = (parseFloat(supplier.balance || "0") + parseFloat(data.amount)).toString();
-
-                await tx.update(suppliers).set({ balance: newBalance }).where(eq(suppliers.id, data.supplierId));
+                // Atomic increment (matches allocateOrderStock / reverseSupplierDebits /
+                // updateItemPurchasePrice). A JS read-modify-write here would lose a
+                // concurrent sale debit (which updates balance via sql`balance - x`).
+                await tx.update(suppliers)
+                    .set({ balance: sql`${suppliers.balance} + ${parseFloat(data.amount)}` })
+                    .where(eq(suppliers.id, data.supplierId));
                 await tx.insert(supplierTransactions).values({
                     supplierId: data.supplierId,
                     type: "RECHARGE",
@@ -114,11 +117,17 @@ export const addSupplierAction = withAuth(
         schema: z.object({ name: z.string().min(1), currency: z.enum(["USD", "DZD"]), initialBalance: z.string().optional() })
     },
     async (data) => {
-        await db.insert(suppliers).values({ name: data.name, currency: data.currency, balance: data.initialBalance || "0" });
+        // Use .returning() instead of a second findFirst-by-name. The name lookup was
+        // both racy (two concurrent creates with the same name would pick the wrong row)
+        // and unnecessary — Postgres already hands the inserted row back.
+        const [supplier] = await db.insert(suppliers).values({
+            name: data.name,
+            currency: data.currency,
+            balance: data.initialBalance || "0"
+        }).returning();
         revalidatePath("/admin/fournisseurs");
 
         // Sync new supplier to CRM
-        const supplier = await db.query.suppliers.findFirst({ where: eq(suppliers.name, data.name) });
         if (supplier) {
             const { N8nService } = await import("@/services/n8n.service");
             N8nService.syncSupplierToCRM(supplier, 'CREATED').catch(() => { });
@@ -246,4 +255,100 @@ export const paySupplierAction = withAuth(
             return { success: false, error: (error as Error).message };
         }
     }
+);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// External balance suppliers (CapSolver, 2Captcha, AntiCaptcha, Mudfish,
+// LoadBrain modules with credit, …). UI lives on the same /admin/fournisseurs
+// page; rows have type = 'EXTERNAL_API' and a provider_kind matching the
+// fetcher registry in src/lib/balance-fetchers/.
+// ─────────────────────────────────────────────────────────────────────────────
+
+import { fetchProviderBalance, listFetchers, BalanceFetchError } from "@/lib/balance-fetchers";
+
+/** List the registered provider kinds so the "Add external supplier" form can populate its dropdown. */
+export const listFetcherKindsAction = withAuth(
+    { roles: [UserRole.ADMIN] },
+    async () => listFetchers().map((f) => ({ kind: f.kind, label: f.label })),
+);
+
+/**
+ * Create an external supplier row. Secrets stay in env — `apiKeyEnv` records
+ * the env var NAME (e.g. "CAPSOLVER_KEY") so rotation is just an env swap.
+ */
+export const createExternalSupplierAction = withAuth(
+    {
+        roles: [UserRole.ADMIN],
+        schema: z.object({
+            name: z.string().min(1),
+            providerKind: z.string().min(1),
+            currency: z.string().default("USD"),
+            alertThreshold: z.string().optional(),
+            apiKeyEnv: z.string().optional(),
+            endpoint: z.string().url().optional(),
+            notes: z.string().optional(),
+            module: z.string().optional(), // only for provider_kind = 'lb_module'
+        }),
+    },
+    async (data) => {
+        try {
+            const externalConfig = {
+                apiKeyEnv: data.apiKeyEnv,
+                endpoint: data.endpoint,
+                notes: data.notes,
+                ...(data.module ? { module: data.module } : {}),
+            };
+            const [row] = await db.insert(suppliers).values({
+                name: data.name,
+                currency: data.currency,
+                type: "EXTERNAL_API",
+                providerKind: data.providerKind,
+                externalConfig,
+                alertThreshold: data.alertThreshold,
+            }).returning({ id: suppliers.id });
+            revalidatePath("/admin/fournisseurs");
+            return { success: true, id: row.id };
+        } catch (error) {
+            return { success: false, error: (error as Error).message };
+        }
+    },
+);
+
+/** Trigger a one-shot fetch for a single external supplier (UI "Refresh" button). */
+export const refreshSupplierBalanceAction = withAuth(
+    {
+        roles: [UserRole.ADMIN],
+        schema: z.object({ supplierId: z.number() }),
+    },
+    async ({ supplierId }) => {
+        try {
+            const row = await db.query.suppliers.findFirst({ where: eq(suppliers.id, supplierId) });
+            if (!row) return { success: false, error: "Supplier not found" };
+            if (row.type !== "EXTERNAL_API" || !row.providerKind) {
+                return { success: false, error: "Not an external supplier" };
+            }
+
+            const { value, currency, fetchedAt } = await fetchProviderBalance(
+                row.providerKind,
+                row.externalConfig,
+            );
+
+            await db.update(suppliers).set({
+                balance: String(value),
+                currency,
+                lastBalanceAt: fetchedAt,
+            }).where(eq(suppliers.id, supplierId));
+
+            revalidatePath("/admin/fournisseurs");
+            return {
+                success: true,
+                balance: value,
+                currency,
+                lastBalanceAt: fetchedAt.toISOString(),
+            };
+        } catch (error) {
+            const msg = error instanceof BalanceFetchError ? error.message : (error as Error).message;
+            return { success: false, error: msg };
+        }
+    },
 );

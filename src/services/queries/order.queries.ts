@@ -1,10 +1,19 @@
 import "server-only";
 import { db } from "@/db";
 import { orders, digitalCodes, digitalCodeSlots, orderItems, suppliers, supplierTransactions, productVariantSuppliers, clients, clientPayments, shopSettings, resellers } from "@/db/schema";
-import { eq, sql, desc, exists, and, inArray, count, gte, asc, or, ilike } from "drizzle-orm";
+import { eq, sql, desc, exists, and, inArray, count, gte, asc, or, ilike, isNull } from "drizzle-orm";
 import { cache } from "react";
 import { decrypt } from "@/lib/encryption";
 import { OrderStatus } from "@/lib/constants";
+import { logger } from "@/lib/logger";
+
+// Hard server-side ceiling on caller-controlled `limit` for the unpaginated
+// history reader. The paginated reader (`getHistoryPaginated`) is the normal
+// path; this cap exists so a caller can't trigger a full-table scan by passing
+// e.g. `limit=99999`. No current caller asks above the default (audit grep
+// 2026-05-30: only `getHistoryPaginated` is wired in pages/actions), so 500 is
+// generously above any realistic admin "all recent" view.
+const ORDER_HISTORY_MAX_LIMIT = 500;
 
 /**
  * OrderQueries Service
@@ -108,7 +117,10 @@ export class OrderQueries {
      */
     static getPending = cache(async () => {
         const results = await db.query.orders.findMany({
-            where: (orders, { eq }) => eq(orders.status, OrderStatus.EN_ATTENTE),
+            where: (orders, { eq, and, isNull }) => and(
+                eq(orders.status, OrderStatus.EN_ATTENTE),
+                isNull(orders.resellerId)
+            ),
             with: {
                 items: {
                     with: {
@@ -133,9 +145,10 @@ export class OrderQueries {
      */
     static getPaid = cache(async () => {
         const results = await db.query.orders.findMany({
-            where: (orders, { and, eq, inArray }) => and(
+            where: (orders, { and, eq, inArray, isNull }) => and(
                 inArray(orders.status, [OrderStatus.PAYE, OrderStatus.LIVRE, OrderStatus.PARTIEL, OrderStatus.NON_PAYE]),
-                eq(orders.isDelivered, false)
+                eq(orders.isDelivered, false),
+                isNull(orders.resellerId)
             ),
             with: {
                 items: {
@@ -178,7 +191,10 @@ export class OrderQueries {
         startOfDay.setHours(0, 0, 0, 0);
 
         const results = await db.query.orders.findMany({
-            where: (orders, { gte }) => gte(orders.createdAt, startOfDay),
+            where: (orders, { gte, and, isNull }) => and(
+                gte(orders.createdAt, startOfDay),
+                isNull(orders.resellerId)
+            ),
             with: {
                 items: {
                     with: {
@@ -219,7 +235,10 @@ export class OrderQueries {
      */
     static getFinished = cache(async (limit = 50) => {
         const results = await db.query.orders.findMany({
-            where: (orders, { eq }) => eq(orders.status, OrderStatus.TERMINE),
+            where: (orders, { eq, and, isNull }) => and(
+                eq(orders.status, OrderStatus.TERMINE),
+                isNull(orders.resellerId)
+            ),
             with: {
                 items: {
                     with: {
@@ -271,7 +290,8 @@ export class OrderQueries {
             .from(orders)
             .where(and(
                 eq(orders.status, OrderStatus.EN_ATTENTE),
-                gte(orders.createdAt, startOfDay)
+                gte(orders.createdAt, startOfDay),
+                isNull(orders.resellerId)
             ));
 
         return { count: result[0]?.count || 0 };
@@ -285,7 +305,8 @@ export class OrderQueries {
             .from(orders)
             .where(and(
                 eq(orders.status, OrderStatus.PAYE),
-                gte(orders.createdAt, startOfDay)
+                gte(orders.createdAt, startOfDay),
+                isNull(orders.resellerId)
             ));
 
         return { count: result[0]?.count || 0 };
@@ -295,7 +316,17 @@ export class OrderQueries {
      * Gets all orders for the history view.
      */
     static getHistory = cache(async (limit = 100) => {
+        const requested = Number.isFinite(limit) ? Math.floor(limit) : 100;
+        const effectiveLimit = Math.min(Math.max(requested, 1), ORDER_HISTORY_MAX_LIMIT);
+        if (requested > ORDER_HISTORY_MAX_LIMIT) {
+            logger.warn("OrderQueries.getHistory: caller-requested limit capped", {
+                action: "OrderQueries.getHistory",
+                metadata: { requested, capped: effectiveLimit, ceiling: ORDER_HISTORY_MAX_LIMIT },
+            });
+        }
+
         const results = await db.query.orders.findMany({
+            where: (orders, { isNull }) => isNull(orders.resellerId),
             with: {
                 items: {
                     with: {
@@ -305,7 +336,7 @@ export class OrderQueries {
                 },
                 client: true
             },
-            limit,
+            limit: effectiveLimit,
             orderBy: (orders, { desc }) => [desc(orders.createdAt)]
         });
 
@@ -336,11 +367,14 @@ export class OrderQueries {
         const offset = (page - 1) * limit;
 
         const where = search
-            ? or(
-                ilike(orders.orderNumber, `%${search}%`),
-                ilike(orders.customerPhone, `%${search}%`)
+            ? and(
+                isNull(orders.resellerId),
+                or(
+                    ilike(orders.orderNumber, `%${search}%`),
+                    ilike(orders.customerPhone, `%${search}%`)
+                )
             )
-            : undefined;
+            : isNull(orders.resellerId);
 
         const [totalResult, results] = await Promise.all([
             db.select({ count: count() }).from(orders).where(where),

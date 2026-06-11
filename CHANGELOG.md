@@ -2,6 +2,39 @@
 
 Toutes les modifications notables de ce projet seront documentées dans ce fichier.
 
+> ⚙️ Convention : **chaque changement fonctionnel ajoute une entrée ici dans le
+> même commit/PR**, et la prod se déploie UNIQUEMENT depuis git (plus d'édition
+> directe sur prod) — GitHub reste l'unique source de vérité.
+
+## [2026-06-11] — Réconciliation : GitHub redevient la source de vérité
+
+> Découverte chef-projet : ~1 semaine de travail prod (`security.ts`, `caisse`
+> /paiements ~1000L, `comptes-partages`, `microsoft-auth`, `AdminSidebar`,
+> composants shop) avait été éditée DIRECTEMENT sur prod, jamais commitée
+> (capturée dans `prod-snapshot-2026-06-10` / `b06e28e`).
+
+- `merge` : réconcilié le drift prod + la couche dev (money-safety + miroir BSV)
+  dans git. 16 conflits résolus par autorité par-fichier (prod pour la refonte
+  prod, dev pour la nouvelle couche). tsc clean, **306/306 tests**. — `29987d5`
+  - ⚠️ 3 fichiers ont pris un défaut documenté, **validation dev requise avant
+    deploy** : `webhook/v2/route.ts` (pris DEV/money-safety), `shop/actions.ts`
+    et `dashboard/page.tsx` (pris PROD).
+
+## [2026-06-11] — Miroir BSV dans la marketplace
+
+- `feat(reseller)` : l'onglet Marketplace miroite le catalogue BSV par
+  CATÉGORIE → MARQUE → montant, en réutilisant le design existant ; BSV rallumé
+  dans la grille (unifié avec G2Bulk, fournisseur caché). Lecture du catalogue
+  STABLE (`catalog.list` niveau cluster/SKU), plus les offres volatiles.
+  Checkout durci : commande par SKU (auto-fallback LoadBrain → fin des erreurs
+  « listing no longer active ») ; `orders.create` sorti de la transaction DB,
+  remboursement par-ligne sur échec. — `5b18a22`
+
+## [2026-06-10] — Money-safety reseller/IPTV
+
+- `fix(money-safety)` : durcissement des chemins money reseller/IPTV
+  (C1/C2/H1/H2/H3/H5). — `ebdba26`
+
 ## [13.0.1] — Deploy pipeline fixes (2026-05-19)
 
 > Hotfix infra découvert pendant le premier deploy v13 sur prod

@@ -1,10 +1,21 @@
 import "server-only";
 import { lbConfig } from "@/lib/loadbrain";
+import { lbV2, isLoadBrainV2Enabled } from "@/lib/loadbrain-v2";
 
 export interface IbosolApp {
     id: number;
     name: string;
     icon?: string;
+}
+
+function normalizeApps(raw: any[]): IbosolApp[] {
+    return raw
+        .map((a) => ({
+            id: Number(a.id),
+            name: String(a.name ?? a.label ?? `App #${a.id}`),
+            icon: typeof a.icon === "string" ? a.icon : undefined,
+        }))
+        .filter((a) => Number.isFinite(a.id) && a.id > 0);
 }
 
 const FALLBACK_APPS: IbosolApp[] = [
@@ -23,6 +34,30 @@ export async function getIbosolApps(): Promise<IbosolApp[]> {
     if (!lbConfig) {
         console.warn("[ibosol-apps] LoadBrain not configured — using fallback");
         return FALLBACK_APPS;
+    }
+
+    // v2 path (behind LOADBRAIN_USE_V2=true), fallback to v1 raw fetch on error.
+    if (isLoadBrainV2Enabled() && lbV2) {
+        try {
+            const data = await lbV2.iptv.apps.list();
+            // SDK v2 returns a flat ReadonlyArray<IptvApp>; some envelope variants
+            // may instead surface { apps: [...] }. Tolerate both.
+            const raw: any[] = Array.isArray(data)
+                ? (data as any[])
+                : ((data as any)?.apps ?? []);
+            const apps = normalizeApps(raw);
+            if (apps.length > 0) {
+                cache = { data: apps, expiresAt: Date.now() + CACHE_TTL_MS };
+                return apps;
+            }
+            console.warn("[ibosol-apps] v2 returned empty list, fallback to v1");
+        } catch (err) {
+            console.warn(
+                "[ibosol-apps] v2 fetch failed, fallback to v1:",
+                err instanceof Error ? err.message : err
+            );
+            // fall through to v1
+        }
     }
 
     try {
@@ -44,11 +79,7 @@ export async function getIbosolApps(): Promise<IbosolApp[]> {
             : (body?.data?.apps ?? body?.applications ?? body?.data?.applications ?? body?.data ?? []);
         if (!Array.isArray(raw) || raw.length === 0) throw new Error("Empty apps list");
 
-        const apps: IbosolApp[] = raw.map((a) => ({
-            id: Number(a.id),
-            name: String(a.name ?? a.label ?? `App #${a.id}`),
-            icon: typeof a.icon === "string" ? a.icon : undefined,
-        })).filter((a) => Number.isFinite(a.id) && a.id > 0);
+        const apps = normalizeApps(raw);
 
         if (apps.length === 0) throw new Error("No valid apps after normalization");
 

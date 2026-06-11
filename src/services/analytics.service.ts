@@ -1,20 +1,33 @@
 import { db } from "@/db";
-import { orderItems, orders, products, productVariants, clients } from "@/db/schema";
+import { orderItems, orders, products, productVariants, clients, shopSettings } from "@/db/schema";
 import { desc, sql, and, gte, lte, inArray } from "drizzle-orm";
 import { subDays, startOfMonth, endOfMonth } from "date-fns";
 import { OrderStatus } from "@/lib/constants";
 
 // Orders that count as revenue: paid, delivered, or completed
 const PAID_STATUSES = [OrderStatus.PAYE, OrderStatus.LIVRE, OrderStatus.TERMINE];
-const EXCHANGE_RATE_USD_DZD = 245;
 
-// SQL fragment: convert purchasePrice to DZD based on purchaseCurrency
-const costInDzd = sql`CASE WHEN ${orderItems.purchaseCurrency} = 'USD' THEN CAST(${orderItems.purchasePrice} AS numeric) * ${EXCHANGE_RATE_USD_DZD} ELSE COALESCE(CAST(${orderItems.purchasePrice} AS numeric), 0) END`;
+const FALLBACK_USD_DZD = 245;
+
+/** Live USD→DZD rate from shop settings (same source the pricing/POS use). */
+async function getUsdRate(): Promise<number> {
+    const settings = await db.query.shopSettings.findFirst({
+        columns: { usdExchangeRate: true },
+    });
+    const rate = parseFloat(settings?.usdExchangeRate ?? "");
+    return Number.isFinite(rate) && rate > 0 ? rate : FALLBACK_USD_DZD;
+}
+
+// SQL fragment: convert purchasePrice to DZD based on purchaseCurrency, using
+// the live rate instead of a hardcoded constant (which undervalued USD costs).
+const buildCostInDzd = (rate: number) =>
+    sql`CASE WHEN ${orderItems.purchaseCurrency} = 'USD' THEN CAST(${orderItems.purchasePrice} AS numeric) * ${rate} ELSE COALESCE(CAST(${orderItems.purchasePrice} AS numeric), 0) END`;
 
 export class AnalyticsService {
     static async getFinancialOverview(startDate?: Date, endDate?: Date) {
         const start = startDate || startOfMonth(new Date());
         const end = endDate || endOfMonth(new Date());
+        const costInDzd = buildCostInDzd(await getUsdRate());
 
         const stats = await db
             .select({
@@ -67,6 +80,7 @@ export class AnalyticsService {
     }
 
     static async getTopProducts(limit = 10) {
+        const costInDzd = buildCostInDzd(await getUsdRate());
         return await db
             .select({
                 productId: products.id,
@@ -89,6 +103,7 @@ export class AnalyticsService {
 
     static async getProfitTrend() {
         const thirtyDaysAgo = subDays(new Date(), 30);
+        const costInDzd = buildCostInDzd(await getUsdRate());
 
         return await db
             .select({

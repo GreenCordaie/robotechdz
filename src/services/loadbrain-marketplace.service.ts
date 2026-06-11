@@ -184,34 +184,40 @@ export class LoadBrainMarketplaceService {
         if (cat.length === 0) return { success: false, error: "Catégorie introuvable" };
 
         try {
-            const [newProduct] = await db
-                .insert(products)
-                .values({
-                    name: input.productName,
-                    description: input.productDescription ?? null,
-                    categoryId: input.categoryId,
-                    isManualDelivery: false,
-                    requiresPlayerId: false,
-                    status: "ACTIVE",
-                })
-                .returning();
+            // Product + variant in one transaction so a failed variant insert
+            // never leaves an orphan product behind.
+            const { productId, variantId } = await db.transaction(async (tx) => {
+                const [newProduct] = await tx
+                    .insert(products)
+                    .values({
+                        name: input.productName,
+                        description: input.productDescription ?? null,
+                        categoryId: input.categoryId,
+                        isManualDelivery: false,
+                        requiresPlayerId: false,
+                        status: "ACTIVE",
+                    })
+                    .returning();
 
-            const [newVariant] = await db
-                .insert(productVariants)
-                .values({
-                    productId: newProduct.id,
-                    name: input.variantName,
-                    salePriceDzd: input.salePriceDzd,
-                    resellerPriceOverrideDzd: input.resellerPriceOverrideDzd ?? null,
-                    kioskVisible: input.kioskVisible ?? false,
-                    resellerVisible: input.resellerVisible ?? true,
-                    loadbrainSlug: input.slug,
-                    isSharing: false,
-                    totalSlots: 1,
-                })
-                .returning();
+                const [newVariant] = await tx
+                    .insert(productVariants)
+                    .values({
+                        productId: newProduct.id,
+                        name: input.variantName,
+                        salePriceDzd: input.salePriceDzd,
+                        resellerPriceOverrideDzd: input.resellerPriceOverrideDzd ?? null,
+                        kioskVisible: input.kioskVisible ?? false,
+                        resellerVisible: input.resellerVisible ?? true,
+                        loadbrainSlug: input.slug,
+                        isSharing: false,
+                        totalSlots: 1,
+                    })
+                    .returning();
 
-            return { success: true, productId: newProduct.id, variantId: newVariant.id };
+                return { productId: newProduct.id, variantId: newVariant.id };
+            });
+
+            return { success: true, productId, variantId };
         } catch (err) {
             const msg = err instanceof Error ? err.message : "Erreur inconnue";
             console.error("[loadbrain-marketplace] linkServiceToProduct failed:", msg);

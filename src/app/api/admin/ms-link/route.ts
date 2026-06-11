@@ -1,12 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { MicrosoftAuthService } from "@/services/microsoft-auth.service";
 import { getSession } from "@/lib/auth";
+import { UserRole } from "@/lib/constants";
 
 export async function GET(req: NextRequest) {
-    // Auth check
+    // Auth check — linking a Microsoft account to a digital code is admin-only.
     const session = await getSession();
     if (!session) {
         return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
+    }
+    if (session.userRole !== UserRole.ADMIN) {
+        return NextResponse.json({ error: "Accès réservé aux administrateurs" }, { status: 403 });
     }
 
     const { searchParams } = new URL(req.url);

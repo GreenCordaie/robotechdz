@@ -141,11 +141,11 @@ export async function processCompletedTask(event: LoadBrainTaskEvent): Promise<v
     const partial = ibosolMode && isPartialSuccess(creds, comboRequested);
     const finalStatus = partial ? "completed_partial" : "completed";
 
-    await db.transaction(async (tx) => {
+    const delivered = await db.transaction(async (tx) => {
         const existing = await tx.query.digitalCodes.findFirst({
             where: eq(digitalCodes.orderItemId, targetItem.id),
         });
-        if (existing) return;
+        if (existing) return false;
 
         if (ibosolMode) {
             const codeValue = formatIbosolCode(creds);
@@ -194,7 +194,9 @@ export async function processCompletedTask(event: LoadBrainTaskEvent): Promise<v
             status: finalStatus,
             error: partial ? sanitizeProviderError("IPTV combo not delivered") : null,
             errorCode: partial ? "PARTIAL_IPTV" : null,
-            credentialsEncrypted: encrypt(JSON.stringify(event.credentials)),
+            // Guard against a missing credentials payload: JSON.stringify(undefined)
+            // returns undefined, which would store NULL and crash a later decrypt().
+            credentialsEncrypted: encrypt(JSON.stringify(event.credentials ?? {})),
             completedAt: new Date(),
         }).where(and(
             eq(iptvProvisions.orderId, order.id),
@@ -208,7 +210,12 @@ export async function processCompletedTask(event: LoadBrainTaskEvent): Promise<v
             isDelivered: true,
             printStatus: isWhatsApp ? "idle" : "print_pending",
         }).where(eq(orders.id, order.id));
+        return true;
     });
+
+    // Replayed webhook (codes already present) → the transaction rolled back to
+    // a no-op. Skip notifications so the customer/reseller isn't pinged twice.
+    if (!delivered) return;
 
     eventBus.publish(SystemEvent.ORDER_DELIVERED, { orderId: order.id });
 

@@ -9,6 +9,7 @@ import { logSecurityAction } from "@/lib/security";
 import { verify } from "otplib";
 import { encrypt, decrypt } from "@/lib/encryption";
 import { checkRateLimit, recordFailure, resetRateLimit } from "@/lib/rate-limit";
+import { issueMfaTicket, verifyMfaTicket } from "@/lib/mfa-ticket";
 
 async function verifyTurnstile(token: string, secret: string) {
     try {
@@ -28,8 +29,18 @@ async function verifyTurnstile(token: string, secret: string) {
 export async function loginResellerAction(email: string, pin: string, honeypot?: string, turnstileToken?: string) {
     const turnstileSecret = process.env.TURNSTILE_SECRET_KEY;
 
-    // 0. Turnstile check
-    if (turnstileSecret) {
+    // Cloudflare Turnstile official test secret keys — always pass.
+    // Used in local dev where the login widget isn't rendered.
+    // Doc: https://developers.cloudflare.com/turnstile/troubleshooting/testing/
+    const TURNSTILE_TEST_SECRETS = new Set([
+        "1x0000000000000000000000000000000AA", // always passes
+        "2x0000000000000000000000000000000AA", // always fails
+        "3x0000000000000000000000000000000AA", // token already spent
+    ]);
+    const isTurnstileTestKey = turnstileSecret ? TURNSTILE_TEST_SECRETS.has(turnstileSecret) : false;
+
+    // 0. Turnstile check (skipped when using Cloudflare test keys in dev)
+    if (turnstileSecret && !isTurnstileTestKey) {
         if (!turnstileToken) {
             return { success: false, error: "Veuillez valider le CAPTCHA" };
         }
@@ -99,12 +110,13 @@ export async function loginResellerAction(email: string, pin: string, honeypot?:
         // Reset on success
         await resetRateLimit(email);
 
-        // 2FA CHECK
+        // 2FA CHECK — signed step-2 ticket bound to this user, not a raw userId
+        // the client could swap (verified in verifyResellerMfaAction).
         if (user.twoFactorSecret) {
             return {
                 success: true,
                 mfaRequired: true,
-                tempUserId: user.id
+                mfaTicket: await issueMfaTicket(user.id, user.role)
             };
         }
 
@@ -133,8 +145,23 @@ export async function loginResellerAction(email: string, pin: string, honeypot?:
     }
 }
 
-export async function verifyResellerMfaAction(userId: number, code: string) {
+export async function verifyResellerMfaAction(ticket: string, code: string) {
     try {
+        // Resolve the user from the SIGNED step-1 ticket — never trust a raw
+        // client-supplied userId for the second factor (closes the IDOR/bypass).
+        const claims = await verifyMfaTicket(ticket);
+        if (!claims || claims.role !== "RESELLER") {
+            return { success: false, error: "Session expirée, reconnectez-vous." };
+        }
+        const userId = claims.userId;
+
+        // Rate limit (MFA) — a 6-digit TOTP is trivially brute-forced without this.
+        // Parity with the admin verifyMfaAction.
+        const limit = await checkRateLimit(`mfa:${userId}`);
+        if (limit.isBlocked) {
+            return { success: false, error: "Trop de tentatives MFA. Réessayez dans 15 minutes." };
+        }
+
         const user = await db.query.users.findFirst({
             where: eq(users.id, userId)
         });
@@ -161,14 +188,17 @@ export async function verifyResellerMfaAction(userId: number, code: string) {
         }
 
         if (!isValid) {
+            await recordFailure(`mfa:${user.id}`);
             await logSecurityAction({
                 userId: user.id,
                 action: "AUTH_MFA_FAILED",
                 entityType: "AUTH",
-                newData: { role: "RESELLER", code }
+                newData: { role: "RESELLER" }
             });
             return { success: false, error: "Code invalide" };
         }
+
+        await resetRateLimit(`mfa:${user.id}`);
 
         await createSession({
             id: user.id,

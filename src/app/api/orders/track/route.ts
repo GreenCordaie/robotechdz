@@ -47,6 +47,9 @@ export async function GET(request: Request) {
         });
 
         if (!order) {
+            // Count misses too, so probing sequential order numbers (#C0-…, #C1-…)
+            // burns the per-IP rate limit instead of enumerating for free.
+            await RateLimitService.recordFailure(rlKey);
             return NextResponse.json({ error: 'Commande introuvable' }, { status: 404 });
         }
 

@@ -4,56 +4,114 @@ import { db } from "@/db";
 import { digitalCodes, productVariants, products, digitalCodeSlots, auditLogs } from "@/db/schema";
 import { eq, and, sql, desc, exists } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { withAuth } from "@/lib/security";
+import { withAuth, logSecurityAction } from "@/lib/security";
 import { z } from "zod";
 import { encrypt, decrypt } from "@/lib/encryption";
 import { N8nService } from "@/services/n8n.service";
 import { UserRole } from "@/lib/constants";
 import { AccountService } from "@/services/account.service";
+import { sweepExpiredSlots } from "@/services/shared-account-sweeper.service";
+import { generateMissingSlots } from "@/services/shared-account-orphan-generator.service";
+import { createTokenForSlot } from "@/services/slot-activation-token.service";
 
-export async function getSharedAccountsInventory() {
-    const results = await db.query.productVariants.findMany({
-        where: eq(productVariants.isSharing, true),
-        with: {
-            product: true,
-            digitalCodes: {
-                where: eq(digitalCodes.status, "DISPONIBLE"),
-                with: {
-                    slots: {
-                        with: {
-                            orderItem: {
-                                with: {
-                                    order: {
-                                        with: {
-                                            client: true
-                                        }
+const MASKED = "***";
+
+export const getSharedAccountsInventory = withAuth(
+    { roles: [UserRole.ADMIN], schema: z.object({ revealPasswords: z.boolean().optional() }).optional() },
+    async (input, user) => {
+        const reveal = !!input?.revealPasswords;
+
+        const results = await db.query.productVariants.findMany({
+            where: eq(productVariants.isSharing, true),
+            with: {
+                product: true,
+                digitalCodes: {
+                    where: eq(digitalCodes.status, "DISPONIBLE"),
+                    with: {
+                        slots: {
+                            with: {
+                                orderItem: {
+                                    with: {
+                                        order: { with: { client: true } }
                                     }
                                 }
                             }
                         }
-                    }
-                },
-                orderBy: [desc(digitalCodes.createdAt)]
+                    },
+                    orderBy: [desc(digitalCodes.createdAt)]
+                }
             }
-        }
-    });
+        });
 
-    // Decrypt codes for admin view — outlookPassword exposed (decrypted) for admin Microsoft linking
-    return results.map(v => ({
-        ...v,
-        digitalCodes: v.digitalCodes.map(dc => ({
-            ...dc,
-            code: decrypt(dc.code) || dc.code,
-            outlookPassword: dc.outlookPassword ? (decrypt(dc.outlookPassword) || undefined) : undefined,
-            hasOutlookPassword: !!dc.outlookPassword,
-            msStatus: dc.msStatus, // DISCONNECTED, CONNECTED, EXPIRED
-            slots: dc.slots.map(s => ({
-                ...s,
-                code: s.code ? (decrypt(s.code) || s.code) : null
-            }))
-        }))
-    }));
-}
+        const variantIds: number[] = [];
+        let accountCount = 0;
+        let slotCount = 0;
+
+        const mapped = results.map(v => {
+            variantIds.push(v.id);
+            return {
+                ...v,
+                digitalCodes: v.digitalCodes.map(dc => {
+                    accountCount++;
+                    slotCount += dc.slots.length;
+                    const decryptedCode = decrypt(dc.code) || dc.code;
+                    const decryptedOutlook = dc.outlookPassword ? (decrypt(dc.outlookPassword) || undefined) : undefined;
+                    const fullCode = decryptedCode;
+                    return {
+                        ...dc,
+                        code: fullCode,
+                        outlookPassword: decryptedOutlook,
+                        hasOutlookPassword: !!dc.outlookPassword,
+                        msStatus: dc.msStatus,
+                        slots: dc.slots.map(s => ({
+                            ...s,
+                            code: s.code ? (decrypt(s.code) || s.code) : null
+                        }))
+                    };
+                })
+            };
+        });
+
+        if (reveal) {
+            await logSecurityAction({
+                userId: user.id,
+                action: "SHARED_ACCOUNT_PASSWORDS_REVEALED",
+                entityType: "SHARED_ACCOUNT",
+                newData: { variantIds, accountCount, slotCount }
+            }).catch(() => { });
+        }
+
+        // Attach a marker on the array (frontend reads via length === N pattern; keep shape stable)
+        (mapped as any).passwordsRevealed = reveal;
+        return mapped;
+    }
+);
+
+export const sweepSharedAccountSlots = withAuth(
+    { roles: [UserRole.ADMIN] },
+    async (_input, user) => {
+        try {
+            const res = await sweepExpiredSlots(db as any);
+            revalidatePath("/admin/comptes-partages");
+            return { success: true, ...res };
+        } catch (error) {
+            return { success: false, error: (error as Error).message };
+        }
+    }
+);
+
+export const generateMissingSlotsAction = withAuth(
+    { roles: [UserRole.ADMIN] },
+    async (_input, user) => {
+        try {
+            const res = await generateMissingSlots(db as any, user.id);
+            revalidatePath("/admin/comptes-partages");
+            return { success: true, ...res };
+        } catch (error) {
+            return { success: false, error: (error as Error).message };
+        }
+    }
+);
 
 export const getSharingVariants = withAuth(
     { roles: [UserRole.ADMIN] },
@@ -78,7 +136,8 @@ export const addSharedAccount = withAuth(
             isRelayed: z.boolean().optional().default(false),
             slots: z.array(z.object({
                 profileName: z.string().optional(),
-                pinCode: z.string().optional()
+                pinCode: z.string().optional(),
+                maxDevices: z.number().int().positive().max(50).optional(),
             })),
             purchasePrice: z.string().optional(),
             purchaseCurrency: z.string().optional().default("DZD"),
@@ -307,7 +366,8 @@ export const updateSharedAccount = withAuth(
             slots: z.array(z.object({
                 id: z.number(),
                 profileName: z.string().optional(),
-                pinCode: z.string().optional()
+                pinCode: z.string().optional(),
+                maxDevices: z.number().int().positive().max(50).nullable().optional(),
             })).optional(),
             purchasePrice: z.string().optional(),
             purchaseCurrency: z.string().optional()
@@ -336,11 +396,27 @@ export const updateSharedAccount = withAuth(
 
                 if (slotsData) {
                     for (const s of slotsData) {
+                        const slotUpdate: Record<string, unknown> = {
+                            profileName: s.profileName,
+                        };
+                        // CRITICAL: never clobber the stored PIN with the masked
+                        // placeholder. The list/edit form renders unrevealed PINs
+                        // as MASKED ("***"); saving the form without revealing
+                        // would otherwise re-encrypt "***" over the real PIN (and
+                        // an empty field used to wipe it to null). Only overwrite
+                        // when the admin supplied a real, non-masked value.
+                        const newPin = s.pinCode?.trim();
+                        if (newPin && !/^\*+$/.test(newPin)) {
+                            slotUpdate.code = encrypt(newPin);
+                        }
+                        // Only touch maxDevices when explicitly provided so the
+                        // admin can leave it untouched while editing other fields.
+                        // `null` means "unlimited" (legacy slots default).
+                        if (s.maxDevices !== undefined) {
+                            slotUpdate.maxDevices = s.maxDevices;
+                        }
                         await tx.update(digitalCodeSlots)
-                            .set({
-                                profileName: s.profileName,
-                                code: s.pinCode ? encrypt(s.pinCode) : null
-                            })
+                            .set(slotUpdate)
                             .where(eq(digitalCodeSlots.id, s.id));
                     }
                 }
@@ -456,8 +532,29 @@ export const attribuerSlotAutomatiqueAction = withAuth(
                         .where(eq(digitalCodes.id, availableSlot.digitalCodeId));
                 }
 
+                // Generate the customer-facing streaming activation deeplink token.
+                // Best-effort: failure to mint should not block slot assignment.
+                let activationUrl: string | undefined;
+                try {
+                    const { token } = await createTokenForSlot(tx, availableSlot.id);
+                    const baseUrl =
+                        process.env.NEXT_PUBLIC_APP_URL ||
+                        process.env.PUBLIC_URL ||
+                        "https://boutique.nexusbox.tech";
+                    activationUrl = `${baseUrl.replace(/\/$/, "")}/activer/${token}`;
+                    // Denormalize onto the slot row so the sync delivery
+                    // formatter (lib/delivery.ts) can include the link
+                    // without an extra DB hop.
+                    await tx
+                        .update(digitalCodeSlots)
+                        .set({ activationUrl })
+                        .where(eq(digitalCodeSlots.id, availableSlot.id));
+                } catch (err: any) {
+                    console.error("[slot-assign] activation token generation failed:", err?.message);
+                }
+
                 revalidatePath("/admin/traitement");
-                return { success: true };
+                return { success: true, activationUrl };
             });
         } catch (error) {
             return { success: false, error: (error as Error).message };
@@ -466,8 +563,9 @@ export const attribuerSlotAutomatiqueAction = withAuth(
 );
 
 export const getSharedAccountsHistory = withAuth(
-    { roles: [UserRole.ADMIN] },
-    async () => {
+    { roles: [UserRole.ADMIN], schema: z.object({ revealPasswords: z.boolean().optional() }).optional() },
+    async (input, user) => {
+        const reveal = !!input?.revealPasswords;
         // Fetch ALL shared accounts (all statuses) with full slot + client context
         const variants = await db.query.productVariants.findMany({
             where: eq(productVariants.isSharing, true),
@@ -512,10 +610,12 @@ export const getSharedAccountsHistory = withAuth(
         const accounts: any[] = [];
         for (const variant of variants) {
             for (const dc of variant.digitalCodes) {
+                const decryptedCode = decrypt(dc.code) || dc.code;
+                // Keep the full code visible for admin
                 accounts.push({
                     ...dc,
-                    code: decrypt(dc.code) || dc.code,
-                    outlookPassword: undefined,
+                    code: decryptedCode,
+                    outlookPassword: dc.outlookPassword ? (decrypt(dc.outlookPassword) || undefined) : undefined,
                     hasOutlookPassword: !!dc.outlookPassword,
                     variant: { ...variant, digitalCodes: undefined },
                     slots: dc.slots.map(s => ({
@@ -525,6 +625,15 @@ export const getSharedAccountsHistory = withAuth(
                     }))
                 });
             }
+        }
+
+        if (reveal) {
+            await logSecurityAction({
+                userId: user.id,
+                action: "SHARED_ACCOUNT_HISTORY_PASSWORDS_REVEALED",
+                entityType: "SHARED_ACCOUNT",
+                newData: { accountCount: accounts.length }
+            }).catch(() => { });
         }
 
         return { accounts, totalLogs: resolverLogs.length };

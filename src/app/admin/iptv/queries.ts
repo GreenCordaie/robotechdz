@@ -5,15 +5,21 @@ import { desc } from "drizzle-orm";
 import { decrypt } from "@/lib/encryption";
 
 export async function fetchIptvProvisions() {
-    const provisions = await db.query.iptvProvisions.findMany({
+    // Fetch 200 to compensate post-fetch filter (resellerId IS NULL → B2C only).
+    const all = await db.query.iptvProvisions.findMany({
         with: {
             order: { with: { client: true } },
             orderItem: true,
             variant: { with: { product: true } },
         },
         orderBy: [desc(iptvProvisions.createdAt)],
-        limit: 100,
+        limit: 200,
     });
+
+    // B2C scoping: kiosk-side only. Reseller IPTV orders live in /reseller/iptv.
+    const provisions = all
+        .filter((p: any) => p.order && p.order.resellerId == null)
+        .slice(0, 100);
 
     return provisions.map((p: any) => {
         let credentials = null;

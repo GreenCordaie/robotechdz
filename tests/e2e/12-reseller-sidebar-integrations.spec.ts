@@ -1,15 +1,18 @@
 import { test, expect } from "@playwright/test";
 
 /**
- * EPIC 1 / Phase I2 — Sidebar reseller : section Intégrations.
+ * EPIC 1 / Phase I2 — Nav reseller : intégrations exposées.
+ *
+ * La nav reseller est un top-nav (ShopTopNav) avec un dropdown profil.
+ * (L'ancienne sidebar a été remplacée par le top-nav — cf. STATUS B5 2026-05-28.)
  *
  * SAFE :
- *   - Login reseller → /reseller/dashboard
- *   - Vérifie présence des liens Webhooks + API & Docs
- *   - API & Docs ouvre dans nouvel onglet (target=_blank)
+ *   - Login reseller → ouvre le dropdown profil
+ *   - Vérifie présence des liens Mes Webhooks + API & Docs
+ *   - API & Docs ouvre dans un nouvel onglet (target=_blank)
  */
 
-test.describe("Reseller sidebar — Intégrations", () => {
+test.describe("Reseller nav — Intégrations", () => {
     test.beforeEach(async ({ page }) => {
         await page.goto("/reseller/login");
         await page.locator("input[name='email'], input[type='email']").first().fill("reseller@e2e.test");
@@ -18,12 +21,13 @@ test.describe("Reseller sidebar — Intégrations", () => {
         await page.waitForURL(/\/reseller\/(dashboard|wallet|shop|orders|support)/, { timeout: 15_000 });
     });
 
-    test("Sidebar contient lien Mes Webhooks + API & Docs", async ({ page }) => {
+    test("Dropdown profil contient Mes Webhooks + API & Docs (nouvel onglet)", async ({ page }) => {
         await page.goto("/reseller/dashboard");
         await page.waitForLoadState("domcontentloaded");
 
-        await expect(page.getByText(/^Intégrations$/i).first()).toBeVisible({ timeout: 10_000 });
-        await expect(page.getByRole("link", { name: /Mes Webhooks/i })).toBeVisible();
+        await page.getByRole("button", { name: /profil/i }).click();
+
+        await expect(page.getByRole("menuitem", { name: /Mes Webhooks/i })).toBeVisible({ timeout: 10_000 });
 
         const apiDocsLink = page.getByTestId("reseller-api-docs-link");
         await expect(apiDocsLink).toBeVisible();
@@ -36,7 +40,8 @@ test.describe("Reseller sidebar — Intégrations", () => {
         await page.goto("/reseller/dashboard");
         await page.waitForLoadState("domcontentloaded");
 
-        await page.getByRole("link", { name: /Mes Webhooks/i }).click();
+        await page.getByRole("button", { name: /profil/i }).click();
+        await page.getByRole("menuitem", { name: /Mes Webhooks/i }).click();
         await page.waitForURL(/\/reseller\/webhooks/, { timeout: 10_000 });
     });
 });

@@ -5,8 +5,16 @@ import { orders, orderItems, productVariants, supportTickets, digitalCodes, prod
 import { revalidatePath } from "next/cache";
 import { sql, eq, and, count, exists } from "drizzle-orm";
 import { sendTelegramNotification } from "@/lib/telegram";
-import { sendPushToRoleAction } from "../admin/push/actions";
+import { sendPushToRole } from "@/lib/push-sender";
 import { cacheGet, cacheSet, cacheDel, CACHE_KEYS, CACHE_TTL } from "@/lib/redis";
+import { checkRateLimit } from "@/lib/rate-limit";
+import { z } from "zod";
+
+const supportTicketSchema = z.object({
+    orderNumber: z.string().trim().min(1).max(40),
+    message: z.string().trim().min(1, "Message requis").max(1000, "Message trop long (max 1000)"),
+    customerPhone: z.string().trim().max(30).optional(),
+});
 interface KioskOrderItemInput {
     variantId: number;
     quantity: number;
@@ -197,8 +205,21 @@ export async function getKioskData() {
 
 export async function createSupportTicket(data: { orderNumber: string; message: string; customerPhone: string }) {
     try {
+        // Public endpoint — validate input shape/length and throttle to stop
+        // spam flooding the support queue (and the Telegram notification channel).
+        const parsed = supportTicketSchema.safeParse(data);
+        if (!parsed.success) {
+            return { success: false, error: parsed.error.issues[0]?.message || "Données invalides" };
+        }
+        const { orderNumber, message, customerPhone } = parsed.data;
+
+        const rl = await checkRateLimit(`support-ticket:${customerPhone || orderNumber}`, 5);
+        if (rl.isBlocked) {
+            return { success: false, error: "Trop de demandes. Veuillez réessayer plus tard." };
+        }
+
         const order = await db.query.orders.findFirst({
-            where: (o, { sql }) => sql`upper(${o.orderNumber}) = upper(${data.orderNumber})`
+            where: (o, { sql }) => sql`upper(${o.orderNumber}) = upper(${orderNumber})`
         });
 
         if (!order) return { success: false, error: "Commande introuvable" };
@@ -206,8 +227,8 @@ export async function createSupportTicket(data: { orderNumber: string; message: 
         const [ticket] = await db.insert(supportTickets).values({
             orderId: order.id,
             subject: `Support ${order.orderNumber}`,
-            message: data.message,
-            customerPhone: data.customerPhone,
+            message,
+            customerPhone: customerPhone ?? null,
             status: 'OUVERT'
         }).returning();
 
