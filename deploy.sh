@@ -6,7 +6,7 @@ set -e
 # Usage: ./deploy.sh [setup|deploy|update|logs|status|backup|restore]
 # ═══════════════════════════════════════════════════════════════════════════════
 
-APP_DIR="/opt/robotech"
+APP_DIR="${APP_DIR:-/var/www/100-pc-ia}"
 COMPOSE_FILE="docker-compose.prod.yml"
 REPO_URL="https://github.com/YOUR_USER/100-pc-IA.git"
 
