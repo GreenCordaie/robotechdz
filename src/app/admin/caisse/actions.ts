@@ -58,8 +58,10 @@ export const payOrder = withAuth(
                 clientId: z.number().optional(),
                 itemSuppliers: z.record(z.string(), z.number()).optional(),
                 itemPriceOverrides: z.record(z.string(), z.object({
-                    price: z.string(),
-                    currency: z.string()
+                    // Positive decimal only — a malformed value (e.g. "abc") would
+                    // become NaN and a negative value would CREDIT the supplier.
+                    price: z.string().regex(/^\d+(\.\d{1,2})?$/, "Prix invalide (décimal positif attendu)"),
+                    currency: z.enum(["USD", "DZD", "EUR"]),
                 })).optional(),
                 paymentMethod: z.string().optional(),
             })
@@ -386,8 +388,29 @@ export const refundOrderItem = withAuth(
 
                 if (item.slots && item.slots.length > 0) {
                     await tx.update(digitalCodeSlots)
-                        .set({ status, orderItemId: null })
+                        .set({ status, orderItemId: null, activationUrl: null })
                         .where(inArray(digitalCodeSlots.id, item.slots.map(s => s.id)));
+
+                    if (returnToStock) {
+                        // Shared-account parents (Netflix…) are marked VENDU when ALL
+                        // their slots are sold and carry NO orderItemId, so the update
+                        // above (keyed on slot id) never touches them. Freeing a slot
+                        // must flip the parent back to DISPONIBLE AND reset
+                        // isDebitCompleted, otherwise the next allocation of that parent
+                        // skips the supplier debit (the supplier silently loses money).
+                        const parentIds = Array.from(
+                            new Set(
+                                item.slots
+                                    .map((s) => (s as { digitalCodeId: number | null }).digitalCodeId)
+                                    .filter((x): x is number => x != null),
+                            ),
+                        );
+                        if (parentIds.length > 0) {
+                            await tx.update(digitalCodes)
+                                .set({ status: DigitalCodeStatus.DISPONIBLE, isDebitCompleted: false })
+                                .where(and(inArray(digitalCodes.id, parentIds), eq(digitalCodes.status, DigitalCodeStatus.VENDU)));
+                        }
+                    }
                 }
 
                 // --- 🔄 BALANCE REVERSAL LOGIC ---
