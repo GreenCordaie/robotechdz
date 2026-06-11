@@ -12,6 +12,7 @@ import {
 } from "../region-utils";
 import type { G2BulkCatalogProduct } from "../g2bulk-shop-actions";
 import type { EnrichedBsvListing } from "@/types/bsv-listings";
+import type { EnrichedBsvSkuItem } from "@/types/bsv-sku-catalog";
 
 /* ──────────────────────────────────────────────────────────────────────────
  * Shared denomination model + presentational components.
@@ -21,7 +22,7 @@ import type { EnrichedBsvListing } from "@/types/bsv-listings";
  * defined once. Kept framework-pure (no data fetching) — callers own state.
  * ────────────────────────────────────────────────────────────────────────── */
 
-export type DenominationSource = "bsv" | "g2bulk";
+export type DenominationSource = "bsv" | "bsv-sku" | "g2bulk";
 
 export interface Denomination {
     readonly key: string; // unique key for selection / cart
@@ -33,7 +34,7 @@ export interface Denomination {
     readonly priceUsd: number | null;
     readonly listPriceDzd: number;
     readonly seller: string;
-    readonly raw: EnrichedBsvListing | G2BulkCatalogProduct;
+    readonly raw: EnrichedBsvListing | EnrichedBsvSkuItem | G2BulkCatalogProduct;
 }
 
 export const ALL_REGION = "ALL";
@@ -75,6 +76,28 @@ export function bsvToDenomination(l: EnrichedBsvListing): Denomination {
         listPriceDzd: l.pricing.listPriceDzd,
         seller: l.seller.slug,
         raw: l,
+    };
+}
+
+/**
+ * Map a stable BSV SKU-catalog cluster → unified Denomination row. The SKU is
+ * carried as the row key suffix and resolved back on checkout (order-by-SKU,
+ * which auto-falls-back across live listings). Stock is unknown at the cluster
+ * level — `inStock` gates selectability; we surface 1 so the row is buyable and
+ * let the post-buy gate enforce real availability.
+ */
+export function bsvSkuToDenomination(it: EnrichedBsvSkuItem): Denomination {
+    return {
+        key: `bsvsku:${it.sku}`,
+        source: "bsv-sku",
+        title: it.displayName,
+        region: it.region || "GLOBAL",
+        stock: it.inStock ? 1 : 0,
+        priceDzd: it.priceDzd,
+        priceUsd: null,
+        listPriceDzd: it.listPriceDzd,
+        seller: "", // supplier hidden
+        raw: it,
     };
 }
 

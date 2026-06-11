@@ -248,3 +248,15 @@ export interface BrandCategory {
     imageUrl: string;
     type: BrandType;
 }
+
+/**
+ * Map a BSV catalog `category` (gaming/streaming/retail/mobile/unknown) to the
+ * shop's BrandType taxonomy. BSV clusters are overwhelmingly regional wallet
+ * credit and have no first-class "top-up" concept at the cluster level today,
+ * so every category defaults to "giftcard"; SEED_BRANDS overrides win in the
+ * grid for the few mixed/top-up brands. Pure helper — safe in client modules.
+ */
+export function bsvCategoryToBrandType(category: string): BrandType {
+    void category;
+    return "giftcard";
+}

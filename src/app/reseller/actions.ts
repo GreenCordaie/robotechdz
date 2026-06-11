@@ -15,7 +15,7 @@ import { revalidatePath } from "next/cache";
 import { withAuth } from "@/lib/security";
 import { UserRole } from "@/lib/constants";
 import { z } from "zod";
-import { allocateOrderStock } from "@/lib/orders";
+import { allocateOrderStock, refundResellerWallet } from "@/lib/orders";
 import { OrderService } from "@/services/order.service";
 import { TierService } from "@/services/tier.service";
 import { ResellerNotifications, notifyLowBalanceAfterDebit } from "@/services/reseller-notifications.service";
@@ -364,9 +364,10 @@ export const checkoutResellerAction = withAuth(
         roles: [UserRole.RESELLER],
         schema: z.object({
             resellerId: z.number(),
-            // Cart line is one of three variants:
+            // Cart line is one of four variants:
             //   - legacy local variant (`id`)
-            //   - BSV mirror listing (`listingId`)
+            //   - BSV mirror listing (`listingId`) — legacy frozen-seller buy
+            //   - BSV SKU catalog (`sku`) — stable cluster buy (auto-fallback)
             //   - G2Bulk product (`g2bulkProductId`)
             cart: z.array(
                 z.union([
@@ -376,6 +377,10 @@ export const checkoutResellerAction = withAuth(
                     }),
                     z.object({
                         listingId: z.string().min(1),
+                        quantity: z.number().min(1),
+                    }),
+                    z.object({
+                        sku: z.string().min(1),
                         quantity: z.number().min(1),
                     }),
                     z.object({
@@ -395,17 +400,38 @@ export const checkoutResellerAction = withAuth(
 
         if (!reseller) return { success: false, error: "Compte revendeur invalide" };
 
-        // Split cart into legacy local, BSV mirror, and G2Bulk lines.
+        // Split cart into legacy local, BSV mirror, BSV SKU, and G2Bulk lines.
         const legacyCart = cart.filter(
             (c): c is { id: number; quantity: number } => "id" in c
         );
-        const bsvCart = cart.filter(
+        const bsvListingCart = cart.filter(
             (c): c is { listingId: string; quantity: number } => "listingId" in c
+        );
+        const bsvSkuCart = cart.filter(
+            (c): c is { sku: string; quantity: number } => "sku" in c
         );
         const g2bulkCart = cart.filter(
             (c): c is { g2bulkProductId: number; quantity: number } =>
                 "g2bulkProductId" in c
         );
+
+        // Both BSV variants resolve to the same fulfilment path; normalize to a
+        // single discriminated cart so handleBsvCheckout has one code path.
+        const bsvCart: Array<
+            | { kind: "listing"; listingId: string; quantity: number }
+            | { kind: "sku"; sku: string; quantity: number }
+        > = [
+            ...bsvListingCart.map((c) => ({
+                kind: "listing" as const,
+                listingId: c.listingId,
+                quantity: c.quantity,
+            })),
+            ...bsvSkuCart.map((c) => ({
+                kind: "sku" as const,
+                sku: c.sku,
+                quantity: c.quantity,
+            })),
+        ];
 
         if (g2bulkCart.length > 0 && bsvCart.length === 0 && legacyCart.length === 0) {
             return handleG2BulkCheckout({
@@ -620,11 +646,25 @@ export const checkoutResellerAction = withAuth(
 /* ----------------------------------------------------------------------
  * BSV mirror checkout — production path.
  *
- * Wired to the real LoadBrain SDK (`lbV2.giftcards.orders.create`) and
- * the real `bsv-pricing.service` since 89b6b6b. The __mocks__ files
- * still exist under src/ for vitest unit tests, but this runtime path
- * never reads them.
+ * Two cart variants resolve here, unified to a single fulfilment flow:
+ *   - `listing` — legacy frozen-seller buy (orders.create by listingId).
+ *   - `sku`     — stable cluster buy (orders.create by SKU; LoadBrain then
+ *     auto-falls-back across live member listings → no "listing no longer
+ *     active" error).
+ *
+ * MONEY-SAFETY refactor (2026-06-11):
+ *   The LoadBrain `orders.create` network call is NO LONGER held inside the
+ *   db.transaction. The tx now ONLY debits the wallet + writes the local
+ *   order + writes bsv_orders rows as PENDING_LOADBRAIN with lbOrderId=NULL,
+ *   then commits. AFTER commit we call orders.create per line and patch
+ *   lbOrderId. A per-line failure marks that line FAILED and refunds exactly
+ *   that line via refundResellerWallet — no orphaned LoadBrain order, no
+ *   lock held across the network, no all-or-nothing money loss.
  * --------------------------------------------------------------------- */
+type BsvCartLine =
+    | { kind: "listing"; listingId: string; quantity: number }
+    | { kind: "sku"; sku: string; quantity: number };
+
 async function handleBsvCheckout({
     reseller,
     userId,
@@ -632,7 +672,7 @@ async function handleBsvCheckout({
 }: {
     reseller: { id: number; companyName: string; contactPhone: string | null; customDiscount: string | null; wallet: { id: number; balance: string | null } | null };
     userId: number;
-    bsvCart: Array<{ listingId: string; quantity: number }>;
+    bsvCart: Array<BsvCartLine>;
 }) {
     try {
         const { bsvOrders: bsvOrdersTable } = await import("@/db/schema");
@@ -648,34 +688,113 @@ async function handleBsvCheckout({
             };
         }
 
-        // Resolve every cart listingId via the LoadBrain SDK. SDK throws
-        // on per-call failure → catch and bubble a friendly error.
-        type Detail = Awaited<ReturnType<typeof lbV2.giftcards.listings.get>>;
-        const fetched: Array<Detail | null> = await Promise.all(
-            bsvCart.map(async (c) => {
-                try {
-                    return await lbV2.giftcards.listings.get(c.listingId);
-                } catch {
-                    return null;
-                }
-            }),
-        );
-        const failedIdx = fetched.findIndex((r) => r === null);
-        if (failedIdx >= 0) {
-            return {
-                success: false as const,
-                error: `Annonce ${bsvCart[failedIdx].listingId} introuvable (peut-être expirée)`,
-            };
-        }
-        const listingMap = new Map(
-            fetched.map((r, i) => [bsvCart[i].listingId, r as Detail]),
-        );
+        // ── Price every line (cost basis differs by variant) ──────────────
+        // listing → fetch the seller offer (priceCents). sku → read the
+        // stable cluster catalog once (salePriceCents = post-site-markup USD).
+        type PricingInput = {
+            priceCentsUsd: number;
+            category: string;
+            brand: string;
+            sku: string;
+        };
+        const pricingInputs: Array<PricingInput | null> = new Array(
+            bsvCart.length,
+        ).fill(null);
+        // upstreamRef = what we store on the bsv_orders row + pass to
+        // orders.create (listingId or sku). Human-friendly for error text too.
+        const upstreamRef: string[] = new Array(bsvCart.length).fill("");
 
-        const missing = bsvCart.find((c) => !listingMap.has(c.listingId));
-        if (missing) {
+        // SKU lines: one shared catalog read → sku→item map.
+        const skuLines = bsvCart
+            .map((c, i) => ({ c, i }))
+            .filter((x) => x.c.kind === "sku");
+        if (skuLines.length > 0) {
+            let catalog: ReadonlyArray<{
+                sku?: string;
+                category?: string;
+                brand?: string;
+                salePriceCents?: number;
+            }>;
+            try {
+                catalog = (await lbV2.giftcards.catalog.list()) as ReadonlyArray<{
+                    sku?: string;
+                    category?: string;
+                    brand?: string;
+                    salePriceCents?: number;
+                }>;
+            } catch (err) {
+                return {
+                    success: false as const,
+                    error: `LoadBrain catalogue: ${(err as Error).message}`,
+                };
+            }
+            const bySku = new Map(
+                catalog
+                    .filter((x) => typeof x.sku === "string")
+                    .map((x) => [x.sku as string, x]),
+            );
+            for (const { c, i } of skuLines) {
+                if (c.kind !== "sku") continue;
+                const item = bySku.get(c.sku);
+                if (!item) {
+                    return {
+                        success: false as const,
+                        error: `Produit ${c.sku} indisponible (catalogue mis à jour)`,
+                    };
+                }
+                upstreamRef[i] = c.sku;
+                pricingInputs[i] = {
+                    priceCentsUsd: item.salePriceCents ?? 0,
+                    category: item.category ?? "giftcard",
+                    brand: item.brand ?? "",
+                    sku: c.sku,
+                };
+            }
+        }
+
+        // Listing lines: resolve each seller offer via the SDK.
+        const listingLines = bsvCart
+            .map((c, i) => ({ c, i }))
+            .filter((x) => x.c.kind === "listing");
+        if (listingLines.length > 0) {
+            type Detail = Awaited<ReturnType<typeof lbV2.giftcards.listings.get>>;
+            const fetched = await Promise.all(
+                listingLines.map(async ({ c }) => {
+                    if (c.kind !== "listing") return null;
+                    try {
+                        return await lbV2.giftcards.listings.get(c.listingId);
+                    } catch {
+                        return null;
+                    }
+                }),
+            );
+            for (let k = 0; k < listingLines.length; k++) {
+                const { c, i } = listingLines[k];
+                if (c.kind !== "listing") continue;
+                const l = fetched[k] as Detail | null;
+                if (!l) {
+                    return {
+                        success: false as const,
+                        error: `Annonce ${c.listingId} introuvable (peut-être expirée)`,
+                    };
+                }
+                upstreamRef[i] = c.listingId;
+                pricingInputs[i] = {
+                    priceCentsUsd: l.priceCents,
+                    category: l.product.category,
+                    brand: l.product.brand,
+                    sku: l.product.sku,
+                };
+            }
+        }
+
+        const resolvedInputs = pricingInputs.filter(
+            (p): p is PricingInput => p !== null,
+        );
+        if (resolvedInputs.length !== bsvCart.length) {
             return {
                 success: false as const,
-                error: `Annonce ${missing.listingId} introuvable (peut-être expirée)`,
+                error: "Produit BSV introuvable (peut-être expiré)",
             };
         }
 
@@ -688,29 +807,22 @@ async function handleBsvCheckout({
               )
             : 0;
 
-        const pricingInputs = bsvCart.map((c) => {
-            const l = listingMap.get(c.listingId)!;
-            return {
-                priceCentsUsd: l.priceCents,
-                category: l.product.category,
-                brand: l.product.brand,
-                sku: l.product.sku,
-            };
-        });
-
-        const prices = await bsvPricingService.computeBulk(pricingInputs, {
+        const prices = await bsvPricingService.computeBulk(resolvedInputs, {
             resellerId: reseller.id,
             tierDiscountPct,
             customDiscountPct,
         });
 
-        const totalAmount = bsvCart.reduce(
-            (acc, c, i) => acc + prices[i].finalPriceDzd * c.quantity,
-            0
+        const lineTotals = bsvCart.map(
+            (c, i) => prices[i].finalPriceDzd * c.quantity,
         );
+        const totalAmount = lineTotals.reduce((acc, n) => acc + n, 0);
 
         const orderNumber = `BSV-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 
+        // ── Phase 1 (in tx): debit + local order + PENDING bsv_orders rows ──
+        // NO network call inside the lock. Each bsv_orders row starts
+        // PENDING_LOADBRAIN with lbOrderId = NULL; we patch it after commit.
         const res = await db.transaction(async (tx) => {
             const lockedReseller = await tx.query.resellers.findFirst({
                 where: and(eq(resellers.id, reseller.id), eq(resellers.userId, userId)),
@@ -730,8 +842,6 @@ async function handleBsvCheckout({
                 throw new Error("Solde insuffisant");
             }
 
-            // 1. Insert local order (status PAYE — wallet debited, but BSV
-            //    fulfilment is async → bsv_orders.status = PENDING_LOADBRAIN).
             const [newOrder] = await tx.insert(orders).values({
                 orderNumber,
                 status: "PAYE",
@@ -743,7 +853,6 @@ async function handleBsvCheckout({
                 deliveryMethod: "TICKET",
             }).returning();
 
-            // 2. Debit wallet atomically
             await tx
                 .update(resellerWallets)
                 .set({
@@ -762,41 +871,87 @@ async function handleBsvCheckout({
                 source: "BSV",
             });
 
-            // 3. For each BSV cart line:
-            //    a. POST to LoadBrain (mocked) → get lbOrderId
-            //    b. Insert bsv_orders row tying local order + LB order + listing
+            // PENDING rows — lbOrderId filled in Phase 2 (after commit).
+            const bsvOrderIds: number[] = [];
             for (let i = 0; i < bsvCart.length; i++) {
                 const c = bsvCart[i];
-                const price = prices[i];
-                const externalOrderId = `${orderNumber}-${i}`;
-
-                // Real LoadBrain SDK v2 order create (Agent 1 merged). SDK
-                // returns data directly + throws on error.
-                const lbCreate = await lbV2.giftcards.orders.create({
-                    listingId: c.listingId,
-                    quantity: c.quantity,
-                    externalOrderId,
-                } as Parameters<typeof lbV2.giftcards.orders.create>[0]);
-
-                await tx.insert(bsvOrdersTable).values({
-                    localOrderId: newOrder.id,
-                    resellerId: reseller.id,
-                    listingId: c.listingId,
-                    quantity: c.quantity,
-                    pricePaidDzd: (
-                        price.finalPriceDzd * c.quantity
-                    ).toFixed(2),
-                    // Real SDK uses `.id`; mock used `.orderId`. Accept both.
-                    lbOrderId:
-                        (lbCreate as { id?: string; orderId?: string }).id ??
-                        (lbCreate as { id?: string; orderId?: string }).orderId ??
-                        null,
-                    status: "PENDING_LOADBRAIN",
-                });
+                const [row] = await tx
+                    .insert(bsvOrdersTable)
+                    .values({
+                        localOrderId: newOrder.id,
+                        resellerId: reseller.id,
+                        // Generic upstream reference: listingId OR sku.
+                        listingId: upstreamRef[i],
+                        quantity: c.quantity,
+                        pricePaidDzd: lineTotals[i].toFixed(2),
+                        lbOrderId: null,
+                        status: "PENDING_LOADBRAIN",
+                    })
+                    .returning({ id: bsvOrdersTable.id });
+                bsvOrderIds.push(row.id);
             }
 
-            return { id: newOrder.id, orderNumber };
+            return { id: newOrder.id, orderNumber, bsvOrderIds };
         });
+
+        // ── Phase 2 (after commit): place each LoadBrain order, patch row ──
+        // A per-line failure marks that line FAILED and refunds exactly that
+        // line. Other lines stay valid. We never roll back the whole order.
+        let failedLines = 0;
+        let refundedTotal = 0;
+        for (let i = 0; i < bsvCart.length; i++) {
+            const c = bsvCart[i];
+            const bsvOrderId = res.bsvOrderIds[i];
+            const externalOrderId = `${res.orderNumber}-${i}`;
+            const createInput =
+                c.kind === "listing"
+                    ? { listingId: c.listingId, quantity: c.quantity, externalOrderId }
+                    : { sku: c.sku, quantity: c.quantity, externalOrderId };
+            try {
+                const lbCreate = await lbV2.giftcards.orders.create(
+                    createInput as Parameters<typeof lbV2.giftcards.orders.create>[0],
+                );
+                const lbOrderId =
+                    (lbCreate as { id?: string; orderId?: string }).id ??
+                    (lbCreate as { id?: string; orderId?: string }).orderId ??
+                    null;
+                await db
+                    .update(bsvOrdersTable)
+                    .set({ lbOrderId })
+                    .where(eq(bsvOrdersTable.id, bsvOrderId));
+            } catch (err) {
+                console.error(
+                    `[bsv-checkout] line ${i} (${upstreamRef[i]}) LB order failed:`,
+                    err,
+                );
+                failedLines++;
+                refundedTotal += lineTotals[i];
+                // Mark the line failed + refund exactly its amount.
+                await db
+                    .transaction(async (tx) => {
+                        await tx
+                            .update(bsvOrdersTable)
+                            .set({ status: "FAILED" })
+                            .where(eq(bsvOrdersTable.id, bsvOrderId));
+                        await refundResellerWallet(tx, {
+                            resellerId: reseller.id,
+                            montant: lineTotals[i],
+                            orderId: res.id,
+                            description: `Remboursement BSV (ligne indisponible) - ${res.orderNumber}`,
+                        });
+                    })
+                    .catch((refundErr) => {
+                        // Refund failed → leave the line FAILED and surface
+                        // loudly; an operator reconciles via bsv_orders.status.
+                        console.error(
+                            `[bsv-checkout] refund FAILED for line ${i} — manual reconcile needed:`,
+                            refundErr,
+                        );
+                    });
+            }
+        }
+
+        const settledAmount = totalAmount - refundedTotal;
 
         // Notification (non-blocking)
         ResellerNotifications.notifyOrderConfirmed({
@@ -804,7 +959,7 @@ async function handleBsvCheckout({
             companyName: reseller.companyName,
             contactPhone: reseller.contactPhone,
             orderNumber: res.orderNumber,
-            totalAmount,
+            totalAmount: settledAmount,
             itemCount: bsvCart.reduce((a, c) => a + c.quantity, 0),
             hasInstantDelivery: true,
         }).catch((err) => {
@@ -814,10 +969,18 @@ async function handleBsvCheckout({
         // Low-balance alert (edge-triggered, opt-in via reseller threshold).
         notifyLowBalanceAfterDebit(
             { id: reseller.id, companyName: reseller.companyName, contactPhone: reseller.contactPhone },
-            totalAmount,
+            settledAmount,
         ).catch(() => {});
 
         revalidatePath("/reseller/orders");
+
+        // Every line failed → treat as a failed checkout (wallet fully refunded).
+        if (failedLines === bsvCart.length) {
+            return {
+                success: false as const,
+                error: "Produit momentanément indisponible — réessayez. Vous avez été remboursé.",
+            };
+        }
 
         return { success: true as const, orderId: res.id, orderNumber: res.orderNumber };
     } catch (error) {
