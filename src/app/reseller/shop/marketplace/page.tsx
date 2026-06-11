@@ -1,528 +1,295 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Spinner } from "@heroui/react";
-import { ArrowLeft, Search, Store } from "lucide-react";
+import { Search, Store, Zap, Clock, ShoppingCart, PackageX, RefreshCw } from "lucide-react";
 import { toast } from "react-hot-toast";
 
-import { getBsvSkuCatalogAction } from "../bsv-sku-catalog";
+import { getMarketplaceTrackedAction, resolveTrackedListingAction } from "../actions";
 import { checkoutResellerAction, getCurrentResellerAction } from "../../actions";
-import {
-    ALL_REGION,
-    DenominationRow,
-    PurchasePanel,
-    RegionPills,
-    bsvSkuToDenomination,
-    groupByRegion,
-    regionsFrom,
-    type Denomination,
-} from "../components/Denomination";
-import {
-    SEED_BRANDS,
-    artworkFor,
-    bsvCategoryToBrandType,
-    prettifyLabel,
-    toBrandSlug,
-    type BrandCategory,
-    type BrandType,
-} from "../brand-utils";
-import { regionFlag, regionLabel } from "../region-utils";
 import PurchaseSuccessModal from "../components/PurchaseSuccessModal";
-import type { EnrichedBsvSkuItem } from "@/types/bsv-sku-catalog";
+import type { EnrichedBsvListing } from "@/types/bsv-listings";
 
 /* ──────────────────────────────────────────────────────────────────────────
- * Marketplace — stable BSV catalog organized CATEGORY → BRAND → denomination.
+ * Marketplace — CURATED B2B list.
  *
- * Reuses the exact shop design system: dark surfaces (#161616 / #262626),
- * #FACC15 accent, CategoryGrid + BrandCard for the brand grid, RegionPills +
- * DenominationRow + PurchasePanel for the per-brand denomination view. The
- * supplier is fully hidden (rows show "ROBOTECHDZ"). Buying orders by SKU so
- * LoadBrain auto-falls-back across live seller listings.
+ * Source: getMarketplaceTrackedAction — only the products the operator hand-adds
+ * in Admin → Arbitrage (BSV tracked links). No auto-crawl noise. Dense list
+ * tuned for a reseller who buys fast: one compact row per product, prices
+ * aligned in DZD (tier/markup applied server-side), instant/on-demand badge,
+ * one-tap buy. Supplier fully hidden (rows read "ROBOTECHDZ" upstream).
+ * Buy: tracked id → resolveTrackedListingAction → checkoutResellerAction.
  * ────────────────────────────────────────────────────────────────────────── */
 
-type CategoryTab = "all" | "giftcard" | "topup";
+const fmtDzd = (n: number) =>
+    new Intl.NumberFormat("fr-DZ", { maximumFractionDigits: 0 }).format(Math.round(n || 0));
 
-const CATEGORY_TABS: ReadonlyArray<{ key: CategoryTab; label: string }> = [
-    { key: "all", label: "Tout" },
-    { key: "giftcard", label: "Gift Cards & Vouchers" },
-    { key: "topup", label: "Game Top-Up" },
-];
-
-const keepType = (tab: CategoryTab, t: BrandType): boolean => {
-    if (tab === "all") return true;
-    if (tab === "giftcard") return t === "giftcard" || t === "mixed";
-    return t === "topup" || t === "mixed";
-};
+interface Row {
+    trackedId: string;
+    name: string;
+    priceDzd: number;
+    delivery: "auto" | "manual";
+    stock: number;
+}
 
 export default function ResellerMarketplacePage() {
-    const router = useRouter();
-
-    const [all, setAll] = useState<ReadonlyArray<EnrichedBsvSkuItem>>([]);
-    const [isLoading, setIsLoading] = useState(true);
+    const [rows, setRows] = useState<Row[]>([]);
+    const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-
-    const [tab, setTab] = useState<CategoryTab>("all");
     const [rawQuery, setRawQuery] = useState("");
     const [query, setQuery] = useState("");
-
-    // null = brand grid; set = denomination view for that brand slug.
-    const [activeBrand, setActiveBrand] = useState<string | null>(null);
-    const [region, setRegion] = useState<string>(ALL_REGION);
-    const [selectedKey, setSelectedKey] = useState<string | null>(null);
-    const [quantity, setQuantity] = useState(1);
-
     const [resellerId, setResellerId] = useState<number | null>(null);
-    const [resellerName, setResellerName] = useState<string | undefined>(undefined);
-    const [isCheckingOut, setIsCheckingOut] = useState(false);
+    const [tierName, setTierName] = useState<string | null>(null);
+    const [buyingId, setBuyingId] = useState<string | null>(null);
     const [modalOrderId, setModalOrderId] = useState<number | null>(null);
     const [boughtLabel, setBoughtLabel] = useState<string | undefined>(undefined);
 
-    /* ───── Reseller identity ───── */
+    /* reseller identity */
     useEffect(() => {
         getCurrentResellerAction({}).then((res) => {
-            if (res.success && res.data) {
-                const r = res.data as { id: number; companyName?: string };
-                setResellerId(r.id);
-                setResellerName(r.companyName);
-            }
+            if (res.success && res.data) setResellerId((res.data as { id: number }).id);
         });
     }, []);
 
-    /* ───── Load the stable BSV SKU catalog once ───── */
-    useEffect(() => {
+    /* curated catalog */
+    const load = useCallback(() => {
         let active = true;
-        setIsLoading(true);
+        setLoading(true);
         setError(null);
-        getBsvSkuCatalogAction({})
+        getMarketplaceTrackedAction({})
             .then((res) => {
                 if (!active) return;
-                if (res.success) setAll(res.data.items);
-                else setError(res.error);
+                if (!res.success) {
+                    setError(res.error);
+                    return;
+                }
+                const items = res.data.items as ReadonlyArray<EnrichedBsvListing>;
+                setTierName(res.data.pricing?.tierName ?? null);
+                setRows(
+                    items.map((it) => ({
+                        trackedId: it.listingId,
+                        name: it.product.displayName,
+                        priceDzd: it.pricing.finalPriceDzd,
+                        delivery: it.deliveryType === "auto" ? "auto" : "manual",
+                        stock: it.stockQty ?? 0,
+                    })),
+                );
             })
             .catch(() => {
                 if (active) setError("Catalogue indisponible");
             })
             .finally(() => {
-                if (active) setIsLoading(false);
+                if (active) setLoading(false);
             });
         return () => {
             active = false;
         };
     }, []);
 
-    /* ───── Debounced search ───── */
     useEffect(() => {
-        const t = setTimeout(() => setQuery(rawQuery.trim().toLowerCase()), 250);
+        const cleanup = load();
+        return cleanup;
+    }, [load]);
+
+    /* debounced search */
+    useEffect(() => {
+        const t = setTimeout(() => setQuery(rawQuery.trim().toLowerCase()), 200);
         return () => clearTimeout(t);
     }, [rawQuery]);
 
-    /* ───── Brand tiles (category tab filtered) for the grid view ───── */
-    const seedBySlug = useMemo(
-        () => new Map(SEED_BRANDS.map((b) => [b.slug, b])),
-        [],
-    );
+    const filtered = useMemo(() => {
+        if (!query) return rows;
+        return rows.filter((r) => r.name.toLowerCase().includes(query));
+    }, [rows, query]);
 
-    const brandCategories = useMemo<ReadonlyArray<BrandCategory>>(() => {
-        const byBrand = new Map<
-            string,
-            { label: string; count: number; type: BrandType }
-        >();
-        for (const it of all) {
-            const slug = it.brandSlug || toBrandSlug(it.brand || "other");
-            if (!slug || slug === "other") continue;
-            const seed = seedBySlug.get(slug);
-            const type: BrandType =
-                seed?.type ?? bsvCategoryToBrandType(it.category);
-            const prev = byBrand.get(slug);
-            byBrand.set(slug, {
-                label: seed?.label ?? prettifyLabel(slug),
-                count: (prev?.count ?? 0) + 1,
-                type: prev?.type ?? type,
-            });
+    async function buy(r: Row) {
+        if (!resellerId) {
+            toast.error("Compte revendeur introuvable");
+            return;
         }
-        return Array.from(byBrand.entries())
-            .map(([slug, v]) => ({
-                slug,
-                label: v.label,
-                count: v.count,
-                imageUrl: artworkFor(slug),
-                type: v.type,
-            }))
-            .filter((c) => keepType(tab, c.type))
-            .sort((a, b) => b.count - a.count);
-    }, [all, seedBySlug, tab]);
-
-    /* ───── Denominations for the selected brand ───── */
-    const brandItems = useMemo<ReadonlyArray<Denomination>>(() => {
-        if (!activeBrand) return [];
-        return all
-            .filter((it) => (it.brandSlug || toBrandSlug(it.brand)) === activeBrand)
-            .map(bsvSkuToDenomination);
-    }, [all, activeBrand]);
-
-    const regions = useMemo(() => regionsFrom(brandItems), [brandItems]);
-
-    const regionFiltered = useMemo(() => {
-        if (region === ALL_REGION) return brandItems;
-        return brandItems.filter((it) => it.region === region);
-    }, [brandItems, region]);
-
-    const grouped = useMemo(
-        () => groupByRegion(regionFiltered, region),
-        [regionFiltered, region],
-    );
-
-    const selected = useMemo(
-        () => brandItems.find((it) => it.key === selectedKey) ?? null,
-        [brandItems, selectedKey],
-    );
-
-    /* ───── Reset selection/region when leaving a brand ───── */
-    const openBrand = (slug: string) => {
-        setActiveBrand(slug);
-        setRegion(ALL_REGION);
-        setSelectedKey(null);
-        setQuantity(1);
-    };
-    const backToGrid = () => {
-        setActiveBrand(null);
-        setSelectedKey(null);
-    };
-
-    const handlePurchase = async () => {
-        if (!selected || !resellerId) return;
-        const sku = (selected.raw as EnrichedBsvSkuItem).sku;
-        setIsCheckingOut(true);
+        if (buyingId) return;
+        setBuyingId(r.trackedId);
         try {
+            const resolved = await resolveTrackedListingAction({ trackedId: r.trackedId });
+            if (!resolved.success) {
+                toast.error(resolved.error);
+                return;
+            }
             const res = await checkoutResellerAction({
                 resellerId,
-                cart: [{ sku, quantity }],
+                cart: [{ listingId: resolved.listingId, quantity: 1 }],
             });
-            if (res.success) {
-                setBoughtLabel(selected.title);
-                setSelectedKey(null);
-                setModalOrderId((res as { orderId?: number }).orderId ?? null);
-            } else {
-                toast.error(res.error || "Échec de la commande");
+            if (!res.success) {
+                toast.error((res as { error?: string }).error ?? "Échec de l'achat");
+                return;
             }
-        } catch {
-            toast.error("Erreur technique lors du paiement");
+            setBoughtLabel(r.name);
+            setModalOrderId((res as { orderId?: number }).orderId ?? null);
+            load();
+        } catch (e) {
+            toast.error((e as Error).message);
         } finally {
-            setIsCheckingOut(false);
+            setBuyingId(null);
         }
-    };
-
-    const activeBrandLabel =
-        (activeBrand && seedBySlug.get(activeBrand)?.label) ||
-        (activeBrand ? prettifyLabel(activeBrand) : "");
-
-    /* ─────────────────────────── BRAND-DETAIL VIEW ─────────────────────────── */
-    if (activeBrand) {
-        return (
-            <div className="space-y-6 animate-in fade-in duration-300">
-                <button
-                    onClick={backToGrid}
-                    className="inline-flex items-center gap-2 text-sm text-slate-400 hover:text-white transition-colors"
-                >
-                    <ArrowLeft size={14} />
-                    Retour au marketplace
-                </button>
-
-                <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-6 items-start">
-                    <div className="space-y-5 min-w-0">
-                        <div className="space-y-1">
-                            <h1 className="text-4xl lg:text-5xl font-black text-[#FACC15] tracking-tight">
-                                {activeBrandLabel}
-                            </h1>
-                            <p className="text-sm text-slate-400">
-                                Sélectionnez une dénomination à acheter
-                            </p>
-                        </div>
-
-                        {regions.length > 1 && (
-                            <RegionPills
-                                regions={regions}
-                                value={region}
-                                onChange={setRegion}
-                            />
-                        )}
-
-                        {regionFiltered.length === 0 ? (
-                            <p className="text-center text-slate-500 italic py-12">
-                                Aucune dénomination pour cette catégorie / région.
-                            </p>
-                        ) : (
-                            <div className="space-y-6" data-testid="denomination-list">
-                                {grouped.map(({ region: r, items: groupItems }) => (
-                                    <section
-                                        key={r}
-                                        data-testid="region-group"
-                                        data-region={r}
-                                    >
-                                        {region === ALL_REGION && (
-                                            <header className="flex items-baseline justify-between mb-2 pb-1 border-b border-[#262626]">
-                                                <h2 className="text-sm font-black uppercase tracking-widest text-slate-300 flex items-center gap-2">
-                                                    <span aria-hidden>{regionFlag(r)}</span>
-                                                    <span>{regionLabel(r)}</span>
-                                                    <span className="text-[10px] text-slate-500 ml-1">
-                                                        ({r})
-                                                    </span>
-                                                </h2>
-                                                <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">
-                                                    {groupItems.length} dénomination
-                                                    {groupItems.length === 1 ? "" : "s"}
-                                                </span>
-                                            </header>
-                                        )}
-                                        <ul className="space-y-2">
-                                            {groupItems.map((it) => (
-                                                <DenominationRow
-                                                    key={it.key}
-                                                    item={it}
-                                                    selected={selectedKey === it.key}
-                                                    onSelect={(d) => {
-                                                        if (d.stock <= 0) {
-                                                            toast.error(
-                                                                "Rupture de stock — choisissez une autre dénomination.",
-                                                            );
-                                                            return;
-                                                        }
-                                                        setSelectedKey(d.key);
-                                                        setQuantity(1);
-                                                    }}
-                                                />
-                                            ))}
-                                        </ul>
-                                    </section>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-
-                    <aside className="lg:sticky lg:top-24">
-                        <PurchasePanel
-                            item={selected}
-                            quantity={quantity}
-                            onQuantity={setQuantity}
-                            isCheckingOut={isCheckingOut}
-                            onPurchase={handlePurchase}
-                        />
-                    </aside>
-                </div>
-
-                <PurchaseSuccessModal
-                    isOpen={modalOrderId !== null}
-                    onClose={() => setModalOrderId(null)}
-                    orderId={modalOrderId}
-                    productLabel={boughtLabel}
-                    resellerName={resellerName}
-                />
-            </div>
-        );
     }
 
-    /* ───────────────────────────── BRAND-GRID VIEW ─────────────────────────── */
-    const filteredBrandCategories = query
-        ? brandCategories.filter(
-              (c) =>
-                  c.label.toLowerCase().includes(query) || c.slug.includes(query),
-          )
-        : brandCategories;
-
-    const countLabel = isLoading
-        ? "Chargement…"
-        : error
-          ? "Catalogue indisponible"
-          : `${filteredBrandCategories.length} marque${
-                filteredBrandCategories.length === 1 ? "" : "s"
-            }`;
-
     return (
-        <div className="space-y-6 animate-in fade-in duration-300">
-            <button
-                onClick={() => router.push("/reseller/shop")}
-                className="inline-flex items-center gap-2 text-sm text-slate-400 hover:text-white transition-colors"
-            >
-                <ArrowLeft size={14} />
-                Retour aux catégories
-            </button>
-
-            <div className="space-y-1">
-                <h1 className="text-4xl lg:text-5xl font-black text-white tracking-tight flex items-center gap-3">
-                    <Store className="text-[#FACC15]" size={36} />
-                    Marketplace
-                </h1>
-                <p className="text-sm text-slate-400">{countLabel}</p>
-            </div>
-
-            {/* Category tabs — same pill design as the shop landing */}
-            <div className="flex flex-wrap gap-2">
-                {CATEGORY_TABS.map((t) => (
-                    <button
-                        key={t.key}
-                        type="button"
-                        onClick={() => setTab(t.key)}
-                        className={`px-4 py-2 rounded-full text-xs font-black tracking-tight border transition ${
-                            tab === t.key
-                                ? "bg-[#FACC15] text-black border-[#FACC15]"
-                                : "bg-[#161616] text-slate-300 border-[#262626] hover:border-[#FACC15]/40"
-                        }`}
-                    >
-                        {t.label}
-                    </button>
-                ))}
-            </div>
-
-            {/* Search bar — mirrors marketplace/shop search input */}
-            <div className="relative">
-                <Search
-                    size={16}
-                    className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500"
-                />
-                <input
-                    type="search"
-                    placeholder="Rechercher une marque…"
-                    value={rawQuery}
-                    onChange={(e) => setRawQuery(e.target.value)}
-                    data-testid="marketplace-search"
-                    className="w-full h-12 pl-11 pr-4 rounded-full bg-[#161616] border border-[#262626] text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-[#FACC15]/60 focus:ring-2 focus:ring-[#FACC15]/20 transition-all"
-                />
-            </div>
-
-            {isLoading ? (
-                <div className="py-20 flex justify-center">
-                    <Spinner color="warning" />
+        <div className="min-h-screen bg-[#0f0f0f] text-white">
+            {/* sticky header + search */}
+            <div className="sticky top-0 z-10 border-b border-[#262626] bg-[#0f0f0f]/95 backdrop-blur">
+                <div className="mx-auto max-w-5xl px-4 py-4">
+                    <div className="flex items-center justify-between gap-4">
+                        <div className="flex items-center gap-3">
+                            <div className="grid h-10 w-10 place-items-center rounded-xl bg-[#FACC15] text-black">
+                                <Store size={20} />
+                            </div>
+                            <div>
+                                <h1 className="text-xl font-black leading-none">Marketplace</h1>
+                                <p className="mt-1 text-[11px] uppercase tracking-widest text-slate-500">
+                                    {rows.length} produit{rows.length > 1 ? "s" : ""}
+                                    {tierName ? ` · palier ${tierName}` : ""}
+                                </p>
+                            </div>
+                        </div>
+                        <button
+                            onClick={() => load()}
+                            title="Rafraîchir"
+                            className="grid h-9 w-9 place-items-center rounded-lg border border-[#262626] text-slate-400 transition hover:bg-[#161616] hover:text-white"
+                        >
+                            <RefreshCw size={16} />
+                        </button>
+                    </div>
+                    <div className="mt-3 flex items-center gap-2 rounded-xl border border-[#262626] bg-[#161616] px-3">
+                        <Search size={16} className="text-slate-500" />
+                        <input
+                            value={rawQuery}
+                            onChange={(e) => setRawQuery(e.target.value)}
+                            placeholder="Rechercher un produit…"
+                            className="w-full bg-transparent py-2.5 text-sm outline-none placeholder:text-slate-600"
+                        />
+                    </div>
                 </div>
-            ) : error ? (
-                <p className="text-center text-slate-500 italic py-12">
-                    Réessayez dans un instant. ({error})
-                </p>
-            ) : filteredBrandCategories.length === 0 ? (
-                <p className="text-center text-slate-500 italic py-12">
-                    Aucune marque pour le moment.
-                </p>
-            ) : (
-                // Reuse the exact grid layout from CategoryGrid via BrandCard,
-                // but intercept clicks to open the in-page denomination view
-                // (CategoryGrid links out to /shop/[brand]; here we stay local).
-                <MarketplaceBrandGrid
-                    categories={filteredBrandCategories}
-                    onOpen={openBrand}
-                />
-            )}
+            </div>
+
+            <div className="mx-auto max-w-5xl px-4 py-5">
+                {loading ? (
+                    <div className="grid place-items-center py-24">
+                        <Spinner color="warning" />
+                    </div>
+                ) : error ? (
+                    <div className="rounded-xl border border-red-500/30 bg-red-500/5 p-6 text-center text-sm text-red-300">
+                        {error}
+                    </div>
+                ) : filtered.length === 0 ? (
+                    <EmptyState hasRows={rows.length > 0} />
+                ) : (
+                    <div className="overflow-hidden rounded-xl border border-[#262626]">
+                        <div className="hidden grid-cols-[1fr_7rem_7rem_8rem] gap-4 border-b border-[#262626] bg-[#161616] px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-slate-500 sm:grid">
+                            <span>Produit</span>
+                            <span className="text-center">Livraison</span>
+                            <span className="text-right">Prix</span>
+                            <span className="text-right">Action</span>
+                        </div>
+                        {filtered.map((r, i) => (
+                            <RowItem
+                                key={r.trackedId}
+                                r={r}
+                                busy={buyingId === r.trackedId}
+                                onBuy={() => buy(r)}
+                                striped={i % 2 === 1}
+                            />
+                        ))}
+                    </div>
+                )}
+            </div>
 
             <PurchaseSuccessModal
                 isOpen={modalOrderId !== null}
                 onClose={() => setModalOrderId(null)}
                 orderId={modalOrderId}
                 productLabel={boughtLabel}
-                resellerName={resellerName}
             />
         </div>
     );
 }
 
-/* ──────────────────────────────────────────────────────────────────────────
- * In-page brand grid — same visual treatment as BrandCard / CategoryGrid but
- * clicking opens the local denomination view instead of routing to the
- * g2bulk-backed /shop/[brand] page (the marketplace is a separate catalog).
- * ────────────────────────────────────────────────────────────────────────── */
-function MarketplaceBrandGrid({
-    categories,
-    onOpen,
+function RowItem({
+    r,
+    busy,
+    onBuy,
+    striped,
 }: {
-    categories: ReadonlyArray<BrandCategory>;
-    onOpen: (slug: string) => void;
+    r: Row;
+    busy: boolean;
+    onBuy: () => void;
+    striped: boolean;
 }) {
+    const out = r.stock <= 0;
     return (
         <div
-            data-testid="category-grid"
-            className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 gap-3"
+            className={`grid grid-cols-[1fr_auto] items-center gap-3 px-4 py-3 transition-colors hover:bg-[#161616] sm:grid-cols-[1fr_7rem_7rem_8rem] ${
+                striped ? "bg-[#121212]" : ""
+            }`}
         >
-            {categories.map((c) => (
-                <MarketplaceBrandCard key={c.slug} category={c} onOpen={onOpen} />
-            ))}
+            <div className="min-w-0">
+                <p className="truncate text-sm font-semibold">{r.name}</p>
+                <p className="mt-0.5 text-[11px] text-slate-500 sm:hidden">
+                    {r.delivery === "auto" ? "Instant" : "Sur demande"} · {fmtDzd(r.priceDzd)} DZD
+                </p>
+            </div>
+
+            <div className="hidden justify-center sm:flex">
+                {r.delivery === "auto" ? (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-400">
+                        <Zap size={11} /> Instant
+                    </span>
+                ) : (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-bold text-amber-400">
+                        <Clock size={11} /> Sur demande
+                    </span>
+                )}
+            </div>
+
+            <div className="hidden items-baseline justify-end gap-1 sm:flex">
+                <span className="text-sm font-black text-[#FACC15]">{fmtDzd(r.priceDzd)}</span>
+                <span className="text-[10px] text-slate-500">DZD</span>
+            </div>
+
+            <div className="flex justify-end">
+                <button
+                    onClick={onBuy}
+                    disabled={busy || out}
+                    className="inline-flex h-8 min-w-[6.5rem] items-center justify-center gap-1.5 rounded-lg bg-[#FACC15] px-3 text-xs font-bold text-black transition hover:brightness-95 disabled:cursor-not-allowed disabled:bg-[#262626] disabled:text-slate-500"
+                >
+                    {busy ? (
+                        <Spinner size="sm" color="default" />
+                    ) : out ? (
+                        <>
+                            <PackageX size={13} /> Rupture
+                        </>
+                    ) : (
+                        <>
+                            <ShoppingCart size={13} /> Acheter
+                        </>
+                    )}
+                </button>
+            </div>
         </div>
     );
 }
 
-function MarketplaceBrandCard({
-    category,
-    onOpen,
-}: {
-    category: BrandCategory;
-    onOpen: (slug: string) => void;
-}) {
-    const [imgFailed, setImgFailed] = useState(false);
-    const initial = (category.label[0] || "?").toUpperCase();
+function EmptyState({ hasRows }: { hasRows: boolean }) {
     return (
-        <button
-            type="button"
-            onClick={() => onOpen(category.slug)}
-            data-testid="brand-card"
-            data-brand-slug={category.slug}
-            className="group relative aspect-square overflow-hidden rounded-2xl bg-[#161616] border border-[#262626] hover:border-[#FACC15] hover:ring-2 hover:ring-[#FACC15]/30 transition-all text-left"
-        >
-            {!imgFailed ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                    src={category.imageUrl}
-                    alt={category.label}
-                    className="absolute inset-0 h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
-                    onError={() => setImgFailed(true)}
-                />
-            ) : (
-                <div
-                    className="absolute inset-0 flex items-center justify-center text-white"
-                    style={{
-                        background: `linear-gradient(135deg, hsl(${hashHue(category.slug)} 70% 35%), hsl(${hashHue(category.slug) + 40} 70% 20%))`,
-                    }}
-                >
-                    <span className="text-6xl font-black tracking-tight opacity-90">
-                        {initial}
-                    </span>
-                </div>
-            )}
-
-            <span
-                data-testid="brand-type-badge"
-                className={`absolute top-2 left-2 text-[9px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-md border backdrop-blur-sm ${
-                    category.type === "topup"
-                        ? "text-cyan-300 bg-cyan-500/15 border-cyan-400/40"
-                        : category.type === "mixed"
-                          ? "text-purple-300 bg-purple-500/15 border-purple-400/40"
-                          : "text-emerald-300 bg-emerald-500/15 border-emerald-400/40"
-                }`}
-            >
-                {category.type === "topup"
-                    ? "Top-Up"
-                    : category.type === "mixed"
-                      ? "Mixed"
-                      : "Gift Card"}
-            </span>
-
-            <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/60 to-transparent p-3">
-                <div className="flex items-end justify-between gap-2">
-                    <h3 className="text-sm font-black text-white tracking-tight line-clamp-1">
-                        {category.label}
-                    </h3>
-                    {category.count > 0 && (
-                        <span className="shrink-0 text-[10px] font-black uppercase tracking-widest text-[#FACC15] bg-black/40 border border-[#FACC15]/30 rounded-md px-1.5 py-0.5">
-                            {category.count}
-                        </span>
-                    )}
-                </div>
-            </div>
-        </button>
+        <div className="rounded-xl border border-dashed border-[#262626] bg-[#121212] px-6 py-16 text-center">
+            <Store size={32} className="mx-auto text-slate-700" />
+            <p className="mt-3 font-semibold text-slate-300">
+                {hasRows ? "Aucun produit ne correspond" : "Catalogue vide"}
+            </p>
+            <p className="mt-1 text-sm text-slate-500">
+                {hasRows
+                    ? "Essaie un autre terme de recherche."
+                    : "Ajoute tes produits dans Admin → Arbitrage (liens BSV)."}
+            </p>
+        </div>
     );
-}
-
-const HUE_MOD = 360;
-function hashHue(s: string): number {
-    let h = 0;
-    for (let i = 0; i < s.length; i++) {
-        h = (h * 31 + s.charCodeAt(i)) | 0;
-    }
-    return Math.abs(h) % HUE_MOD;
 }
