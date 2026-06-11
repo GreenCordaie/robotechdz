@@ -43,7 +43,7 @@ jobs:
           script_stop: true
           script: |
             set -euo pipefail
-            cd /opt/robotech
+            cd /var/www/100-pc-ia
             # Bootstrap: pull only deploy.sh first so we can use new subcommands
             git fetch origin --tags
             git checkout ${{ steps.ref.outputs.ref }} -- deploy.sh
