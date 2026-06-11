@@ -63,7 +63,12 @@ export const getBsvSkuCatalogAction = withAuth(
             );
             // SDK types `GiftCard` loosely; the gateway returns the richer
             // cluster shape. Narrow defensively (drop anything without a sku).
-            raw = (resp as ReadonlyArray<Partial<RawBsvCatalogItem>>)
+            // The gateway returns the cluster catalog as `{ items, mode }`, but
+            // the SDK types it as a bare array. Accept either shape.
+            const list = Array.isArray(resp)
+                ? resp
+                : ((resp as { items?: unknown[] } | null)?.items ?? []);
+            raw = (list as ReadonlyArray<Partial<RawBsvCatalogItem>>)
                 .filter((x): x is RawBsvCatalogItem => typeof x?.sku === "string");
         } catch (err) {
             return {
@@ -146,7 +151,10 @@ export async function countBsvByBrand(): Promise<
     if (!lbV2) return counts;
     let raw: ReadonlyArray<Partial<RawBsvCatalogItem>>;
     try {
-        raw = (await lbV2.giftcards.catalog.list()) as ReadonlyArray<
+        const resp = await lbV2.giftcards.catalog.list();
+        raw = (Array.isArray(resp)
+            ? resp
+            : ((resp as { items?: unknown[] } | null)?.items ?? [])) as ReadonlyArray<
             Partial<RawBsvCatalogItem>
         >;
     } catch {
