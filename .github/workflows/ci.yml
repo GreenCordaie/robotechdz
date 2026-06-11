@@ -162,7 +162,14 @@ jobs:
         env:
           PGPASSWORD: testpass
       - name: Apply schema (drizzle-kit push)
-        run: npx drizzle-kit push --force
+        # drizzle-kit reads schema.ts in plain Node. The schema pulls in
+        # encrypted-column -> @/lib/encryption -> `import "server-only"`, whose
+        # guard throws outside a Next server bundle. That's a false positive for a
+        # CLI tool, so neutralize the module for this step only (no prod code is
+        # changed; the real client-bundle guard stays intact at app runtime).
+        run: |
+          node -e "require('fs').writeFileSync(require.resolve('server-only'), 'module.exports = {};')"
+          npx drizzle-kit push --force
       - name: next build (strict — ignoreBuildErrors=false + ignoreDuringBuilds=false)
         # Doit passer SANS aucune env externe configurée. Si une route crashe
         # au module-load ou au "collecting page data" sans creds, c'est un bug
@@ -288,7 +295,14 @@ jobs:
           PGPASSWORD: testpass
 
       - name: Apply schema (drizzle-kit push)
-        run: npx drizzle-kit push --force
+        # drizzle-kit reads schema.ts in plain Node. The schema pulls in
+        # encrypted-column -> @/lib/encryption -> `import "server-only"`, whose
+        # guard throws outside a Next server bundle. That's a false positive for a
+        # CLI tool, so neutralize the module for this step only (no prod code is
+        # changed; the real client-bundle guard stays intact at app runtime).
+        run: |
+          node -e "require('fs').writeFileSync(require.resolve('server-only'), 'module.exports = {};')"
+          npx drizzle-kit push --force
 
       - name: Seed E2E fixtures
         run: npx tsx scripts/seed-e2e.ts
