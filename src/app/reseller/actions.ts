@@ -256,6 +256,60 @@ export const getResellerOrderDetailAction = withAuth(
                 };
             });
 
+            // BSV mirror orders keep their delivered codes in bsv_delivered_codes
+            // (not order_item_codes), so the mapping above misses them. Surface
+            // each BSV line as a standard-code item — product name from the
+            // LoadBrain wonSnapshot (rawTitle) — so the success modal + the order
+            // detail show the PIN with copy + WhatsApp.
+            const { bsvOrders: bsvOrdersT, bsvDeliveredCodes: bsvCodesT } =
+                await import("@/db/schema");
+            const bsvRows = await db
+                .select()
+                .from(bsvOrdersT)
+                .where(eq(bsvOrdersT.localOrderId, order.id));
+            const bsvItems: typeof itemsWithCredentials = [];
+            if (bsvRows.length > 0) {
+                const bsvCodeRows = await db
+                    .select()
+                    .from(bsvCodesT)
+                    .where(
+                        inArray(
+                            bsvCodesT.bsvOrderId,
+                            bsvRows.map((r) => r.id),
+                        ),
+                    );
+                const byOrder = new Map<number, typeof bsvCodeRows>();
+                for (const c of bsvCodeRows) {
+                    const arr = byOrder.get(c.bsvOrderId) ?? [];
+                    arr.push(c);
+                    byOrder.set(c.bsvOrderId, arr);
+                }
+                for (const br of bsvRows) {
+                    const title =
+                        (br.wonSnapshot as { rawTitle?: string } | null)?.rawTitle ??
+                        null;
+                    const decoded = (byOrder.get(br.id) ?? [])
+                        .map((c) => {
+                            try {
+                                return decrypt(c.code);
+                            } catch {
+                                return null;
+                            }
+                        })
+                        .filter((v): v is string => !!v);
+                    bsvItems.push({
+                        id: -br.id,
+                        name: title ?? "Carte cadeau",
+                        productName: title ?? "Carte cadeau",
+                        quantity: br.quantity,
+                        price: br.pricePaidDzd,
+                        standardCodes: decoded,
+                        sharedSlots: [],
+                        iptvProvisions: [],
+                    });
+                }
+            }
+
             return {
                 success: true as const,
                 data: {
@@ -264,7 +318,7 @@ export const getResellerOrderDetailAction = withAuth(
                     status: order.status,
                     totalAmount: order.totalAmount,
                     createdAt: order.createdAt,
-                    items: itemsWithCredentials,
+                    items: [...itemsWithCredentials, ...bsvItems],
                 },
             };
         } catch (error) {

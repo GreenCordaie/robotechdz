@@ -22,12 +22,15 @@ const ORDER_TABS: Array<{ key: OrderKind; label: string }> = [
     { key: "legacy", label: "Legacy" },
 ];
 
+const PAGE_SIZE = 12;
+
 export function OrdersPanel() {
     const router = useRouter();
     const [kind, setKind] = useState<OrderKind>("all");
     const [rows, setRows] = useState<NormalizedOrderRow[]>([]);
     const [loading, setLoading] = useState(true);
     const [resellerName, setResellerName] = useState<string | undefined>(undefined);
+    const [page, setPage] = useState(1);
 
     // Reseller shop name — signs the WhatsApp re-share message.
     useEffect(() => {
@@ -43,6 +46,7 @@ export function OrdersPanel() {
     useEffect(() => {
         let cancelled = false;
         setLoading(true);
+        setPage(1);
         getResellerOrdersByKindAction({ kind, limit: 50 }).then((res) => {
             if (cancelled) return;
             if (res.success) {
@@ -104,15 +108,46 @@ export function OrdersPanel() {
                         Aucune commande dans cette catégorie
                     </div>
                 ) : (
-                    rows.map((r, i) => (
-                        <OrderRowCard
-                            key={`${r.kind}-${r.orderNumber}-${i}`}
-                            row={r}
-                            resellerName={resellerName}
-                        />
-                    ))
+                    rows
+                        .slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+                        .map((r, i) => (
+                            <OrderRowCard
+                                key={`${r.kind}-${r.orderNumber}-${i}`}
+                                row={r}
+                                resellerName={resellerName}
+                            />
+                        ))
                 )}
             </div>
+
+            {!loading && rows.length > PAGE_SIZE && (
+                <div className="flex items-center justify-between gap-3 pt-1">
+                    <button
+                        type="button"
+                        disabled={page <= 1}
+                        onClick={() => setPage((p) => Math.max(1, p - 1))}
+                        className="px-3 h-9 rounded-lg border border-[#262626] text-xs font-bold text-slate-300 transition hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                        ← Précédent
+                    </button>
+                    <span className="text-[11px] font-bold uppercase tracking-widest text-slate-500">
+                        Page {page} / {Math.ceil(rows.length / PAGE_SIZE)} · {rows.length}{" "}
+                        commande{rows.length > 1 ? "s" : ""}
+                    </span>
+                    <button
+                        type="button"
+                        disabled={page >= Math.ceil(rows.length / PAGE_SIZE)}
+                        onClick={() =>
+                            setPage((p) =>
+                                Math.min(Math.ceil(rows.length / PAGE_SIZE), p + 1),
+                            )
+                        }
+                        className="px-3 h-9 rounded-lg border border-[#262626] text-xs font-bold text-slate-300 transition hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                        Suivant →
+                    </button>
+                </div>
+            )}
         </div>
     );
 }

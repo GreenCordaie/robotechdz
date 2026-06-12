@@ -424,7 +424,11 @@ export const getResellerOrdersByKindAction = withAuth(
                         rows.push({
                             kind: "bsv",
                             orderNumber: r.localOrderNumber ?? `BSV-${r.id}`,
-                            productName: r.listingId,
+                            // Real product name from the LoadBrain wonSnapshot
+                            // (rawTitle), not the opaque listing UUID.
+                            productName:
+                                (r.wonSnapshot as { rawTitle?: string } | null)
+                                    ?.rawTitle ?? "Carte cadeau",
                             priceDzd: r.pricePaidDzd,
                             status: r.status,
                             createdAt: r.createdAt ?? new Date(),
@@ -439,10 +443,18 @@ export const getResellerOrdersByKindAction = withAuth(
                 const res = await getG2BulkOrdersAction({ limit: cap });
                 if (res.success) {
                     for (const r of res.data) {
+                        const g2Snap = r.wonSnapshot as
+                            | { title?: string; name?: string; productName?: string }
+                            | null;
                         rows.push({
                             kind: "g2bulk",
                             orderNumber: r.localOrderNumber ?? `G2B-${r.id}`,
-                            productName: r.productId,
+                            // Real product name from wonSnapshot, not the opaque id.
+                            productName:
+                                g2Snap?.title ??
+                                g2Snap?.name ??
+                                g2Snap?.productName ??
+                                "Produit",
                             priceDzd: r.pricePaidDzd,
                             status: r.status,
                             createdAt: r.createdAt ?? new Date(),
