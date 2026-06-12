@@ -44,8 +44,13 @@ jobs:
           script: |
             set -euo pipefail
             cd /var/www/100-pc-ia
-            # Bootstrap: pull only deploy.sh first so we can use new subcommands
-            git fetch origin --tags
+            # Bootstrap: pull only deploy.sh first so we can use new subcommands.
+            # Force an explicit branch refspec + the exact target ref — a plain
+            # `git fetch origin --tags` was only updating tags (the VPS clone's
+            # remote.origin.fetch refspec doesn't pull branches), so a freshly
+            # pushed commit was "not a tree" and every deploy silently rolled back.
+            git fetch origin --tags --force "+refs/heads/*:refs/remotes/origin/*"
+            git fetch origin "${{ steps.ref.outputs.ref }}" || true
             git checkout ${{ steps.ref.outputs.ref }} -- deploy.sh
             chmod +x deploy.sh
             ./deploy.sh deploy-with-backup ${{ steps.ref.outputs.ref }}
