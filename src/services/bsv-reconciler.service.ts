@@ -43,6 +43,9 @@ type LbCode = { code: string; redemptionUrl?: string | null; pin?: string | null
 
 const MAX_SCAN_AGE_DAYS = 7;
 const STALE_ORPHAN_MINUTES = 15;
+// Manual-delivery SLA: a non-terminal order older than this is refunded (#8) so
+// a reseller is never charged forever for an "on demand" item that never came.
+const MANUAL_DELIVERY_TIMEOUT_HOURS = 48;
 
 export async function reconcilePendingBsvOrders(
     options: { dbInstance?: DbLike; limit?: number } = {},
@@ -149,8 +152,17 @@ async function reconcileOne(
         await markRefundedBsv(db, row, upstreamStatus);
         return "refunded";
     }
-    // awaiting_delivery / processing / pending_price_confirmation → leave for a
-    // later pass (the manual-delivery timeout policy lives in #8, not here).
+    // Manual-delivery SLA (#8): an order stuck non-terminal (awaiting_delivery /
+    // processing) past the timeout is treated as undelivered → refund, so the
+    // reseller is never charged indefinitely for an "on demand" item that never
+    // arrived. Below the timeout, leave it for a later pass.
+    const ageMs = row.createdAt
+        ? Date.now() - new Date(row.createdAt).getTime()
+        : 0;
+    if (ageMs > MANUAL_DELIVERY_TIMEOUT_HOURS * 3_600_000) {
+        await markRefundedBsv(db, row, `timeout_${upstreamStatus || "pending"}`);
+        return "refunded";
+    }
     return "pending";
 }
 

@@ -116,9 +116,19 @@ export default function ResellerMarketplacePage() {
                 toast.error(resolved.error);
                 return;
             }
+            // Unique per buy intent, stable across a transparent retry → the
+            // server returns the original order instead of a second debit (#3).
+            const idemKey =
+                typeof crypto !== "undefined" && crypto.randomUUID
+                    ? crypto.randomUUID()
+                    : `${resellerId}-${r.trackedId}-${Math.random().toString(36).slice(2)}`;
             const res = await checkoutResellerAction({
                 resellerId,
                 cart: [{ listingId: resolved.listingId, quantity: 1 }],
+                idempotencyKey: idemKey,
+                // The price the reseller just confirmed — reject a higher live
+                // charge instead of silently over-debiting (#4).
+                maxPriceDzd: r.priceDzd,
             });
             if (!res.success) {
                 toast.error((res as { error?: string }).error ?? "Échec de l'achat");

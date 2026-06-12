@@ -443,9 +443,15 @@ export const checkoutResellerAction = withAuth(
                     }),
                 ])
             ),
+            // Idempotency key (a client UUID per buy click) — a retry with the
+            // same key returns the original order instead of a second debit (#3).
+            idempotencyKey: z.string().min(1).max(128).optional(),
+            // Max total (DZD) the reseller confirmed in the UI — the LIVE charge
+            // is rejected if it exceeds this, so a price move can't over-charge (#4).
+            maxPriceDzd: z.number().positive().optional(),
         }),
     },
-    async ({ resellerId, cart }, user) => {
+    async ({ resellerId, cart, idempotencyKey, maxPriceDzd }, user) => {
         // Enforce ownership: session user must own this reseller account
         const reseller = await db.query.resellers.findFirst({
             where: and(eq(resellers.id, resellerId), eq(resellers.userId, user.id)),
@@ -507,6 +513,8 @@ export const checkoutResellerAction = withAuth(
                 reseller,
                 userId: user.id,
                 bsvCart,
+                idempotencyKey,
+                maxPriceDzd,
             });
         }
 
@@ -723,10 +731,14 @@ async function handleBsvCheckout({
     reseller,
     userId,
     bsvCart,
+    idempotencyKey,
+    maxPriceDzd,
 }: {
     reseller: { id: number; companyName: string; contactPhone: string | null; customDiscount: string | null; wallet: { id: number; balance: string | null } | null };
     userId: number;
     bsvCart: Array<BsvCartLine>;
+    idempotencyKey?: string;
+    maxPriceDzd?: number;
 }) {
     try {
         const { bsvOrders: bsvOrdersTable } = await import("@/db/schema");
@@ -879,7 +891,41 @@ async function handleBsvCheckout({
         );
         const totalAmount = lineTotals.reduce((acc, n) => acc + n, 0);
 
-        const orderNumber = `BSV-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+        // #4 — price guard: never debit MORE than the reseller confirmed in the
+        // UI. A small tolerance absorbs rounding/FX; beyond it the live price has
+        // moved, so abort cleanly (no debit) and let them re-confirm.
+        if (maxPriceDzd != null && totalAmount > maxPriceDzd * 1.02) {
+            return {
+                success: false as const,
+                error: "Le prix a changé depuis l'affichage — réessayez.",
+            };
+        }
+
+        // #3 — idempotency: a stable order number derived from the client key so a
+        // network retry maps to the SAME order. A pre-check returns the original
+        // (no second debit) when the first attempt already committed.
+        const orderNumber = idempotencyKey
+            ? `BSV-${idempotencyKey}`
+            : `BSV-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+        if (idempotencyKey) {
+            const [existing] = await db
+                .select({ id: orders.id })
+                .from(orders)
+                .where(
+                    and(
+                        eq(orders.orderNumber, orderNumber),
+                        eq(orders.resellerId, reseller.id),
+                    ),
+                )
+                .limit(1);
+            if (existing) {
+                return {
+                    success: true as const,
+                    orderId: existing.id,
+                    orderNumber,
+                };
+            }
+        }
 
         // ── Phase 1 (in tx): debit + local order + PENDING bsv_orders rows ──
         // NO network call inside the lock. Each bsv_orders row starts
