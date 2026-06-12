@@ -716,7 +716,14 @@ async function handleBsvCheckout({
                 salePriceCents?: number;
             }>;
             try {
-                catalog = (await lbV2.giftcards.catalog.list()) as ReadonlyArray<{
+                // The gateway returns the cluster catalog as `{ items, mode }`,
+                // but the SDK types it as a bare array. Accept either shape —
+                // casting `{items,...}` to an array makes `.filter` below throw
+                // `.filter is not a function` AT CHECKOUT (money path).
+                const resp = await lbV2.giftcards.catalog.list();
+                catalog = (Array.isArray(resp)
+                    ? resp
+                    : ((resp as { items?: unknown[] } | null)?.items ?? [])) as ReadonlyArray<{
                     sku?: string;
                     category?: string;
                     brand?: string;
@@ -898,6 +905,7 @@ async function handleBsvCheckout({
         // A per-line failure marks that line FAILED and refunds exactly that
         // line. Other lines stay valid. We never roll back the whole order.
         let failedLines = 0;
+        let refundFailedLines = 0;
         let refundedTotal = 0;
         for (let i = 0; i < bsvCart.length; i++) {
             const c = bsvCart[i];
@@ -941,8 +949,11 @@ async function handleBsvCheckout({
                         });
                     })
                     .catch((refundErr) => {
-                        // Refund failed → leave the line FAILED and surface
-                        // loudly; an operator reconciles via bsv_orders.status.
+                        // Refund failed → the reseller is debited for an
+                        // unfulfilled line. Count it so the response warns the
+                        // user (no silent money loss); an operator reconciles a
+                        // FAILED bsv_order that has no matching REFUND tx.
+                        refundFailedLines++;
                         console.error(
                             `[bsv-checkout] refund FAILED for line ${i} — manual reconcile needed:`,
                             refundErr,
@@ -982,6 +993,21 @@ async function handleBsvCheckout({
             };
         }
 
+        // Partial failure — at least one line was not fulfilled. Never present
+        // this as a clean success; surface it (and flag any refund that itself
+        // failed, so the reseller knows money is pending reconciliation).
+        if (failedLines > 0) {
+            const refundNote =
+                refundFailedLines > 0
+                    ? ` ⚠️ ${refundFailedLines} ligne(s) NON remboursée(s) automatiquement — le support régularise.`
+                    : " Les lignes concernées ont été remboursées.";
+            return {
+                success: true as const,
+                orderId: res.id,
+                orderNumber: res.orderNumber,
+                warning: `${failedLines}/${bsvCart.length} produit(s) indisponible(s).${refundNote}`,
+            };
+        }
         return { success: true as const, orderId: res.id, orderNumber: res.orderNumber };
     } catch (error) {
         console.error("BSV checkout error:", error);

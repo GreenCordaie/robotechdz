@@ -123,6 +123,8 @@ export default function ResellerMarketplacePage() {
                 toast.error((res as { error?: string }).error ?? "Échec de l'achat");
                 return;
             }
+            const warning = (res as { warning?: string }).warning;
+            if (warning) toast(warning, { icon: "⚠️", duration: 7000 });
             setBoughtLabel(r.name);
             setModalOrderId((res as { orderId?: number }).orderId ?? null);
             load();
