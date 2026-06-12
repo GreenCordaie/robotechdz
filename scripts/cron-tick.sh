@@ -56,6 +56,7 @@ run_reconcile() {
     hit "g2bulk-reconcile" POST "/api/admin/g2bulk/reconcile" "x-cron-secret: $CRON_SECRET"
     hit "iptv-reconcile" POST "/api/admin/iptv/reconcile" "x-cron-secret: $CRON_SECRET"
     hit "active-code-reconcile" POST "/api/admin/active-code/reconcile" "x-cron-secret: $CRON_SECRET"
+    hit "bsv-reconcile" POST "/api/admin/bsv/reconcile" "x-cron-secret: $CRON_SECRET"
 }
 
 run_balances() {
