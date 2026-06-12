@@ -41,6 +41,7 @@ export default function ResellerMarketplacePage() {
     const [resellerId, setResellerId] = useState<number | null>(null);
     const [tierName, setTierName] = useState<string | null>(null);
     const [buyingId, setBuyingId] = useState<string | null>(null);
+    const [confirmRow, setConfirmRow] = useState<Row | null>(null);
     const [modalOrderId, setModalOrderId] = useState<number | null>(null);
     const [boughtLabel, setBoughtLabel] = useState<string | undefined>(undefined);
 
@@ -132,6 +133,7 @@ export default function ResellerMarketplacePage() {
             toast.error((e as Error).message);
         } finally {
             setBuyingId(null);
+            setConfirmRow(null);
         }
     }
 
@@ -197,7 +199,7 @@ export default function ResellerMarketplacePage() {
                                 key={r.trackedId}
                                 r={r}
                                 busy={buyingId === r.trackedId}
-                                onBuy={() => buy(r)}
+                                onBuy={() => setConfirmRow(r)}
                                 striped={i % 2 === 1}
                             />
                         ))}
@@ -211,6 +213,78 @@ export default function ResellerMarketplacePage() {
                 orderId={modalOrderId}
                 productLabel={boughtLabel}
             />
+
+            {confirmRow && (
+                <ConfirmBuyModal
+                    row={confirmRow}
+                    busy={buyingId === confirmRow.trackedId}
+                    onConfirm={() => buy(confirmRow)}
+                    onCancel={() => setConfirmRow(null)}
+                />
+            )}
+        </div>
+    );
+}
+
+function ConfirmBuyModal({
+    row,
+    busy,
+    onConfirm,
+    onCancel,
+}: {
+    row: Row;
+    busy: boolean;
+    onConfirm: () => void;
+    onCancel: () => void;
+}) {
+    return (
+        <div
+            className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-4 backdrop-blur-sm"
+            onClick={busy ? undefined : onCancel}
+        >
+            <div
+                className="w-full max-w-sm rounded-2xl border border-[#262626] bg-[#161616] p-5 shadow-2xl"
+                onClick={(e) => e.stopPropagation()}
+            >
+                <h2 className="text-lg font-black">Confirmer l&apos;achat</h2>
+                <p className="mt-1 text-xs text-slate-500">
+                    Vérifie le produit — ton solde sera débité immédiatement.
+                </p>
+                <div className="mt-4 rounded-xl border border-[#262626] bg-[#0f0f0f] p-4">
+                    <p className="text-sm font-semibold text-white">{row.name}</p>
+                    <div className="mt-3 flex items-center justify-between">
+                        {row.delivery === "auto" ? (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-400">
+                                <Zap size={11} /> Instant
+                            </span>
+                        ) : (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-bold text-amber-400">
+                                <Clock size={11} /> Sur demande
+                            </span>
+                        )}
+                        <span className="text-lg font-black text-[#FACC15]">
+                            {fmtDzd(row.priceDzd)}{" "}
+                            <span className="text-[10px] text-slate-500">DZD</span>
+                        </span>
+                    </div>
+                </div>
+                <div className="mt-5 flex gap-3">
+                    <button
+                        onClick={onCancel}
+                        disabled={busy}
+                        className="flex-1 rounded-lg border border-[#262626] py-2.5 text-sm font-bold text-slate-300 transition hover:bg-[#0f0f0f] disabled:opacity-50"
+                    >
+                        Annuler
+                    </button>
+                    <button
+                        onClick={onConfirm}
+                        disabled={busy}
+                        className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-[#FACC15] py-2.5 text-sm font-black text-black transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-70"
+                    >
+                        {busy ? <Spinner size="sm" color="default" /> : "Confirmer l'achat"}
+                    </button>
+                </div>
+            </div>
         </div>
     );
 }
