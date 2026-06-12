@@ -43,9 +43,13 @@ type LbCode = { code: string; redemptionUrl?: string | null; pin?: string | null
 
 const MAX_SCAN_AGE_DAYS = 7;
 const STALE_ORPHAN_MINUTES = 15;
-// Manual-delivery SLA: a non-terminal order older than this is refunded (#8) so
-// a reseller is never charged forever for an "on demand" item that never came.
-const MANUAL_DELIVERY_TIMEOUT_HOURS = 48;
+// Manual-delivery SLA backstop (#8): a non-terminal order older than this is
+// refunded so a reseller is never charged forever for an "on demand" item that
+// never came. Kept LONGER than LoadBrain's own 48h manual timeout so LoadBrain's
+// terminal decision (deliver or expire→refund) always propagates first via the
+// status poll — this backstop only fires if LoadBrain is genuinely stuck,
+// avoiding a "refunded-here then delivered-upstream" wasted-code race.
+const MANUAL_DELIVERY_TIMEOUT_HOURS = 72;
 
 export async function reconcilePendingBsvOrders(
     options: { dbInstance?: DbLike; limit?: number } = {},
