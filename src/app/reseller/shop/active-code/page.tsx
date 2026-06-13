@@ -26,7 +26,7 @@ import {
  * appear in this surface.
  */
 
-type SubCategoryValue = "" | "iptv" | "test" | "vod" | "server" | "internet" | "legacy";
+type SubCategoryValue = "" | "iptv" | "test" | "vod" | "server" | "internet" | "mango";
 
 const CATEGORY_CHIPS: ReadonlyArray<{ value: SubCategoryValue; label: string }> = [
     { value: "",          label: "Tous" },
@@ -35,14 +35,16 @@ const CATEGORY_CHIPS: ReadonlyArray<{ value: SubCategoryValue; label: string }> 
     { value: "vod",       label: "VOD" },
     { value: "server",    label: "Serveur" },
     { value: "internet",  label: "Internet" },
-    { value: "legacy",    label: "Legacy" },
+    { value: "mango",     label: "Mango" },
 ];
 
 // Categories explicitly hidden from the reseller storefront. The server
 // route returns them but we filter client-side so the resulting list
 // stays in sync with the chip strip (no orphan rows from a removed
 // chip). Easier to evolve than touching the SQL filter.
-const HIDDEN_SUB_CATEGORIES: ReadonlySet<string> = new Set(["mango"]);
+// 'legacy_iptv' is excluded upstream (LoadBrain hides it — broken /iptv.php
+// order flow); 'mango' is now a first-class chip, no longer hidden.
+const HIDDEN_SUB_CATEGORIES: ReadonlySet<string> = new Set<string>(["legacy_iptv"]);
 
 function formatDzd(amount: number): string {
     return new Intl.NumberFormat("fr-FR").format(amount);
