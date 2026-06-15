@@ -42,6 +42,7 @@ export default function ResellerMarketplacePage() {
     const [tierName, setTierName] = useState<string | null>(null);
     const [buyingId, setBuyingId] = useState<string | null>(null);
     const [confirmRow, setConfirmRow] = useState<Row | null>(null);
+    const [buyerInfo, setBuyerInfo] = useState<string>("");
     const [modalOrderId, setModalOrderId] = useState<number | null>(null);
     const [boughtLabel, setBoughtLabel] = useState<string | undefined>(undefined);
 
@@ -124,7 +125,7 @@ export default function ResellerMarketplacePage() {
                     : `${resellerId}-${r.trackedId}-${Math.random().toString(36).slice(2)}`;
             const res = await checkoutResellerAction({
                 resellerId,
-                cart: [{ listingId: resolved.listingId, quantity: 1 }],
+                cart: [{ listingId: resolved.listingId, quantity: 1, buyerInfo: buyerInfo.trim() || undefined }],
                 idempotencyKey: idemKey,
                 // The price the reseller just confirmed — reject a higher live
                 // charge instead of silently over-debiting (#4).
@@ -144,6 +145,7 @@ export default function ResellerMarketplacePage() {
         } finally {
             setBuyingId(null);
             setConfirmRow(null);
+            setBuyerInfo("");
         }
     }
 
@@ -228,8 +230,13 @@ export default function ResellerMarketplacePage() {
                 <ConfirmBuyModal
                     row={confirmRow}
                     busy={buyingId === confirmRow.trackedId}
+                    buyerInfo={buyerInfo}
+                    onBuyerInfoChange={setBuyerInfo}
                     onConfirm={() => buy(confirmRow)}
-                    onCancel={() => setConfirmRow(null)}
+                    onCancel={() => {
+                        setConfirmRow(null);
+                        setBuyerInfo("");
+                    }}
                 />
             )}
         </div>
@@ -239,11 +246,15 @@ export default function ResellerMarketplacePage() {
 function ConfirmBuyModal({
     row,
     busy,
+    buyerInfo,
+    onBuyerInfoChange,
     onConfirm,
     onCancel,
 }: {
     row: Row;
     busy: boolean;
+    buyerInfo: string;
+    onBuyerInfoChange: (value: string) => void;
     onConfirm: () => void;
     onCancel: () => void;
 }) {
@@ -278,6 +289,26 @@ function ConfirmBuyModal({
                         </span>
                     </div>
                 </div>
+                {/* Manual-delivery products may need buyer info (e.g. account
+                    login the seller uses to apply the subscription). Optional
+                    here — LoadBrain rejects + refunds the line if the product
+                    requires it and it's left empty. */}
+                {row.delivery === "manual" && (
+                    <div className="mt-4 space-y-1.5">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                            Infos pour le vendeur{" "}
+                            <span className="text-slate-600">(si le produit l&apos;exige — ex : login / email du compte)</span>
+                        </label>
+                        <textarea
+                            value={buyerInfo}
+                            onChange={(e) => onBuyerInfoChange(e.target.value)}
+                            disabled={busy}
+                            rows={2}
+                            placeholder="Ex : email@compte.com / mot de passe"
+                            className="w-full resize-none rounded-lg border border-[#262626] bg-[#0a0a0a] px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:border-[#FACC15] focus:outline-none disabled:opacity-50"
+                        />
+                    </div>
+                )}
                 <div className="mt-5 flex gap-3">
                     <button
                         onClick={onCancel}

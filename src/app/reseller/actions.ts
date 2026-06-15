@@ -432,10 +432,15 @@ export const checkoutResellerAction = withAuth(
                     z.object({
                         listingId: z.string().min(1),
                         quantity: z.number().min(1),
+                        // Manual-delivery buyer field (e.g. account login) the
+                        // seller needs. Forwarded to LoadBrain; required-but-empty
+                        // is rejected there (refunded line).
+                        buyerInfo: z.string().max(2000).optional(),
                     }),
                     z.object({
                         sku: z.string().min(1),
                         quantity: z.number().min(1),
+                        buyerInfo: z.string().max(2000).optional(),
                     }),
                     z.object({
                         g2bulkProductId: z.number().int().positive(),
@@ -465,10 +470,10 @@ export const checkoutResellerAction = withAuth(
             (c): c is { id: number; quantity: number } => "id" in c
         );
         const bsvListingCart = cart.filter(
-            (c): c is { listingId: string; quantity: number } => "listingId" in c
+            (c): c is { listingId: string; quantity: number; buyerInfo?: string } => "listingId" in c
         );
         const bsvSkuCart = cart.filter(
-            (c): c is { sku: string; quantity: number } => "sku" in c
+            (c): c is { sku: string; quantity: number; buyerInfo?: string } => "sku" in c
         );
         const g2bulkCart = cart.filter(
             (c): c is { g2bulkProductId: number; quantity: number } =>
@@ -478,18 +483,20 @@ export const checkoutResellerAction = withAuth(
         // Both BSV variants resolve to the same fulfilment path; normalize to a
         // single discriminated cart so handleBsvCheckout has one code path.
         const bsvCart: Array<
-            | { kind: "listing"; listingId: string; quantity: number }
-            | { kind: "sku"; sku: string; quantity: number }
+            | { kind: "listing"; listingId: string; quantity: number; buyerInfo?: string }
+            | { kind: "sku"; sku: string; quantity: number; buyerInfo?: string }
         > = [
             ...bsvListingCart.map((c) => ({
                 kind: "listing" as const,
                 listingId: c.listingId,
                 quantity: c.quantity,
+                buyerInfo: c.buyerInfo,
             })),
             ...bsvSkuCart.map((c) => ({
                 kind: "sku" as const,
                 sku: c.sku,
                 quantity: c.quantity,
+                buyerInfo: c.buyerInfo,
             })),
         ];
 
@@ -724,8 +731,8 @@ export const checkoutResellerAction = withAuth(
  *   lock held across the network, no all-or-nothing money loss.
  * --------------------------------------------------------------------- */
 type BsvCartLine =
-    | { kind: "listing"; listingId: string; quantity: number }
-    | { kind: "sku"; sku: string; quantity: number };
+    | { kind: "listing"; listingId: string; quantity: number; buyerInfo?: string }
+    | { kind: "sku"; sku: string; quantity: number; buyerInfo?: string };
 
 async function handleBsvCheckout({
     reseller,
@@ -1011,10 +1018,11 @@ async function handleBsvCheckout({
             const c = bsvCart[i];
             const bsvOrderId = res.bsvOrderIds[i];
             const externalOrderId = `${res.orderNumber}-${i}`;
+            const buyerInfo = c.buyerInfo?.trim() || undefined;
             const createInput =
                 c.kind === "listing"
-                    ? { listingId: c.listingId, quantity: c.quantity, externalOrderId }
-                    : { sku: c.sku, quantity: c.quantity, externalOrderId };
+                    ? { listingId: c.listingId, quantity: c.quantity, externalOrderId, buyerInfo }
+                    : { sku: c.sku, quantity: c.quantity, externalOrderId, buyerInfo };
             try {
                 const lbCreate = await lbV2.giftcards.orders.create(
                     createInput as Parameters<typeof lbV2.giftcards.orders.create>[0],
