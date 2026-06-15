@@ -39,6 +39,7 @@ interface ActiveCodeItemUpstream {
     image_sha256: string | null;
     image_cdn_url: string | null;
     reseller_price_dzd_cents: number | null;
+    requires_sn?: boolean; // recharge-by-serial (Mango): customer must supply a device S/N
 }
 
 export interface ActiveCodeListResult {
@@ -49,6 +50,7 @@ export interface ActiveCodeListResult {
         readonly region: string;
         readonly priceDzd: number | null;
         readonly description: string | null;
+        readonly requiresSn: boolean;
     }>;
     total: number;
 }
@@ -548,6 +550,7 @@ export async function getActiveCodeCatalogAction(
                             ? Math.round(it.reseller_price_dzd_cents / 100)
                             : null,
                     description: it.description_fr ?? null,
+                    requiresSn: it.requires_sn === true,
                 })),
                 total,
             },

@@ -66,6 +66,9 @@ export default function ResellerShopActiveCodePage() {
     const [selected, setSelected] =
         useState<ActiveCodeListResult["items"][number] | null>(null);
     const [isBuying, setIsBuying] = useState(false);
+    // Device serial for recharge-by-serial plans (Mango). Required before
+    // the buy is allowed; passed to LoadBrain as customerInfo.sn.
+    const [serialNumber, setSerialNumber] = useState("");
     const [purchaseResult, setPurchaseResult] = useState<
         | { kind: "success"; code: string; orderId: string }
         | { kind: "pending"; orderId: string }
@@ -289,6 +292,7 @@ export default function ResellerShopActiveCodePage() {
                         if (isBuying) return;
                         setSelected(null);
                         setPurchaseResult(null);
+                        setSerialNumber("");
                     }}
                 >
                     <div
@@ -322,18 +326,45 @@ export default function ResellerShopActiveCodePage() {
                                     Le code est livré instantanément. Aucun
                                     remboursement après livraison.
                                 </p>
+                                {selected.requiresSn && (
+                                    <div className="mb-6">
+                                        <label
+                                            htmlFor="active-code-sn"
+                                            className="block text-sm font-medium text-neutral-200 mb-1"
+                                        >
+                                            Numéro de série (S/N)
+                                        </label>
+                                        <input
+                                            id="active-code-sn"
+                                            type="text"
+                                            inputMode="text"
+                                            autoComplete="off"
+                                            value={serialNumber}
+                                            onChange={(e) =>
+                                                setSerialNumber(e.target.value)
+                                            }
+                                            placeholder="Saisir le S/N de l'appareil"
+                                            className="w-full rounded-lg bg-neutral-900 border border-neutral-700 px-3 py-2 text-white placeholder-neutral-600 focus:outline-none focus:border-[#FACC15]"
+                                        />
+                                        <p className="text-[11px] text-neutral-600 mt-1">
+                                            Ce produit est une recharge : le S/N
+                                            est obligatoire pour la livraison.
+                                        </p>
+                                    </div>
+                                )}
                                 <div className="flex gap-3 justify-end">
                                     <button
                                         type="button"
                                         onClick={() => {
                                             setSelected(null);
                                             setPurchaseResult(null);
+                                            setSerialNumber("");
                                         }}
                                         className="px-4 py-2 rounded-lg text-neutral-300 hover:text-white transition"
                                     >
                                         Annuler
                                     </button>
-                                    {selected.priceDzd !== null && (
+                                    {selected.priceDzd !== null && !selected.requiresSn && (
                                         <button
                                             type="button"
                                             onClick={() => {
@@ -355,11 +386,18 @@ export default function ResellerShopActiveCodePage() {
                                     )}
                                     <button
                                         type="button"
-                                        disabled={isBuying}
+                                        disabled={
+                                            isBuying ||
+                                            (selected.requiresSn &&
+                                                serialNumber.trim().length === 0)
+                                        }
                                         onClick={async () => {
                                             setIsBuying(true);
                                             const res = await purchaseActiveCodeAction({
                                                 planId: selected.id,
+                                                customerInfo: selected.requiresSn
+                                                    ? { sn: serialNumber.trim() }
+                                                    : undefined,
                                             });
                                             setIsBuying(false);
                                             if (res.ok && res.status === "completed") {
