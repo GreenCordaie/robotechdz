@@ -3,13 +3,14 @@
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Chip, Spinner } from "@heroui/react";
-import { Copy, Send } from "lucide-react";
+import { Copy, Send, RotateCcw } from "lucide-react";
 import { toast } from "react-hot-toast";
 import { formatCurrency, formatDate } from "@/lib/formatters";
 import {
     getResellerOrdersByKindAction,
     type NormalizedOrderRow,
 } from "../actions";
+import { requestActiveCodeRefundAction } from "@/app/reseller/refunds/actions";
 import { KIND_LABELS, sanitizeSupplierText, type OrderKind } from "./types";
 
 const ORDER_TABS: Array<{ key: OrderKind; label: string }> = [
@@ -157,6 +158,33 @@ function OrderRowCard({ row, resellerName }: { row: NormalizedOrderRow; reseller
     const code = row.codeOrLink;
     const isLink = !!code && /^https?:\/\//i.test(code);
 
+    // Refund-request state for eligible active-code rows.
+    const canRequestRefund =
+        row.kind === "active" &&
+        row.status.toUpperCase() === "DELIVERED" &&
+        typeof row.activeCodeOrderId === "number";
+    const [refundOpen, setRefundOpen] = useState(false);
+    const [refundReason, setRefundReason] = useState("");
+    const [refundSubmitting, setRefundSubmitting] = useState(false);
+    const [refundSent, setRefundSent] = useState(false);
+
+    const submitRefund = async () => {
+        if (typeof row.activeCodeOrderId !== "number") return;
+        setRefundSubmitting(true);
+        const res = await requestActiveCodeRefundAction({
+            activeCodeOrderId: row.activeCodeOrderId,
+            reason: refundReason.trim() || undefined,
+        });
+        setRefundSubmitting(false);
+        if (res.success) {
+            setRefundSent(true);
+            setRefundOpen(false);
+            toast.success("Demande de remboursement envoyée");
+        } else {
+            toast.error(res.error || "Échec de la demande");
+        }
+    };
+
     const copyCode = () => {
         if (!code) return;
         navigator.clipboard
@@ -223,6 +251,87 @@ function OrderRowCard({ row, resellerName }: { row: NormalizedOrderRow; reseller
                     >
                         <Send className="size-4" /> Partager
                     </button>
+                </div>
+            )}
+
+            {/* Refund-request affordance — only on eligible delivered active-code rows. */}
+            {canRequestRefund && (
+                <div className="mt-3 pt-3 border-t border-[#262626] flex items-center justify-end">
+                    {refundSent ? (
+                        <span className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-sky-400">
+                            <RotateCcw className="size-3.5" /> Demande envoyée
+                        </span>
+                    ) : (
+                        <button
+                            type="button"
+                            onClick={() => setRefundOpen(true)}
+                            className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-400 border border-[#262626] rounded-lg px-3 py-1.5 transition-colors hover:border-sky-500/40 hover:text-sky-300"
+                        >
+                            <RotateCcw className="size-3.5" /> Demander un remboursement
+                        </button>
+                    )}
+                </div>
+            )}
+
+            {refundOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+                    <div className="bg-[#161616] border border-[#262626] rounded-2xl w-full max-w-md overflow-hidden">
+                        <div className="px-5 py-4 border-b border-[#262626] flex items-center justify-between">
+                            <div>
+                                <h2 className="text-sm font-black text-white">
+                                    Demander un remboursement
+                                </h2>
+                                <p className="text-[11px] text-slate-500 mt-0.5">
+                                    {row.orderNumber} · {sanitizeSupplierText(row.productName)}
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setRefundOpen(false)}
+                                className="text-slate-500 hover:text-white text-xl leading-none"
+                            >
+                                ×
+                            </button>
+                        </div>
+                        <div className="px-5 py-5 space-y-4">
+                            <p className="text-xs text-slate-400 leading-relaxed">
+                                Votre demande sera examinée par un administrateur. Aucun
+                                montant n&apos;est crédité tant qu&apos;elle n&apos;est pas
+                                approuvée.
+                            </p>
+                            <div>
+                                <label className="block text-[11px] font-bold uppercase tracking-widest text-slate-500 mb-1.5">
+                                    Motif (optionnel)
+                                </label>
+                                <textarea
+                                    value={refundReason}
+                                    onChange={(e) => setRefundReason(e.target.value)}
+                                    maxLength={500}
+                                    rows={3}
+                                    placeholder="Expliquez la raison de la demande…"
+                                    className="w-full bg-[#0a0a0a] border border-[#262626] rounded-xl px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-sky-500/50 resize-none"
+                                />
+                            </div>
+                            <div className="flex gap-3 pt-1">
+                                <button
+                                    type="button"
+                                    onClick={() => setRefundOpen(false)}
+                                    disabled={refundSubmitting}
+                                    className="flex-1 border border-[#262626] text-slate-300 rounded-xl py-2.5 text-sm font-bold transition-colors hover:bg-white/5 disabled:opacity-50"
+                                >
+                                    Annuler
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={submitRefund}
+                                    disabled={refundSubmitting}
+                                    className="flex-1 bg-sky-500 hover:bg-sky-600 disabled:opacity-50 text-white rounded-xl py-2.5 text-sm font-black transition-colors"
+                                >
+                                    {refundSubmitting ? "Envoi…" : "Envoyer la demande"}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             )}
         </div>

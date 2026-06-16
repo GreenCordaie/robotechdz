@@ -253,6 +253,10 @@ export interface NormalizedOrderRow {
     status: string;
     createdAt: Date | string;
     codeOrLink: string | null;
+    // Underlying active-code order id — only set for `kind === "active"` rows.
+    // Lets the reseller wallet surface a "Demander un remboursement" button
+    // that calls requestActiveCodeRefundAction({ activeCodeOrderId }).
+    activeCodeOrderId?: number;
 }
 
 export const getResellerOrdersByKindAction = withAuth(
@@ -295,6 +299,7 @@ export const getResellerOrdersByKindAction = withAuth(
                         status: r.status,
                         createdAt: r.createdAt,
                         codeOrLink: r.code,
+                        activeCodeOrderId: r.id,
                     });
                 }
             }
