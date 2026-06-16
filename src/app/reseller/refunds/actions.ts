@@ -8,7 +8,7 @@
  * This only records a PENDING request; NO money moves until an admin approves
  * it (see src/app/admin/refund-requests/actions.ts).
  */
-import { and, desc, eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import {
@@ -20,7 +20,7 @@ import {
     g2bulkOrders,
     resellers,
 } from "@/db/schema";
-import { withAuth } from "@/lib/security";
+import { withAuth, type UserContext } from "@/lib/security";
 import { UserRole } from "@/lib/constants";
 
 type RefundKind = "active" | "g2bulk" | "bsv";
@@ -37,20 +37,28 @@ type RefundSnapshot = {
     priceDzd: string;
 };
 
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
 /**
- * Load the kind-specific source order, assert ownership + delivered state, and
- * build a generic snapshot for the refund-request row. Returns a user-facing
- * error string when the order is missing / not owned / not refundable.
+ * Load the kind-specific source order INSIDE the supplied transaction, locking
+ * the source-order row (SELECT … FOR UPDATE), assert ownership + delivered
+ * state, and build a generic snapshot for the refund-request row. Locking here
+ * closes the window where the order could be refunded by another path between
+ * the read and the PENDING-request insert. Returns a user-facing error string
+ * when the order is missing / not owned / not refundable.
  */
 async function buildSnapshot(
+    tx: Tx,
     kind: RefundKind,
     sourceOrderId: number,
     resellerId: number,
 ): Promise<{ snapshot: RefundSnapshot } | { error: string }> {
     if (kind === "active") {
-        const order = await db.query.activeCodeOrders.findFirst({
-            where: eq(activeCodeOrders.id, sourceOrderId),
-        });
+        const [order] = await tx
+            .select()
+            .from(activeCodeOrders)
+            .where(eq(activeCodeOrders.id, sourceOrderId))
+            .for("update");
         if (!order || order.resellerId !== resellerId) {
             return { error: "Commande introuvable" };
         }
@@ -61,6 +69,11 @@ async function buildSnapshot(
         }
         if (!order.code) {
             return { error: "Aucun code livré pour cette commande." };
+        }
+        if (!order.lbOrderId) {
+            return {
+                error: "Commande sans référence LoadBrain — remboursement impossible automatiquement",
+            };
         }
         return {
             snapshot: {
@@ -77,9 +90,11 @@ async function buildSnapshot(
     }
 
     if (kind === "g2bulk") {
-        const order = await db.query.g2bulkOrders.findFirst({
-            where: eq(g2bulkOrders.id, sourceOrderId),
-        });
+        const [order] = await tx
+            .select()
+            .from(g2bulkOrders)
+            .where(eq(g2bulkOrders.id, sourceOrderId))
+            .for("update");
         if (!order || order.resellerId !== resellerId) {
             return { error: "Commande introuvable" };
         }
@@ -88,7 +103,12 @@ async function buildSnapshot(
                 error: "Seules les commandes livrées peuvent faire l'objet d'une demande.",
             };
         }
-        const delivered = await db.query.g2bulkDeliveredCodes.findFirst({
+        if (!order.lbOrderId) {
+            return {
+                error: "Commande sans référence LoadBrain — remboursement impossible automatiquement",
+            };
+        }
+        const delivered = await tx.query.g2bulkDeliveredCodes.findFirst({
             where: eq(g2bulkDeliveredCodes.g2bulkOrderId, order.id),
         });
         if (!delivered) {
@@ -109,9 +129,11 @@ async function buildSnapshot(
     }
 
     // kind === "bsv"
-    const order = await db.query.bsvOrders.findFirst({
-        where: eq(bsvOrders.id, sourceOrderId),
-    });
+    const [order] = await tx
+        .select()
+        .from(bsvOrders)
+        .where(eq(bsvOrders.id, sourceOrderId))
+        .for("update");
     if (!order || order.resellerId !== resellerId) {
         return { error: "Commande introuvable" };
     }
@@ -120,7 +142,12 @@ async function buildSnapshot(
             error: "Seules les commandes livrées peuvent faire l'objet d'une demande.",
         };
     }
-    const delivered = await db.query.bsvDeliveredCodes.findFirst({
+    if (!order.lbOrderId) {
+        return {
+            error: "Commande sans référence LoadBrain — remboursement impossible automatiquement",
+        };
+    }
+    const delivered = await tx.query.bsvDeliveredCodes.findFirst({
         where: eq(bsvDeliveredCodes.bsvOrderId, order.id),
     });
     if (!delivered) {
@@ -141,10 +168,89 @@ async function buildSnapshot(
 }
 
 /**
- * Generic refund-request action. Resolves the reseller, loads the kind-specific
- * order, snapshots it, and inserts a PENDING request inside a transaction. The
- * partial unique index `acrr_one_pending_per_source_idx` is the DB-level
- * backstop for the double-request race (23505).
+ * Generic refund-request implementation — shared by both exported actions so we
+ * never re-enter the withAuth pipeline (which would re-run auth and discard the
+ * outer authenticated user). Resolves the reseller, then inside ONE transaction
+ * locks + validates the source order (TOCTOU guard) and inserts a PENDING
+ * request. The partial unique index `acrr_one_pending_per_source_idx` is the
+ * DB-level backstop for the double-request race (23505).
+ */
+async function requestRefundImpl(
+    input: { kind: RefundKind; sourceOrderId: number; reason?: string },
+    user: UserContext,
+): Promise<{ success: true } | { success: false; error: string }> {
+    const { kind, sourceOrderId, reason } = input;
+    try {
+        // 1. Resolve the current reseller from the authenticated user.
+        const reseller = await db.query.resellers.findFirst({
+            where: eq(resellers.userId, user.id),
+        });
+        if (!reseller) {
+            return { success: false, error: "Compte revendeur introuvable" };
+        }
+
+        // 2. In ONE transaction: lock + validate the source order, refuse a
+        //    second concurrent PENDING request, then insert. Locking the source
+        //    order row (FOR UPDATE) inside the tx closes the window where it
+        //    could be refunded by another path between read and insert.
+        try {
+            const result = await db.transaction(async (tx) => {
+                const built = await buildSnapshot(tx, kind, sourceOrderId, reseller.id);
+                if ("error" in built) {
+                    return { success: false as const, error: built.error };
+                }
+                const snap = built.snapshot;
+
+                const existing = await tx.query.activeCodeRefundRequests.findFirst({
+                    where: and(
+                        eq(activeCodeRefundRequests.kind, kind),
+                        eq(activeCodeRefundRequests.sourceOrderId, sourceOrderId),
+                        eq(activeCodeRefundRequests.status, "PENDING"),
+                    ),
+                });
+                if (existing) throw new Error("DUPLICATE_PENDING");
+
+                await tx.insert(activeCodeRefundRequests).values({
+                    kind,
+                    sourceOrderId,
+                    // back-compat link, only for active-code rows
+                    activeCodeOrderId: snap.activeCodeOrderId ?? undefined,
+                    localOrderId: snap.localOrderId,
+                    resellerId: reseller.id,
+                    provider: snap.provider,
+                    planId: snap.productRef,
+                    planLabel: snap.planLabel,
+                    lbOrderId: snap.lbOrderId ?? "",
+                    code: snap.code,
+                    priceDzd: snap.priceDzd,
+                    reason: reason ?? null,
+                    status: "PENDING",
+                });
+
+                return { success: true as const };
+            });
+            return result;
+        } catch (err) {
+            const msg = err instanceof Error ? err.message : "";
+            if (
+                msg.includes("DUPLICATE_PENDING") ||
+                msg.includes("23505") ||
+                (err as { code?: string })?.code === "23505"
+            ) {
+                return { success: false, error: "Une demande est déjà en cours." };
+            }
+            throw err;
+        }
+    } catch (error) {
+        return {
+            success: false,
+            error: error instanceof Error ? error.message : "Erreur serveur",
+        };
+    }
+}
+
+/**
+ * Generic refund-request action. Thin withAuth wrapper over requestRefundImpl.
  */
 export const requestRefundAction = withAuth(
     {
@@ -155,79 +261,13 @@ export const requestRefundAction = withAuth(
             reason: z.string().max(500).optional(),
         }),
     },
-    async ({ kind, sourceOrderId, reason }, user) => {
-        try {
-            // 1. Resolve the current reseller from the authenticated user.
-            const reseller = await db.query.resellers.findFirst({
-                where: eq(resellers.userId, user.id),
-            });
-            if (!reseller) {
-                return { success: false, error: "Compte revendeur introuvable" };
-            }
-
-            // 2. Load + validate the source order, build the snapshot.
-            const built = await buildSnapshot(kind, sourceOrderId, reseller.id);
-            if ("error" in built) {
-                return { success: false, error: built.error };
-            }
-            const snap = built.snapshot;
-
-            // 3. Refuse a second concurrent PENDING request for the same source
-            //    order. Check + insert happen in ONE transaction (TOCTOU guard);
-            //    the partial unique index is the DB-level backstop (23505).
-            try {
-                await db.transaction(async (tx) => {
-                    const existing = await tx.query.activeCodeRefundRequests.findFirst({
-                        where: and(
-                            eq(activeCodeRefundRequests.kind, kind),
-                            eq(activeCodeRefundRequests.sourceOrderId, sourceOrderId),
-                            eq(activeCodeRefundRequests.status, "PENDING"),
-                        ),
-                    });
-                    if (existing) throw new Error("DUPLICATE_PENDING");
-
-                    await tx.insert(activeCodeRefundRequests).values({
-                        kind,
-                        sourceOrderId,
-                        // back-compat link, only for active-code rows
-                        activeCodeOrderId: snap.activeCodeOrderId ?? undefined,
-                        localOrderId: snap.localOrderId,
-                        resellerId: reseller.id,
-                        provider: snap.provider,
-                        planId: snap.productRef,
-                        planLabel: snap.planLabel,
-                        lbOrderId: snap.lbOrderId ?? "",
-                        code: snap.code,
-                        priceDzd: snap.priceDzd,
-                        reason: reason ?? null,
-                        status: "PENDING",
-                    });
-                });
-            } catch (err) {
-                const msg = err instanceof Error ? err.message : "";
-                if (
-                    msg.includes("DUPLICATE_PENDING") ||
-                    msg.includes("23505") ||
-                    (err as { code?: string })?.code === "23505"
-                ) {
-                    return { success: false, error: "Une demande est déjà en cours." };
-                }
-                throw err;
-            }
-
-            return { success: true };
-        } catch (error) {
-            return {
-                success: false,
-                error: error instanceof Error ? error.message : "Erreur serveur",
-            };
-        }
-    },
+    (input, user) => requestRefundImpl(input, user),
 );
 
 /**
- * Back-compat thin wrapper for the original active-code-only UI. Delegates to
- * the generic action with kind='active'.
+ * Back-compat thin wrapper for the original active-code-only UI. Calls the
+ * shared impl directly with the outer authenticated user — NEVER re-enters
+ * another withAuth-wrapped action.
  */
 export const requestActiveCodeRefundAction = withAuth(
     {
@@ -237,11 +277,9 @@ export const requestActiveCodeRefundAction = withAuth(
             reason: z.string().max(500).optional(),
         }),
     },
-    async ({ activeCodeOrderId, reason }, user) => {
-        return requestRefundAction({
-            kind: "active",
-            sourceOrderId: activeCodeOrderId,
-            reason,
-        });
-    },
+    ({ activeCodeOrderId, reason }, user) =>
+        requestRefundImpl(
+            { kind: "active", sourceOrderId: activeCodeOrderId, reason },
+            user,
+        ),
 );

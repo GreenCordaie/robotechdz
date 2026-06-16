@@ -39,6 +39,29 @@ function resolveLoadBrainAuth(): { baseUrl: string; apiKey: string } | null {
     return { baseUrl: baseUrl.replace(/\/$/, ""), apiKey };
 }
 
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+/**
+ * Mark a PENDING request REJECTED inside the current transaction because its
+ * source order is already refunded / no longer delivered. Used by the approve
+ * guard to refuse a double-credit without throwing (so the rejection commits).
+ */
+async function rejectAlreadyRefunded(
+    tx: Tx,
+    requestId: number,
+    adminUserId: number,
+): Promise<void> {
+    await tx
+        .update(activeCodeRefundRequests)
+        .set({
+            status: "REJECTED",
+            decisionReason: "source order already refunded/not delivered",
+            decidedBy: adminUserId,
+            decidedAt: new Date(),
+        })
+        .where(eq(activeCodeRefundRequests.id, requestId));
+}
+
 export const listActiveCodeRefundRequestsAction = withAuth(
     { roles: [UserRole.ADMIN, UserRole.SUPER_ADMIN], schema: z.any().optional() },
     async () => {
@@ -95,8 +118,9 @@ export const approveActiveCodeRefundAction = withAuth(
         // gateway call below can read its snapshot after commit.
         let req: typeof activeCodeRefundRequests.$inferSelect | null = null;
 
+        let txResult: { success: true } | { success: false; error: string };
         try {
-            await db.transaction(async (tx) => {
+            txResult = await db.transaction(async (tx) => {
                 // 1. Lock + load the request; only a PENDING request is actionable.
                 const [lockedReq] = await tx
                     .select()
@@ -111,9 +135,71 @@ export const approveActiveCodeRefundAction = withAuth(
                 }
                 req = lockedReq;
 
+                // 2. CRITICAL double-credit guard: re-read + lock the source
+                //    order row and assert it is STILL delivered and NOT already
+                //    refunded. If another path (e.g. refundActiveCodeOrder)
+                //    already refunded it, we must NOT credit the wallet again.
+                //    Reject the request and bail out before any money moves.
+                if (lockedReq.kind === "active") {
+                    const acId = lockedReq.activeCodeOrderId ?? lockedReq.sourceOrderId;
+                    if (acId == null) {
+                        throw new Error(
+                            "Commande active-code introuvable — remboursement annulé",
+                        );
+                    }
+                    const [src] = await tx
+                        .select({ status: activeCodeOrders.status })
+                        .from(activeCodeOrders)
+                        .where(eq(activeCodeOrders.id, acId))
+                        .for("update");
+                    if (!src || src.status !== "DELIVERED") {
+                        await rejectAlreadyRefunded(tx, requestId, user.id);
+                        return {
+                            success: false,
+                            error: "source order already refunded/not delivered",
+                        };
+                    }
+                } else if (lockedReq.kind === "g2bulk") {
+                    if (lockedReq.sourceOrderId == null) {
+                        throw new Error(
+                            "Commande g2bulk introuvable — remboursement annulé",
+                        );
+                    }
+                    const [src] = await tx
+                        .select({ status: g2bulkOrders.status })
+                        .from(g2bulkOrders)
+                        .where(eq(g2bulkOrders.id, lockedReq.sourceOrderId))
+                        .for("update");
+                    if (!src || src.status !== "COMPLETED") {
+                        await rejectAlreadyRefunded(tx, requestId, user.id);
+                        return {
+                            success: false,
+                            error: "source order already refunded/not delivered",
+                        };
+                    }
+                } else if (lockedReq.kind === "bsv") {
+                    if (lockedReq.sourceOrderId == null) {
+                        throw new Error(
+                            "Commande bsv introuvable — remboursement annulé",
+                        );
+                    }
+                    const [src] = await tx
+                        .select({ status: bsvOrders.status })
+                        .from(bsvOrders)
+                        .where(eq(bsvOrders.id, lockedReq.sourceOrderId))
+                        .for("update");
+                    if (!src || src.status !== "COMPLETED") {
+                        await rejectAlreadyRefunded(tx, requestId, user.id);
+                        return {
+                            success: false,
+                            error: "source order already refunded/not delivered",
+                        };
+                    }
+                }
+
                 const priceDzd = parseFloat(lockedReq.priceDzd);
 
-                // 2. Lock the reseller wallet row (mirror refundActiveCodeOrder).
+                // 3. Lock the reseller wallet row (mirror refundActiveCodeOrder).
                 //    Single locking select fetches the wallet id + row lock together.
                 const [walletRow] = await tx
                     .select({ id: resellerWallets.id })
@@ -124,7 +210,16 @@ export const approveActiveCodeRefundAction = withAuth(
                     throw new Error("Portefeuille revendeur introuvable — remboursement annulé");
                 }
 
-                // 3. Credit wallet + record the REFUND transaction.
+                // 4. Credit wallet + record the REFUND transaction. The ledger
+                //    source must reflect the actual product kind, not always
+                //    ACTIVE_CODE.
+                const txSource =
+                    lockedReq.kind === "g2bulk"
+                        ? "G2BULK"
+                        : lockedReq.kind === "bsv"
+                            ? "BSV"
+                            : "ACTIVE_CODE";
+
                 await tx
                     .update(resellerWallets)
                     .set({
@@ -140,10 +235,13 @@ export const approveActiveCodeRefundAction = withAuth(
                     amount: priceDzd.toString(),
                     orderId: lockedReq.localOrderId,
                     description: `${lockedReq.kind} refund (approved) — req#${requestId}`,
-                    source: "ACTIVE_CODE",
+                    source: txSource,
                 });
 
-                // 4. Flip the local order + the kind-specific source order to refunded.
+                // 5. Flip the local order + the kind-specific source order to
+                //    refunded. A null source id here means we'd credit the
+                //    wallet WITHOUT flipping the order — throw to roll back the
+                //    credit instead of crediting silently.
                 await tx
                     .update(orders)
                     .set({ status: "REMBOURSE" })
@@ -153,33 +251,42 @@ export const approveActiveCodeRefundAction = withAuth(
                     // Back-compat: active-code rows carry activeCodeOrderId; fall
                     // back to sourceOrderId for any newly-written rows.
                     const acId = lockedReq.activeCodeOrderId ?? lockedReq.sourceOrderId;
-                    if (acId != null) {
-                        await tx
-                            .update(activeCodeOrders)
-                            .set({
-                                status: "REFUNDED",
-                                error: `Refund approved — req#${requestId}`.slice(0, 1000),
-                                updatedAt: new Date(),
-                            })
-                            .where(eq(activeCodeOrders.id, acId));
+                    if (acId == null) {
+                        throw new Error(
+                            "Commande active-code introuvable — remboursement annulé",
+                        );
                     }
+                    await tx
+                        .update(activeCodeOrders)
+                        .set({
+                            status: "REFUNDED",
+                            error: `Refund approved — req#${requestId}`.slice(0, 1000),
+                            updatedAt: new Date(),
+                        })
+                        .where(eq(activeCodeOrders.id, acId));
                 } else if (lockedReq.kind === "g2bulk") {
-                    if (lockedReq.sourceOrderId != null) {
-                        await tx
-                            .update(g2bulkOrders)
-                            .set({ status: "REFUNDED" })
-                            .where(eq(g2bulkOrders.id, lockedReq.sourceOrderId));
+                    if (lockedReq.sourceOrderId == null) {
+                        throw new Error(
+                            "Commande g2bulk introuvable — remboursement annulé",
+                        );
                     }
+                    await tx
+                        .update(g2bulkOrders)
+                        .set({ status: "REFUNDED" })
+                        .where(eq(g2bulkOrders.id, lockedReq.sourceOrderId));
                 } else if (lockedReq.kind === "bsv") {
-                    if (lockedReq.sourceOrderId != null) {
-                        await tx
-                            .update(bsvOrders)
-                            .set({ status: "REFUNDED" })
-                            .where(eq(bsvOrders.id, lockedReq.sourceOrderId));
+                    if (lockedReq.sourceOrderId == null) {
+                        throw new Error(
+                            "Commande bsv introuvable — remboursement annulé",
+                        );
                     }
+                    await tx
+                        .update(bsvOrders)
+                        .set({ status: "REFUNDED" })
+                        .where(eq(bsvOrders.id, lockedReq.sourceOrderId));
                 }
 
-                // 5. Mark the request APPROVED.
+                // 6. Mark the request APPROVED.
                 await tx
                     .update(activeCodeRefundRequests)
                     .set({
@@ -189,12 +296,20 @@ export const approveActiveCodeRefundAction = withAuth(
                         decidedAt: new Date(),
                     })
                     .where(eq(activeCodeRefundRequests.id, requestId));
+
+                return { success: true as const };
             });
         } catch (error) {
             return {
                 success: false,
                 error: error instanceof Error ? error.message : "Erreur serveur",
             };
+        }
+
+        // If the source-order guard rejected the request (already refunded /
+        // not delivered), no money moved and no code should return to stock.
+        if (!txResult.success) {
+            return txResult;
         }
 
         // 6. Best-effort: return the code to LoadBrain stock. The wallet refund
