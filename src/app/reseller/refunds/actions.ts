@@ -22,8 +22,22 @@ import {
 } from "@/db/schema";
 import { withAuth, type UserContext } from "@/lib/security";
 import { UserRole } from "@/lib/constants";
+import { decrypt } from "@/lib/encryption";
 
 type RefundKind = "active" | "g2bulk" | "bsv";
+
+/**
+ * g2bulk + bsv delivered codes are stored ENCRYPTED at rest. The snapshot must
+ * hold the PLAINTEXT code so return-to-stock re-stocks a usable code (otherwise
+ * the next order is delivered the ciphertext). Active-code stores plaintext.
+ */
+function safeDecryptCode(raw: string): string {
+    try {
+        return decrypt(raw) || raw;
+    } catch {
+        return raw;
+    }
+}
 
 /** Per-kind snapshot resolved from the source-order row + its delivered code. */
 type RefundSnapshot = {
@@ -122,7 +136,7 @@ async function buildSnapshot(
                 productRef: String(order.productId),
                 planLabel: order.productId,
                 lbOrderId: order.lbOrderId,
-                code: delivered.code,
+                code: safeDecryptCode(delivered.code),
                 priceDzd: order.pricePaidDzd,
             },
         };
