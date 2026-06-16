@@ -17,6 +17,8 @@ import { db } from "@/db";
 import {
     activeCodeOrders,
     activeCodeRefundRequests,
+    bsvOrders,
+    g2bulkOrders,
     orders,
     resellerTransactions,
     resellerWallets,
@@ -52,6 +54,8 @@ export const listActiveCodeRefundRequestsAction = withAuth(
 
             const data = rows.map((r) => ({
                 id: r.id,
+                kind: r.kind,
+                sourceOrderId: r.sourceOrderId,
                 activeCodeOrderId: r.activeCodeOrderId,
                 orderNumber: r.localOrder?.orderNumber ?? null,
                 resellerCompany: r.reseller?.companyName ?? null,
@@ -135,23 +139,45 @@ export const approveActiveCodeRefundAction = withAuth(
                     type: "REFUND",
                     amount: priceDzd.toString(),
                     orderId: lockedReq.localOrderId,
-                    description: `Active Code refund (approved) — req#${requestId}`,
+                    description: `${lockedReq.kind} refund (approved) — req#${requestId}`,
                     source: "ACTIVE_CODE",
                 });
 
-                // 4. Flip the order statuses.
+                // 4. Flip the local order + the kind-specific source order to refunded.
                 await tx
                     .update(orders)
                     .set({ status: "REMBOURSE" })
                     .where(eq(orders.id, lockedReq.localOrderId));
-                await tx
-                    .update(activeCodeOrders)
-                    .set({
-                        status: "REFUNDED",
-                        error: `Refund approved — req#${requestId}`.slice(0, 1000),
-                        updatedAt: new Date(),
-                    })
-                    .where(eq(activeCodeOrders.id, lockedReq.activeCodeOrderId));
+
+                if (lockedReq.kind === "active") {
+                    // Back-compat: active-code rows carry activeCodeOrderId; fall
+                    // back to sourceOrderId for any newly-written rows.
+                    const acId = lockedReq.activeCodeOrderId ?? lockedReq.sourceOrderId;
+                    if (acId != null) {
+                        await tx
+                            .update(activeCodeOrders)
+                            .set({
+                                status: "REFUNDED",
+                                error: `Refund approved — req#${requestId}`.slice(0, 1000),
+                                updatedAt: new Date(),
+                            })
+                            .where(eq(activeCodeOrders.id, acId));
+                    }
+                } else if (lockedReq.kind === "g2bulk") {
+                    if (lockedReq.sourceOrderId != null) {
+                        await tx
+                            .update(g2bulkOrders)
+                            .set({ status: "REFUNDED" })
+                            .where(eq(g2bulkOrders.id, lockedReq.sourceOrderId));
+                    }
+                } else if (lockedReq.kind === "bsv") {
+                    if (lockedReq.sourceOrderId != null) {
+                        await tx
+                            .update(bsvOrders)
+                            .set({ status: "REFUNDED" })
+                            .where(eq(bsvOrders.id, lockedReq.sourceOrderId));
+                    }
+                }
 
                 // 5. Mark the request APPROVED.
                 await tx
@@ -185,7 +211,7 @@ export const approveActiveCodeRefundAction = withAuth(
                             "X-API-Key": auth.apiKey,
                         },
                         body: JSON.stringify({
-                            provider: snapshot.provider, // "niveausat"
+                            provider: snapshot.provider, // niveausat | g2bulk | bsv
                             productRef: snapshot.planId,
                             orderId: snapshot.lbOrderId,
                             reusable, // admin's checkbox

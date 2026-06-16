@@ -1091,17 +1091,31 @@ export const activeCodeRefundStatusEnum = pgEnum("active_code_refund_status", [
 
 export const activeCodeRefundRequests = pgTable("active_code_refund_requests", {
     id: serial("id").primaryKey(),
+    /**
+     * Kind discriminator. 'active' (Niveausat active-code, the original),
+     * 'g2bulk' (g2bulkOrders), or 'bsv' (bsvOrders). Drives which source-order
+     * table is loaded/refunded by the actions.
+     */
+    kind: text("kind").notNull().default("active"), // 'active' | 'g2bulk' | 'bsv'
+    /**
+     * Generic source-order row id (kind-specific table):
+     * active→activeCodeOrders.id, g2bulk→g2bulkOrders.id, bsv→bsvOrders.id.
+     */
+    sourceOrderId: integer("source_order_id"),
+    /**
+     * Back-compat link, only set for kind='active'. Now NULLABLE so g2bulk/bsv
+     * rows (which have no active_code_orders row) can be stored.
+     */
     activeCodeOrderId: integer("active_code_order_id")
-        .references(() => activeCodeOrders.id, { onDelete: "cascade" })
-        .notNull(),
+        .references(() => activeCodeOrders.id, { onDelete: "cascade" }),
     localOrderId: integer("local_order_id")
         .references(() => orders.id, { onDelete: "cascade" })
         .notNull(),
     resellerId: integer("reseller_id")
         .references(() => resellers.id, { onDelete: "cascade" })
         .notNull(),
-    provider: text("provider").notNull().default("niveausat"),
-    planId: text("plan_id").notNull(),
+    provider: text("provider").notNull().default("niveausat"), // niveausat | g2bulk | bsv
+    planId: text("plan_id").notNull(), // generic productRef holder
     planLabel: text("plan_label"),
     lbOrderId: text("lb_order_id").notNull(),
     code: text("code"), // snapshot of the delivered code at request time
@@ -1115,9 +1129,11 @@ export const activeCodeRefundRequests = pgTable("active_code_refund_requests", {
     createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
 }, (t) => ({
     pendingIdx: index("acrr_pending_idx").on(t.status, t.createdAt),
-    orderIdx: index("acrr_order_idx").on(t.activeCodeOrderId),
-    onePendingPerOrder: uniqueIndex("acrr_one_pending_per_order_idx")
-        .on(t.activeCodeOrderId)
+    // Non-unique listing index over the generic (kind, source_order_id).
+    sourceIdx: index("acrr_source_idx").on(t.kind, t.sourceOrderId),
+    // Money-safety: at most one PENDING request per source order, any kind.
+    onePendingPerSource: uniqueIndex("acrr_one_pending_per_source_idx")
+        .on(t.kind, t.sourceOrderId)
         .where(sql`status = 'PENDING'`),
 }));
 
