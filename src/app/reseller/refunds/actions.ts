@@ -53,30 +53,48 @@ export const requestActiveCodeRefundAction = withAuth(
             }
 
             // 4. Refuse a second concurrent PENDING request for the same order.
-            const existing = await db.query.activeCodeRefundRequests.findFirst({
-                where: and(
-                    eq(activeCodeRefundRequests.activeCodeOrderId, activeCodeOrderId),
-                    eq(activeCodeRefundRequests.status, "PENDING"),
-                ),
-            });
-            if (existing) {
-                return { success: false, error: "Une demande est déjà en cours." };
-            }
+            //    Check + insert happen in ONE transaction so two racing requests
+            //    can't both pass the check and double-insert (TOCTOU). The partial
+            //    unique index `acrr_one_pending_per_order_idx` is the DB-level
+            //    backstop: a racing insert that slips past the read raises 23505.
+            try {
+                await db.transaction(async (tx) => {
+                    const existing = await tx.query.activeCodeRefundRequests.findFirst({
+                        where: and(
+                            eq(activeCodeRefundRequests.activeCodeOrderId, activeCodeOrderId),
+                            eq(activeCodeRefundRequests.status, "PENDING"),
+                        ),
+                    });
+                    if (existing) throw new Error("DUPLICATE_PENDING");
 
-            // 5. Snapshot the order details onto the request row.
-            await db.insert(activeCodeRefundRequests).values({
-                activeCodeOrderId: order.id,
-                localOrderId: order.localOrderId,
-                resellerId: reseller.id,
-                provider: "niveausat",
-                planId: order.planId,
-                planLabel: order.planLabel,
-                lbOrderId: order.lbOrderId,
-                code: order.code,
-                priceDzd: order.pricePaidDzd,
-                reason: reason ?? null,
-                status: "PENDING",
-            });
+                    // 5. Snapshot the order details onto the request row.
+                    await tx.insert(activeCodeRefundRequests).values({
+                        activeCodeOrderId: order.id,
+                        localOrderId: order.localOrderId,
+                        resellerId: reseller.id,
+                        provider: "niveausat",
+                        planId: order.planId,
+                        planLabel: order.planLabel,
+                        lbOrderId: order.lbOrderId,
+                        code: order.code,
+                        priceDzd: order.pricePaidDzd,
+                        reason: reason ?? null,
+                        status: "PENDING",
+                    });
+                });
+            } catch (err) {
+                const msg = err instanceof Error ? err.message : "";
+                // 23505 = unique_violation (the partial unique index);
+                // DUPLICATE_PENDING = the in-transaction app check.
+                if (
+                    msg.includes("DUPLICATE_PENDING") ||
+                    msg.includes("23505") ||
+                    (err as { code?: string })?.code === "23505"
+                ) {
+                    return { success: false, error: "Une demande est déjà en cours." };
+                }
+                throw err;
+            }
 
             return { success: true };
         } catch (error) {

@@ -20,7 +20,6 @@ import {
     orders,
     resellerTransactions,
     resellerWallets,
-    resellers,
 } from "@/db/schema";
 import { withAuth } from "@/lib/security";
 import { UserRole } from "@/lib/constants";
@@ -39,7 +38,7 @@ function resolveLoadBrainAuth(): { baseUrl: string; apiKey: string } | null {
 }
 
 export const listActiveCodeRefundRequestsAction = withAuth(
-    { roles: [UserRole.ADMIN], schema: z.any().optional() },
+    { roles: [UserRole.ADMIN, UserRole.SUPER_ADMIN], schema: z.any().optional() },
     async () => {
         try {
             const rows = await db.query.activeCodeRefundRequests.findMany({
@@ -81,7 +80,7 @@ export const listActiveCodeRefundRequestsAction = withAuth(
 
 export const approveActiveCodeRefundAction = withAuth(
     {
-        roles: [UserRole.ADMIN],
+        roles: [UserRole.ADMIN, UserRole.SUPER_ADMIN],
         schema: z.object({
             requestId: z.number(),
             reusable: z.boolean(),
@@ -111,18 +110,15 @@ export const approveActiveCodeRefundAction = withAuth(
                 const priceDzd = parseFloat(lockedReq.priceDzd);
 
                 // 2. Lock the reseller wallet row (mirror refundActiveCodeOrder).
-                const reseller = await tx.query.resellers.findFirst({
-                    where: eq(resellers.id, lockedReq.resellerId),
-                    with: { wallet: true },
-                });
-                if (!reseller?.wallet) {
+                //    Single locking select fetches the wallet id + row lock together.
+                const [walletRow] = await tx
+                    .select({ id: resellerWallets.id })
+                    .from(resellerWallets)
+                    .where(eq(resellerWallets.resellerId, lockedReq.resellerId))
+                    .for("update");
+                if (!walletRow) {
                     throw new Error("Portefeuille revendeur introuvable — remboursement annulé");
                 }
-                await tx
-                    .select({ balance: resellerWallets.balance })
-                    .from(resellerWallets)
-                    .where(eq(resellerWallets.id, reseller.wallet.id))
-                    .for("update");
 
                 // 3. Credit wallet + record the REFUND transaction.
                 await tx
@@ -132,10 +128,10 @@ export const approveActiveCodeRefundAction = withAuth(
                         totalSpent: sql`GREATEST(${resellerWallets.totalSpent} - ${priceDzd}, 0)`,
                         updatedAt: new Date(),
                     })
-                    .where(eq(resellerWallets.id, reseller.wallet.id));
+                    .where(eq(resellerWallets.id, walletRow.id));
 
                 await tx.insert(resellerTransactions).values({
-                    walletId: reseller.wallet.id,
+                    walletId: walletRow.id,
                     type: "REFUND",
                     amount: priceDzd.toString(),
                     orderId: lockedReq.localOrderId,
@@ -213,7 +209,7 @@ export const approveActiveCodeRefundAction = withAuth(
 
 export const rejectActiveCodeRefundAction = withAuth(
     {
-        roles: [UserRole.ADMIN],
+        roles: [UserRole.ADMIN, UserRole.SUPER_ADMIN],
         schema: z.object({
             requestId: z.number(),
             reason: z.string().max(500).optional(),

@@ -1116,6 +1116,9 @@ export const activeCodeRefundRequests = pgTable("active_code_refund_requests", {
 }, (t) => ({
     pendingIdx: index("acrr_pending_idx").on(t.status, t.createdAt),
     orderIdx: index("acrr_order_idx").on(t.activeCodeOrderId),
+    onePendingPerOrder: uniqueIndex("acrr_one_pending_per_order_idx")
+        .on(t.activeCodeOrderId)
+        .where(sql`status = 'PENDING'`),
 }));
 
 export const activeCodeRefundRequestsRelations = relations(activeCodeRefundRequests, ({ one }) => ({
