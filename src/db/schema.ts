@@ -1074,6 +1074,66 @@ export const activeCodeOrdersRelations = relations(activeCodeOrders, ({ one }) =
 }));
 
 /**
+ * activeCodeRefundRequests — reseller-initiated refund requests for
+ * delivered Active Code orders, gated behind admin approval.
+ *
+ * A reseller can request a refund on a DELIVERED active-code order. The
+ * money is NOT credited until an ADMIN approves: on approval we credit
+ * the reseller wallet (REFUND tx) + flip the order statuses, then make a
+ * best-effort gateway call to return the code to LoadBrain stock with the
+ * admin-chosen `reusable` flag.
+ */
+export const activeCodeRefundStatusEnum = pgEnum("active_code_refund_status", [
+    "PENDING",
+    "APPROVED",
+    "REJECTED",
+]);
+
+export const activeCodeRefundRequests = pgTable("active_code_refund_requests", {
+    id: serial("id").primaryKey(),
+    activeCodeOrderId: integer("active_code_order_id")
+        .references(() => activeCodeOrders.id, { onDelete: "cascade" })
+        .notNull(),
+    localOrderId: integer("local_order_id")
+        .references(() => orders.id, { onDelete: "cascade" })
+        .notNull(),
+    resellerId: integer("reseller_id")
+        .references(() => resellers.id, { onDelete: "cascade" })
+        .notNull(),
+    provider: text("provider").notNull().default("niveausat"),
+    planId: text("plan_id").notNull(),
+    planLabel: text("plan_label"),
+    lbOrderId: text("lb_order_id").notNull(),
+    code: text("code"), // snapshot of the delivered code at request time
+    priceDzd: numeric("price_dzd", { precision: 12, scale: 2 }).notNull(),
+    reason: text("reason"),
+    status: activeCodeRefundStatusEnum("status").notNull().default("PENDING"),
+    reusable: boolean("reusable"), // set by admin at approval (null until decided)
+    decisionReason: text("decision_reason"),
+    decidedBy: integer("decided_by"), // user id of admin
+    decidedAt: timestamp("decided_at", { mode: "date" }),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+}, (t) => ({
+    pendingIdx: index("acrr_pending_idx").on(t.status, t.createdAt),
+    orderIdx: index("acrr_order_idx").on(t.activeCodeOrderId),
+}));
+
+export const activeCodeRefundRequestsRelations = relations(activeCodeRefundRequests, ({ one }) => ({
+    activeCodeOrder: one(activeCodeOrders, {
+        fields: [activeCodeRefundRequests.activeCodeOrderId],
+        references: [activeCodeOrders.id],
+    }),
+    localOrder: one(orders, {
+        fields: [activeCodeRefundRequests.localOrderId],
+        references: [orders.id],
+    }),
+    reseller: one(resellers, {
+        fields: [activeCodeRefundRequests.resellerId],
+        references: [resellers.id],
+    }),
+}));
+
+/**
  * manualProducts — chef-managed catalogue for items the reseller can
  * buy but the operator has to fulfil by hand (no external panel).
  */
