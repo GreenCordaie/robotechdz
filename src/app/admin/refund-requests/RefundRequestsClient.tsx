@@ -12,6 +12,7 @@ import {
 
 export interface RefundRequestRow {
     id: number;
+    kind: string;
     activeCodeOrderId: number;
     orderNumber: string | null;
     resellerCompany: string | null;
@@ -26,6 +27,29 @@ export interface RefundRequestRow {
     decidedBy: number | null;
     decidedAt: Date | string | null;
     createdAt: Date | string | null;
+}
+
+const KIND_LABELS: Record<string, string> = {
+    active: "Active Code",
+    g2bulk: "g2bulk",
+    bsv: "BSV/Carte",
+};
+
+function kindLabel(kind: string): string {
+    return KIND_LABELS[kind] ?? kind;
+}
+
+function kindStyle(kind: string): string {
+    switch (kind) {
+        case "active":
+            return "bg-violet-500/10 text-violet-400 border border-violet-500/20";
+        case "g2bulk":
+            return "bg-cyan-500/10 text-cyan-400 border border-cyan-500/20";
+        case "bsv":
+            return "bg-orange-500/10 text-orange-400 border border-orange-500/20";
+        default:
+            return "bg-slate-500/10 text-slate-400 border border-slate-500/20";
+    }
 }
 
 function statusStyle(status: string): string {
@@ -75,6 +99,7 @@ export default function RefundRequestsClient({
                             <thead>
                                 <tr className="border-b border-[#262626] text-[10px] uppercase tracking-widest text-slate-500">
                                     <th className="text-left font-bold px-4 py-3">Commande</th>
+                                    <th className="text-left font-bold px-4 py-3">Type</th>
                                     <th className="text-left font-bold px-4 py-3">Revendeur</th>
                                     <th className="text-left font-bold px-4 py-3">Offre</th>
                                     <th className="text-right font-bold px-4 py-3">Prix</th>
@@ -92,6 +117,13 @@ export default function RefundRequestsClient({
                                     >
                                         <td className="px-4 py-3 font-black text-white whitespace-nowrap">
                                             {r.orderNumber ?? `AC-${r.activeCodeOrderId}`}
+                                        </td>
+                                        <td className="px-4 py-3 whitespace-nowrap">
+                                            <span
+                                                className={`inline-block px-2 py-0.5 rounded-full text-[9px] font-bold uppercase ${kindStyle(r.kind)}`}
+                                            >
+                                                {kindLabel(r.kind)}
+                                            </span>
                                         </td>
                                         <td className="px-4 py-3 text-slate-300">
                                             {r.resellerCompany ?? "—"}

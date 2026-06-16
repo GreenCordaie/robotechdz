@@ -254,9 +254,12 @@ export interface NormalizedOrderRow {
     createdAt: Date | string;
     codeOrLink: string | null;
     // Underlying active-code order id — only set for `kind === "active"` rows.
-    // Lets the reseller wallet surface a "Demander un remboursement" button
-    // that calls requestActiveCodeRefundAction({ activeCodeOrderId }).
+    // Kept for back-compat with the original active-code-only refund call.
     activeCodeOrderId?: number;
+    // Generic per-kind source-order row id. Set for refundable kinds
+    // (active / g2bulk / bsv) so the wallet can call the kind-aware
+    // requestRefundAction({ kind, sourceOrderId }).
+    sourceOrderId?: number;
 }
 
 export const getResellerOrdersByKindAction = withAuth(
@@ -300,6 +303,7 @@ export const getResellerOrdersByKindAction = withAuth(
                         createdAt: r.createdAt,
                         codeOrLink: r.code,
                         activeCodeOrderId: r.id,
+                        sourceOrderId: r.id,
                     });
                 }
             }
@@ -438,6 +442,7 @@ export const getResellerOrdersByKindAction = withAuth(
                             status: r.status,
                             createdAt: r.createdAt ?? new Date(),
                             codeOrLink: r.codes?.[0]?.code ?? null,
+                            sourceOrderId: r.id,
                         });
                     }
                 }
@@ -464,6 +469,7 @@ export const getResellerOrdersByKindAction = withAuth(
                             status: r.status,
                             createdAt: r.createdAt ?? new Date(),
                             codeOrLink: r.codes?.[0]?.code ?? null,
+                            sourceOrderId: r.id,
                         });
                     }
                 }

@@ -10,8 +10,16 @@ import {
     getResellerOrdersByKindAction,
     type NormalizedOrderRow,
 } from "../actions";
-import { requestActiveCodeRefundAction } from "@/app/reseller/refunds/actions";
+import { requestRefundAction } from "@/app/reseller/refunds/actions";
 import { KIND_LABELS, sanitizeSupplierText, type OrderKind } from "./types";
+
+// Refundable order kinds → the order status that makes them eligible.
+// Mirrors the per-kind delivered-state checks in requestRefundAction.
+const REFUNDABLE: Record<string, string> = {
+    active: "DELIVERED",
+    g2bulk: "COMPLETED",
+    bsv: "COMPLETED",
+};
 
 const ORDER_TABS: Array<{ key: OrderKind; label: string }> = [
     { key: "all", label: "Toutes" },
@@ -158,21 +166,21 @@ function OrderRowCard({ row, resellerName }: { row: NormalizedOrderRow; reseller
     const code = row.codeOrLink;
     const isLink = !!code && /^https?:\/\//i.test(code);
 
-    // Refund-request state for eligible active-code rows.
+    // Refund-request state — eligible across active / g2bulk / bsv rows.
     const canRequestRefund =
-        row.kind === "active" &&
-        row.status.toUpperCase() === "DELIVERED" &&
-        typeof row.activeCodeOrderId === "number";
+        typeof row.sourceOrderId === "number" &&
+        REFUNDABLE[row.kind] === row.status.toUpperCase();
     const [refundOpen, setRefundOpen] = useState(false);
     const [refundReason, setRefundReason] = useState("");
     const [refundSubmitting, setRefundSubmitting] = useState(false);
     const [refundSent, setRefundSent] = useState(false);
 
     const submitRefund = async () => {
-        if (typeof row.activeCodeOrderId !== "number") return;
+        if (typeof row.sourceOrderId !== "number" || !REFUNDABLE[row.kind]) return;
         setRefundSubmitting(true);
-        const res = await requestActiveCodeRefundAction({
-            activeCodeOrderId: row.activeCodeOrderId,
+        const res = await requestRefundAction({
+            kind: row.kind as "active" | "g2bulk" | "bsv",
+            sourceOrderId: row.sourceOrderId,
             reason: refundReason.trim() || undefined,
         });
         setRefundSubmitting(false);
