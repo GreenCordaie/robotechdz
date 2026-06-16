@@ -22,7 +22,8 @@ import {
     Activity,
     Blocks,
     Tv,
-    RotateCcw
+    RotateCcw,
+    Boxes
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -97,6 +98,7 @@ export const AdminSidebar = () => {
         { name: "Arbitrage BSV", icon: Activity, href: "/admin/arbitrage", roles: ["ADMIN"] },
         { name: "G2Bulk Pricing", icon: Settings2, href: "/admin/g2bulk-pricing", roles: ["ADMIN"] },
         { name: "Remboursements", icon: RotateCcw, href: "/admin/refund-requests", roles: ["ADMIN", "SUPER_ADMIN"] },
+        { name: "Stock codes", icon: Boxes, href: "/admin/inventory-stock", roles: ["ADMIN", "SUPER_ADMIN"] },
         { name: "Tickets Support", icon: Headset, href: "/admin/support", badge: openTickets, roles: ["ADMIN", "CAISSIER", "TRAITEUR"] },
         { name: "Analytics", icon: BarChart3, href: "/admin/analytics", roles: ["ADMIN"] },
         { name: "Modules", icon: Blocks, href: "/admin/modules", roles: ["ADMIN"] },
