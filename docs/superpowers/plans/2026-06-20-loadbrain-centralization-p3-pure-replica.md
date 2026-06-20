@@ -46,7 +46,9 @@
 - [x] **Tranche livrée — slot-quota proxy :**
   - LoadBrain `PATCH /internal/slot/:id/quota` (`setSlotMaxUses`, tenant-scopé, NULL=illimité, 6 tests DB) — commit e0b2969.
   - Boutique `loadbrain-netflix-admin.client.ts` (`setSlotQuotaRemote`, dégrade-soft, 5 tests) + `updateSharedAccount` proxifie le cap post-commit, **gated** (flag + siteId), best-effort (un hoquet LB ne fait jamais échouer la sauvegarde admin). Commit 4f9dbb3.
-- [ ] **Reste (différé, décision/risque) :** `addSharedAccount` + `deleteSharedAccount` proxifiés → nécessite routes LoadBrain `POST/DELETE /internal/account` + design du transfert credentials MS Graph chiffrés (séparé). `sweepSharedAccountSlots` → la boutique a déjà son sweeper local + LoadBrain le sien ; proxy optionnel.
+- [x] **`deleteSharedAccount` proxifié** (boutique c34fcd4 + LoadBrain 6404635) : `DELETE /internal/account/:id` (drop compte + slots, refus 409 `has_active_slots`, tenant-scopé, FOR UPDATE) + client `deleteAccountRemote` (degrade-soft) câblé post-delete gated. 5 tests LB + 5 tests boutique.
+- [x] **`addSharedAccount` = DESIGN livré** (décision verrouillée) : `docs/superpowers/specs/2026-06-21-p3-account-create-credential-design.md` — **Option A** (LoadBrain possède l'onboarding MS Graph, aucun transfert de secret cross-système). Implémentation planifiée sur stack live + tenant MS de test (chemin credentials non codable à l'aveugle).
+- [ ] `sweepSharedAccountSlots` → boutique + LoadBrain ont chacun leur sweeper ; proxy optionnel (non requis).
 
 ### Task P3-4: Retirer l'allocation locale (dormante en secours) ✅ DONE (boutique b75ad01)
 - [x] **Cœur comportemental livré** : en mode autoritatif (flag ON), un variant `isSharing` sans compte LoadBrain (`NO_LB_ACCOUNT`) = anomalie non-migrée → **livraison manuelle** par défaut (plus de local-pick silencieux). Le chemin local reste **dormant**, réactivable UNIQUEMENT via `LB_NETFLIX_EMERGENCY_LOCAL=true` (panne LoadBrain prolongée). Aucune suppression destructive.
