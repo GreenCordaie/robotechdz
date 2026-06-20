@@ -41,11 +41,12 @@
 - [x] 14 tests (client 7 + orchestrateur 7) ; tsc 0 ; 373/373.
 - [x] Commit `feat(streaming): device-quota enforced by LoadBrain (authoritative) with local mirror — P3-2`.
 
-### Task P3-3: Mutations admin proxifiées vers LoadBrain
-**Files:** Create `src/services/loadbrain-netflix-admin.client.ts`; Modify `src/app/admin/comptes-partages/actions.ts`; Test.
-- [ ] **Step 1 (test, échoue):** chaque mutation (`addSharedAccount`, `updateSharedAccount`, `deleteSharedAccount`, `linkProductToSharing`, `sweepSharedAccountSlots`) appelle l'API LoadBrain correspondante puis reflète localement (ou attend le webhook) ; les lectures (`getSharedAccountsInventory`) restent sur le miroir. Tests avec client mock : la mutation part bien vers LoadBrain ; fail → erreur sanitisée, pas d'écriture locale orpheline.
-- [ ] **Step 2-4:** Étendre le SDK/admin-client LoadBrain (côté LoadBrain : routes admin write si absentes — `POST/PATCH/DELETE /internal/account`), implémenter le proxy boutique, garder l'UX. tsc 0.
-- [ ] **Step 5:** Commit `feat(streaming): admin shared-account mutations proxy to LoadBrain (single source of truth)`.
+### Task P3-3: Mutations admin proxifiées vers LoadBrain ⚠️ PARTIEL (tranche slot-quota DONE — LoadBrain e0b2969 + boutique 4f9dbb3)
+**Recon (réalité architecturale) :** les mutations boutique et le modèle LoadBrain ne se recouvrent que partiellement. `linkProductToSharing` / `generateMissingSlots` = concepts **catalogue boutique** sans équivalent LoadBrain → restent locaux. `addSharedAccount` / `deleteSharedAccount` impliquent le **transfert/suppression des credentials MS Graph chiffrés** cross-système + de nouvelles routes account-write LoadBrain → **sensible, différé** (décision sécurité séparée). Le vrai trou créé par P3-1/P3-2 = le **cap device** (`maxDevices`) édité en admin n'était pas répercuté sur le `max_uses` autoritatif LoadBrain.
+- [x] **Tranche livrée — slot-quota proxy :**
+  - LoadBrain `PATCH /internal/slot/:id/quota` (`setSlotMaxUses`, tenant-scopé, NULL=illimité, 6 tests DB) — commit e0b2969.
+  - Boutique `loadbrain-netflix-admin.client.ts` (`setSlotQuotaRemote`, dégrade-soft, 5 tests) + `updateSharedAccount` proxifie le cap post-commit, **gated** (flag + siteId), best-effort (un hoquet LB ne fait jamais échouer la sauvegarde admin). Commit 4f9dbb3.
+- [ ] **Reste (différé, décision/risque) :** `addSharedAccount` + `deleteSharedAccount` proxifiés → nécessite routes LoadBrain `POST/DELETE /internal/account` + design du transfert credentials MS Graph chiffrés (séparé). `sweepSharedAccountSlots` → la boutique a déjà son sweeper local + LoadBrain le sien ; proxy optionnel.
 
 ### Task P3-4: Retirer l'allocation locale (dormante en secours)
 **Files:** Modify `src/lib/orders.ts`.
