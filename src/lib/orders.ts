@@ -130,10 +130,23 @@ export async function allocateOrderStock(
                         continue; // item fully allocated via LoadBrain
                     } catch (err: any) {
                         if (err instanceof LbAllocError && err.code === "NO_LB_ACCOUNT") {
-                            // Variant not migrated to LoadBrain → not centralized,
-                            // so a local pick can't desync. Fall through to the
-                            // EXISTING local code below (do NOT continue).
-                            console.warn(`[stock-alloc][LB] item ${item.id} not on LoadBrain (NO_LB_ACCOUNT) → local pick`);
+                            // P3-4 (pure replica): once authoritative mode is on, a
+                            // sharing variant with no LoadBrain account is an
+                            // un-migrated anomaly. Default = manual delivery (force
+                            // migration), NOT a silent local pick. The dormant local
+                            // path below is reachable ONLY via the explicit emergency
+                            // escape hatch LB_NETFLIX_EMERGENCY_LOCAL=true (e.g. a
+                            // prolonged LoadBrain outage). A local pick here can't
+                            // desync (the variant isn't centralized), but we keep the
+                            // boutique a pure replica unless an operator opts out.
+                            if (process.env.LB_NETFLIX_EMERGENCY_LOCAL === "true") {
+                                console.warn(`[stock-alloc][LB] item ${item.id} NO_LB_ACCOUNT → EMERGENCY local pick (LB_NETFLIX_EMERGENCY_LOCAL)`);
+                                // fall through to the dormant local code below
+                            } else {
+                                console.warn(`[stock-alloc][LB] item ${item.id} NO_LB_ACCOUNT → manual delivery (pure-replica; set LB_NETFLIX_EMERGENCY_LOCAL=true to local-pick)`);
+                                hasManualDelivery = true;
+                                continue;
+                            }
                         } else {
                             // OUT_OF_STOCK | LB_UNAVAILABLE | MIRROR_RESOLVE_FAILED:
                             // DO NOT local-pick (would double-sell a centralized

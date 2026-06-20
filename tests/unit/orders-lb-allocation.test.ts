@@ -210,7 +210,7 @@ describe("allocateOrderStock — P2-2 LoadBrain authority gate", () => {
         expect(res.hasManualDelivery).toBe(true);
     });
 
-    it("flag ON + orchestrator throws NO_LB_ACCOUNT → falls through to local pick (local VENDU runs)", async () => {
+    it("P3-4: flag ON + NO_LB_ACCOUNT (default) → manual delivery, local pick NOT run (pure replica)", async () => {
         isLbNetflixAuthoritative.mockResolvedValue(true);
         allocateSharingItemViaLoadBrain.mockRejectedValue(new LbAllocError("NO_LB_ACCOUNT", "not migrated"));
         const tx = makeTx({
@@ -218,12 +218,33 @@ describe("allocateOrderStock — P2-2 LoadBrain authority gate", () => {
             order: { id: ORDER_ID, customerPhone: "+213700112233", client: null },
         });
 
+        delete process.env.LB_NETFLIX_EMERGENCY_LOCAL;
         const res = await allocateOrderStock(tx, ORDER_ID, {});
 
         expect(allocateSharingItemViaLoadBrain).toHaveBeenCalledTimes(1);
-        // Not centralized → safe to local-pick: the existing UPDATE-to-VENDU ran.
-        expect(localVenduUpdateRan(tx)).toBe(true);
-        expect(res.hasManualDelivery).toBe(false);
+        // Pure replica: an un-migrated variant is an anomaly → manual delivery,
+        // NOT a silent local pick. The dormant local path stays dormant.
+        expect(localVenduUpdateRan(tx)).toBe(false);
+        expect(res.hasManualDelivery).toBe(true);
+    });
+
+    it("P3-4: flag ON + NO_LB_ACCOUNT + LB_NETFLIX_EMERGENCY_LOCAL=true → dormant local pick runs", async () => {
+        isLbNetflixAuthoritative.mockResolvedValue(true);
+        allocateSharingItemViaLoadBrain.mockRejectedValue(new LbAllocError("NO_LB_ACCOUNT", "not migrated"));
+        const tx = makeTx({
+            availableSlots: [{ id: 77, digitalCodeId: 5, slotNumber: 1, status: "DISPONIBLE" }],
+            order: { id: ORDER_ID, customerPhone: "+213700112233", client: null },
+        });
+
+        process.env.LB_NETFLIX_EMERGENCY_LOCAL = "true";
+        try {
+            const res = await allocateOrderStock(tx, ORDER_ID, {});
+            // Emergency escape hatch → the dormant local path is reactivated.
+            expect(localVenduUpdateRan(tx)).toBe(true);
+            expect(res.hasManualDelivery).toBe(false);
+        } finally {
+            delete process.env.LB_NETFLIX_EMERGENCY_LOCAL;
+        }
     });
 
     it("flag ON + orchestrator throws LB_UNAVAILABLE → hasManualDelivery, local pick NOT run", async () => {
