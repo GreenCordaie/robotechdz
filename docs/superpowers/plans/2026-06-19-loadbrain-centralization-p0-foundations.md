@@ -10,10 +10,10 @@
 
 **Repos & branches :** Partie A → `C:\Users\PC\Desktop\LoadBrain` branche `feat/bsv-bulletproof-and-listings` (zone chef / A*). Partie B → `c:\Users\PC\Desktop\100-pc-IA` branche `feat/bsv-mirror-integrated` (zone B*). Commits **path-scopés** (`git commit -- <paths>`), jamais `git add .`. Toute touche schéma partagé → ligne `[SYNC-LOADBRAIN]` dans `STATUS.md`.
 
-**Décisions de planification résolues (vérifiées contre le code réel 2026-06-19) :**
-1. **public_token** : `netflix.slots.public_token` = `varchar(40)` unique → accepte le token boutique `varchar(16)`. Le validateur `isValidPublicToken` (`/^[a-f0-9]{30}$/`) ne doit PAS être appliqué aux tokens importés (la lecture `/n/:token` ne valide pas le format, elle fait un lookup direct — à confirmer en T-A1).
+**Décisions de planification résolues (vérifiées contre le code réel — A0, 2026-06-20) :**
+1. **public_token** : `netflix.slots.public_token` = `varchar(40)` unique → accepte le token boutique `varchar(16)`. MAIS le lookup `/n/:token` (`routes/magic-link.ts`) appelle `isValidPublicToken` (`/^[a-f0-9]{30}$/`) AVANT le DB lookup → les tokens boutique (16 char **base64url**, pas hex) seraient rejetés. **Action (Task A1b)** : relâcher `isValidPublicToken` à `/^[A-Za-z0-9_-]{16,40}$/` (accepte les 30-hex LoadBrain existants + les 16-base64url importés).
 2. **Pool d'allocation** : pas de colonne variant→compte côté LoadBrain. La boutique résout le compte (`digital_codes` ↔ `lb_account_id`) et passe `accountId` ; LoadBrain reste autorité sur le claim atomique du slot dans ce compte.
-3. **Modèle de slot** : ajout d'un statut `AVAILABLE` sur `netflix.slots` pour les slots pré-existants importés ; nouvelle fonction `allocateAvailableSlot` qui claim un `AVAILABLE` (≠ `claimOrCreateSlot` qui crée à la vente).
+3. **Modèle de slot** : `netflix.slots.status` = `varchar(20)` LIBRE (pas de pgEnum, pas de CHECK existant — vérifié A0). Ajouter la valeur `AVAILABLE` ne nécessite **aucune migration de contrainte** : seulement (a) l'index partiel du pool, (b) étendre l'enum Zod du patch dans `routes/internal/slot.ts`, (c) autoriser les transitions `AVAILABLE` dans `slot-lifecycle.service.ts`. Nouvelle fonction `allocateAvailableSlot` qui claim un `AVAILABLE` (≠ `claimOrCreateSlot` qui crée à la vente).
 
 ---
 
@@ -62,53 +62,107 @@ Expected: une note de confirmation des symboles. Aucune édition.
 
 ---
 
-### Task A1: Statut `AVAILABLE` sur netflix.slots (migration additive)
+### Task A1: Statut `AVAILABLE` sur netflix.slots (index + enum app — PAS de contrainte)
+
+**Contexte A0 :** `netflix.slots.status` est un `varchar(20)` LIBRE (pas de pgEnum, pas de CHECK). La colonne accepte déjà `AVAILABLE` sans migration de type. On ajoute seulement l'index partiel du pool + on déclare la valeur côté app (Zod patch enum + transitions lifecycle).
 
 **Files:**
-- Modify: `modules/netflix/src/db/schema.ts`
-- Create: `modules/netflix/src/db/migrations/0007_available_status.sql`
+- Create: `modules/netflix/src/db/migrations/0007_slots_pool_index.sql`
+- Modify: `modules/netflix/src/db/schema.ts` (déclarer l'index pour drizzle-kit)
+- Modify: `modules/netflix/src/routes/internal/slot.ts` (Zod patch enum — autoriser `AVAILABLE` si pertinent pour les transitions release)
+- Modify: `modules/netflix/src/services/slot-lifecycle.service.ts` (autoriser transitions vers/depuis `AVAILABLE`)
 
-- [ ] **Step 1: Écrire la migration additive**
+- [ ] **Step 1: Écrire la migration index-only**
 
-Create `modules/netflix/src/db/migrations/0007_available_status.sql` :
+Create `modules/netflix/src/db/migrations/0007_slots_pool_index.sql` :
 ```sql
--- 0007 — Add AVAILABLE status to netflix.slots for pre-existing imported slots.
+-- 0007 — Partial pool index for pre-existing imported AVAILABLE slots.
 --
 -- The 100-pc-IA boutique pre-creates profile slots (Profil 1..N) in a
 -- DISPONIBLE state and allocates one at sale. To mirror that inventory and
--- let LoadBrain be the allocation authority, slots need an AVAILABLE state
--- (imported, not yet sold) distinct from ACTIVE (sold) and the reusable
--- terminal states (REFUNDED/CANCELLED/RECLAIMED).
+-- let LoadBrain be the allocation authority, imported slots live in an
+-- AVAILABLE state. `status` is a free varchar(20) (no enum/CHECK), so no
+-- type change is needed — only this partial index to make the atomic pool
+-- pick (FOR UPDATE SKIP LOCKED WHERE status='AVAILABLE') fast.
 --
 -- Idempotent: safe to re-apply.
 
-ALTER TABLE netflix.slots
-    DROP CONSTRAINT IF EXISTS netflix_slots_status_check;
-
-ALTER TABLE netflix.slots
-    ADD CONSTRAINT netflix_slots_status_check
-    CHECK (status IN ('AVAILABLE','ACTIVE','EXPIRED','SUSPENDED','REFUNDED','CANCELLED','RECLAIMED'));
-
 CREATE INDEX IF NOT EXISTS netflix_slots_pool_idx
-    ON netflix.slots (account_id, site_id)
+    ON netflix.slots (account_id, site_id, created_at)
     WHERE status = 'AVAILABLE';
 ```
 
-Note: si le statut n'est PAS une CHECK constraint mais un enum Postgres (vérifié en A0), remplacer par `ALTER TYPE <enum> ADD VALUE IF NOT EXISTS 'AVAILABLE';` à la place des deux `ALTER TABLE ... CONSTRAINT`.
+- [ ] **Step 2: Déclarer l'index + la valeur AVAILABLE côté app**
 
-- [ ] **Step 2: Déclarer le statut côté schema.ts (drift drizzle-kit)**
-
-Dans `modules/netflix/src/db/schema.ts`, ajouter `AVAILABLE` à la liste des valeurs de statut (enum TS ou union) utilisée par `netflixSlots.status`, et déclarer l'index `netflix_slots_pool_idx` dans le bloc d'index de la table pour que drizzle-kit ne le drop pas.
+Dans `modules/netflix/src/db/schema.ts`, déclarer `netflix_slots_pool_idx` dans le bloc d'index de `netflixSlots` (pour que drizzle-kit ne le drop pas). Si une union TS / liste de statuts existe pour `status`, y ajouter `"AVAILABLE"`. Dans `modules/netflix/src/routes/internal/slot.ts`, si le `patchBodySchema.status` enum (`z.enum(["CANCELLED","REFUNDED","RECLAIMED"])`) doit accepter un retour explicite à `AVAILABLE` (release), l'ajouter ; sinon laisser tel quel (la release passe par `releaseSlot` en A2, pas par ce patch). Dans `slot-lifecycle.service.ts`, autoriser la transition `ACTIVE → AVAILABLE` si la machine d'états la valide explicitement.
 
 - [ ] **Step 3: Appliquer la migration sur la DB locale LoadBrain**
 
-Run: `psql "$DATABASE_URL" -f modules/netflix/src/db/migrations/0007_available_status.sql`
-Expected: `ALTER TABLE` / `CREATE INDEX` sans erreur ; re-run = no-op (idempotent).
+Run: `psql "$DATABASE_URL" -f modules/netflix/src/db/migrations/0007_slots_pool_index.sql`
+Expected: `CREATE INDEX` sans erreur ; re-run = no-op (idempotent).
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 4: Type-check + commit**
+
+Run: `cd modules/netflix && pnpm exec tsc --noEmit` (0 erreur), puis :
+```bash
+git commit -- modules/netflix/src/db/schema.ts modules/netflix/src/db/migrations/0007_slots_pool_index.sql modules/netflix/src/routes/internal/slot.ts modules/netflix/src/services/slot-lifecycle.service.ts -m "feat(netflix): AVAILABLE pool index + app status value (no type migration — status is free varchar)"
+```
+
+---
+
+### Task A1b: Relâcher `isValidPublicToken` pour les tokens importés (base64url)
+
+**Contexte A0 :** `routes/magic-link.ts` rejette tout token ≠ `/^[a-f0-9]{30}$/` avant le DB lookup. Les tokens boutique sont 16-char base64url → rejetés. On relâche le validateur.
+
+**Files:**
+- Modify: `modules/netflix/src/lib/token.ts`
+- Test: `modules/netflix/tests/unit/token.test.ts`
+
+- [ ] **Step 1: Test (échoue)**
+
+Create/append `modules/netflix/tests/unit/token.test.ts` :
+```typescript
+import { describe, it, expect } from "vitest";
+import { isValidPublicToken, generatePublicToken } from "../../src/lib/token";
+
+describe("isValidPublicToken", () => {
+  it("accepts native 30-hex tokens", () => {
+    expect(isValidPublicToken(generatePublicToken())).toBe(true);
+  });
+  it("accepts imported 16-char base64url boutique tokens", () => {
+    expect(isValidPublicToken("aB3-_xY9zQ1w2E4r")).toBe(true); // 16 chars, base64url alphabet
+  });
+  it("rejects too-short / illegal chars", () => {
+    expect(isValidPublicToken("short")).toBe(false);
+    expect(isValidPublicToken("has space here!!")).toBe(false);
+    expect(isValidPublicToken(123 as unknown as string)).toBe(false);
+  });
+});
+```
+
+- [ ] **Step 2: Lancer → échoue** (la regex hex rejette le base64url)
+
+Run: `cd modules/netflix && pnpm vitest run tests/unit/token.test.ts`
+Expected: FAIL sur le cas base64url.
+
+- [ ] **Step 3: Relâcher la regex**
+
+Dans `modules/netflix/src/lib/token.ts`, remplacer la ligne du validateur :
+```typescript
+// avant: return typeof value === "string" && /^[a-f0-9]{30}$/.test(value);
+return typeof value === "string" && /^[A-Za-z0-9_-]{16,40}$/.test(value);
+```
+(`generatePublicToken` reste inchangé : 30-hex.)
+
+- [ ] **Step 4: Lancer → passe**
+
+Run: `cd modules/netflix && pnpm vitest run tests/unit/token.test.ts`
+Expected: PASS (3 tests).
+
+- [ ] **Step 5: Commit**
 
 ```bash
-git commit -- modules/netflix/src/db/schema.ts modules/netflix/src/db/migrations/0007_available_status.sql -m "feat(netflix): AVAILABLE slot status for imported pre-existing slots"
+git commit -- modules/netflix/src/lib/token.ts modules/netflix/tests/unit/token.test.ts -m "fix(netflix): accept imported 16-char base64url tokens in isValidPublicToken"
 ```
 
 ---
@@ -305,7 +359,10 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { getDb } from "../../db/client";
 import { allocateAvailableSlot, releaseSlot, AllocationError } from "../../services/slot-allocation.service";
-import { getPublicBase } from "../magic-link"; // helper confirmé en A0 (sinon inline `process.env.NETFLIX_PUBLIC_BASE`)
+
+// A0: getPublicBase() is a PRIVATE helper in routes/internal/slot.ts (not exported).
+// Inline the same logic instead of importing it.
+const getPublicBase = (): string => process.env.NETFLIX_PUBLIC_BASE ?? "http://localhost:3012";
 
 const allocateSchema = z.object({
   siteId: z.string().uuid(),
