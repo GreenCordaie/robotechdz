@@ -207,9 +207,16 @@ describe("applyNetflixWebhook", () => {
         // The conflict target mirrors se_dedup_idx (digital_code_id, source_email_id),
         // so a re-delivered webhook with the same codeId is a DB no-op.
         expect(db.onConflictDoNothing).toHaveBeenCalledTimes(1);
-        expect(db.conflictTargets[0]).toEqual({
-            target: [slotEvents.digitalCodeId, slotEvents.sourceEmailId],
-        });
+        const cfg = db.conflictTargets[0];
+        expect(cfg.target).toEqual([slotEvents.digitalCodeId, slotEvents.sourceEmailId]);
+        // se_dedup_idx is a PARTIAL unique index (WHERE source_email_id IS NOT
+        // NULL). Postgres only infers a partial index for ON CONFLICT when the
+        // statement repeats the predicate, so a `where` clause is REQUIRED.
+        // Without it, the insert throws "no unique or exclusion constraint
+        // matching the ON CONFLICT specification" and the persist is silently
+        // swallowed — breaking SSE replay. Guard against that regression here.
+        expect(cfg.where).toBeDefined();
+        expect(serializeClause(cfg.where)).toContain("source_email_id");
     });
 
     it("code.captured falls back to deliveryId as sourceEmailId when codeId is absent", async () => {

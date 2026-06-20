@@ -12,7 +12,7 @@
  * unit-testable without live infra. It performs NO signature checks — that is
  * the receiver's job.
  */
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { digitalCodeSlots, slotActivationTokens, slotEvents } from "@/db/schema";
 import { DigitalCodeSlotStatus } from "@/lib/constants";
 import { encrypt } from "@/lib/encryption";
@@ -104,6 +104,16 @@ async function persistCapturedCode(
             })
             .onConflictDoNothing({
                 target: [slotEvents.digitalCodeId, slotEvents.sourceEmailId],
+                // se_dedup_idx is a PARTIAL unique index (WHERE source_email_id
+                // IS NOT NULL). Postgres only matches a partial index for ON
+                // CONFLICT inference when the statement repeats the index
+                // predicate, so this `where` is REQUIRED — without it the insert
+                // throws "no unique or exclusion constraint matching the ON
+                // CONFLICT specification", the persist is swallowed, and the
+                // replay-on-connect has nothing to replay (P1-2 silently broken).
+                // NOTE: onConflictDoNothing's predicate is `where`, not
+                // `targetWhere` (the latter only exists on onConflictDoUpdate).
+                where: sql`${slotEvents.sourceEmailId} is not null`,
             });
     } catch (err) {
         // Persistence is best-effort relative to live delivery. Log and move on
