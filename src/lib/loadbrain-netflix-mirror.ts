@@ -13,8 +13,9 @@
  * the receiver's job.
  */
 import { and, eq } from "drizzle-orm";
-import { digitalCodeSlots, slotActivationTokens } from "@/db/schema";
+import { digitalCodeSlots, slotActivationTokens, slotEvents } from "@/db/schema";
 import { DigitalCodeSlotStatus } from "@/lib/constants";
+import { encrypt } from "@/lib/encryption";
 
 // Validation caps for code.captured payloads (defence at the mirror boundary).
 const CAPTURED_TYPES = ["OTP_CODE", "HOUSEHOLD_LINK"] as const;
@@ -46,6 +47,72 @@ async function resolveLocalSlotId(db: any, publicToken: string): Promise<number 
         where: eq(slotActivationTokens.token, publicToken),
     });
     return row?.slotId ?? null;
+}
+
+/**
+ * Resolve the parent digital_code id for a mirror slot. slot_events.digital_code_id
+ * is NOT NULL, so we need this before we can persist a captured code for replay.
+ */
+async function resolveDigitalCodeId(db: any, slotId: number): Promise<number | null> {
+    const row = await db.query.digitalCodeSlots.findFirst({
+        where: eq(digitalCodeSlots.id, slotId),
+        columns: { digitalCodeId: true },
+    });
+    return row?.digitalCodeId ?? null;
+}
+
+/**
+ * Persist a captured code into slot_events so the existing SSE replay-on-connect
+ * (src/app/api/activer/[token]/events/route.ts) surfaces it even if the customer
+ * opens /activer a beat after the webhook arrives. Without this, webhook-delivered
+ * codes were live-only and lost on a late page-open (P0 finding).
+ *
+ * Idempotent via onConflictDoNothing on the same (digital_code_id, source_email_id)
+ * key as the partial UNIQUE index se_dedup_idx, so a re-delivered webhook with the
+ * same codeId is a DB no-op rather than a duplicate row.
+ *
+ * Resilient: a persistence hiccup (e.g. encryption error) must NOT block live
+ * delivery, so failures are logged and swallowed — the caller still publishes.
+ */
+async function persistCapturedCode(
+    db: any,
+    args: {
+        slotId: number;
+        type: (typeof CAPTURED_TYPES)[number];
+        value: string;
+        sourceEmailId: string;
+        receivedAt: Date;
+    },
+): Promise<void> {
+    try {
+        const digitalCodeId = await resolveDigitalCodeId(db, args.slotId);
+        if (digitalCodeId == null) {
+            // No parent account for this slot — can't satisfy the NOT NULL FK.
+            // Skip persistence; the live publish still happens.
+            return;
+        }
+        await db
+            .insert(slotEvents)
+            .values({
+                slotId: args.slotId,
+                digitalCodeId,
+                eventType: args.type,
+                valueEncrypted: encrypt(args.value),
+                sourceEmailId: args.sourceEmailId,
+                deliveredToSession: false,
+                receivedAt: args.receivedAt,
+            })
+            .onConflictDoNothing({
+                target: [slotEvents.digitalCodeId, slotEvents.sourceEmailId],
+            });
+    } catch (err) {
+        // Persistence is best-effort relative to live delivery. Log and move on
+        // so a transient DB/encryption failure never blocks the SSE publish.
+        console.error(
+            "[netflix-mirror] persist code.captured failed:",
+            (err as { message?: string })?.message ?? err,
+        );
+    }
 }
 
 /**
@@ -108,7 +175,21 @@ export async function applyNetflixWebhook(
                 return;
             }
             const slotId = await resolveLocalSlotId(db, publicToken);
-            if (slotId != null) deps.publish(slotId, { type, value, timestamp });
+            if (slotId == null) return;
+            // Dedup key: prefer the stable per-source-email codeId; fall back to
+            // the webhook deliveryId when LoadBrain omits it. Mirrors se_dedup_idx.
+            const sourceEmailId =
+                (typeof event.payload.codeId === "string" && event.payload.codeId) || event.deliveryId;
+            // Persist FIRST (best-effort) so a late /activer open replays this code,
+            // THEN publish on the live bus. Persistence never blocks the publish.
+            await persistCapturedCode(db, {
+                slotId,
+                type,
+                value,
+                sourceEmailId,
+                receivedAt: new Date(timestamp),
+            });
+            deps.publish(slotId, { type, value, timestamp });
             return;
         }
         default:
