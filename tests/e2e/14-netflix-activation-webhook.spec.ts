@@ -29,20 +29,22 @@ import crypto from "crypto";
  *       npx next dev -p 4555
  *     (the boutique's .env already sets ENCRYPTION_KEY + LOADBRAIN_WEBHOOK_SECRET;
  *      running `next dev -p 4555` from the repo root loads .env automatically.)
- *  3. Run:
+ *  3. Run with the SAME secret the server uses, exported in the test env:
+ *       LOADBRAIN_WEBHOOK_SECRET=<secret> \
  *       npx playwright test tests/e2e/14-netflix-activation-webhook.spec.ts
  *
  * The TEST and the SERVER must agree on the secret. The test reads
- * LOADBRAIN_WEBHOOK_SECRET from its own env and falls back to the committed
- * .env value so a default `next dev` (which loads .env) Just Works.
+ * LOADBRAIN_WEBHOOK_SECRET from its own env; no secret is committed. If the
+ * env var is absent the whole describe block is skipped.
  */
 
 // Must match scripts/seed-netflix-activation-e2e.js (and be ≤16 chars).
 const TOKEN = process.env.E2E_NF_TOKEN || "E2E-NF-TOK-001";
 
-// Must match the running server's LOADBRAIN_WEBHOOK_SECRET. Falls back to the
-// committed .env value so `next dev` (which auto-loads .env) needs no override.
-const SECRET = process.env.LOADBRAIN_WEBHOOK_SECRET || "whsec_robotech_loadbrain_2026";
+// Must match the running server's LOADBRAIN_WEBHOOK_SECRET. NEVER hardcode the
+// secret — it is read from the test env only. When absent, the describe block
+// below is skipped (see test.skip guard) so nothing leaks and CI stays green.
+const SECRET = process.env.LOADBRAIN_WEBHOOK_SECRET ?? "";
 
 const OTP = "482913";
 const WEBHOOK_PATH = "/api/loadbrain/netflix/webhook";
@@ -94,6 +96,12 @@ async function postWebhook(
 }
 
 test.describe("Netflix activation — webhook → SSE → OTP", () => {
+    // No secret in env ⇒ nothing to sign with. Skip rather than hardcode one.
+    test.skip(
+        !process.env.LOADBRAIN_WEBHOOK_SECRET,
+        "LOADBRAIN_WEBHOOK_SECRET required (export it to run this E2E)",
+    );
+
     test("signed code.captured delivers the OTP live to /activer", async ({
         page,
         request,
