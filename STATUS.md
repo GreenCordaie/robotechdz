@@ -214,7 +214,7 @@
     (b) un id de ligne panelking365/atlaspro COMPLETED + accès pour que quelqu'un avec la stack live tourne /reseller/iptv et confirme l'affichage.
   DÉCISION OUVERTE: tant que (a)/(b) pas fournis, ce ticket reste "fix probable, non vérifié". Je ne peux pas le clore en confiance. → à toi / chef-projet de fournir le payload ou de désigner qui valide sur la stack.
 
-[2026-05-29 20:20] chef ANSWER ? B5 (escalade 17:40) � PAYLOAD ATLASPRO REEL fourni cote LoadBrain STATUS 19:15 commit 4e58c70 mais tu ne l'as pas vu (cross-repo). Le cross-poste ici:
+[2026-05-29 20:20] chef ANSWER ? B5 (escalade 17:40) � PAYLOAD ATLASPRO REEL fourni cote LoadBrain STATUS 19:15 commit 4e58c70 mais tu ne l'as pas vu (cross-repo). Le cross-poste ici:
   FORME REELLE (task atlaspro 04316f29 via v1 internal /api/v1/atlaspro/internal/provision/<id>):
   ```json
   {
@@ -262,7 +262,7 @@
   TICKET FERMÉ EN CONFIANCE côté extraction. m3u/epg/password/username/expires sont extraits du payload réel et affichés (table: m3u copy + password mask/reveal/copy, live feed). atlaspro/ironmax/panelking365 = même structure credentials.screens[0] (tu l'as confirmé pour les 3 modules) → tous couverts par le même chemin.
   RESTE (hors mon contrôle): smoke navigateur /reseller/iptv sur la stack live pour voir le rendu final — recommandé avant de clore prod, mais l'extraction est prouvée contre le payload réel.
 
-[2026-05-29 20:35] chef ACK B5 commit 79e760c DONE final - excellent auto-resolution. Approche DFS born� (depth<=6) sur findScreensContainer = elegant: peu importe que gateway v2 ajoute data/result/task wrapper, screens[0] est toujours trouve. Camel case handled, payload reel atlaspro 04316f29 ajoute comme reference test, 280/280 verts.
+[2026-05-29 20:35] chef ACK B5 commit 79e760c DONE final - excellent auto-resolution. Approche DFS born� (depth<=6) sur findScreensContainer = elegant: peu importe que gateway v2 ajoute data/result/task wrapper, screens[0] est toujours trouve. Camel case handled, payload reel atlaspro 04316f29 ajoute comme reference test, 280/280 verts.
   Ticket IPTV m3u/password ATLASPRO/IRONMAX/PANELKING FERME EN CONFIANCE cote extraction. B5 noted le smoke navigateur reseller live recommande avant clore prod - mais l'extraction est prouvee contre payload reel.
   B5 idle - dispo pour ajustements si bug remonte du smoke nav.
 
@@ -308,3 +308,6 @@
   'AJUSTEMENT'. AJUSTEMENT silent-drop dans getFinancialStats preserve. Ticket separe si chef veut fix.
 
 [2026-06-20 15:15] B-streaming SYNC-LOADBRAIN colonnes mapping lb_account_id/lb_slot_id ajoutées (additif, no behavior change).
+[2026-06-20 20:40] B-streaming DONE P2-4 (commit 371fccc) — refund/cancel/return libèrent désormais le slot LoadBrain. Nouveau helper src/lib/loadbrain-netflix-release.ts (releaseRefundedLbSlots: idempotent, fail-soft, POST-commit) câblé dans les 4 chemins de src/app/admin/caisse/actions.ts (refundOrderItem, refundFullOrder, cancelOrderAction, approveReturn). Avant: le slot LB-alloué (lb_slot_id) repassait DISPONIBLE en local mais restait SOLD côté LoadBrain → désync, profil jamais réalloué. Release flag-indépendant (clé = présence lb_slot_id, pas l'état du flag) → une vente faite flag-ON est libérée même flag repassé OFF. Le refund argent commit d'abord; un hoquet LoadBrain ne le rollback jamais. RECTIF plan: le retour-stock LOCAL existait déjà (B2), pas un trou; et le vrai fichier refund = caisse/actions.ts, PAS refund-requests/actions.ts (qui gère active-code/g2bulk/bsv reseller). 5 tests, tsc 0, 349/349 verts.
+[2026-06-20 20:40] B-streaming NOTE Reste P2: P2-5 (réconciliation miroir↔LoadBrain, LB gagne) + P2-6 (e2e sale-authority: alloc/refund/anti-double-vente/dégradé). P2-3 (file PENDING_LB_ALLOC) = remplacé par "fail-closed → livraison manuelle" (commit 86e27cd), reconciler auto non requis.
+[2026-06-20 20:40] B-streaming NOTE-HARNESS Des fichiers parasites 0-octet aux noms de fragments de code (`(c)`, `({`, `now()`, `typeof`, `{,`...) sont régénérés à chaque tool-use par .claude/helpers/hook-handler.cjs (PreToolUse/PostToolUse). `(c)` est même tracké (committé par accident dans 3c99eed). Nettoyés du working tree; NON committés. À corriger côté hook-handler (hors P2). Risque: un `git add -A` d'un autre agent les happerait.

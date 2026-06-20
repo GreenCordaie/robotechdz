@@ -50,12 +50,16 @@
 - [ ] **Step 4:** Run → passe ; tsc 0.
 - [ ] **Step 5:** Commit `feat(streaming): PENDING_LB_ALLOC retry reconciler (no double debit)`.
 
-### Task P2-4: Refund → `releaseSlot` + retour-stock
-**Files:** Modify `src/app/admin/refund-requests/actions.ts` + `src/lib/orders.ts`; Test.
-- [ ] **Step 1 (test, échoue):** au refund d'une commande compte-partagé, si flag ON : `releaseSlot({ siteId, externalOrderRef })` appelé ; le miroir `digital_code_slots` repasse DISPONIBLE (corrige le retour-stock manquant constaté P0). Idempotent.
-- [ ] **Step 2-3:** Implémenter dans le flux refund (deps client injecté), transactionnel, fail-soft (si LoadBrain down, marquer pour reconcile, ne pas bloquer le refund argent).
-- [ ] **Step 4:** Run → passe ; tsc 0.
-- [ ] **Step 5:** Commit `feat(streaming): refund releases the LoadBrain slot + returns mirror to stock`.
+### Task P2-4: Refund → `releaseSlot` + retour-stock ✅ DONE (commit 371fccc)
+**Files RÉELS** (le pointeur initial `refund-requests/actions.ts` était faux — ce fichier gère active-code/g2bulk/bsv reseller, PAS les slots Netflix) :
+- **Create** `src/lib/loadbrain-netflix-release.ts` — `releaseRefundedLbSlots` (idempotent, fail-soft, post-commit).
+- **Modify** `src/app/admin/caisse/actions.ts` — les 4 chemins qui libèrent des slots compte-partagé : `refundOrderItem`, `refundFullOrder`, `cancelOrderAction`, `approveReturn`.
+- **Test** `tests/unit/loadbrain-netflix-release.test.ts` (5 cas).
+- [x] **Step 1 (test, échoue):** test du helper — refs `${orderItemId}-${i}`, skip lbSlotCount 0, fail-soft (compte les échecs sans throw), no-op si siteId absent, multi-items.
+- [x] **Step 2-3:** Implémenté. Le retour-stock LOCAL du miroir (`digital_code_slots`→DISPONIBLE + parent VENDU→DISPONIBLE + `isDebitCompleted=false`) **existait déjà** (corrigé par B2, contrairement au constat P0). Le vrai trou = prévenir LoadBrain. Câblé post-commit dans les 4 actions, fail-soft (LB down → log, ne bloque jamais le refund argent ; reconcile P2-5 re-jouera).
+- [x] **Décision (mieux que le plan):** release **flag-indépendant** — clé = présence de `lb_slot_id` sur le slot libéré, pas l'état courant du flag. Une vente faite flag-ON est donc libérée même si le flag est repassé OFF après. Idempotent côté LoadBrain (clé `(siteId, externalOrderRef)`).
+- [x] **Step 4:** tsc 0 ; 349/349 verts.
+- [x] **Step 5:** Commit `feat(streaming): refund/cancel/return releases LoadBrain-allocated slots (P2-4)` (371fccc).
 
 ### Task P2-5: Réconciliation miroir↔LoadBrain (LoadBrain gagne)
 **Files:** Create `src/services/netflix-mirror-reconcile.service.ts`; Test.
