@@ -26,17 +26,20 @@
 ### Task P3-0: Vérifier l'admin + le device-quota actuels (read-only)
 - [ ] **Step 1:** Relire `src/app/admin/comptes-partages/actions.ts` (toutes les mutations : `addSharedAccount`, `updateSharedAccount`, `deleteSharedAccount`, `linkProductToSharing`, `sweepSharedAccountSlots`, `resolveHouseholdAction`). Relire `src/services/slot-device-quota.service.ts` (`checkDeviceQuota` pur + `bumpDeviceUsage` atomique) + son appel dans `src/app/activer/[token]/page.tsx`. Confirmer côté LoadBrain l'état de `netflix.slots.max_uses/usage_count` + s'il existe déjà un endpoint de bump (sinon le créer). Noter les symboles.
 
-### Task P3-1: Endpoint device-quota autoritatif (LoadBrain)
-**Files:** Modify `modules/netflix/src/routes/internal/` (+ service); Test (réel DB `netflix_test`).
-- [ ] **Step 1 (test, échoue):** `POST /internal/slot/:id/device-bump` : incrément atomique `usage_count` **uniquement si** `usage_count < max_uses` (ou `max_uses IS NULL` = illimité), avec debounce optionnel ; renvoie `{ ok, remaining }` ou `409 quota_exhausted`. Test de course (2 bumps concurrents au dernier crédit → un seul passe).
-- [ ] **Step 2-4:** Implémenter (UPDATE gardé `WHERE usage_count < max_uses ... RETURNING`), route, inject test contre `netflix_test`. tsc 0.
-- [ ] **Step 5:** Commit `feat(netflix): authoritative device-bump endpoint (atomic usage_count cap)`.
+### Task P3-1: Endpoint device-quota autoritatif (LoadBrain) ✅ DONE (LoadBrain a634548)
+- [x] `POST /internal/slot/:id/device-bump` : incrément atomique `usage_count` borné par `max_uses` (NULL=illimité), **lock `FOR UPDATE`** → 2 bumps concurrents au dernier crédit = exactement un 200 + un 409 `quota_exhausted`. Debounce optionnel (`debounceMinutes`, calculé côté DB via `make_interval`, pas d'horloge app). Tenant-scopé par siteId. `device-quota.service.ts` + `routes/internal/slot-device-bump.ts` + register `index.ts`.
+- [x] 8 tests d'intégration (vraie DB `netflix_test`, dont la course + tenant-scope + 404 + debounce). tsc 0, 202/202.
+- [x] Commit `feat(netflix): authoritative device-bump endpoint (atomic usage_count cap) — P3-1`.
 
-### Task P3-2: Device-quota boutique consulte LoadBrain (fail-closed + cache)
-**Files:** Create `src/services/loadbrain-device-quota.client.ts`; Modify `src/app/activer/[token]/page.tsx`, `src/services/slot-device-quota.service.ts`; Test.
-- [ ] **Step 1 (test, échoue):** sur ouverture `/activer`, le bump appelle LoadBrain (`device-bump`) ; quota épuisé → écran « Limite d'appareils atteinte » (fail-closed) ; LoadBrain down → politique : fail-closed si dernière valeur connue ≥ max, sinon autoriser avec cache court (décider, sécurité d'abord). Garder le bump local comme cache miroir (mis à jour par retour LoadBrain + webhook `slot.usage`).
-- [ ] **Step 2-4:** Implémenter le client + brancher dans `page.tsx` (remplace le bump purement local par : bump LoadBrain autoritatif → reflète localement). Conserver l'atomicité + le debounce.
-- [ ] **Step 5:** Commit `feat(streaming): device-quota enforced by LoadBrain (authoritative usage_count) with local mirror`.
+### Task P3-2: Device-quota boutique consulte LoadBrain (fail-closed + cache) ✅ DONE (boutique 2452738)
+**Découverte:** le modèle boutique (`maxDevices`/`devicesActivated`/`lastDeviceAt`, collapse 60 min) est **sémantiquement identique** à LoadBrain (`max_uses`/`usage_count`/`last_used_at`) → mapping 1:1.
+- [x] `loadbrain-device-quota.client.ts` (`bumpDeviceUsageRemote`) : **DÉGRADE** (renvoie `unavailable`) au lieu de throw → fallback local (≠ client d'allocation qui fail-close en throw).
+- [x] `loadbrain-device-quota.service.ts` (`enforceDeviceQuota`) orchestre LB-first / local-fallback. Remote ok+fresh → mirror local best-effort ; ok+debounced → pas de mirror ; `quota_exhausted` → bloque ; `unavailable`/`not_found` → enforcer local.
+- [x] **Politique LoadBrain-down (décision sécurité)** : fallback sur le **cap du miroir local** (toujours strict, atomique, TOCTOU-safe) — pas de hard-deny d'un client légitime sur un hoquet LB. Le cap reste appliqué des deux côtés ; seule l'autorité du compteur dégrade.
+- [x] `slot-device-quota.service.ts` : extraction `enforceLocalDeviceQuota` (check + bump atomique + recheck TOCTOU de la page, à l'identique) partagée par les 2 chemins.
+- [x] `activer/[token]/page.tsx` câblé **derrière le flag** (`lbSlotId != null && isLbNetflixAuthoritative()`) ; flag OFF = chemin local inchangé (byte-identique).
+- [x] 14 tests (client 7 + orchestrateur 7) ; tsc 0 ; 373/373.
+- [x] Commit `feat(streaming): device-quota enforced by LoadBrain (authoritative) with local mirror — P3-2`.
 
 ### Task P3-3: Mutations admin proxifiées vers LoadBrain
 **Files:** Create `src/services/loadbrain-netflix-admin.client.ts`; Modify `src/app/admin/comptes-partages/actions.ts`; Test.
