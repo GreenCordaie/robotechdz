@@ -56,13 +56,15 @@ function loadDotEnv() {
 loadDotEnv();
 
 const DATABASE_URL = process.env.DATABASE_URL;
-const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || process.env.SESSION_SECRET;
+// ENCRYPTION_KEY is the AES-256-GCM key used by src/lib/encryption.ts. It is a
+// distinct concern from JWT signing (SESSION_SECRET); do NOT conflate the two.
+const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY;
 if (!DATABASE_URL) {
     console.error("[seed-nf-e2e] DATABASE_URL missing");
     process.exit(1);
 }
 if (!ENCRYPTION_KEY) {
-    console.error("[seed-nf-e2e] ENCRYPTION_KEY (or SESSION_SECRET) missing");
+    console.error("[seed-nf-e2e] ENCRYPTION_KEY missing — set the real encryption key (do not reuse SESSION_SECRET)");
     process.exit(1);
 }
 
