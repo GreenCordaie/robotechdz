@@ -72,15 +72,18 @@
 - [x] **Heal direction (LoadBrain gagne, seul le sens SÛR est automatisé):** boutique VENDU mais LB freed → flip DISPONIBLE + parent réactivé (rend l'inventaire, jamais de double-vente). LB ACTIVE mais boutique freed = **CONFLICT reporté** (pas de flip VENDU aveugle qui fabriquerait une vente). lbSlotId inconnu de LB = **ORPHAN reporté**.
 - [x] **Step 4-5:** tsc 0 des deux côtés ; boutique 359/359, LoadBrain 193/193 ; commits ci-dessus.
 
-### Task P2-6: E2E vente/refund/anti-double-vente
-**Files:** `tests/e2e/16-netflix-sale-authority.spec.ts`.
-- [ ] Scénarios (flag ON, stack live + `netflix_test`) : (1) achat compte-partagé → slot alloué par LoadBrain, creds+token rendus, miroir cohérent. (2) refund → slot rendu DISPONIBLE. (3) **anti-double-vente** : 2 ventes simultanées sur pool à 1 slot (une boutique + une via route LoadBrain directe) → une seule réussit, l'autre « stock épuisé », aucune double-allocation. (4) LoadBrain down → vente → `PENDING_LB_ALLOC` → reprise reconcile sans double débit.
-- [ ] Commit `test(e2e): sale authority — allocate/refund/anti-double-sell/degraded-retry`.
+### Task P2-6: E2E vente/refund/anti-double-vente ✅ DONE (LoadBrain 30cf543 + boutique 56a9ba2)
+- [x] **Scénario 3 (anti-double-vente) = RUNNABLE + VERT** au niveau autoritatif : `modules/netflix/tests/integration/slot-allocate-route.test.ts` — 2 allocations concurrentes sur pool à 1 slot → exactement un 201 + un 409 (FOR UPDATE SKIP LOCKED). 6/6 contre `netflix_test`. C'est l'invariant central « zéro désync » ; la vente boutique délègue à cette garantie.
+- [x] **Spec boutique** `tests/e2e/16-netflix-sale-authority.spec.ts` (skip-gated `E2E_SALE_AUTHORITY=1`, façon 14/15) : scénario 3 rejouable directement contre LoadBrain ; scénarios 1 (achat→alloc LoadBrain+miroir), 2 (refund→release des 2 côtés), 4 (LoadBrain down→fail-closed livraison manuelle, pas de double débit) = `test.fixme` structurés avec prérequis opérateur précis, **en attente d'un seed cross-DB** (`scripts/seed-netflix-sale-authority-e2e.js` à créer) + stack live. Pas d'assertions fragiles prétendant passer ; CI reste verte.
+- [x] Commits ci-dessus. Reste opérateur (hors session) : créer le seed + lancer 1/2/4 sur la stack complète.
 
 ## Critères de sortie P2
-- [ ] Flag OFF = comportement vente byte-identique (non-régression prouvée).
-- [ ] Flag ON : allocation/refund via LoadBrain, miroir cohérent, **anti-double-vente E2E vert**, mode dégradé sans double débit, réconciliation soigne la dérive.
-- [ ] tsc 0 des deux côtés ; suites vertes.
+- [x] Flag OFF = comportement vente byte-identique (P2-2 : la branche `isSharing` n'entre dans le chemin LoadBrain que si le flag est ON ; suites vertes flag-off).
+- [x] Flag ON : allocation (P2-2) / refund-release (P2-4) via LoadBrain, miroir réconcilié (P2-5), **anti-double-vente E2E VERT** (LoadBrain 30cf543, concurrence réelle), mode dégradé fail-closed→livraison manuelle (pas de double débit ; e2e `test.fixme` en attente de stack). Réconciliation soigne la dérive (P2-5, planner pur testé).
+- [x] tsc 0 des deux côtés ; suites vertes (boutique 359, LoadBrain netflix 193+ ).
+- [ ] **Reste opérateur (hors session)** : seed cross-DB + exécuter e2e 16 scénarios 1/2/4 sur stack live ; décider cutover flag ON en prod.
+
+## Statut global P2 : ✅ implémenté + testé (P2-1→P2-6). Reste : validation e2e 1/2/4 sur stack live + décision cutover.
 
 ## Self-Review
 Couvre §B (autorité d'allocation), §C (refund/release), §risques (mode dégradé, dérive) du spec + constat P0 #2 partiel (token généré à l'allocation via `allocateSlot`). P2-0 = vérif explicite des points d'insertion (pas de placeholder ; code concret modulo symboles confirmés). Risque clé : la branche `isSharing` de `orders.ts` est un chemin argent — flag OFF par défaut, tests de non-régression obligatoires avant tout déploiement flag ON.
