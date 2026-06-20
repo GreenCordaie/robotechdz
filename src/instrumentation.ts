@@ -96,6 +96,32 @@ export async function register() {
             console.log('[IptvReconciler] scheduled every 60s (offset +30s)');
         }
 
+        // Netflix mirror ↔ LoadBrain reconciler (P2-5). Pull safety-net for missed
+        // allocate/release webhooks. Only runs in authoritative mode
+        // (LB_NETFLIX_AUTHORITATIVE on); a no-op otherwise and when there are no
+        // LB-mirrored slots. Webhooks remain the primary sync path — this is slow
+        // (every 5 min) on purpose.
+        if (!globalAny.__netflixMirrorReconcilerScheduled) {
+            globalAny.__netflixMirrorReconcilerScheduled = true;
+            const runNetflixReconcile = async () => {
+                try {
+                    const { isLbNetflixAuthoritative } = await import('./lib/loadbrain-netflix-flag');
+                    if (!(await isLbNetflixAuthoritative())) return;
+                    const { reconcileNetflixMirror } = await import('./services/netflix-mirror-reconcile.service');
+                    const r = await reconcileNetflixMirror({ batchSize: 500 });
+                    if (r.healedToStock > 0 || r.conflicts > 0 || r.orphans > 0) {
+                        console.log('[NetflixReconcile]', JSON.stringify(r));
+                    }
+                } catch (e: any) {
+                    console.error('[NetflixReconcile] error:', e?.message);
+                }
+            };
+            // Offset +40s off the iptv cycle; run every 5 min.
+            setTimeout(runNetflixReconcile, 70_000);
+            setInterval(runNetflixReconcile, 5 * 60_000);
+            console.log('[NetflixReconcile] scheduled every 5min (authoritative mode only)');
+        }
+
         // You can add more worker initializations here
     }
 }

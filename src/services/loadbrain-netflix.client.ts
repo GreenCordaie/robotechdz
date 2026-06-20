@@ -135,3 +135,28 @@ export async function releaseSlot(
 ): Promise<ReleaseSlotResult> {
     return call<ReleaseSlotResult>("/internal/slot/release", input, deps);
 }
+
+export interface GetSlotStatesInput {
+    siteId: string;
+    slotIds: string[];
+}
+
+export interface SlotStateRow {
+    slotId: string;
+    status: string;
+    externalOrderRef: string | null;
+    publicToken: string;
+}
+
+/**
+ * Read the authoritative LoadBrain status of specific slots, by slot id (P2-5
+ * reconcile). Tenant-scoped server-side: a slot id from another site is simply
+ * absent from the result. Throws (fail-closed) on transport/HTTP failure.
+ */
+export async function getSlotStates(
+    input: GetSlotStatesInput,
+    deps: LbClientDeps = {},
+): Promise<SlotStateRow[]> {
+    const res = await call<{ states: SlotStateRow[] }>("/internal/slot/states", input, deps);
+    return res.states ?? [];
+}
