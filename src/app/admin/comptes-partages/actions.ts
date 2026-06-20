@@ -346,6 +346,27 @@ export const deleteSharedAccount = withAuth(
 
             await db.delete(digitalCodes).where(eq(digitalCodes.id, id));
 
+            // P3-3: proxy the deletion to LoadBrain (system of record). Best-effort,
+            // gated (flag + siteId), post-delete — a LoadBrain hiccup must NOT fail
+            // the admin delete (local row is already gone; reconcile/retry aligns).
+            // The local "no sold slots" guard above mirrors LoadBrain's own
+            // has_active_slots refusal, so a 409 here is unexpected but surfaced.
+            if (account.lbAccountId) {
+                try {
+                    const { isLbNetflixAuthoritative } = await import("@/lib/loadbrain-netflix-flag");
+                    const siteId = process.env.LOADBRAIN_SITE_ID;
+                    if (siteId && (await isLbNetflixAuthoritative())) {
+                        const { deleteAccountRemote } = await import("@/services/loadbrain-netflix-admin.client");
+                        const r = await deleteAccountRemote({ siteId, lbAccountId: account.lbAccountId });
+                        if (!r.ok) {
+                            console.warn(`[admin-delete] LoadBrain account delete not ok (${r.reason}) for lb_account ${account.lbAccountId} (non-blocking)`);
+                        }
+                    }
+                } catch (err) {
+                    console.error("[admin-delete] LoadBrain account delete proxy failed (non-blocking):", err);
+                }
+            }
+
             revalidatePath("/admin/comptes-partages");
             return { success: true };
         } catch (error) {
