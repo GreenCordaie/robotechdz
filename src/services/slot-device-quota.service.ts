@@ -89,4 +89,40 @@ export async function bumpDeviceUsage(
   return result.length > 0;
 }
 
+/**
+ * Local device-quota enforcement = the exact check + atomic bump + TOCTOU
+ * recheck the /activer page did inline. Extracted so BOTH the non-centralized
+ * path and the LoadBrain-down fallback (P3-2) share one implementation. Returns
+ * a render verdict; never throws (a bump error degrades to the recheck, like the
+ * page did).
+ */
+export async function enforceLocalDeviceQuota(
+  db: typeof defaultDb,
+  slot: SlotQuotaInput & { id: number },
+): Promise<{ ok: boolean; max: number | null }> {
+  const quota = checkDeviceQuota(slot);
+  if (!quota.ok) return { ok: false, max: quota.max };
+
+  if (quota.bumpUsage) {
+    let secured = false;
+    try {
+      secured = await bumpDeviceUsage(db, slot.id);
+    } catch {
+      secured = false;
+    }
+    if (!secured) {
+      // Lost the atomic bump: re-read and recheck. Only block if the quota is
+      // genuinely exhausted — a same-device debounce race (still has room) is
+      // allowed through (closes the check-then-act TOCTOU without false-block).
+      const fresh = await db.query.digitalCodeSlots
+        .findFirst({ where: eq(digitalCodeSlots.id, slot.id) })
+        .catch(() => null);
+      const recheck = fresh ? checkDeviceQuota(fresh) : { ok: false as const };
+      if (!recheck.ok) return { ok: false, max: slot.maxDevices ?? 0 };
+    }
+  }
+
+  return { ok: true, max: slot.maxDevices ?? null };
+}
+
 export const __forTests = { SESSION_DEBOUNCE_MS };
