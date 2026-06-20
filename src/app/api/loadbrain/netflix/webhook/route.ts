@@ -12,7 +12,7 @@ import { streamingEventBus } from "@/lib/streaming-event-bus";
  *   - require shared LOADBRAIN_WEBHOOK_SECRET
  *   - HMAC-SHA256 over `${timestamp}.${rawBody}`, header `sha256=<hex>`
  *   - constant-time compare, ±300s replay window
- *   - in-process idempotency by X-LoadBrain-Delivery-Id (globalThis Set)
+ *   - in-process idempotency by X-LoadBrain-Delivery-Id (globalThis bounded LRU)
  *
  * On a valid delivery → applyNetflixWebhook (mirror update + event-bus republish).
  */
@@ -22,9 +22,27 @@ const MAX_CLOCK_SKEW_SECONDS = 300;
 const SEEN_CAP = 5_000;
 
 // In-process idempotency cache (P0). Survives HMR / module reload via globalThis.
-const g = globalThis as unknown as { __nfWebhookSeen?: Set<string> };
-if (!g.__nfWebhookSeen) g.__nfWebhookSeen = new Set<string>();
-const seen: Set<string> = g.__nfWebhookSeen;
+// Insertion-ordered Map used as a bounded LRU: at capacity we evict the SINGLE
+// oldest entry instead of wholesale-clearing (which would reopen the replay
+// window for every still-cached delivery id). Value = first-seen epoch seconds.
+const g = globalThis as unknown as { __nfWebhookSeen?: Map<string, number> };
+if (!g.__nfWebhookSeen) g.__nfWebhookSeen = new Map<string, number>();
+const seen: Map<string, number> = g.__nfWebhookSeen;
+
+/**
+ * Idempotency check-and-record in one tight sequence.
+ * @returns true if this deliveryId was already seen (caller should dedupe).
+ */
+function markSeen(deliveryId: string, now: number): boolean {
+    if (seen.has(deliveryId)) return true;
+    if (seen.size >= SEEN_CAP) {
+        // Evict the oldest single entry (first key in insertion order).
+        const oldest = seen.keys().next().value;
+        if (oldest !== undefined) seen.delete(oldest);
+    }
+    seen.set(deliveryId, now);
+    return false;
+}
 
 function safeEqual(a: string, b: string): boolean {
     try {
@@ -61,12 +79,8 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
     }
 
-    if (deliveryId && seen.has(deliveryId)) {
+    if (deliveryId && markSeen(deliveryId, now)) {
         return NextResponse.json({ received: true, deduped: true });
-    }
-    if (deliveryId) {
-        seen.add(deliveryId);
-        if (seen.size > SEEN_CAP) seen.clear();
     }
 
     let event: { event?: string; payload?: Record<string, unknown> };

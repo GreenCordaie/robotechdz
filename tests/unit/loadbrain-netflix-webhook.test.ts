@@ -76,4 +76,17 @@ describe("netflix webhook receiver", () => {
         await POST(signedRequest(body, { deliveryId: "dup-1" }) as any);
         expect(applyMock).toHaveBeenCalledTimes(1); // 2nd is deduped
     });
+
+    it("LRU: a fresh delivery-id after many inserts is still processed (not wrongly deduped)", async () => {
+        const body = JSON.stringify({ event: "code.captured", payload: { publicToken: "abc", type: "OTP_CODE", value: "1" } });
+        // Flood the bounded cache with > SEEN_CAP (5000) distinct ids. The old
+        // implementation wholesale-cleared at the cap; the LRU evicts one entry
+        // at a time, so a brand-new id must always be processed exactly once.
+        for (let i = 0; i < 5050; i++) {
+            await POST(signedRequest(body, { deliveryId: `flood-${i}` }) as any);
+        }
+        applyMock.mockClear();
+        await POST(signedRequest(body, { deliveryId: "fresh-after-flood" }) as any);
+        expect(applyMock).toHaveBeenCalledTimes(1);
+    });
 });
