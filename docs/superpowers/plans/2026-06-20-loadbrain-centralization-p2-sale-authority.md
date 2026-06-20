@@ -61,11 +61,16 @@
 - [x] **Step 4:** tsc 0 ; 349/349 verts.
 - [x] **Step 5:** Commit `feat(streaming): refund/cancel/return releases LoadBrain-allocated slots (P2-4)` (371fccc).
 
-### Task P2-5: Réconciliation miroir↔LoadBrain (LoadBrain gagne)
-**Files:** Create `src/services/netflix-mirror-reconcile.service.ts`; Test.
-- [ ] **Step 1 (test, échoue):** détecte les divergences (slot vendu LoadBrain mais DISPONIBLE boutique, ou inverse) via comparaison par `lbSlotId`/`externalOrderRef` ; soigne en alignant la boutique sur LoadBrain ; rapport. Dérive injectée → détectée + soignée.
-- [ ] **Step 2-3:** Implémenter (lecture LoadBrain via `getSlot`/listing SDK ou requête de réconciliation), brancher en cron gardé.
-- [ ] **Step 4-5:** Run → passe ; commit `feat(streaming): mirror↔LoadBrain reconciliation (LoadBrain authoritative)`.
+### Task P2-5: Réconciliation miroir↔LoadBrain (LoadBrain gagne) ✅ DONE (boutique e000548 + LoadBrain 2dc8dd0)
+**Prérequis découvert:** LoadBrain n'exposait AUCUN read per-slot interne (juste allocate/release/patch + health-summary agrégé). Donc P2-5 a nécessité **un nouvel endpoint de lecture LoadBrain** (cross-repo).
+- **LoadBrain (commit 2dc8dd0, branche feat/netflix-centralization-p1):** `POST /internal/slot/states` `{siteId, slotIds[]}` → `{states:[{slotId,status,externalOrderRef,publicToken}]}`, tenant-scopé (un slotId d'un autre site est omis), X-Internal-Token. `slot-read.service.ts` + `routes/internal/slot-read.ts` + register `index.ts`. 4 tests d'intégration (vraie DB `netflix_test`), tsc 0, 193/193.
+- **Boutique (commit e000548):**
+  - Planificateur PUR `src/lib/netflix-mirror-reconcile-plan.ts` (`planReconcile(mirror, lbStates)` — aucune DB, 6 tests). Mapping: LB `ACTIVE`↔`VENDU` ; LB autre (AVAILABLE/REFUNDED/CANCELLED/RECLAIMED)↔`DISPONIBLE`.
+  - Service `src/services/netflix-mirror-reconcile.service.ts` (wrapper DB fin, 4 tests fake-db).
+  - Client `getSlotStates` ajouté à `loadbrain-netflix.client.ts`.
+  - Cron `instrumentation.ts` toutes les 5 min, **gated sur le flag** (mode autoritatif seulement), webhooks restent primaires.
+- [x] **Heal direction (LoadBrain gagne, seul le sens SÛR est automatisé):** boutique VENDU mais LB freed → flip DISPONIBLE + parent réactivé (rend l'inventaire, jamais de double-vente). LB ACTIVE mais boutique freed = **CONFLICT reporté** (pas de flip VENDU aveugle qui fabriquerait une vente). lbSlotId inconnu de LB = **ORPHAN reporté**.
+- [x] **Step 4-5:** tsc 0 des deux côtés ; boutique 359/359, LoadBrain 193/193 ; commits ci-dessus.
 
 ### Task P2-6: E2E vente/refund/anti-double-vente
 **Files:** `tests/e2e/16-netflix-sale-authority.spec.ts`.
