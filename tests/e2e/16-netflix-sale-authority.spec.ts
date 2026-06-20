@@ -24,13 +24,15 @@ import { test, expect, type APIRequestContext } from "@playwright/test";
  *
  * ── Prerequisites (operator) ─────────────────────────────────────────────────
  *  1. LoadBrain netflix running, reachable at LOADBRAIN_URL, with INTERNAL token.
- *  2. A seed creating a MIRRORED shared account on BOTH systems:
- *       - LoadBrain: netflix.accounts + N AVAILABLE netflix.slots (public_token
- *         = the boutique slot's activation token; site = AGENT007's siteId).
- *       - Boutique: a digital_codes row (status DISPONIBLE, lb_account_id set to
- *         the LoadBrain account id) + matching digital_code_slots, plus a kiosk
- *         product/variant with isSharing=true bound to that variant.
- *     (To be added: scripts/seed-netflix-sale-authority-e2e.js.)
+ *  2. A seed creating a MIRRORED shared account on BOTH systems — ships as
+ *     `scripts/seed-netflix-sale-authority-e2e.js` (idempotent, cross-DB, aligns
+ *     the public_token on each side). Run it before the spec:
+ *       DATABASE_URL=<flexbox> LOADBRAIN_DATABASE_URL=<netflix> \
+ *       ENCRYPTION_KEY=<boutique> LOADBRAIN_SITE_ID=<uuid> E2E_SA_SLOTS=2 \
+ *       node scripts/seed-netflix-sale-authority-e2e.js
+ *     It prints a JSON descriptor { siteId, lbAccountId, boutiqueDigitalCodeId,
+ *     variantId, slots:[{token, boutiqueSlotId, lbSlotId}] } for the harness.
+ *     (E2E_SA_SLOTS=1 seeds a 1-slot pool for the anti-double-sell scenario.)
  *  3. Flag ON: shop_settings.lb_netflix_authoritative = true.
  *  4. Boutique dev server on :4555 pointed at the flexbox DB, with
  *     LOADBRAIN_URL + LOADBRAIN_INTERNAL_TOKEN (+ LOADBRAIN_SITE_ID=AGENT007's
