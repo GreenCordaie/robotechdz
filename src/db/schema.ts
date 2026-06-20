@@ -339,6 +339,10 @@ export const shopSettings = pgTable("shop_settings", {
     microsoftTenantId: text("microsoft_tenant_id"),
     microsoftClientSecret: encryptedText("microsoft_client_secret"),
     microsoftRedirectUri: text("microsoft_redirect_uri"),
+    // P2 — LoadBrain authoritative Netflix slot allocation toggle (migration 0035).
+    // Additive, default false → sale path keeps the local-pick behavior until
+    // explicitly flipped. Read via isLbNetflixAuthoritative() (loadbrain-netflix-flag.ts).
+    lbNetflixAuthoritative: boolean("lb_netflix_authoritative").default(false).notNull(),
 });
 
 export const whatsappFaqs = pgTable("whatsapp_faqs", {
