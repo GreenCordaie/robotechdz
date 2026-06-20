@@ -173,11 +173,16 @@ export const digitalCodes = pgTable("digital_codes", {
     // Streaming deeplink — Netflix "Extra Member" (+1 stream) operator-side flag
     hasExtraMember: boolean("has_extra_member").default(false).notNull(),
 
+    // Mirror mapping: LoadBrain netflix.accounts UUID (system-of-record).
+    // Additive, NULL until backfilled by import or set by webhook (later phases).
+    lbAccountId: text("lb_account_id"),
+
 }, (table) => {
     return {
         variantIdIdx: index("dc_variant_id_idx").on(table.variantId),
         statusIdx: index("dc_status_idx").on(table.status),
         orderItemIdIdx: index("dc_order_item_id_idx").on(table.orderItemId),
+        lbAccountIdIdx: index("dc_lb_account_id_idx").on(table.lbAccountId),
     };
 });
 
@@ -208,12 +213,16 @@ export const digitalCodeSlots = pgTable("digital_code_slots", {
     // same master mailbox map to the right customer without needing a
     // profile name in the email body (Netflix doesn't send one).
     lastCodeRequestAt: timestamp("last_code_request_at", { mode: "date" }),
+    // Mirror mapping: LoadBrain netflix.slots UUID (system-of-record).
+    // Additive, NULL until backfilled by import or set by allocate (later phases).
+    lbSlotId: text("lb_slot_id"),
 }, (table) => {
     return {
         digitalCodeIdIdx: index("dcs_digital_code_id_idx").on(table.digitalCodeId),
         statusIdx: index("dcs_status_idx").on(table.status),
         orderItemIdIdx: index("dcs_order_item_id_idx").on(table.orderItemId),
         devicesActivatedIdx: index("dcs_devices_activated_idx").on(table.devicesActivated),
+        lbSlotIdIdx: index("dcs_lb_slot_id_idx").on(table.lbSlotId),
     };
 });
 

@@ -306,3 +306,5 @@
 
   Open follow-up: schema.ts:333 type 'RECHARGE'|'DEBIT' diverge du code live 'RECHARGE'|'PAYMENT'|
   'AJUSTEMENT'. AJUSTEMENT silent-drop dans getFinancialStats preserve. Ticket separe si chef veut fix.
+
+[2026-06-20 15:15] B-streaming SYNC-LOADBRAIN colonnes mapping lb_account_id/lb_slot_id ajoutées (additif, no behavior change).
