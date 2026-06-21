@@ -42,6 +42,13 @@ pack_stub() {
 pack_stub "$REPO_ROOT/vendor/loadbrain-site-integration-stub" "loadbrain-site-integration-3.2.0-fixed.tgz"
 pack_stub "$REPO_ROOT/vendor/loadbrain-sdk-stub" "loadbrain-sdk-3.2.0.tgz"
 
+# @loadbrain/sdk-v2 — package.json references it as a TGZ
+# (file:../LoadBrain/dist-packages/loadbrain-sdk-v2-2.0.0-alpha.1.tgz), so CI must
+# produce that tgz too (previously only the directory copy below was provisioned,
+# which the tgz reference never used → ENOENT in CI). The vendored package is the
+# real compiled output and packs to exactly loadbrain-sdk-v2-2.0.0-alpha.1.tgz.
+pack_stub "$REPO_ROOT/vendor/loadbrain-sdk-v2" "loadbrain-sdk-v2-2.0.0-alpha.1.tgz"
+
 # @loadbrain/sdk-v2 is referenced as a DIRECTORY dep (file:../LoadBrain/packages/sdk-v2),
 # not a tgz, and its dist is gitignored upstream + its tsconfig extends a workspace
 # package (can't build standalone in CI). We vendor the REAL compiled output (real
