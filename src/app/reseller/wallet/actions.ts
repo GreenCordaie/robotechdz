@@ -48,9 +48,22 @@ export const getResellerWalletOverviewAction = withAuth(
                 with: { wallet: true, tier: true },
             });
             if (!reseller) {
+                console.error(`[wallet] reseller not found for userId=${user.id}`);
                 return { success: false as const, error: "Compte revendeur introuvable" };
             }
-            const wallet = reseller.wallet ?? null;
+            // Defensive: in some environments (observed in CI e2e) the relational
+            // hydration of `wallet`/`tier` can come back empty even though the row
+            // exists. Fall back to a direct fetch so the balance always loads.
+            let wallet = reseller.wallet ?? null;
+            if (!wallet) {
+                console.warn(`[wallet] wallet relation empty for reseller=${reseller.id} (userId=${user.id}) — direct fetch fallback`);
+                const [w] = await db
+                    .select()
+                    .from(resellerWallets)
+                    .where(eq(resellerWallets.resellerId, reseller.id))
+                    .limit(1);
+                wallet = w ?? null;
+            }
 
             const effectiveTier = reseller.tier ?? (await TierService.getDefaultTier());
             const monthlyVolume = await TierService.getMonthlyPurchaseVolume(reseller.id);
