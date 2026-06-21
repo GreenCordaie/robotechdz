@@ -1,11 +1,12 @@
 import { notFound } from "next/navigation";
 import { db } from "@/db";
 import { findActiveSlotByToken } from "@/services/slot-activation-token.service";
-import { checkDeviceQuota, bumpDeviceUsage } from "@/services/slot-device-quota.service";
+import { enforceLocalDeviceQuota } from "@/services/slot-device-quota.service";
+import { enforceDeviceQuota } from "@/services/loadbrain-device-quota.service";
+import { isLbNetflixAuthoritative } from "@/lib/loadbrain-netflix-flag";
 import { decrypt } from "@/lib/encryption";
-import { logger } from "@/lib/logger";
 import { ActivationClient } from "./ActivationClient";
-import { productVariants, products, digitalCodeSlots, orderItems, orders, resellers } from "@/db/schema";
+import { productVariants, products, orderItems, orders, resellers } from "@/db/schema";
 import { eq } from "drizzle-orm";
 
 export const dynamic = "force-dynamic";
@@ -36,39 +37,21 @@ export default async function ActivationPage(props: { params: Promise<{ token: s
 
     const { slot, account } = resolved;
 
-    // Device quota guard (Option C hybrid — anti link-sharing). Fail-closed:
-    // for a NEW session we atomically secure a device slot BEFORE decrypting
-    // and rendering credentials. bumpDeviceUsage is atomic (guarded WHERE), so
-    // under a concurrent burst only ONE request wins the last slot. A loser
-    // re-reads the row: it's only blocked if the quota is genuinely exhausted
-    // — a same-device debounce race (still has room) is allowed through. This
-    // closes the check-then-act TOCTOU without false-blocking a paying customer.
-    const quota = checkDeviceQuota(slot);
+    // Device quota guard (Option C hybrid — anti link-sharing). Fail-closed: we
+    // atomically secure a device session BEFORE decrypting and rendering creds.
+    // When the slot is centralized on LoadBrain (lbSlotId set) AND authoritative
+    // mode is on, LoadBrain is the single counter (P3-2); on a LoadBrain outage
+    // we degrade to the local mirror cap. Otherwise the existing local path runs
+    // unchanged: atomic guarded bump + TOCTOU recheck (a same-device debounce
+    // race still has room and is allowed; only a genuinely exhausted quota is
+    // blocked).
+    const lbAuthoritative =
+        slot.lbSlotId != null && (await isLbNetflixAuthoritative());
+    const quota = lbAuthoritative
+        ? await enforceDeviceQuota(db, slot)
+        : await enforceLocalDeviceQuota(db, slot);
     if (!quota.ok) {
-        return <DeviceLimitScreen max={quota.max} />;
-    }
-    if (quota.bumpUsage) {
-        let secured = false;
-        try {
-            secured = await bumpDeviceUsage(db, slot.id);
-        } catch (err) {
-            logger.error("bumpDeviceUsage failed", {
-                action: "slot.device_quota.bump_failed",
-                metadata: {
-                    slotId: slot.id,
-                    error: err instanceof Error ? err.message : String(err),
-                },
-            });
-        }
-        if (!secured) {
-            const fresh = await db.query.digitalCodeSlots
-                .findFirst({ where: eq(digitalCodeSlots.id, slot.id) })
-                .catch(() => null);
-            const recheck = fresh ? checkDeviceQuota(fresh) : { ok: false as const };
-            if (!recheck.ok) {
-                return <DeviceLimitScreen max={slot.maxDevices ?? 0} />;
-            }
-        }
+        return <DeviceLimitScreen max={quota.max ?? slot.maxDevices ?? 0} />;
     }
 
     // Decrypt credentials server-side (token gate already passed).

@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { injectResellerSession } from "./_reseller-auth";
 
 /**
  * EPIC 2 / Phase D — Reseller orders page : credentials display + send to client.
@@ -14,13 +15,8 @@ import { test, expect } from "@playwright/test";
 
 test.describe("Reseller orders + credentials display", () => {
     test.beforeEach(async ({ page }) => {
-        await page.goto("/reseller/login");
-
-        await page.locator("input[type='email'], input[name='email']").first().fill("reseller@e2e.test");
-        await page.locator("input[type='password']").first().fill("1234");
-
-        await page.locator("form button[type='submit']").first().click();
-        await page.waitForURL(/\/reseller\/(dashboard|wallet|shop|orders|support)/, { timeout: 15_000 });
+        // Deterministic reseller session (form-login Set-Cookie flaky in CI). See ./_reseller-auth.
+        await injectResellerSession(page.context());
     });
 
     test("Page orders : header + recherche + état vide ou liste", async ({ page }) => {

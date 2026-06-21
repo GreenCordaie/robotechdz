@@ -366,6 +366,8 @@ export const refundOrderItem = withAuth(
     },
     async ({ orderItemId, returnToStock }) => {
         try {
+            // Captured inside the tx, released to LoadBrain AFTER commit (best-effort).
+            let lbReleaseItems: { orderItemId: number; lbSlotCount: number }[] = [];
             await db.transaction(async (tx) => {
                 const item = await tx.query.orderItems.findFirst({
                     where: eq(orderItems.id, orderItemId),
@@ -410,12 +412,22 @@ export const refundOrderItem = withAuth(
                                 .set({ status: DigitalCodeStatus.DISPONIBLE, isDebitCompleted: false })
                                 .where(and(inArray(digitalCodes.id, parentIds), eq(digitalCodes.status, DigitalCodeStatus.VENDU)));
                         }
+                        // A slot that carries an lbSlotId was allocated by LoadBrain;
+                        // returning it locally must also free it in LoadBrain's pool.
+                        const lbCount = item.slots.filter((s) => (s as { lbSlotId: string | null }).lbSlotId != null).length;
+                        if (lbCount > 0) lbReleaseItems = [{ orderItemId, lbSlotCount: lbCount }];
                     }
                 }
 
                 // --- 🔄 BALANCE REVERSAL LOGIC ---
                 await reverseSupplierDebits(tx, { orderItemId }, "Remboursement Article");
             });
+
+            // Best-effort LoadBrain release (idempotent, never blocks the refund).
+            if (lbReleaseItems.length > 0) {
+                const { releaseRefundedLbSlots } = await import("@/lib/loadbrain-netflix-release");
+                await releaseRefundedLbSlots(lbReleaseItems, { reason: "refund-item" });
+            }
 
             revalidatePath("/admin/caisse");
             return { success: true };
@@ -432,6 +444,8 @@ export const refundFullOrder = withAuth(
     },
     async ({ id, returnToStock }) => {
         try {
+            // Captured inside the tx, released to LoadBrain AFTER commit (best-effort).
+            let lbReleaseItems: { orderItemId: number; lbSlotCount: number }[] = [];
             await db.transaction(async (tx) => {
                 // Lock the order row first so two concurrent refunds serialize: the
                 // second blocks here, then reads the REMBOURSE status the first set
@@ -455,12 +469,16 @@ export const refundFullOrder = withAuth(
                     // Capture the shared-account parents of the slots we free, BEFORE
                     // clearing the link.
                     const freedSlots = await tx
-                        .select({ codeId: digitalCodeSlots.digitalCodeId })
+                        .select({ codeId: digitalCodeSlots.digitalCodeId, lbSlotId: digitalCodeSlots.lbSlotId })
                         .from(digitalCodeSlots)
                         .where(eq(digitalCodeSlots.orderItemId, item.id));
                     await tx.update(digitalCodes).set({ status, orderItemId: null }).where(eq(digitalCodes.orderItemId, item.id));
                     await tx.update(digitalCodeSlots).set({ status, orderItemId: null, activationUrl: null }).where(eq(digitalCodeSlots.orderItemId, item.id));
                     if (returnToStock) {
+                        // A slot carrying an lbSlotId was LoadBrain-allocated; the local
+                        // return-to-stock above must also free it in LoadBrain's pool.
+                        const lbCount = freedSlots.filter((s) => s.lbSlotId != null).length;
+                        if (lbCount > 0) lbReleaseItems.push({ orderItemId: item.id, lbSlotCount: lbCount });
                         // Shared accounts (Netflix…) are marked VENDU only when ALL
                         // their slots are sold and carry NO orderItemId, so the update
                         // above (keyed on orderItemId) never touches them. Freeing one
@@ -502,6 +520,12 @@ export const refundFullOrder = withAuth(
                 await reverseSupplierDebits(tx, { orderId: id }, "Remboursement Commande Totale");
             });
 
+            // Best-effort LoadBrain release (idempotent, never blocks the refund).
+            if (lbReleaseItems.length > 0) {
+                const { releaseRefundedLbSlots } = await import("@/lib/loadbrain-netflix-release");
+                await releaseRefundedLbSlots(lbReleaseItems, { reason: "refund-full" });
+            }
+
             revalidatePath("/admin/caisse");
             return { success: true };
         } catch (error) {
@@ -517,6 +541,8 @@ export const cancelOrderAction = withAuth(
     },
     async ({ orderId }) => {
         try {
+            // Captured inside the tx, released to LoadBrain AFTER commit (best-effort).
+            let lbReleaseItems: { orderItemId: number; lbSlotCount: number }[] = [];
             await db.transaction(async (tx) => {
                 // Lock the order row first so a concurrent cancel/pay serializes and
                 // the read below reflects the committed status.
@@ -560,12 +586,21 @@ export const cancelOrderAction = withAuth(
                         // transaction, Promise.all les exécuterait sur la même connexion.
                         await tx.update(digitalCodeSlots).set({ status: DigitalCodeSlotStatus.DISPONIBLE, orderItemId: null }).where(inArray(digitalCodeSlots.id, slotIds));
                         await tx.update(digitalCodes).set({ status: DigitalCodeStatus.DISPONIBLE, isDebitCompleted: false }).where(inArray(digitalCodes.id, parentIds));
+                        // LoadBrain-allocated slots (lbSlotId) must also be freed upstream.
+                        const lbCount = item.slots.filter((s: any) => s.lbSlotId != null).length;
+                        if (lbCount > 0) lbReleaseItems.push({ orderItemId: item.id, lbSlotCount: lbCount });
                     }
                 }
 
                 // --- 🔄 BALANCE REVERSAL LOGIC ---
                 await reverseSupplierDebits(tx, { orderId: orderId }, "Annulation Commande");
             });
+
+            // Best-effort LoadBrain release (idempotent, never blocks the cancel).
+            if (lbReleaseItems.length > 0) {
+                const { releaseRefundedLbSlots } = await import("@/lib/loadbrain-netflix-release");
+                await releaseRefundedLbSlots(lbReleaseItems, { reason: "cancel" });
+            }
 
             revalidatePath("/admin/caisse");
             return { success: true };
@@ -686,7 +721,9 @@ export const approveReturn = withAuth(
     },
     async ({ orderId }, user) => {
         try {
-            return await db.transaction(async (tx) => {
+            // Captured inside the tx, released to LoadBrain AFTER commit (best-effort).
+            let lbReleaseItems: { orderItemId: number; lbSlotCount: number }[] = [];
+            const result = await db.transaction(async (tx) => {
                 // Lock the order row first so two concurrent approvals serialize: the
                 // second reads the APPROUVE returnRequest the first set and is rejected
                 // by the guard below (no double refund).
@@ -756,14 +793,28 @@ export const approveReturn = withAuth(
                 // 5. Restore VENDU digital codes / slots → DISPONIBLE
                 const itemIds = (order.items || []).map((i: any) => i.id);
                 if (itemIds.length > 0) {
-                    // Capture shared-account parents of the slots we're freeing.
+                    // Capture shared-account parents of the slots we're freeing,
+                    // plus their orderItemId/lbSlotId so LoadBrain-allocated slots
+                    // can be released upstream after commit.
                     const freedSlots = await tx
-                        .select({ codeId: digitalCodeSlots.digitalCodeId })
+                        .select({
+                            orderItemId: digitalCodeSlots.orderItemId,
+                            codeId: digitalCodeSlots.digitalCodeId,
+                            lbSlotId: digitalCodeSlots.lbSlotId,
+                        })
                         .from(digitalCodeSlots)
                         .where(and(
                             inArray(digitalCodeSlots.orderItemId, itemIds),
                             eq(digitalCodeSlots.status, DigitalCodeSlotStatus.VENDU)
                         ));
+                    // Group LB-allocated freed slots per order item (lbSlotId present).
+                    const lbByItem = new Map<number, number>();
+                    for (const s of freedSlots) {
+                        if (s.lbSlotId != null && s.orderItemId != null) {
+                            lbByItem.set(s.orderItemId, (lbByItem.get(s.orderItemId) ?? 0) + 1);
+                        }
+                    }
+                    lbReleaseItems = Array.from(lbByItem, ([orderItemId, lbSlotCount]) => ({ orderItemId, lbSlotCount }));
                     await tx.update(digitalCodes)
                         .set({ status: DigitalCodeStatus.DISPONIBLE, orderItemId: null })
                         .where(and(
@@ -827,6 +878,14 @@ export const approveReturn = withAuth(
                 cacheDel(...CACHE_KEYS.DASHBOARD_ALL, CACHE_KEYS.KIOSK_CATALOGUE).catch(() => { });
                 return { success: true };
             });
+
+            // Best-effort LoadBrain release (idempotent, never blocks the refund).
+            if (result?.success && lbReleaseItems.length > 0) {
+                const { releaseRefundedLbSlots } = await import("@/lib/loadbrain-netflix-release");
+                await releaseRefundedLbSlots(lbReleaseItems, { reason: "return-approved" });
+            }
+
+            return result;
         } catch (error) {
             logger.error((error as Error).message, { userId: user.id, action: "APPROVE_RETURN_FAILED", metadata: { orderId } });
             return { success: false, error: toClientError(error) };

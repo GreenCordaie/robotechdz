@@ -56,7 +56,9 @@ export const getCachedSettings = cache(async () => {
 export async function getAuthenticatedUser() {
     try {
         const session = await getSession();
+        const dbg = process.env.NODE_ENV !== "production";
         if (!session || !session.userId) {
+            if (dbg) console.warn("[auth] getAuthenticatedUser: no valid session/userId");
             return null;
         }
 
@@ -74,15 +76,20 @@ export async function getAuthenticatedUser() {
             .where(eq(users.id, session.userId))
             .limit(1);
 
-        if (!user) return null;
+        if (!user) {
+            if (dbg) console.warn(`[auth] getAuthenticatedUser: user not found id=${session.userId}`);
+            return null;
+        }
 
         // JWT Revocation check: compare version in token with version in DB
         if (session.tokenVersion !== undefined && user.tokenVersion !== session.tokenVersion) {
+            if (dbg) console.warn(`[auth] getAuthenticatedUser: tokenVersion mismatch session=${session.tokenVersion} db=${user.tokenVersion}`);
             return null;
         }
 
         return user;
     } catch (error) {
+        if (process.env.NODE_ENV !== "production") console.warn("[auth] getAuthenticatedUser threw:", error instanceof Error ? error.message : String(error));
         return null;
     }
 }

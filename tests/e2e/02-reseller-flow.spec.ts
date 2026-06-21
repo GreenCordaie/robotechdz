@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { injectResellerSession } from "./_reseller-auth";
 
 /**
  * Flow reseller complet : login → wallet → shop → cart → modal checkout
@@ -16,21 +17,9 @@ import { test, expect } from "@playwright/test";
 
 test.describe("Reseller end-to-end flow", () => {
     test.beforeEach(async ({ page }) => {
-        // Login reseller (PIN-based)
-        await page.goto("/reseller/login");
-
-        // Le form attend email + PIN — sélecteurs robustes
-        const emailInput = page.locator("input[type='email'], input[name='email']").first();
-        const pinInput = page.locator("input[type='password'], input[name='pin'], input[name='pinCode']").first();
-
-        await emailInput.fill("reseller@e2e.test");
-        await pinInput.fill("1234");
-
-        // Bouton submit du form (texte = "Accéder au portail")
-        await page.locator("form button[type='submit']").first().click();
-
-        // Attendre la redirection vers dashboard ou wallet
-        await page.waitForURL(/\/reseller\/(dashboard|wallet|shop|orders|support)/, { timeout: 15_000 });
+        // Deterministic reseller session — the form-login Set-Cookie is flaky in
+        // CI/Playwright (Next 14.2 server-action cookie). See ./_reseller-auth.
+        await injectResellerSession(page.context());
     });
 
     test("Wallet : badge tier BRONZE + CTA Recharger ouvre modal instructions", async ({ page }) => {

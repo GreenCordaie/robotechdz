@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import postgres from "postgres";
+import { injectResellerSession } from "./_reseller-auth";
 
 /**
  * Verifies the reseller "Mes Commandes" page shows a game top-up order with a
@@ -14,14 +15,8 @@ const TITLE = "Freefire Global · 110";
 const PLAYER = "2040376982";
 
 async function loginAsReseller(page: import("@playwright/test").Page) {
-    await page.goto("/reseller/login");
-    await page.locator("input[type='email'], input[name='email']").first().fill("reseller@e2e.test");
-    await page
-        .locator("input[type='password'], input[name='pin'], input[name='pinCode']")
-        .first()
-        .fill("1234");
-    await page.locator("form button[type='submit']").first().click();
-    await page.waitForURL(/\/reseller\/(dashboard|wallet|shop|orders|support)/, { timeout: 15_000 });
+    // Deterministic reseller session (form-login Set-Cookie flaky in CI). See ./_reseller-auth.
+    await injectResellerSession(page.context());
 }
 
 test("reseller game order shows package title + player and reveals code", async ({ page }) => {

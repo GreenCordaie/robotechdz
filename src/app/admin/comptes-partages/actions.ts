@@ -2,7 +2,7 @@
 
 import { db } from "@/db";
 import { digitalCodes, productVariants, products, digitalCodeSlots, auditLogs } from "@/db/schema";
-import { eq, and, sql, desc, exists } from "drizzle-orm";
+import { eq, and, sql, desc, exists, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { withAuth, logSecurityAction } from "@/lib/security";
 import { z } from "zod";
@@ -346,6 +346,27 @@ export const deleteSharedAccount = withAuth(
 
             await db.delete(digitalCodes).where(eq(digitalCodes.id, id));
 
+            // P3-3: proxy the deletion to LoadBrain (system of record). Best-effort,
+            // gated (flag + siteId), post-delete — a LoadBrain hiccup must NOT fail
+            // the admin delete (local row is already gone; reconcile/retry aligns).
+            // The local "no sold slots" guard above mirrors LoadBrain's own
+            // has_active_slots refusal, so a 409 here is unexpected but surfaced.
+            if (account.lbAccountId) {
+                try {
+                    const { isLbNetflixAuthoritative } = await import("@/lib/loadbrain-netflix-flag");
+                    const siteId = process.env.LOADBRAIN_SITE_ID;
+                    if (siteId && (await isLbNetflixAuthoritative())) {
+                        const { deleteAccountRemote } = await import("@/services/loadbrain-netflix-admin.client");
+                        const r = await deleteAccountRemote({ siteId, lbAccountId: account.lbAccountId });
+                        if (!r.ok) {
+                            console.warn(`[admin-delete] LoadBrain account delete not ok (${r.reason}) for lb_account ${account.lbAccountId} (non-blocking)`);
+                        }
+                    }
+                } catch (err) {
+                    console.error("[admin-delete] LoadBrain account delete proxy failed (non-blocking):", err);
+                }
+            }
+
             revalidatePath("/admin/comptes-partages");
             return { success: true };
         } catch (error) {
@@ -421,6 +442,37 @@ export const updateSharedAccount = withAuth(
                     }
                 }
             });
+
+            // P3-3: mirror the device-cap edit to LoadBrain's authoritative
+            // max_uses so the centralized counter (P3-1/P3-2) matches what the
+            // operator set. Best-effort, gated, runs AFTER commit — a LoadBrain
+            // hiccup must never fail the admin save (the reconciler / a later
+            // edit re-aligns). Only slots that were LoadBrain-allocated (lbSlotId)
+            // and whose maxDevices was actually provided are proxied.
+            const capEdited = slotsData?.filter((s) => s.maxDevices !== undefined) ?? [];
+            if (capEdited.length > 0) {
+                try {
+                    const { isLbNetflixAuthoritative } = await import("@/lib/loadbrain-netflix-flag");
+                    const siteId = process.env.LOADBRAIN_SITE_ID;
+                    if (siteId && (await isLbNetflixAuthoritative())) {
+                        const { setSlotQuotaRemote } = await import("@/services/loadbrain-netflix-admin.client");
+                        const rows = await db
+                            .select({ id: digitalCodeSlots.id, lbSlotId: digitalCodeSlots.lbSlotId })
+                            .from(digitalCodeSlots)
+                            .where(inArray(digitalCodeSlots.id, capEdited.map((s) => s.id)));
+                        const lbById = new Map(
+                            rows.filter((r) => r.lbSlotId).map((r) => [r.id, r.lbSlotId as string]),
+                        );
+                        for (const s of capEdited) {
+                            const lbSlotId = lbById.get(s.id);
+                            if (!lbSlotId) continue;
+                            await setSlotQuotaRemote({ siteId, lbSlotId, maxUses: s.maxDevices ?? null });
+                        }
+                    }
+                } catch (err) {
+                    console.error("[admin-update] LoadBrain quota proxy failed (non-blocking):", err);
+                }
+            }
 
             revalidatePath("/admin/comptes-partages");
             return { success: true };

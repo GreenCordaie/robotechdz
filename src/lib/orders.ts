@@ -15,6 +15,10 @@ import { checkStockAndAlert } from "@/lib/stock-alerts";
 import { logSecurityAction } from "@/lib/security";
 import { logger } from "@/lib/logger";
 import { OrderStatus, DigitalCodeStatus, DigitalCodeSlotStatus, SupplierTransactionType } from "@/lib/constants";
+// P2-2 LoadBrain modules are dynamically imported inside allocateOrderStock
+// (see the gate below). Lazy import keeps this module's load side-effect-free:
+// `@/lib/loadbrain-netflix-flag` pulls in SystemQueries whose `cache()` static
+// initializer must not run merely because another code path imports `orders.ts`.
 
 type Transaction = any; // Drizzle transaction type depends on client, using any for broad compatibility
 
@@ -40,6 +44,37 @@ export async function allocateOrderStock(
 
     let hasManualDelivery = false;
 
+    // P2-2: when LB_NETFLIX_AUTHORITATIVE is ON, shared-streaming slot allocation
+    // is delegated to LoadBrain (system-of-record). Read the gate ONCE per call
+    // (not per item) so the decision is stable across the items loop. Default OFF
+    // → the historical local-pick path below runs verbatim (byte-identical).
+    // Dynamic import (see header): only load the flag module when this function
+    // actually runs, never at `orders.ts` import time.
+    const { isLbNetflixAuthoritative } = await import("@/lib/loadbrain-netflix-flag");
+    const lbAuthoritative = await isLbNetflixAuthoritative();
+
+    // Resolve the order's real customer (phone/name/email) ONCE, only needed when
+    // the LB gate is on. Threaded into the LoadBrain orchestrator so the magic-link
+    // recipient is the actual buyer instead of the orchestrator's fake placeholder.
+    // `orders.customerPhone` (denormalized) wins; otherwise fall back to the linked
+    // client's `telephone`/`nomComplet`. clients has no email column → email stays
+    // undefined. If the order can't be resolved, `customer` is null and the
+    // orchestrator uses its placeholder phone.
+    let orderCustomer: { phone?: string | null; name?: string | null; email?: string | null } | null = null;
+    if (lbAuthoritative) {
+        const order = await tx.query.orders.findFirst({
+            where: (o: any, { eq }: any) => eq(o.id, orderId),
+            with: { client: true },
+        });
+        if (order) {
+            orderCustomer = {
+                phone: order.customerPhone ?? order.client?.telephone ?? null,
+                name: order.client?.nomComplet ?? null,
+                email: null,
+            };
+        }
+    }
+
     // Fetch dynamic exchange rate
     const settings = await tx.query.shopSettings.findFirst();
     const EXCHANGE_RATE = settings?.usdExchangeRate ? parseFloat(settings.usdExchangeRate) : 245;
@@ -56,6 +91,73 @@ export async function allocateOrderStock(
         // 1. Digital Stock Allocation
         if (item.variant?.product?.isManualDelivery === false) {
             if (item.variant.isSharing) {
+                // P2-2 GATE — LoadBrain as sale-time allocation authority.
+                // When the flag is OFF this block is skipped entirely and the
+                // EXISTING local-pick path below runs byte-identical to before.
+                if (lbAuthoritative) {
+                    const { allocateSharingItemViaLoadBrain, LbAllocError } = await import("@/lib/loadbrain-netflix-allocation");
+                    try {
+                        const { slots } = await allocateSharingItemViaLoadBrain(
+                            tx,
+                            {
+                                id: item.id,
+                                variantId: item.variantId,
+                                quantity: item.quantity,
+                                customer: orderCustomer ?? undefined,
+                            },
+                            {},
+                        );
+                        // The orchestrator already marked the local mirror slots
+                        // VENDU + lbSlotId (and they carry their imported
+                        // activationUrl/token) inside this tx. Mark parent
+                        // digital_codes VENDU when fully consumed — same
+                        // bookkeeping the local path does below.
+                        const parentSlotRows = await tx
+                            .select({ digitalCodeId: digitalCodeSlots.digitalCodeId })
+                            .from(digitalCodeSlots)
+                            .where(inArray(digitalCodeSlots.id, slots.map((s) => s.localSlotId)));
+                        const lbParentCodeIds = Array.from(
+                            new Set(parentSlotRows.map((r: any) => r.digitalCodeId)),
+                        );
+                        for (const pid of lbParentCodeIds) {
+                            const remainingSlots = await tx.query.digitalCodeSlots.findMany({
+                                where: (dcs: any, { and, eq }: any) => and(eq(dcs.digitalCodeId, pid), eq(dcs.status, "DISPONIBLE")),
+                            });
+                            if (remainingSlots.length === 0) {
+                                await tx.update(digitalCodes).set({ status: DigitalCodeStatus.VENDU }).where(eq(digitalCodes.id, pid as number));
+                            }
+                        }
+                        continue; // item fully allocated via LoadBrain
+                    } catch (err: any) {
+                        if (err instanceof LbAllocError && err.code === "NO_LB_ACCOUNT") {
+                            // P3-4 (pure replica): once authoritative mode is on, a
+                            // sharing variant with no LoadBrain account is an
+                            // un-migrated anomaly. Default = manual delivery (force
+                            // migration), NOT a silent local pick. The dormant local
+                            // path below is reachable ONLY via the explicit emergency
+                            // escape hatch LB_NETFLIX_EMERGENCY_LOCAL=true (e.g. a
+                            // prolonged LoadBrain outage). A local pick here can't
+                            // desync (the variant isn't centralized), but we keep the
+                            // boutique a pure replica unless an operator opts out.
+                            if (process.env.LB_NETFLIX_EMERGENCY_LOCAL === "true") {
+                                console.warn(`[stock-alloc][LB] item ${item.id} NO_LB_ACCOUNT → EMERGENCY local pick (LB_NETFLIX_EMERGENCY_LOCAL)`);
+                                // fall through to the dormant local code below
+                            } else {
+                                console.warn(`[stock-alloc][LB] item ${item.id} NO_LB_ACCOUNT → manual delivery (pure-replica; set LB_NETFLIX_EMERGENCY_LOCAL=true to local-pick)`);
+                                hasManualDelivery = true;
+                                continue;
+                            }
+                        } else {
+                            // OUT_OF_STOCK | LB_UNAVAILABLE | MIRROR_RESOLVE_FAILED:
+                            // DO NOT local-pick (would double-sell a centralized
+                            // slot). Degrade like the existing partial-stock path.
+                            console.error(`[stock-alloc][LB] item ${item.id} ${err?.code ?? "ERROR"} → manual delivery`, err?.message);
+                            hasManualDelivery = true;
+                            continue;
+                        }
+                    }
+                }
+
                 const availableSlots = await tx.select({
                     id: digitalCodeSlots.id,
                     digitalCodeId: digitalCodeSlots.digitalCodeId,
