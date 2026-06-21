@@ -46,11 +46,15 @@ export async function deleteSession() {
 
 export async function getSession() {
     const session = cookies().get("session")?.value;
-    if (!session) return null;
+    if (!session) {
+        if (process.env.NODE_ENV !== "production") console.warn("[auth] getSession: no session cookie present");
+        return null;
+    }
     try {
         const payload = await decrypt(session);
         return payload;
-    } catch {
+    } catch (e) {
+        if (process.env.NODE_ENV !== "production") console.warn("[auth] getSession: decrypt failed:", e instanceof Error ? e.message : String(e));
         return null;
     }
 }
