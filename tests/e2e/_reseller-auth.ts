@@ -54,6 +54,9 @@ export async function injectResellerSession(context: BrowserContext): Promise<vo
         .setExpirationTime("12h")
         .sign(key);
 
+    // Playwright: provide `url` OR `domain`+`path`, not both. With `url` the
+    // domain (localhost) and path (/) are derived — passing `path` too is rejected
+    // ("Cookie should have either url or path").
     await context.addCookies([
         {
             name: "session",
@@ -61,7 +64,6 @@ export async function injectResellerSession(context: BrowserContext): Promise<vo
             url: "http://localhost:4555",
             httpOnly: true,
             sameSite: "Lax",
-            path: "/",
         },
     ]);
 }
