@@ -4,6 +4,7 @@ import { db } from "@/db";
 import { users } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { createSession } from "@/lib/auth";
+import { redirect } from "next/navigation";
 import bcrypt from "bcryptjs";
 import { logSecurityAction } from "@/lib/security";
 import { verify } from "otplib";
@@ -68,6 +69,7 @@ export async function loginResellerAction(email: string, pin: string, honeypot?:
         // 0. Rate Limit Check
         const limit = await checkRateLimit(email);
         if (limit.isBlocked) {
+            if (process.env.NODE_ENV !== "production") console.warn(`[reseller-login] RATE-LIMITED email=${email} (no session created)`);
             const minutes = limit.blockedUntil
                 ? Math.ceil((limit.blockedUntil.getTime() - Date.now()) / 60000)
                 : 15;
@@ -113,12 +115,14 @@ export async function loginResellerAction(email: string, pin: string, honeypot?:
         // 2FA CHECK — signed step-2 ticket bound to this user, not a raw userId
         // the client could swap (verified in verifyResellerMfaAction).
         if (user.twoFactorSecret) {
+            if (process.env.NODE_ENV !== "production") console.warn(`[reseller-login] MFA-REQUIRED userId=${user.id} (no session yet)`);
             return {
                 success: true,
                 mfaRequired: true,
                 mfaTicket: await issueMfaTicket(user.id, user.role)
             };
         }
+        if (process.env.NODE_ENV !== "production") console.warn(`[reseller-login] SUCCESS userId=${user.id} — creating session + redirect`);
 
         // Create secure session
         await createSession({
@@ -137,12 +141,19 @@ export async function loginResellerAction(email: string, pin: string, honeypot?:
 
         // Anti-brute-force delay
         await new Promise(resolve => setTimeout(resolve, 500));
-
-        return { success: true };
+        // success → fall through to the server-side redirect below
     } catch (error) {
         console.error("Login error:", error);
         return { success: false, error: "Une erreur est survenue lors de la connexion" };
     }
+
+    // Server-side redirect AFTER the try/catch: the cookie set by createSession and
+    // the navigation ship in ONE response, so the browser reliably applies the
+    // session cookie before following the redirect (fixes the intermittent
+    // "no session cookie" seen with the client-side router.push under CI/Playwright).
+    // redirect() throws NEXT_REDIRECT — it MUST stay outside the try so the catch
+    // above doesn't swallow it.
+    redirect("/reseller/dashboard");
 }
 
 export async function verifyResellerMfaAction(ticket: string, code: string) {

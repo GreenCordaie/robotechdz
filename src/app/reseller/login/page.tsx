@@ -26,18 +26,27 @@ export default function ResellerLoginPage() {
 
         try {
             const res = await loginResellerAction(email, pin, websiteUrl, "");
-            if (res.success) {
+            // Non-MFA success now redirects server-side (reliable session cookie),
+            // so `res` is undefined and the framework performs the navigation.
+            // MFA + error paths still return a result object.
+            if (res?.success) {
                 if (res.mfaRequired) {
                     setMfaRequired(true);
                     setMfaTicket(res.mfaTicket!);
                 } else {
+                    // Fallback if the server didn't redirect for some reason.
                     toast.success("Bienvenue sur votre portail partenaire");
                     router.push("/reseller/dashboard");
                 }
-            } else {
+            } else if (res) {
                 toast.error(res.error || "Identifiants invalides");
             }
-        } catch (error) {
+        } catch (error: any) {
+            // A server-side redirect() can surface here as a NEXT_REDIRECT "error"
+            // in some Next versions — that's success, let the framework navigate.
+            if (error?.digest && String(error.digest).startsWith("NEXT_REDIRECT")) {
+                throw error;
+            }
             toast.error("Erreur de connexion au serveur");
         } finally {
             setIsLoading(false);
