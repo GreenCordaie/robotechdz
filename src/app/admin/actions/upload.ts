@@ -43,14 +43,23 @@ export const uploadImage = withAuth(
             const { uploadToR2, isR2Configured } = await import("@/lib/r2");
 
             if (isR2Configured) {
-                const publicUrl = await uploadToR2(buffer, uniqueName, file.type);
-                return {
-                    success: true,
-                    url: publicUrl
-                };
+                try {
+                    const publicUrl = await uploadToR2(buffer, uniqueName, file.type);
+                    return {
+                        success: true,
+                        url: publicUrl
+                    };
+                } catch (r2err) {
+                    // R2 unreachable / misconfigured (e.g. TLS handshake_failure to the
+                    // S3 endpoint, bad account id, egress block). Don't fail the upload —
+                    // fall through to the local uploads volume (now persisted via
+                    // docker-compose), so admins can still add images while R2 is fixed.
+                    console.error("R2 upload failed, falling back to local volume:", r2err);
+                }
             }
 
-            // Fallback for local development if R2 is not configured
+            // Local storage: dev, or resilient fallback when R2 is down.
+            // Persisted across redeploys by the uploads_data Docker volume.
             const uploadsDir = join(process.cwd(), "public", "uploads");
             await mkdir(uploadsDir, { recursive: true });
             const finalPath = join(uploadsDir, uniqueName);
