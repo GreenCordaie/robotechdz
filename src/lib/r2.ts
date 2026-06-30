@@ -16,6 +16,12 @@ const s3Client = new S3Client({
         accessKeyId: r2Config.accessKeyId,
         secretAccessKey: r2Config.secretAccessKey,
     },
+    // Cloudflare R2 rejects the CRC32 integrity checksums that @aws-sdk/client-s3
+    // (>= 3.729) adds to PutObject by default — uploads fail with a checksum/
+    // "not implemented" error. Opt out so a checksum is only sent when an
+    // operation strictly requires one.
+    requestChecksumCalculation: "WHEN_REQUIRED",
+    responseChecksumValidation: "WHEN_REQUIRED",
 });
 
 export async function uploadToR2(buffer: Buffer, fileName: string, contentType: string) {

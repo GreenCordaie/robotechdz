@@ -67,7 +67,8 @@ export const uploadImage = withAuth(
             };
         } catch (error) {
             console.error("Upload error:", error);
-            return { success: false, error: "Erreur lors du transfert du fichier." };
+            const reason = error instanceof Error ? error.message : "raison inconnue";
+            return { success: false, error: `Erreur lors du transfert du fichier : ${reason}` };
         }
     }
 );
