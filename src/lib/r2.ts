@@ -6,7 +6,14 @@ const r2Config = {
     secretAccessKey: process.env.R2_SECRET_ACCESS_KEY || "",
     bucketName: process.env.R2_BUCKET_NAME || "",
     publicUrl: process.env.R2_PUBLIC_URL || "", // e.g., https://pub-xyz.r2.dev
-    endpoint: process.env.R2_ENDPOINT || "", // e.g., https://<accountid>.r2.cloudflarestorage.com
+    // The prod .env.production R2_ENDPOINT had an account-id transcription typo
+    // (a->e at two positions) -> that host doesn't exist -> Cloudflare rejected the
+    // TLS handshake (SSL alert 40), so R2 uploads never worked. Self-healing: trust
+    // R2_ENDPOINT only when it carries the verified-correct account id, otherwise
+    // pin it. (A Cloudflare account id is not a secret — it's in every S3 URL.)
+    endpoint: /6615a75d9f647ae32651a89ec6cb7361/.test(process.env.R2_ENDPOINT || "")
+        ? (process.env.R2_ENDPOINT as string)
+        : "https://6615a75d9f647ae32651a89ec6cb7361.r2.cloudflarestorage.com",
 };
 
 const s3Client = new S3Client({
