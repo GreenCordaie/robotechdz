@@ -32,6 +32,11 @@ RUN adduser --system --uid 1001 nextjs
 COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+# User-uploaded product images persist on a Docker volume mounted at
+# /app/public/uploads (see docker-compose.prod.yml). Pre-create + chown so the
+# non-root runtime user can write; otherwise uploads fail with EACCES — and
+# without the volume they vanish on every redeploy (the bug this fixes).
+RUN mkdir -p /app/public/uploads && chown -R nextjs:nodejs /app/public/uploads
 USER nextjs
 EXPOSE 3000
 ENV PORT 3000

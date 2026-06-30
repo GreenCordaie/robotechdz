@@ -16,6 +16,10 @@ services:
       - "127.0.0.1:3000:3000"
     env_file:
       - .env.production
+    volumes:
+      # Persist user-uploaded product images across redeploys. Without this the
+      # files live only on the container's ephemeral layer and 404 after rebuild.
+      - uploads_data:/app/public/uploads
     environment:
       - NODE_ENV=production
       - DATABASE_URL=postgresql://flexbox_user:${DB_PASSWORD}@db:5432/flexbox
@@ -156,3 +160,4 @@ volumes:
   waha_data:
   redis_data:
   mongo_data:
+  uploads_data:
