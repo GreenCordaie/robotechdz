@@ -12,6 +12,12 @@ const r2Config = {
 const s3Client = new S3Client({
     region: "auto",
     endpoint: r2Config.endpoint,
+    // R2's TLS cert is a single-level wildcard (*.r2.cloudflarestorage.com) which
+    // does NOT cover the bucket-as-subdomain host the SDK uses in virtual-hosted
+    // mode (<bucket>.<account>.r2.cloudflarestorage.com, two levels deep) — that
+    // host triggers a TLS "handshake_failure" (SSL alert 40). Path-style keeps the
+    // bucket in the URL path so the SNI matches the cert.
+    forcePathStyle: true,
     credentials: {
         accessKeyId: r2Config.accessKeyId,
         secretAccessKey: r2Config.secretAccessKey,
