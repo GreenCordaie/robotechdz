@@ -34,6 +34,10 @@ jobs:
 
       - name: SSH deploy
         uses: appleboy/ssh-action@v1.0.3
+        env:
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
@@ -41,9 +45,26 @@ jobs:
           port: ${{ secrets.VPS_PORT || 22 }}
           command_timeout: 20m
           script_stop: true
+          envs: R2_ENDPOINT,R2_ACCESS_KEY_ID,R2_SECRET_ACCESS_KEY
           script: |
             set -euo pipefail
             cd /var/www/100-pc-ia
+            # Sync R2 object-storage config from CI secrets into .env.production
+            # (idempotent upsert). Credentials live in GitHub Secrets, not a
+            # hand-edited file — the previous hand-edit carried an account-id typo
+            # that broke R2 uploads for weeks.
+            upsert_env() {
+              key="$1"; val="$2"
+              if [ -z "$val" ]; then return 0; fi
+              if grep -q "^$key=" .env.production 2>/dev/null; then
+                sed -i "s|^$key=.*|$key=$val|" .env.production
+              else
+                echo "$key=$val" >> .env.production
+              fi
+            }
+            upsert_env R2_ENDPOINT "$R2_ENDPOINT"
+            upsert_env R2_ACCESS_KEY_ID "$R2_ACCESS_KEY_ID"
+            upsert_env R2_SECRET_ACCESS_KEY "$R2_SECRET_ACCESS_KEY"
             # Bootstrap: pull only deploy.sh first so we can use new subcommands.
             # Force an explicit branch refspec + the exact target ref — a plain
             # `git fetch origin --tags` was only updating tags (the VPS clone's
