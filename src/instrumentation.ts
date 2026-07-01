@@ -73,9 +73,11 @@ export async function register() {
             globalAny.__iptvReconcilerScheduled = true;
             const runIptvReconcile = async () => {
                 try {
-                    const { reconcilePendingIptvOrders, markExpiredIptvOrders } = await import(
-                        './services/iptv-reseller-reconciler.service'
-                    );
+                    const {
+                        reconcilePendingIptvOrders,
+                        markExpiredIptvOrders,
+                        failStalePendingIptvOrders,
+                    } = await import('./services/iptv-reseller-reconciler.service');
                     const r = await reconcilePendingIptvOrders({ limit: 100 });
                     if (r.delivered > 0 || r.refunded > 0 || r.errors.length > 0) {
                         console.log('[IptvReconciler]', JSON.stringify(r));
@@ -85,6 +87,13 @@ export async function register() {
                     const e = await markExpiredIptvOrders({ limit: 500 });
                     if (e.expired > 0) {
                         console.log('[IptvExpiry]', JSON.stringify(e));
+                    }
+                    // Money-safety: fail + refund lines that stayed PENDING_LOADBRAIN
+                    // past the grace window (upstream task stuck non-terminal, e.g.
+                    // panelking365 session/captcha failure that never turns `failed`).
+                    const s = await failStalePendingIptvOrders({ limit: 100 });
+                    if (s.failed > 0 || s.errors.length > 0) {
+                        console.log('[IptvStalePendingFail]', JSON.stringify(s));
                     }
                 } catch (e: any) {
                     console.error('[IptvReconciler] error:', e?.message);

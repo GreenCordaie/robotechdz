@@ -14,6 +14,7 @@ import { db as defaultDb } from "@/db";
 import { resellerIptvOrders } from "@/db/schema";
 import { and, eq, isNotNull, or, sql } from "drizzle-orm";
 import { lbV2 } from "@/lib/loadbrain-v2";
+import { sanitizeProviderError } from "@/lib/sanitize-provider-error";
 import {
     markIptvOrderDelivered,
     markIptvOrderFailed,
@@ -249,10 +250,27 @@ async function reconcileOne(
         return "refunded";
     }
 
-    // Still in-flight (queued/processing/pending). Bump lastSyncedAt.
+    // Still in-flight (queued/processing/pending). Some providers keep a task
+    // `queued` while reporting a persistent, fatal error — panelking365 (King365)
+    // does this when the panel session expires and the captcha re-login fails
+    // ("All captcha providers failed"). The status never turns terminal, so we
+    // surface the reason to `last_error` for the reseller / ops instead of a
+    // silent "EN ATTENTE". The stale-pending sweeper (failStalePendingIptvOrders)
+    // is what eventually refunds these.
+    const upstreamErr =
+        typeof inner.error === "string" && inner.error.trim().length > 0
+            ? inner.error
+            : typeof obj.error === "string" && obj.error.trim().length > 0
+              ? obj.error
+              : null;
+    const patch: Record<string, unknown> = {
+        lastSyncedAt: new Date(),
+        updatedAt: new Date(),
+    };
+    if (upstreamErr) patch.lastError = sanitizeProviderError(upstreamErr);
     await db
         .update(resellerIptvOrders)
-        .set({ lastSyncedAt: new Date(), updatedAt: new Date() })
+        .set(patch)
         .where(eq(resellerIptvOrders.id, row.id));
     return "pending";
 }
@@ -311,6 +329,76 @@ export async function markExpiredIptvOrders(
         .where(sql`${resellerIptvOrders.id} IN ${ids}`);
 
     return { expired: ids.length };
+}
+
+/**
+ * Money-safety net for provisioning that never turns terminal upstream.
+ *
+ * Proven prod failure (panelking365 / King365): LoadBrain keeps the task `queued`
+ * indefinitely when the panel session expires and the captcha re-login fails, so
+ * `reconcileOne` never sees `completed` or `failed`. Without this sweep the mirror
+ * row stays PENDING_LOADBRAIN forever — wallet debited, no refund — and after
+ * MAX_SCAN_AGE_DAYS the live reconciler stops scanning it entirely.
+ *
+ * This fails + refunds PENDING_LOADBRAIN rows older than `graceHours` through the
+ * canonical, row-locked {@link markIptvOrderFailed} path. Refunding is safe by
+ * construction: the state machine guarantees PENDING_LOADBRAIN was NEVER
+ * delivered (only `markIptvOrderDelivered` leaves that state toward ACTIVE), so a
+ * line still PENDING well past the grace window is a genuine non-delivery.
+ * Idempotent: markIptvOrderFailed no-ops on already-terminal rows.
+ */
+export type IptvStaleFailResult = {
+    failed: number;
+    refunded: number;
+    errors: Array<{ id: number; reason: string }>;
+};
+
+/** A line PENDING this long past checkout will not be delivered by that task. */
+const STALE_PENDING_HOURS = 24;
+
+export async function failStalePendingIptvOrders(
+    options: { dbInstance?: DbLike; graceHours?: number; limit?: number } = {},
+): Promise<IptvStaleFailResult> {
+    const db = options.dbInstance ?? defaultDb;
+    const graceHours = Math.max(1, Math.floor(options.graceHours ?? STALE_PENDING_HOURS));
+    const limit = Math.max(1, Math.min(options.limit ?? 100, 1_000));
+    const result: IptvStaleFailResult = { failed: 0, refunded: 0, errors: [] };
+
+    // No upper age bound on purpose: this also recovers lines already stranded
+    // beyond the live reconciler's MAX_SCAN_AGE_DAYS window. No upstream call is
+    // made (an ancient task id may 404) — PENDING_LOADBRAIN alone authorises the
+    // refund.
+    const candidates = await db
+        .select()
+        .from(resellerIptvOrders)
+        .where(
+            and(
+                eq(resellerIptvOrders.status, "PENDING_LOADBRAIN"),
+                sql`${resellerIptvOrders.createdAt} < NOW() - (${graceHours}::int * INTERVAL '1 hour')`,
+            ),
+        )
+        .limit(limit);
+
+    for (const row of candidates) {
+        try {
+            const reason = row.lastError
+                ? `Provisioning bloqué au-delà de ${graceHours}h — ${row.lastError}`
+                : `Provisioning non complété au-delà de ${graceHours}h (fournisseur indisponible)`;
+            const outcome = await markIptvOrderFailed(db, {
+                id: row.id,
+                resellerId: row.resellerId,
+                reason,
+            });
+            if (outcome.updated) result.failed++;
+            if (outcome.refunded) result.refunded++;
+        } catch (err) {
+            result.errors.push({
+                id: row.id,
+                reason: err instanceof Error ? err.message : String(err),
+            });
+        }
+    }
+    return result;
 }
 
 export async function reconcileIptvOrderById(
