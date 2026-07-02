@@ -413,38 +413,12 @@ export const getResellerTransactionsAction = withAuth(
     }
 );
 
-/**
- * Best-effort WhatsApp delivery enqueue for reseller checkout.
- *
- * Called AFTER the checkout transaction has committed. When the buyer chose
- * WHATSAPP delivery and provided a phone, we enqueue a notification via the
- * same BullMQ job the resend action uses. Wrapped so it can NEVER throw into
- * the checkout flow — the wallet is already debited and the order is written.
- */
-async function enqueueWhatsAppDelivery({
-    deliveryMethod,
-    customerPhone,
-    orderNumber,
-    resellerId,
-}: {
-    deliveryMethod?: "TICKET" | "WHATSAPP";
-    customerPhone?: string;
-    orderNumber: string;
-    resellerId: number;
-}): Promise<void> {
-    if (deliveryMethod !== "WHATSAPP" || !customerPhone) return;
-    try {
-        const { addNotificationJob, NotificationJobType } = await import("@/lib/queue");
-        await addNotificationJob(NotificationJobType.SEND_WHATSAPP, {
-            phone: customerPhone,
-            orderNumber,
-            source: "reseller-checkout",
-            resellerId,
-        });
-    } catch (err) {
-        console.warn("[checkout] WhatsApp enqueue failed (non-bloquant):", err);
-    }
-}
+// Note: WhatsApp code delivery for the legacy/streaming reseller path is NOT
+// enqueued here. It is driven by OrderService.finalizeOrderAfterPayment(), which
+// fires SystemEvent.ORDER_DELIVERED → triggerOrderDelivery() — the same proven
+// path the kiosk/caisse use. That helper reads the order's allocated codes/slots,
+// gates on deliveryMethod === 'WHATSAPP', and formats the real message. Persisting
+// deliveryMethod + customerPhone on the order (below) is all that path needs.
 
 export const checkoutResellerAction = withAuth(
     {
@@ -543,8 +517,6 @@ export const checkoutResellerAction = withAuth(
                 reseller,
                 userId: user.id,
                 g2bulkCart,
-                deliveryMethod,
-                customerPhone,
             });
         }
 
@@ -734,15 +706,11 @@ export const checkoutResellerAction = withAuth(
                 totalAmount,
             ).catch(() => {});
 
-            // 8b. Delivery = WhatsApp → best-effort enqueue codes to the buyer's
-            // phone (same BullMQ pattern as the resend action). Never fails the
-            // checkout: the wallet is already debited and the order committed.
-            await enqueueWhatsAppDelivery({
-                deliveryMethod,
-                customerPhone,
-                orderNumber: res.orderNumber,
-                resellerId: reseller.id,
-            });
+            // 8b. WhatsApp delivery: nothing to enqueue here. Step 6
+            // (finalizeOrderAfterPayment) already fires ORDER_DELIVERED, which
+            // sends the codes via triggerOrderDelivery when deliveryMethod is
+            // WHATSAPP — the same path the kiosk/caisse use. TICKET orders are
+            // picked up by the per-reseller print agent (printStatus=print_pending).
 
             // 9. EPIC 1 / Phase G — dispatch outbound webhooks (no-op si pas d'abonnement)
             const { dispatchResellerEvent } = await import("@/services/webhook-dispatcher.service");
@@ -1197,14 +1165,10 @@ async function handleG2BulkCheckout({
     reseller,
     userId,
     g2bulkCart,
-    deliveryMethod,
-    customerPhone,
 }: {
     reseller: { id: number; companyName: string; contactPhone: string | null; customDiscount: string | null; wallet: { id: number; balance: string | null } | null };
     userId: number;
     g2bulkCart: Array<{ g2bulkProductId: number; quantity: number }>;
-    deliveryMethod?: "TICKET" | "WHATSAPP";
-    customerPhone?: string;
 }) {
     try {
         const { g2bulkOrders: g2bulkOrdersTable } = await import("@/db/schema");
@@ -1329,9 +1293,11 @@ async function handleG2BulkCheckout({
                 resteAPayer: "0",
                 resellerId: reseller.id,
                 source: "B2B_WEB",
-                deliveryMethod: deliveryMethod === "WHATSAPP" ? "WHATSAPP" : "TICKET",
-                printStatus: (deliveryMethod === "WHATSAPP" ? "not_required" : "print_pending") as any,
-                customerPhone: customerPhone ?? null,
+                // G2Bulk is portal-delivered: codes arrive asynchronously into a
+                // separate table (g2bulk_delivered_codes), never into order.items,
+                // so this order can neither be printed nor auto-delivered by WhatsApp.
+                // It does not participate in the delivery-method choice.
+                deliveryMethod: "TICKET",
             }).returning();
 
             // 2. Debit wallet
@@ -1403,14 +1369,6 @@ async function handleG2BulkCheckout({
             { id: reseller.id, companyName: reseller.companyName, contactPhone: reseller.contactPhone },
             totalAmount,
         ).catch(() => {});
-
-        // Delivery = WhatsApp → best-effort enqueue (post-commit, never throws).
-        await enqueueWhatsAppDelivery({
-            deliveryMethod,
-            customerPhone,
-            orderNumber: res.orderNumber,
-            resellerId: reseller.id,
-        });
 
         revalidatePath("/reseller/orders");
 
