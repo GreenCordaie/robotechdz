@@ -10,7 +10,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { orders, clientPayments, shopSettings } from "@/db/schema";
-import { eq, or } from "drizzle-orm";
+import { eq, or, and, ne } from "drizzle-orm";
 import { decrypt } from "@/lib/encryption";
 import crypto from "crypto";
 import { N8nService } from "@/services/n8n.service";
@@ -42,8 +42,15 @@ export async function GET(req: NextRequest) {
     try {
         // Fetch pending orders with all required relations
         // Fetch pending orders
+        // Hardened: newest-first so a fresh sale always surfaces (an unfulfilled
+        // backlog can no longer starve the 20-row window), and REMBOURSE (refunded)
+        // orders are excluded — they must not print a sale ticket and would
+        // otherwise linger PENDING forever.
         const pendingOrdersPromise = db.query.orders.findMany({
-            where: eq(orders.printStatus, "print_pending"),
+            where: and(
+                eq(orders.printStatus, "print_pending"),
+                ne(orders.status, "REMBOURSE"),
+            ),
             with: {
                 client: true,
                 reseller: true,
@@ -55,17 +62,17 @@ export async function GET(req: NextRequest) {
                     },
                 },
             },
-            orderBy: (o, { asc }) => [asc(o.createdAt)],
+            orderBy: (o, { desc }) => [desc(o.createdAt)],
             limit: 20,
         });
 
-        // Fetch pending payments
+        // Fetch pending payments (newest-first too)
         const pendingPaymentsPromise = db.query.clientPayments.findMany({
             where: eq(clientPayments.printStatus, "print_pending"),
             with: {
                 client: true,
             },
-            orderBy: (p, { asc }) => [asc(p.createdAt)],
+            orderBy: (p, { desc }) => [desc(p.createdAt)],
             limit: 20,
         });
 

@@ -114,3 +114,6 @@ scripts/noop.js
 .claude-flow/
 .swarm/
 ruvector.db
+
+# Agent impression caisse (contient le PRINT_SECRET — ne pas committer)
+caisse-print-agent/
