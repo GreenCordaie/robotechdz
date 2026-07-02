@@ -10,7 +10,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { orders, clientPayments, shopSettings } from "@/db/schema";
-import { eq, or, and, ne } from "drizzle-orm";
+import { eq, or, and, ne, isNull } from "drizzle-orm";
 import { decrypt } from "@/lib/encryption";
 import crypto from "crypto";
 import { N8nService } from "@/services/n8n.service";
@@ -39,6 +39,16 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    // Per-reseller print scoping: an authenticated print agent may pass
+    // ?resellerId=<id> to receive ONLY that reseller's pending orders. Without
+    // it, the central caisse agent gets kiosk/caisse orders only (resellerId
+    // NULL) so reseller tickets never leak onto the shop's printer.
+    const rawResellerId = req.nextUrl.searchParams.get("resellerId");
+    const parsedResellerId = rawResellerId ? Number(rawResellerId) : NaN;
+    const resellerId = Number.isInteger(parsedResellerId) && parsedResellerId > 0
+        ? parsedResellerId
+        : null;
+
     try {
         // Fetch pending orders with all required relations
         // Fetch pending orders
@@ -50,6 +60,9 @@ export async function GET(req: NextRequest) {
             where: and(
                 eq(orders.printStatus, "print_pending"),
                 ne(orders.status, "REMBOURSE"),
+                resellerId !== null
+                    ? eq(orders.resellerId, resellerId)
+                    : isNull(orders.resellerId),
             ),
             with: {
                 client: true,
@@ -66,15 +79,18 @@ export async function GET(req: NextRequest) {
             limit: 20,
         });
 
-        // Fetch pending payments (newest-first too)
-        const pendingPaymentsPromise = db.query.clientPayments.findMany({
-            where: eq(clientPayments.printStatus, "print_pending"),
-            with: {
-                client: true,
-            },
-            orderBy: (p, { desc }) => [desc(p.createdAt)],
-            limit: 20,
-        });
+        // Fetch pending payments (newest-first too). A reseller-scoped request
+        // must NOT receive caisse dette receipts — return none in that case.
+        const pendingPaymentsPromise = resellerId !== null
+            ? Promise.resolve([])
+            : db.query.clientPayments.findMany({
+                where: eq(clientPayments.printStatus, "print_pending"),
+                with: {
+                    client: true,
+                },
+                orderBy: (p, { desc }) => [desc(p.createdAt)],
+                limit: 20,
+            });
 
         const [pendingOrders, pendingPayments] = await Promise.all([
             pendingOrdersPromise,

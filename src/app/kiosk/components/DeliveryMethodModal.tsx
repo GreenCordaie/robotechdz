@@ -4,17 +4,35 @@ import { Printer, ChevronRight } from "lucide-react";
 import { useKioskStore } from "@/store/useKioskStore";
 import { formatCurrency } from "@/lib/formatters";
 
+interface DeliverySummaryItem {
+    name: string;
+    quantity: number;
+    price: number;
+}
+
 interface DeliveryMethodModalProps {
     isOpen: boolean;
     onClose: () => void;
     onConfirm: (method: "TICKET" | "WHATSAPP", phone?: string) => void;
     isSubmitting?: boolean;
+    /**
+     * Optional summary override. When provided (e.g. reseller checkout), the
+     * récapitulatif renders from these instead of the kiosk store. Omit to keep
+     * the default kiosk behaviour (reads `useKioskStore`).
+     */
+    items?: DeliverySummaryItem[];
+    total?: number;
     /** @deprecated kept for backwards compat with callers — IPTV always uses credentials path */
     hasIptvProducts?: boolean;
 }
 
-export default function DeliveryMethodModal({ isOpen, onClose, onConfirm, isSubmitting }: DeliveryMethodModalProps) {
+export default function DeliveryMethodModal({ isOpen, onClose, onConfirm, isSubmitting, items, total }: DeliveryMethodModalProps) {
     const { cart, getTotalAmount } = useKioskStore();
+    // When the caller supplies `items` (e.g. reseller checkout) the récapitulatif
+    // renders from those; otherwise it falls back to the kiosk store (unchanged).
+    const useProvidedSummary = items !== undefined;
+    const summaryItems: DeliverySummaryItem[] = useProvidedSummary ? items! : [];
+    const summaryTotal = useProvidedSummary ? (total ?? 0) : getTotalAmount();
     const [method, setMethod] = useState<"TICKET" | "WHATSAPP">("TICKET");
     const [callingCode, setCallingCode] = useState("+213");
     const [phone, setPhone] = useState("");
@@ -58,7 +76,7 @@ export default function DeliveryMethodModal({ isOpen, onClose, onConfirm, isSubm
                         </header>
 
                         {/* Cart Summary — confirmation des items achetés */}
-                        {cart.length > 0 && (
+                        {!useProvidedSummary && cart.length > 0 && (
                             <section className="mb-6 md:mb-8 p-4 bg-slate-50 border border-slate-200 rounded-2xl">
                                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-3">Récapitulatif</p>
                                 <div className="space-y-2">
@@ -79,6 +97,27 @@ export default function DeliveryMethodModal({ isOpen, onClose, onConfirm, isSubm
                                 <div className="mt-3 pt-3 border-t border-slate-200 flex justify-between font-black text-slate-900">
                                     <span>Total</span>
                                     <span>{formatCurrency(getTotalAmount(), "DZD")}</span>
+                                </div>
+                            </section>
+                        )}
+
+                        {/* Cart Summary — variante fournie par l'appelant (ex. checkout reseller) */}
+                        {useProvidedSummary && summaryItems.length > 0 && (
+                            <section className="mb-6 md:mb-8 p-4 bg-slate-50 border border-slate-200 rounded-2xl">
+                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-3">Récapitulatif</p>
+                                <div className="space-y-2">
+                                    {summaryItems.map((it, idx) => (
+                                        <div key={idx} className="text-sm">
+                                            <div className="flex justify-between font-bold text-slate-800">
+                                                <span>{it.name}{it.quantity > 1 ? ` × ${it.quantity}` : ""}</span>
+                                                <span>{formatCurrency(it.price * it.quantity, "DZD")}</span>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                                <div className="mt-3 pt-3 border-t border-slate-200 flex justify-between font-black text-slate-900">
+                                    <span>Total</span>
+                                    <span>{formatCurrency(summaryTotal, "DZD")}</span>
                                 </div>
                             </section>
                         )}

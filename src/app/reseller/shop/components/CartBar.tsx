@@ -16,6 +16,7 @@ import { formatCurrency } from "@/lib/formatters";
 import { useResellerCart, cartKey } from "@/store/useResellerCart";
 import { checkoutResellerAction, getCurrentResellerAction } from "@/app/reseller/actions";
 import { purchaseActiveCodeAction } from "@/app/reseller/shop/active-code/actions";
+import DeliveryMethodModal from "@/app/kiosk/components/DeliveryMethodModal";
 
 interface PayResult {
     label: string;
@@ -41,6 +42,7 @@ export function CartBar() {
     const clear = useResellerCart((s) => s.clear);
 
     const [open, setOpen] = React.useState(false);
+    const [deliveryOpen, setDeliveryOpen] = React.useState(false);
     const [resellerId, setResellerId] = React.useState<number | null>(null);
     const [isCheckingOut, setIsCheckingOut] = React.useState(false);
     const [results, setResults] = React.useState<PayResult[] | null>(null);
@@ -56,8 +58,9 @@ export function CartBar() {
     const count = items.reduce((a, i) => a + i.quantity, 0);
     const total = items.reduce((a, i) => a + i.priceDzd * i.quantity, 0);
 
-    const pay = async () => {
+    const pay = async (method: "TICKET" | "WHATSAPP", phone?: string) => {
         if (!resellerId || items.length === 0) return;
+        setDeliveryOpen(false);
         setIsCheckingOut(true);
         const out: PayResult[] = [];
         try {
@@ -70,6 +73,8 @@ export function CartBar() {
                 const r = await checkoutResellerAction({
                     resellerId,
                     cart: g2b.map((i) => ({ g2bulkProductId: Number(i.refId), quantity: i.quantity })),
+                    deliveryMethod: method,
+                    customerPhone: phone,
                 });
                 out.push({ label: SOURCE_LABEL.g2bulk, ok: r.success, error: r.success ? undefined : r.error });
             }
@@ -78,6 +83,8 @@ export function CartBar() {
                 const r = await checkoutResellerAction({
                     resellerId,
                     cart: streaming.map((i) => ({ id: Number(i.refId), quantity: i.quantity })),
+                    deliveryMethod: method,
+                    customerPhone: phone,
                 });
                 out.push({ label: SOURCE_LABEL.streaming, ok: r.success, error: r.success ? undefined : r.error });
             }
@@ -251,7 +258,7 @@ export function CartBar() {
                                         </Button>
                                     )}
                                     <Button
-                                        onPress={pay}
+                                        onPress={() => setDeliveryOpen(true)}
                                         isLoading={isCheckingOut}
                                         isDisabled={isCheckingOut || items.length === 0}
                                         className="bg-[#FACC15] text-black font-black px-6 h-12 rounded-xl"
@@ -264,6 +271,19 @@ export function CartBar() {
                     </ModalFooter>
                 </ModalContent>
             </Modal>
+
+            <DeliveryMethodModal
+                isOpen={deliveryOpen}
+                onClose={() => setDeliveryOpen(false)}
+                onConfirm={(method, phone) => pay(method, phone)}
+                isSubmitting={isCheckingOut}
+                items={items.map((i) => ({
+                    name: i.title ?? "Article",
+                    quantity: i.quantity,
+                    price: i.priceDzd,
+                }))}
+                total={total}
+            />
         </>
     );
 }

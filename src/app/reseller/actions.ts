@@ -413,6 +413,39 @@ export const getResellerTransactionsAction = withAuth(
     }
 );
 
+/**
+ * Best-effort WhatsApp delivery enqueue for reseller checkout.
+ *
+ * Called AFTER the checkout transaction has committed. When the buyer chose
+ * WHATSAPP delivery and provided a phone, we enqueue a notification via the
+ * same BullMQ job the resend action uses. Wrapped so it can NEVER throw into
+ * the checkout flow — the wallet is already debited and the order is written.
+ */
+async function enqueueWhatsAppDelivery({
+    deliveryMethod,
+    customerPhone,
+    orderNumber,
+    resellerId,
+}: {
+    deliveryMethod?: "TICKET" | "WHATSAPP";
+    customerPhone?: string;
+    orderNumber: string;
+    resellerId: number;
+}): Promise<void> {
+    if (deliveryMethod !== "WHATSAPP" || !customerPhone) return;
+    try {
+        const { addNotificationJob, NotificationJobType } = await import("@/lib/queue");
+        await addNotificationJob(NotificationJobType.SEND_WHATSAPP, {
+            phone: customerPhone,
+            orderNumber,
+            source: "reseller-checkout",
+            resellerId,
+        });
+    } catch (err) {
+        console.warn("[checkout] WhatsApp enqueue failed (non-bloquant):", err);
+    }
+}
+
 export const checkoutResellerAction = withAuth(
     {
         roles: [UserRole.RESELLER],
@@ -454,9 +487,14 @@ export const checkoutResellerAction = withAuth(
             // Max total (DZD) the reseller confirmed in the UI — the LIVE charge
             // is rejected if it exceeds this, so a price move can't over-charge (#4).
             maxPriceDzd: z.number().positive().optional(),
+            // Delivery choice (print vs WhatsApp) — additive. TICKET (default)
+            // queues the order for the per-reseller print agent; WHATSAPP skips
+            // printing and best-effort enqueues a WhatsApp notification.
+            deliveryMethod: z.enum(["TICKET", "WHATSAPP"]).optional(),
+            customerPhone: z.string().max(40).optional(),
         }),
     },
-    async ({ resellerId, cart, idempotencyKey, maxPriceDzd }, user) => {
+    async ({ resellerId, cart, idempotencyKey, maxPriceDzd, deliveryMethod, customerPhone }, user) => {
         // Enforce ownership: session user must own this reseller account
         const reseller = await db.query.resellers.findFirst({
             where: and(eq(resellers.id, resellerId), eq(resellers.userId, user.id)),
@@ -505,6 +543,8 @@ export const checkoutResellerAction = withAuth(
                 reseller,
                 userId: user.id,
                 g2bulkCart,
+                deliveryMethod,
+                customerPhone,
             });
         }
 
@@ -614,7 +654,9 @@ export const checkoutResellerAction = withAuth(
                     resteAPayer: "0",
                     resellerId: reseller.id,
                     source: "B2B_WEB",
-                    deliveryMethod: "TICKET",
+                    deliveryMethod: deliveryMethod === "WHATSAPP" ? "WHATSAPP" : "TICKET",
+                    printStatus: (deliveryMethod === "WHATSAPP" ? "not_required" : "print_pending") as any,
+                    customerPhone: customerPhone ?? null,
                 }).returning();
 
                 // 3. Insert Items
@@ -691,6 +733,16 @@ export const checkoutResellerAction = withAuth(
                 { id: reseller.id, companyName: reseller.companyName, contactPhone: reseller.contactPhone },
                 totalAmount,
             ).catch(() => {});
+
+            // 8b. Delivery = WhatsApp → best-effort enqueue codes to the buyer's
+            // phone (same BullMQ pattern as the resend action). Never fails the
+            // checkout: the wallet is already debited and the order committed.
+            await enqueueWhatsAppDelivery({
+                deliveryMethod,
+                customerPhone,
+                orderNumber: res.orderNumber,
+                resellerId: reseller.id,
+            });
 
             // 9. EPIC 1 / Phase G — dispatch outbound webhooks (no-op si pas d'abonnement)
             const { dispatchResellerEvent } = await import("@/services/webhook-dispatcher.service");
@@ -1145,10 +1197,14 @@ async function handleG2BulkCheckout({
     reseller,
     userId,
     g2bulkCart,
+    deliveryMethod,
+    customerPhone,
 }: {
     reseller: { id: number; companyName: string; contactPhone: string | null; customDiscount: string | null; wallet: { id: number; balance: string | null } | null };
     userId: number;
     g2bulkCart: Array<{ g2bulkProductId: number; quantity: number }>;
+    deliveryMethod?: "TICKET" | "WHATSAPP";
+    customerPhone?: string;
 }) {
     try {
         const { g2bulkOrders: g2bulkOrdersTable } = await import("@/db/schema");
@@ -1273,7 +1329,9 @@ async function handleG2BulkCheckout({
                 resteAPayer: "0",
                 resellerId: reseller.id,
                 source: "B2B_WEB",
-                deliveryMethod: "TICKET",
+                deliveryMethod: deliveryMethod === "WHATSAPP" ? "WHATSAPP" : "TICKET",
+                printStatus: (deliveryMethod === "WHATSAPP" ? "not_required" : "print_pending") as any,
+                customerPhone: customerPhone ?? null,
             }).returning();
 
             // 2. Debit wallet
@@ -1345,6 +1403,14 @@ async function handleG2BulkCheckout({
             { id: reseller.id, companyName: reseller.companyName, contactPhone: reseller.contactPhone },
             totalAmount,
         ).catch(() => {});
+
+        // Delivery = WhatsApp → best-effort enqueue (post-commit, never throws).
+        await enqueueWhatsAppDelivery({
+            deliveryMethod,
+            customerPhone,
+            orderNumber: res.orderNumber,
+            resellerId: reseller.id,
+        });
 
         revalidatePath("/reseller/orders");
 
